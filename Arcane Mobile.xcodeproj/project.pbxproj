@@ -392,10 +392,10 @@
 /* Begin XCRemoteSwiftPackageReference section */
 		FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "getarcaneapp.libarcane-swift";
+			repositoryURL = "https://github.com/getarcaneapp/libarcane-swift.git";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.1.0;
+				branch = main;
+				kind = branch;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

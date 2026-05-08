@@ -1,12 +1,13 @@
 {
-  "originHash" : "09d2d0180803b8f89d1d432c74bd4581aa0598ff35f17ab7ee6ec7986712c130",
+  "originHash" : "9db0ebaa4667f240d7a31009d005edf9aa84c5fb63205e278b7adba45025af17",
   "pins" : [
     {
-      "identity" : "getarcaneapp.libarcane-swift",
-      "kind" : "registry",
-      "location" : "",
+      "identity" : "libarcane-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/getarcaneapp/libarcane-swift.git",
       "state" : {
-        "version" : "0.1.1"
+        "branch" : "main",
+        "revision" : "a65d9003550bb0a755fb84abe2f843e03deed4ab"
       }
     },
     {
@@ -14,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections",
       "state" : {
-        "revision" : "6675bc0ff86e61436e615df6fc5174e043e57924",
-        "version" : "1.4.1"
+        "revision" : "03cc312c2c933ed87abace34044a5dff7a3117c1",
+        "version" : "1.5.0"
       }
     },
     {
