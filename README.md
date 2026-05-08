@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="../arcane/.github/assets/img/PNG-3.png" alt="Arcane Logo" width="500" />
+  <img src=".github/assets/img/PNG-3.png" alt="Arcane Logo" width="500" />
   <p>Arcane Mobile — Manage your Docker hosts from iOS.</p>
 
 <a href="https://github.com/getarcaneapp/ios/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue.svg" alt="License"></a>
