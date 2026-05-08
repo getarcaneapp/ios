@@ -75,18 +75,21 @@ struct ProjectDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                HStack {
-                    Button { showCompose = true } label: {
-                        Image(systemName: "doc.text")
+                Menu {
+                    Button {
+                        showCompose = true
+                    } label: {
+                        Label("View Compose File", systemImage: "doc.text")
                     }
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
-                        Image(systemName: "trash")
-                            .foregroundStyle(.red)
+                        Label("Delete Project", systemImage: "trash")
                     }
-                    .disabled(isActioning)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
+                .disabled(isActioning)
             }
         }
         .task { await loadProject() }
@@ -266,11 +269,17 @@ struct ComposeFileView: View {
     @State private var name: String = ""
     @State private var composeContent: String = ""
     @State private var envContent: String = ""
+    @State private var originalCompose: String = ""
+    @State private var originalEnv: String = ""
     @State private var selectedTab: Int = 0
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showRender = false
+
+    private var hasChanges: Bool {
+        composeContent != originalCompose || envContent != originalEnv
+    }
 
     var body: some View {
         NavigationStack {
@@ -290,10 +299,27 @@ struct ComposeFileView: View {
 
                         Divider()
 
-                        if selectedTab == 0 {
-                            CodeEditorView(text: $composeContent, language: .yaml)
-                        } else {
-                            CodeEditorView(text: $envContent, language: .env)
+                        ZStack(alignment: .bottomTrailing) {
+                            if selectedTab == 0 {
+                                CodeEditorView(text: $composeContent, language: .yaml)
+                            } else {
+                                CodeEditorView(text: $envContent, language: .env)
+                            }
+
+                            if selectedTab == 0 && !composeContent.isEmpty {
+                                Button {
+                                    showRender = true
+                                } label: {
+                                    Image(systemName: "curlybraces")
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(.indigo)
+                                        .frame(width: 52, height: 52)
+                                        .glassEffect(.regular, in: .circle)
+                                }
+                                .padding(.trailing, 16)
+                                .padding(.bottom, 16)
+                                .accessibilityLabel("Resolve Variables")
+                            }
                         }
 
                         if let errorMessage {
@@ -317,14 +343,6 @@ struct ComposeFileView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showRender = true
-                    } label: {
-                        Image(systemName: "curlybraces")
-                    }
-                    .disabled(selectedTab != 0 || composeContent.isEmpty)
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await saveFiles() }
@@ -332,7 +350,7 @@ struct ComposeFileView: View {
                         if isSaving { ProgressView().scaleEffect(0.8) }
                         else { Text("Save") }
                     }
-                    .disabled(isSaving)
+                    .disabled(isSaving || !hasChanges)
                 }
             }
             .sheet(isPresented: $showRender) {
@@ -357,8 +375,12 @@ struct ComposeFileView: View {
             let path = client.rest.environmentPath(environmentID, "projects/\(projectID)")
             let project: Project = try await client.rest.get(path)
             name = project.name
-            composeContent = project.composeContent ?? ""
-            envContent = project.envContent ?? ""
+            let loadedCompose = project.composeContent ?? ""
+            let loadedEnv = project.envContent ?? ""
+            composeContent = loadedCompose
+            envContent = loadedEnv
+            originalCompose = loadedCompose
+            originalEnv = loadedEnv
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
