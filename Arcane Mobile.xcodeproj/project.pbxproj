@@ -6,13 +6,32 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EA2FAC44530016681B /* Arcane */; };
+		FD6FF5ED2FAC44530016681B /* ArcaneAPI in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EC2FAC44530016681B /* ArcaneAPI */; };
+		FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EE2FAC44530016681B /* ArcaneOIDC */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		FD6FF5D92FAC434D0016681B /* Arcane Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Arcane Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FD6FF6352FAD1F970016681B /* Exceptions for "Arcane Mobile" folder in "Arcane Mobile" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				BuildNumber.xcconfig,
+			);
+			target = FD6FF5D82FAC434D0016681B /* Arcane Mobile */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FD6FF5DB2FAC434D0016681B /* Arcane Mobile */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FD6FF6352FAD1F970016681B /* Exceptions for "Arcane Mobile" folder in "Arcane Mobile" target */,
+			);
 			path = "Arcane Mobile";
 			sourceTree = "<group>";
 		};
@@ -23,6 +42,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */,
+				FD6FF5ED2FAC44530016681B /* ArcaneAPI in Frameworks */,
+				FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +87,9 @@
 			);
 			name = "Arcane Mobile";
 			packageProductDependencies = (
+				FD6FF5EA2FAC44530016681B /* Arcane */,
+				FD6FF5EC2FAC44530016681B /* ArcaneAPI */,
+				FD6FF5EE2FAC44530016681B /* ArcaneOIDC */,
 			);
 			productName = "Arcane Mobile";
 			productReference = FD6FF5D92FAC434D0016681B /* Arcane Mobile.app */;
@@ -94,6 +119,9 @@
 			);
 			mainGroup = FD6FF5D02FAC434D0016681B;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FD6FF5DA2FAC434D0016681B /* Products */;
 			projectDirPath = "";
@@ -127,6 +155,8 @@
 /* Begin XCBuildConfiguration section */
 		FD6FF5E42FAC434E0016681B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = FD6FF5DB2FAC434D0016681B /* Arcane Mobile */;
+			baseConfigurationReferenceRelativePath = BuildNumber.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -191,6 +221,8 @@
 		};
 		FD6FF5E52FAC434E0016681B /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = FD6FF5DB2FAC434D0016681B /* Arcane Mobile */;
+			baseConfigurationReferenceRelativePath = BuildNumber.xcconfig;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -248,27 +280,39 @@
 		};
 		FD6FF5E72FAC434E0016681B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = FD6FF5DB2FAC434D0016681B /* Arcane Mobile */;
+			baseConfigurationReferenceRelativePath = BuildNumber.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				DEVELOPMENT_TEAM = 4L6GXKX423;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Arcane-Mobile-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Arcane Mobile";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Use FaceID To Secure Arcane";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.ofkm.Arcane-Mobile";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -280,27 +324,39 @@
 		};
 		FD6FF5E82FAC434E0016681B /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = FD6FF5DB2FAC434D0016681B /* Arcane Mobile */;
+			baseConfigurationReferenceRelativePath = BuildNumber.xcconfig;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				DEVELOPMENT_TEAM = 4L6GXKX423;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Arcane-Mobile-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Arcane Mobile";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Use FaceID To Secure Arcane";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.ofkm.Arcane-Mobile";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -332,6 +388,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "getarcaneapp.libarcane-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FD6FF5EA2FAC44530016681B /* Arcane */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
+			productName = Arcane;
+		};
+		FD6FF5EC2FAC44530016681B /* ArcaneAPI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
+			productName = ArcaneAPI;
+		};
+		FD6FF5EE2FAC44530016681B /* ArcaneOIDC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
+			productName = ArcaneOIDC;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FD6FF5D12FAC434D0016681B /* Project object */;
 }

@@ -1,61 +1,40 @@
-//
-//  ContentView.swift
-//  Arcane Mobile
-//
-//  Created by Kyle Mendell on 5/6/26.
-//
-
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Environment(ArcaneClientManager.self) private var manager
+    @Environment(AppLockManager.self) private var lockManager
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+        Group {
+            switch manager.authState {
+            case .setup:
+                LoginView(mode: .setup)
+            case .authenticating:
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .login:
+                LoginView(mode: .login)
+            case .authenticated:
+                MainTabView()
             }
         }
+        .task {
+            await manager.checkExistingAuth()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                lockManager.lockIfEnabled()
+            } else if newPhase == .active, lockManager.isLocked {
+                Task { await lockManager.authenticate() }
+            }
+        }
+        .overlay {
+            if lockManager.isLocked && manager.authState == .authenticated {
+                AppLockView()
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: lockManager.isLocked)
     }
-}
-
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
 }

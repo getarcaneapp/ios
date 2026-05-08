@@ -1,0 +1,143 @@
+import SwiftUI
+import Arcane
+
+struct EnvironmentDetailView: View {
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    let environment: ServerEnvironment
+
+    @State private var dockerInfo: DockerInfo?
+    @State private var isLoading = false
+
+    private var envID: EnvironmentID { EnvironmentID(rawValue: environment.id) }
+
+    var body: some View {
+        List {
+            // Environment info header
+            Section {
+                infoCard
+            }
+
+            // Resource navigation
+            Section("Resources") {
+                resourceLink(
+                    title: "Containers",
+                    icon: "cube.box.fill",
+                    color: .blue,
+                    destination: ContainersView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                )
+                resourceLink(
+                    title: "Images",
+                    icon: "photo.stack.fill",
+                    color: .purple,
+                    destination: ImagesView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                )
+                resourceLink(
+                    title: "Volumes",
+                    icon: "externaldrive.fill",
+                    color: .orange,
+                    destination: VolumesView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                )
+                resourceLink(
+                    title: "Networks",
+                    icon: "network",
+                    color: .teal,
+                    destination: NetworksView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                )
+                resourceLink(
+                    title: "Projects",
+                    icon: "square.stack.3d.up.fill",
+                    color: .indigo,
+                    destination: ProjectsView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                )
+            }
+
+            // System info
+            if let info = dockerInfo {
+                Section("Docker Info") {
+                    LabeledContent("Docker Version", value: info.serverVersion)
+                    LabeledContent("OS", value: info.operatingSystem)
+                    LabeledContent("Architecture", value: info.architecture)
+                    LabeledContent("CPUs", value: "\(info.ncpu)")
+                    LabeledContent("Memory", value: info.memTotal.byteString)
+                    if info.swarm.localNodeState != "inactive" {
+                        let state = info.swarm.localNodeState
+                        LabeledContent("Swarm", value: state.capitalized)
+                    }
+                }
+            }
+
+            // System actions
+            Section("Actions") {
+                Button(role: .destructive) {
+                    Task { await testConnection() }
+                } label: {
+                    Label("Test Connection", systemImage: "network")
+                        .foregroundStyle(.primary)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(environment.name ?? environment.id)
+        .navigationBarTitleDisplayMode(.large)
+        .task { await loadDockerInfo() }
+        .refreshable { await loadDockerInfo() }
+    }
+
+    private var infoCard: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "server.rack")
+                .font(.title)
+                .foregroundStyle(environment.isOnline ?? false ? .green : .secondary)
+                .frame(width: 56, height: 56)
+                .glassEffect(.regular, in: .circle)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(environment.name ?? environment.id)
+                    .font(.title3.bold())
+                if let url = environment.url {
+                    Text(url)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                StatusBadge(status: environment.status)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func resourceLink<Dest: View>(title: String, icon: String, color: Color, destination: Dest) -> some View {
+        NavigationLink(destination: destination) {
+            Label {
+                Text(title)
+            } icon: {
+                Image(systemName: icon)
+                    .foregroundStyle(color)
+            }
+        }
+    }
+
+    private func loadDockerInfo() async {
+        guard let client = manager.client else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let path = client.rest.environmentPath(envID, "system/docker/info")
+            let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
+            dockerInfo = try? JSONDecoder().decode(DockerInfo.self, from: rawData)
+        } catch {
+            // Docker info is non-critical, silently ignore
+        }
+    }
+
+    private func testConnection() async {
+        guard let client = manager.client else { return }
+        do {
+            let path = client.rest.environmentPath(envID, "test")
+            let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
+        } catch {
+            // Handle error
+        }
+    }
+}
