@@ -1247,6 +1247,7 @@ struct TemplateRow: View {
 
 struct TemplatePreviewView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(\.dismiss) private var dismiss
     let template: ComposeTemplate
 
     @State private var content: ComposeTemplateContent?
@@ -1255,6 +1256,7 @@ struct TemplatePreviewView: View {
     @State private var selectedTab = 0
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var showDeploy = false
 
     var body: some View {
         Group {
@@ -1283,6 +1285,30 @@ struct TemplatePreviewView: View {
         }
         .navigationTitle(template.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showDeploy = true
+                } label: {
+                    Label("Deploy", systemImage: "play.circle.fill")
+                }
+                .disabled(content == nil)
+            }
+        }
+        .sheet(isPresented: $showDeploy) {
+            CreateProjectView(
+                environmentID: manager.activeEnvironmentID,
+                prefilledName: template.name
+                    .lowercased()
+                    .replacingOccurrences(of: " ", with: "-"),
+                prefilledCompose: composeContent,
+                prefilledEnv: envContent,
+                templateLabel: template.name
+            ) {
+                showDeploy = false
+                dismiss()
+            }
+        }
         .task { await loadContent() }
         .overlay(alignment: .bottom) {
             if let errorMessage {
