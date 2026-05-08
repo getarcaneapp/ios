@@ -385,6 +385,7 @@ struct ContainerDetailView: View {
                 let path = client.rest.environmentPath(environmentID, "containers/\(container.id)/redeploy")
                 let _: ContainerInfo = try await client.rest.post(path, body: String?.none)
             }
+            await invalidateContainerCaches()
             await loadDetails()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -398,6 +399,7 @@ struct ContainerDetailView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "containers/\(container.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
+            await invalidateContainerCaches()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -409,6 +411,7 @@ struct ContainerDetailView: View {
         }
         do {
             try await client.renameContainer(envID: environmentID, id: container.id, newName: newName)
+            await invalidateContainerCaches()
             await loadDetails()
             return .success(())
         } catch {
@@ -425,6 +428,14 @@ struct ContainerDetailView: View {
         } catch {
             // Ignore inspect errors — show what we have
         }
+    }
+
+    private func invalidateContainerCaches() async {
+        guard let cached = manager.cached, let client = manager.client else { return }
+        await cached.invalidate(envID: environmentID, paths: [
+            client.rest.environmentPath(environmentID, "containers"),
+            client.rest.environmentPath(environmentID, "containers/*")
+        ])
     }
 }
 

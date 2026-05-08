@@ -202,13 +202,19 @@ struct ImageDetailView: View {
         }
     }
 
-    private func loadDetails() async {
-        guard let client = manager.client else { return }
-        isLoading = true
+    private func loadDetails(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        if details == nil { isLoading = true }
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
-            details = try await client.rest.get(path)
+            if let result: ImageDetails = try await cached.get(
+                path, as: ImageDetails.self, policy: .imageDetail,
+                envID: environmentID, refresh: refresh,
+                onFresh: { fresh in details = fresh }
+            ) {
+                details = result
+            }
         } catch {}
         await loadVulnerabilitySummary()
     }
@@ -239,6 +245,12 @@ struct ImageDetailView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
+            if let cached = manager.cached {
+                await cached.invalidate(envID: environmentID, paths: [
+                    client.rest.environmentPath(environmentID, "images") + "*",
+                    client.rest.environmentPath(environmentID, "images/*")
+                ])
+            }
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

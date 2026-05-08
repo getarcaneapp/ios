@@ -26,10 +26,14 @@ final class ArcaneClientManager {
     var activeEnvironmentName: String = "Local Docker"
 
     func setActiveEnvironment(id: EnvironmentID, name: String) {
+        let previous = activeEnvironmentID
         activeEnvironmentID = id
         activeEnvironmentName = name
         UserDefaults.standard.set(id.rawValue, forKey: "arcane.activeEnvironmentID")
         UserDefaults.standard.set(name, forKey: "arcane.activeEnvironmentName")
+        if previous != id {
+            Task { await ResponseCache.shared.invalidateEnvironment(previous.rawValue) }
+        }
     }
 
     // MARK: - Client
@@ -64,6 +68,7 @@ final class ArcaneClientManager {
         serverURL = trimmed
         client = Self.makeClient(url: parsed)
         authState = .login
+        Task { await ResponseCache.shared.invalidateAll() }
     }
 
     // MARK: - Auth
@@ -100,6 +105,7 @@ final class ArcaneClientManager {
         try? await client.auth.logout()
         currentUser = nil
         authState = .login
+        await ResponseCache.shared.invalidateAll()
     }
 
     func checkExistingAuth() async {

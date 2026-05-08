@@ -17,6 +17,9 @@ struct Arcane_MobileApp: App {
             ContentView()
                 .environment(clientManager)
                 .tint(accentColorHex.isEmpty ? nil : accentColor)
+                .task {
+                    await ImageCache.shared.trimDiskCache()
+                }
         }
     }
 }

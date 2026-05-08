@@ -130,7 +130,7 @@ struct ContainersView: View {
             .presentationDetents([.medium])
         }
         .task { await loadContainers() }
-        .refreshable { await loadContainers() }
+        .refreshable { await loadContainers(refresh: true) }
     }
 
     private func containerLink(_ container: ContainerInfo) -> some View {
@@ -166,14 +166,20 @@ struct ContainersView: View {
         }
     }
 
-    private func loadContainers() async {
-        guard let client = manager.client else { return }
-        isLoading = true
+    private func loadContainers(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        if containers.isEmpty { isLoading = true }
         errorMessage = nil
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "containers")
-            containers = try await client.rest.get(path)
+            if let result: [ContainerInfo] = try await cached.get(
+                path, as: [ContainerInfo].self, policy: .containersList,
+                envID: environmentID, refresh: refresh,
+                onFresh: { fresh in containers = fresh }
+            ) {
+                containers = result
+            }
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -183,7 +189,8 @@ struct ContainersView: View {
         guard let client = manager.client else { return }
         do {
             try await client.containers.start(envID: environmentID, id: container.id)
-            await loadContainers()
+            await invalidateContainerCaches()
+            await loadContainers(refresh: true)
         } catch {}
     }
 
@@ -191,7 +198,8 @@ struct ContainersView: View {
         guard let client = manager.client else { return }
         do {
             try await client.containers.stop(envID: environmentID, id: container.id)
-            await loadContainers()
+            await invalidateContainerCaches()
+            await loadContainers(refresh: true)
         } catch {}
     }
 
@@ -200,7 +208,8 @@ struct ContainersView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "containers/prune")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
-            await loadContainers()
+            await invalidateContainerCaches()
+            await loadContainers(refresh: true)
         } catch {}
     }
 
@@ -208,8 +217,17 @@ struct ContainersView: View {
         guard let client = manager.client else { return }
         do {
             try await client.containers.restart(envID: environmentID, id: container.id)
-            await loadContainers()
+            await invalidateContainerCaches()
+            await loadContainers(refresh: true)
         } catch {}
+    }
+
+    private func invalidateContainerCaches() async {
+        guard let cached = manager.cached, let client = manager.client else { return }
+        await cached.invalidate(envID: environmentID, paths: [
+            client.rest.environmentPath(environmentID, "containers"),
+            client.rest.environmentPath(environmentID, "containers/*")
+        ])
     }
 }
 

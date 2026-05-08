@@ -112,9 +112,9 @@ struct ProjectsView: View {
             }
         }
         .task { await loadProjects() }
-        .refreshable { await loadProjects() }
+        .refreshable { await loadProjects(refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
-            CreateProjectView(environmentID: environmentID) { await loadProjects() }
+            CreateProjectView(environmentID: environmentID) { await loadProjects(refresh: true) }
         }
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
@@ -141,13 +141,20 @@ struct ProjectsView: View {
         }
     }
 
-    private func loadProjects() async {
-        guard let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+    private func loadProjects(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        if projects.isEmpty { isLoading = true }
+        errorMessage = nil
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "projects")
-            projects = try await client.rest.get(path)
+            if let result: [Project] = try await cached.get(
+                path, as: [Project].self, policy: .projects,
+                envID: environmentID, refresh: refresh,
+                onFresh: { fresh in projects = fresh }
+            ) {
+                projects = result
+            }
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 

@@ -71,7 +71,7 @@ struct DashboardView: View {
                 isStreaming = false
             }
             .onChange(of: envID) { _, _ in restartStatsStream() }
-            .refreshable { await loadData() }
+            .refreshable { await loadData(refresh: true) }
         }
     }
 
@@ -257,18 +257,18 @@ private func dockerErrorBanner(_ error: String) -> some View {
 
     // MARK: - Data loading
 
-    private func loadData() async {
+    private func loadData(refresh: Bool = false) async {
         guard let client = manager.client else { return }
-        isLoading = true
+        if !hasLoadedOnce { isLoading = true }
         defer {
             isLoading = false
             hasLoadedOnce = true
         }
 
-        async let envTask: [ServerEnvironment] = (try? client.rest.get("environments")) ?? []
-        async let dockerTask: DockerInfo? = loadDockerInfoSilent(client: client)
-        async let projectsTask: [Project] = (try? client.rest.get(client.rest.environmentPath(envID, "projects"))) ?? []
-        async let volumeSizesTask: [VolumeSizeInfo]? = try? client.rest.get(client.rest.environmentPath(envID, "volumes/sizes"))
+        async let envTask: [ServerEnvironment] = loadEnvironmentsCached(refresh: refresh)
+        async let dockerTask: DockerInfo? = loadDockerInfoSilent(client: client, refresh: refresh)
+        async let projectsTask: [Project] = loadProjectsCountCached(client: client, refresh: refresh)
+        async let volumeSizesTask: [VolumeSizeInfo]? = loadVolumeSizesCached(client: client, refresh: refresh)
 
         let (envs, info, projects, volumeSizes) = await (envTask, dockerTask, projectsTask, volumeSizesTask)
         if Task.isCancelled { return }
@@ -281,19 +281,63 @@ private func dockerErrorBanner(_ error: String) -> some View {
         }
     }
 
+    private func loadEnvironmentsCached(refresh: Bool) async -> [ServerEnvironment] {
+        guard let cached = manager.cached else { return [] }
+        return (try? await cached.getGlobal(
+            "environments", as: [ServerEnvironment].self,
+            policy: .environments, refresh: refresh,
+            onFresh: { fresh in environments = fresh }
+        )) ?? []
+    }
+
+    private func loadProjectsCountCached(client: ArcaneClient, refresh: Bool) async -> [Project] {
+        guard let cached = manager.cached else { return [] }
+        let path = client.rest.environmentPath(envID, "projects")
+        return (try? await cached.get(
+            path, as: [Project].self, policy: .projects,
+            envID: envID, refresh: refresh,
+            onFresh: { fresh in projectCount = fresh.count }
+        )) ?? []
+    }
+
+    private func loadVolumeSizesCached(client: ArcaneClient, refresh: Bool) async -> [VolumeSizeInfo]? {
+        guard let cached = manager.cached else { return nil }
+        let path = client.rest.environmentPath(envID, "volumes/sizes")
+        return try? await cached.get(
+            path, as: [VolumeSizeInfo].self, policy: .volumes,
+            envID: envID, refresh: refresh,
+            onFresh: { fresh in
+                volumeCount = fresh.count
+                volumeTotalBytes = fresh.reduce(Int64(0)) { $0 + $1.size }
+            }
+        )
+    }
+
     private func loadDockerInfo() async {
         guard let client = manager.client else { return }
         dockerError = nil
-        if let info = await loadDockerInfoSilent(client: client) {
+        if let info = await loadDockerInfoSilent(client: client, refresh: true) {
             dockerInfo = info
         }
     }
 
-    private func loadDockerInfoSilent(client: ArcaneClient) async -> DockerInfo? {
+    private func loadDockerInfoSilent(client: ArcaneClient, refresh: Bool = false) async -> DockerInfo? {
         let path = client.rest.environmentPath(envID, "system/docker/info")
-        do {
+        guard let cached = manager.cached else { return nil }
+        let fetcher: @Sendable () async throws -> DockerInfo = {
             let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            let info = try JSONDecoder().decode(DockerInfo.self, from: rawData)
+            return try JSONDecoder().decode(DockerInfo.self, from: rawData)
+        }
+        do {
+            let info = try await cached.getCustom(
+                path: path, as: DockerInfo.self, policy: .dockerInfo,
+                envID: envID, refresh: refresh,
+                onFresh: { fresh in
+                    dockerInfo = fresh
+                    dockerError = nil
+                },
+                fetcher: fetcher
+            )
             await MainActor.run { dockerError = nil }
             return info
         } catch let error as ArcaneError {
@@ -815,6 +859,7 @@ struct SystemPruneView: View {
             let path = client.rest.environmentPath(environmentID, "system/prune")
             let result: PruneAllResult = try await client.rest.post(path, body: request)
             resultMessage = formatPruneResult(result)
+            await ResponseCache.shared.invalidateEnvironment(environmentID.rawValue)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

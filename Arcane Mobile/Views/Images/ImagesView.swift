@@ -200,15 +200,17 @@ struct ImagesView: View {
             .presentationDetents([.medium])
         }
         .task { await loadImages(reset: true) }
-        .refreshable { await loadImages(reset: true) }
+        .refreshable { await loadImages(reset: true, refresh: true) }
         .sheet(isPresented: $showPullSheet) {
             PullImageView(environmentID: environmentID) {
-                await loadImages(reset: true)
+                await invalidateImageCaches()
+                await loadImages(reset: true, refresh: true)
             }
         }
         .sheet(isPresented: $showUploadSheet) {
             UploadImageView(environmentID: environmentID) {
-                await loadImages(reset: true)
+                await invalidateImageCaches()
+                await loadImages(reset: true, refresh: true)
             }
         }
     }
@@ -226,17 +228,40 @@ struct ImagesView: View {
         }
     }
 
-    private func loadImages(reset: Bool) async {
+    private func loadImages(reset: Bool, refresh: Bool = false) async {
         guard let client = manager.client else { return }
         if reset { currentPage = 1 }
-        isLoading = true
+        if images.isEmpty { isLoading = true }
         errorMessage = nil
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "images")
             let query = [URLQueryItem(name: "page", value: "\(currentPage)"),
                          URLQueryItem(name: "pageSize", value: "50")]
-            let newImages: [ImageInfo] = try await client.rest.get(path, query: query)
+            // Only the first page is cached — subsequent pages always hit network.
+            let useCache = reset && currentPage == 1
+            let newImages: [ImageInfo]
+            if useCache, let cached = manager.cached {
+                let cachePath = "\(path)?page=1&pageSize=50"
+                let fetcher: @Sendable () async throws -> [ImageInfo] = {
+                    try await client.rest.get(path, query: query)
+                }
+                if let result: [ImageInfo] = try await cached.getCustom(
+                    path: cachePath, as: [ImageInfo].self, policy: .imagesList,
+                    envID: environmentID, refresh: refresh,
+                    onFresh: { fresh in
+                        images = fresh
+                        Task { await loadUpdateInfo(for: fresh) }
+                    },
+                    fetcher: fetcher
+                ) {
+                    newImages = result
+                } else {
+                    newImages = []
+                }
+            } else {
+                newImages = try await client.rest.get(path, query: query)
+            }
             if reset {
                 images = newImages
             } else {
@@ -247,6 +272,14 @@ struct ImagesView: View {
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func invalidateImageCaches() async {
+        guard let cached = manager.cached, let client = manager.client else { return }
+        await cached.invalidate(envID: environmentID, paths: [
+            client.rest.environmentPath(environmentID, "images") + "*",
+            client.rest.environmentPath(environmentID, "images/*")
+        ])
     }
 
     private func loadUpdateInfo(for newImages: [ImageInfo]) async {
@@ -288,7 +321,8 @@ struct ImagesView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "images/prune")
             let _: ImagePruneReport = try await client.rest.post(path, body: body)
-            await loadImages(reset: true)
+            await invalidateImageCaches()
+            await loadImages(reset: true, refresh: true)
         } catch {}
     }
 
@@ -298,6 +332,7 @@ struct ImagesView: View {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
             images.removeAll { $0.id == image.id }
+            await invalidateImageCaches()
         } catch {}
     }
 }

@@ -49,7 +49,7 @@ struct WebhooksView: View {
             }
         }
         .task { await loadWebhooks() }
-        .refreshable { await loadWebhooks() }
+        .refreshable { await loadWebhooks(refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
             CreateWebhookView { created in
                 createdWebhook = .init(token: created.token, name: created.name)
@@ -68,13 +68,19 @@ struct WebhooksView: View {
 
     // MARK: - API
 
-    private func loadWebhooks() async {
-        guard let client = manager.client else { return }
-        isLoading = true
+    private func loadWebhooks(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        if webhooks.isEmpty { isLoading = true }
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks")
-            webhooks = try await client.rest.get(path)
+            if let result: [WebhookSummary] = try await cached.get(
+                path, as: [WebhookSummary].self, policy: .webhooks,
+                envID: manager.activeEnvironmentID, refresh: refresh,
+                onFresh: { fresh in webhooks = fresh }
+            ) {
+                webhooks = result
+            }
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -86,6 +92,7 @@ struct WebhooksView: View {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks/\(webhook.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
             webhooks.removeAll { $0.id == webhook.id }
+            await invalidateWebhookCaches()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -97,10 +104,18 @@ struct WebhooksView: View {
             let body = WebhookUpdateInput(enabled: !webhook.enabled)
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks/\(webhook.id)")
             let _: WebhookSummary = try await client.rest.put(path, body: body)
-            await loadWebhooks()
+            await invalidateWebhookCaches()
+            await loadWebhooks(refresh: true)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func invalidateWebhookCaches() async {
+        guard let cached = manager.cached, let client = manager.client else { return }
+        await cached.invalidate(envID: manager.activeEnvironmentID, paths: [
+            client.rest.environmentPath(manager.activeEnvironmentID, "webhooks") + "*"
+        ])
     }
 }
 

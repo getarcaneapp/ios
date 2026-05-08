@@ -76,18 +76,30 @@ struct EnvironmentsView: View {
             }
         }
         .task { await loadEnvironments() }
-        .refreshable { await loadEnvironments() }
+        .refreshable { await loadEnvironments(refresh: true) }
         .sheet(isPresented: $showAddEnvironment) {
-            AddEnvironmentView { await loadEnvironments() }
+            AddEnvironmentView {
+                if let cached = manager.cached {
+                    await cached.invalidateGlobal(paths: ["environments"])
+                }
+                await loadEnvironments(refresh: true)
+            }
         }
     }
 
-    private func loadEnvironments() async {
-        guard let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+    private func loadEnvironments(refresh: Bool = false) async {
+        guard let cached = manager.cached else { return }
+        if environments.isEmpty { isLoading = true }
+        errorMessage = nil
         defer { isLoading = false }
         do {
-            environments = try await client.rest.get("environments")
+            if let result: [ServerEnvironment] = try await cached.getGlobal(
+                "environments", as: [ServerEnvironment].self, policy: .environments,
+                refresh: refresh,
+                onFresh: { fresh in environments = fresh }
+            ) {
+                environments = result
+            }
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

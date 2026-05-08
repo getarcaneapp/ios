@@ -58,26 +58,36 @@ struct SettingsView: View {
             } message: {
                 Text("You'll be signed out of this server.")
             }
-            .alert("Image Cache Cleared", isPresented: $showCacheCleared) {
+            .alert("Cache Cleared", isPresented: $showCacheCleared) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("All cached images will be reloaded from the server.")
+                Text("Cached images and API responses will be reloaded from the server.")
             }
         }
     }
 
     private func refreshCacheSize() async {
-        cacheSizeBytes = await ImageCache.shared.currentBytes()
+        async let images = ImageCache.shared.currentBytes()
+        async let responses = ResponseCache.shared.diskBytes()
+        cacheSizeBytes = await images + responses
     }
 
     private func loadVolumeSize() async {
-        guard let client = manager.client, volumeSizeBytes == nil, !loadingVolumeSize else { return }
+        guard let client = manager.client, let cached = manager.cached,
+              volumeSizeBytes == nil, !loadingVolumeSize else { return }
         loadingVolumeSize = true
         defer { loadingVolumeSize = false }
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "volumes/sizes")
-            let sizes: [VolumeSizeInfo] = try await client.rest.get(path)
-            volumeSizeBytes = sizes.reduce(Int64(0)) { $0 + $1.size }
+            if let sizes: [VolumeSizeInfo] = try await cached.get(
+                path, as: [VolumeSizeInfo].self, policy: .volumes,
+                envID: manager.activeEnvironmentID,
+                onFresh: { fresh in
+                    volumeSizeBytes = fresh.reduce(Int64(0)) { $0 + $1.size }
+                }
+            ) {
+                volumeSizeBytes = sizes.reduce(Int64(0)) { $0 + $1.size }
+            }
         } catch {
             // Slow / unsupported on some hosts — leave blank silently.
         }
@@ -213,8 +223,8 @@ struct SettingsView: View {
             } label: {
                 HStack {
                     SettingsRow(
-                        title: "Clear Image Cache",
-                        systemImage: "photo.stack",
+                        title: "Clear Cache",
+                        systemImage: "trash",
                         color: .red,
                         titleColor: .red
                     )
@@ -226,21 +236,22 @@ struct SettingsView: View {
             }
         }
         .confirmationDialog(
-            "Clear Image Cache?",
+            "Clear Cache?",
             isPresented: $showClearCacheConfirm,
             titleVisibility: .visible
         ) {
             Button("Clear Cache", role: .destructive) {
                 Task {
                     await ImageCache.shared.clear()
+                    await ResponseCache.shared.invalidateAll()
                     await refreshCacheSize()
                     showCacheCleared = true
                 }
             }
         } message: {
             Text(cacheSizeBytes > 0
-                 ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images. They'll be re-downloaded as needed."
-                 : "This will clear all cached images.")
+                 ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images and API data. Everything will be re-fetched as needed."
+                 : "This will clear all cached images and API data.")
         }
     }
 
@@ -378,18 +389,30 @@ struct UsersView: View {
             }
         }
         .task { await loadUsers() }
-        .refreshable { await loadUsers() }
+        .refreshable { await loadUsers(refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
-            CreateUserView { await loadUsers() }
+            CreateUserView {
+                if let cached = manager.cached {
+                    await cached.invalidateGlobal(paths: ["users", "users/*"])
+                }
+                await loadUsers(refresh: true)
+            }
         }
     }
 
-    private func loadUsers() async {
-        guard let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+    private func loadUsers(refresh: Bool = false) async {
+        guard let cached = manager.cached else { return }
+        if users.isEmpty { isLoading = true }
+        errorMessage = nil
         defer { isLoading = false }
         do {
-            users = try await client.rest.get("users")
+            if let result: [ArcaneUser] = try await cached.getGlobal(
+                "users", as: [ArcaneUser].self, policy: .users,
+                refresh: refresh,
+                onFresh: { fresh in users = fresh }
+            ) {
+                users = result
+            }
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
@@ -398,6 +421,9 @@ struct UsersView: View {
         do {
             let _: DataResponse<String> = try await client.rest.delete("users/\(user.id)")
             users.removeAll { $0.id == user.id }
+            if let cached = manager.cached {
+                await cached.invalidateGlobal(paths: ["users", "users/*"])
+            }
         } catch {}
     }
 }
@@ -600,11 +626,16 @@ struct APIKeysView: View {
             }
         }
         .task { await loadKeys() }
-        .refreshable { await loadKeys() }
+        .refreshable { await loadKeys(refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
             CreateAPIKeyView { keyString in
                 createdKey = keyString
-                Task { await loadKeys() }
+                Task {
+                    if let cached = manager.cached {
+                        await cached.invalidateGlobal(paths: ["api-keys", "api-keys/*"])
+                    }
+                    await loadKeys(refresh: true)
+                }
             }
         }
         .sheet(item: Binding(get: { createdKey.map { CreatedKeyWrapper(key: $0) } }, set: { _ in createdKey = nil })) { wrapper in
@@ -612,11 +643,19 @@ struct APIKeysView: View {
         }
     }
 
-    private func loadKeys() async {
-        guard let client = manager.client else { return }
-        isLoading = true
+    private func loadKeys(refresh: Bool = false) async {
+        guard let cached = manager.cached else { return }
+        if apiKeys.isEmpty { isLoading = true }
         defer { isLoading = false }
-        do { apiKeys = try await client.rest.get("api-keys") } catch {}
+        do {
+            if let result: [APIKey] = try await cached.getGlobal(
+                "api-keys", as: [APIKey].self, policy: .apiKeys,
+                refresh: refresh,
+                onFresh: { fresh in apiKeys = fresh }
+            ) {
+                apiKeys = result
+            }
+        } catch {}
     }
 
     private func deleteKey(_ key: APIKey) async {
@@ -624,6 +663,9 @@ struct APIKeysView: View {
         do {
             let _: DataResponse<String> = try await client.rest.delete("api-keys/\(key.id)")
             apiKeys.removeAll { $0.id == key.id }
+            if let cached = manager.cached {
+                await cached.invalidateGlobal(paths: ["api-keys", "api-keys/*"])
+            }
         } catch {}
     }
 }
@@ -805,22 +847,38 @@ struct ContainerRegistriesView: View {
         }
         .refreshable {
             guard manager.currentUser?.isAdmin == true else { return }
-            await loadRegistries()
+            await loadRegistries(refresh: true)
         }
         .sheet(isPresented: $showCreateRegistrySheet) {
-            RegistryFormView(registry: nil) { await loadRegistries() }
+            RegistryFormView(registry: nil) {
+                if let cached = manager.cached {
+                    await cached.invalidateGlobal(paths: ["container-registries", "container-registries/*"])
+                }
+                await loadRegistries(refresh: true)
+            }
         }
         .sheet(item: $editingRegistry) { registry in
-            RegistryFormView(registry: registry) { await loadRegistries() }
+            RegistryFormView(registry: registry) {
+                if let cached = manager.cached {
+                    await cached.invalidateGlobal(paths: ["container-registries", "container-registries/*"])
+                }
+                await loadRegistries(refresh: true)
+            }
         }
     }
 
-    private func loadRegistries() async {
-        guard manager.currentUser?.isAdmin == true, let client = manager.client else { return }
-        isLoading = true
+    private func loadRegistries(refresh: Bool = false) async {
+        guard manager.currentUser?.isAdmin == true, let cached = manager.cached else { return }
+        if registries.isEmpty { isLoading = true }
         defer { isLoading = false }
         do {
-            registries = try await client.rest.get("container-registries")
+            if let result: [ContainerRegistry] = try await cached.getGlobal(
+                "container-registries", as: [ContainerRegistry].self,
+                policy: .registries, refresh: refresh,
+                onFresh: { fresh in registries = fresh }
+            ) {
+                registries = result
+            }
         } catch {}
     }
 
@@ -829,6 +887,9 @@ struct ContainerRegistriesView: View {
         do {
             let _: DataResponse<String> = try await client.rest.delete("container-registries/\(registry.id)")
             registries.removeAll { $0.id == registry.id }
+            if let cached = manager.cached {
+                await cached.invalidateGlobal(paths: ["container-registries", "container-registries/*"])
+            }
         } catch {}
     }
 }
@@ -887,25 +948,41 @@ struct TemplateRegistriesView: View {
         }
         .refreshable {
             guard manager.currentUser?.isAdmin == true else { return }
-            await loadRegistries()
+            await loadRegistries(refresh: true)
         }
         .sheet(isPresented: $showCreateSheet) {
-            TemplateRegistryFormView(registry: nil) { await loadRegistries() }
+            TemplateRegistryFormView(registry: nil) {
+                if let cached = manager.cached {
+                    await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
+                }
+                await loadRegistries(refresh: true)
+            }
         }
         .sheet(isPresented: $showBrowser) {
             TemplateBrowserView()
         }
         .sheet(item: $editingRegistry) { registry in
-            TemplateRegistryFormView(registry: registry) { await loadRegistries() }
+            TemplateRegistryFormView(registry: registry) {
+                if let cached = manager.cached {
+                    await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
+                }
+                await loadRegistries(refresh: true)
+            }
         }
     }
 
-    private func loadRegistries() async {
-        guard manager.currentUser?.isAdmin == true, let client = manager.client else { return }
-        isLoading = true
+    private func loadRegistries(refresh: Bool = false) async {
+        guard manager.currentUser?.isAdmin == true, let cached = manager.cached else { return }
+        if registries.isEmpty { isLoading = true }
         defer { isLoading = false }
         do {
-            registries = try await client.rest.get("templates/registries")
+            if let result: [TemplateRegistry] = try await cached.getGlobal(
+                "templates/registries", as: [TemplateRegistry].self,
+                policy: .templates, refresh: refresh,
+                onFresh: { fresh in registries = fresh }
+            ) {
+                registries = result
+            }
         } catch {}
     }
 
@@ -914,6 +991,9 @@ struct TemplateRegistriesView: View {
         do {
             let _: DataResponse<String> = try await client.rest.delete("templates/registries/\(registry.id)")
             registries.removeAll { $0.id == registry.id }
+            if let cached = manager.cached {
+                await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
+            }
         } catch {}
     }
 }

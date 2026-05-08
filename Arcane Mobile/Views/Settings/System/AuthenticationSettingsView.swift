@@ -214,6 +214,9 @@ struct AuthenticationSettingsView: View {
             )
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
             let _: [PublicSetting] = try await client.rest.put(path, body: body)
+            if let cached = manager.cached {
+                await cached.invalidate(envID: manager.activeEnvironmentID, paths: [path, path + "*"])
+            }
             savedMessage = "Authentication settings saved"
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { savedMessage = nil }
         } catch {

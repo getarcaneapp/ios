@@ -118,16 +118,22 @@ struct EnvironmentDetailView: View {
         }
     }
 
-    private func loadDockerInfo() async {
-        guard let client = manager.client else { return }
-        isLoading = true
+    private func loadDockerInfo(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        if dockerInfo == nil { isLoading = true }
         defer { isLoading = false }
-        do {
-            let path = client.rest.environmentPath(envID, "system/docker/info")
+        let path = client.rest.environmentPath(envID, "system/docker/info")
+        let fetcher: @Sendable () async throws -> DockerInfo = {
             let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            dockerInfo = try? JSONDecoder().decode(DockerInfo.self, from: rawData)
-        } catch {
-            // Docker info is non-critical, silently ignore
+            return try JSONDecoder().decode(DockerInfo.self, from: rawData)
+        }
+        if let result = try? await cached.getCustom(
+            path: path, as: DockerInfo.self, policy: .dockerInfo,
+            envID: envID, refresh: refresh,
+            onFresh: { fresh in dockerInfo = fresh },
+            fetcher: fetcher
+        ) {
+            dockerInfo = result
         }
     }
 

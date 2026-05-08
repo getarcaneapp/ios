@@ -95,9 +95,12 @@ struct NetworksView: View {
             }
         }
         .task { await loadNetworks() }
-        .refreshable { await loadNetworks() }
+        .refreshable { await loadNetworks(refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
-            CreateNetworkView(environmentID: environmentID) { await loadNetworks() }
+            CreateNetworkView(environmentID: environmentID) {
+                await invalidateNetworkCaches()
+                await loadNetworks(refresh: true)
+            }
         }
         .alert("Prune Networks", isPresented: $showPruneConfirm) {
             Button("Prune", role: .destructive) { Task { await pruneNetworks() } }
@@ -130,13 +133,20 @@ struct NetworksView: View {
         }
     }
 
-    private func loadNetworks() async {
-        guard let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+    private func loadNetworks(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        if networks.isEmpty { isLoading = true }
+        errorMessage = nil
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "networks")
-            networks = try await client.rest.get(path)
+            if let result: [NetworkInfo] = try await cached.get(
+                path, as: [NetworkInfo].self, policy: .networks,
+                envID: environmentID, refresh: refresh,
+                onFresh: { fresh in networks = fresh }
+            ) {
+                networks = result
+            }
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
@@ -146,6 +156,7 @@ struct NetworksView: View {
             let path = client.rest.environmentPath(environmentID, "networks/\(network.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
             networks.removeAll { $0.id == network.id }
+            await invalidateNetworkCaches()
         } catch {}
     }
 
@@ -154,8 +165,17 @@ struct NetworksView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "networks/prune")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
-            await loadNetworks()
+            await invalidateNetworkCaches()
+            await loadNetworks(refresh: true)
         } catch {}
+    }
+
+    private func invalidateNetworkCaches() async {
+        guard let cached = manager.cached, let client = manager.client else { return }
+        await cached.invalidate(envID: environmentID, paths: [
+            client.rest.environmentPath(environmentID, "networks"),
+            client.rest.environmentPath(environmentID, "networks/*")
+        ])
     }
 }
 

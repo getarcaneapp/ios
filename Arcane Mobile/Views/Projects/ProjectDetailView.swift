@@ -93,7 +93,7 @@ struct ProjectDetailView: View {
             }
         }
         .task { await loadProject() }
-        .refreshable { await loadProject() }
+        .refreshable { await loadProject(refresh: true) }
         .sheet(isPresented: $showLogs) {
             LogsView(
                 title: currentProject.displayName,
@@ -114,7 +114,8 @@ struct ProjectDetailView: View {
                 method: action.method,
                 body: action.body
             ) {
-                await loadProject()
+                await invalidateProjectCaches()
+                await loadProject(refresh: true)
             }
         }
         .confirmationDialog("Delete Project", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
@@ -225,7 +226,8 @@ struct ProjectDetailView: View {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/\(suffix)")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             actionStatus = "Done."
-            await loadProject()
+            await invalidateProjectCaches()
+            await loadProject(refresh: true)
         } catch {
             errorMessage = friendlyErrorMessage(error)
             actionStatus = nil
@@ -241,6 +243,7 @@ struct ProjectDetailView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/destroy")
             let _: DataResponse<String> = try await client.rest.delete(path)
+            await invalidateProjectCaches()
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -248,14 +251,30 @@ struct ProjectDetailView: View {
         }
     }
 
-    private func loadProject() async {
-        guard let client = manager.client else { return }
-        isLoading = true
+    private func loadProject(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        if refreshedProject == nil { isLoading = true }
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)")
-            refreshedProject = try await client.rest.get(path)
+            if let result: Project = try await cached.get(
+                path, as: Project.self, policy: .projects,
+                envID: environmentID, refresh: refresh,
+                onFresh: { fresh in refreshedProject = fresh }
+            ) {
+                refreshedProject = result
+            }
         } catch {}
+    }
+
+    private func invalidateProjectCaches() async {
+        guard let cached = manager.cached, let client = manager.client else { return }
+        await cached.invalidate(envID: environmentID, paths: [
+            client.rest.environmentPath(environmentID, "projects"),
+            client.rest.environmentPath(environmentID, "projects/*"),
+            client.rest.environmentPath(environmentID, "containers"),
+            client.rest.environmentPath(environmentID, "containers/*")
+        ])
     }
 }
 

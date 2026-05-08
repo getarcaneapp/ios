@@ -1,6 +1,10 @@
 import SwiftUI
 import Arcane
 
+nonisolated private struct VolumeListEnvelope: Decodable, Sendable {
+    let data: [VolumeInfo]?
+}
+
 struct VolumesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environmentID: EnvironmentID
@@ -96,10 +100,11 @@ struct VolumesView: View {
             }
         }
         .task { await loadVolumes() }
-        .refreshable { await loadVolumes() }
+        .refreshable { await loadVolumes(refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
             CreateVolumeView(environmentID: environmentID) {
-                await loadVolumes()
+                await invalidateVolumeCaches()
+                await loadVolumes(refresh: true)
             }
         }
         .alert("Prune Unused Volumes", isPresented: $showPruneConfirm) {
@@ -133,39 +138,54 @@ struct VolumesView: View {
         }
     }
 
-    private func loadVolumes() async {
-        guard let client = manager.client else { return }
-        isLoading = true
+    private func loadVolumes(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        if volumes.isEmpty { isLoading = true }
         errorMessage = nil
         defer { isLoading = false }
+        let path = client.rest.environmentPath(environmentID, "volumes")
         do {
-            let path = client.rest.environmentPath(environmentID, "volumes")
             // Bypass the SDK's strict OpenAPI decoder — Docker can send `null` for
             // labels/options on empty volumes, but the generated Volume type requires
-            // a dictionary. We decode our tolerant VolumeInfo directly.
-            let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            let envelope = try JSONDecoder().decode(VolumeListEnvelope.self, from: raw)
-            volumes = envelope.data ?? []
+            // a dictionary. We decode our tolerant VolumeInfo directly, then store
+            // the post-decoded array in the response cache.
+            let fetcher: @Sendable () async throws -> [VolumeInfo] = {
+                let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
+                let envelope = try JSONDecoder().decode(VolumeListEnvelope.self, from: raw)
+                return envelope.data ?? []
+            }
+            if let result = try await cached.getCustom(
+                path: path, as: [VolumeInfo].self, policy: .volumes,
+                envID: environmentID, refresh: refresh,
+                onFresh: { fresh in volumes = fresh },
+                fetcher: fetcher
+            ) {
+                volumes = result
+            }
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
-        await loadSizes()
+        await loadSizes(refresh: refresh)
     }
 
-    private func loadSizes() async {
-        guard let client = manager.client else { return }
+    private func loadSizes(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "volumes/sizes")
-            let entries: [VolumeSizeInfo] = try await client.rest.get(path)
-            sizes = Dictionary(uniqueKeysWithValues: entries.map { ($0.name, $0.size) })
+            if let entries: [VolumeSizeInfo] = try await cached.get(
+                path, as: [VolumeSizeInfo].self, policy: .volumes,
+                envID: environmentID, refresh: refresh,
+                onFresh: { fresh in
+                    sizes = Dictionary(uniqueKeysWithValues: fresh.map { ($0.name, $0.size) })
+                }
+            ) {
+                sizes = Dictionary(uniqueKeysWithValues: entries.map { ($0.name, $0.size) })
+            }
         } catch {
             // Slow / unsupported on some hosts — leave sizes blank silently.
         }
     }
 
-    private struct VolumeListEnvelope: Decodable, Sendable {
-        let data: [VolumeInfo]?
-    }
 
     private func deleteVolume(_ volume: VolumeInfo) async {
         guard let client = manager.client else { return }
@@ -173,6 +193,7 @@ struct VolumesView: View {
             let path = client.rest.environmentPath(environmentID, "volumes/\(volume.name)")
             let _: DataResponse<String> = try await client.rest.delete(path)
             volumes.removeAll { $0.name == volume.name }
+            await invalidateVolumeCaches()
         } catch {}
     }
 
@@ -181,8 +202,18 @@ struct VolumesView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "volumes/prune")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
-            await loadVolumes()
+            await invalidateVolumeCaches()
+            await loadVolumes(refresh: true)
         } catch {}
+    }
+
+    private func invalidateVolumeCaches() async {
+        guard let cached = manager.cached, let client = manager.client else { return }
+        await cached.invalidate(envID: environmentID, paths: [
+            client.rest.environmentPath(environmentID, "volumes"),
+            client.rest.environmentPath(environmentID, "volumes/sizes"),
+            client.rest.environmentPath(environmentID, "volumes/*")
+        ])
     }
 }
 
