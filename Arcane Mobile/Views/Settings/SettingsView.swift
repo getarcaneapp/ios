@@ -4,180 +4,319 @@ import Arcane
 struct SettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var showLogoutConfirm = false
+    @State private var showChangeServerConfirm = false
+    @State private var showClearCacheConfirm = false
+    @State private var showCacheCleared = false
+    @State private var cacheSizeBytes: Int = 0
+    @State private var volumeSizeBytes: Int64? = nil
+    @State private var loadingVolumeSize = false
+
+    private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
+
+    private var appVersionString: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    }
+
+    private var appBuildString: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+    }
+
+    private var cacheSizeText: String {
+        cacheSizeBytes > 0 ? Int64(cacheSizeBytes).byteString : "Empty"
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    if let user = manager.currentUser {
-                        AccountSummaryRow(user: user)
-                    }
-                    Button(role: .destructive) {
-                        showLogoutConfirm = true
-                    } label: {
-                        Label("Sign Out", systemImage: "arrow.right.circle.fill")
-                            .foregroundStyle(.red)
-                    }
-                } header: {
-                    Text("Account")
-                }
-
-                Section("Application") {
-                    NavigationLink(destination: AppSettingsView()) {
-                        SettingsNavigationRow(
-                            title: "App Settings",
-                            systemImage: "gearshape.fill",
-                            color: .gray
-                        )
-                    }
-                }
-
-                Section("Arcane Server") {
-                    LabeledContent("URL", value: manager.serverURL)
-                    NavigationLink(destination: EnvironmentsView()) {
-                        SettingsNavigationRow(
-                            title: "Environments",
-                            systemImage: "server.rack",
-                            color: .blue
-                        )
-                    }
-                    Button {
-                        Task { await manager.logout() }
-                    } label: {
-                        Label("Change Server", systemImage: "arrow.left.circle")
-                            .foregroundStyle(.primary)
-                    }
-                }
-
-                Section("Infrastructure") {
-                    NavigationLink(destination: VolumesView(
-                        environmentID: manager.activeEnvironmentID,
-                        environmentName: manager.activeEnvironmentName
-                    )) {
-                        SettingsNavigationRow(
-                            title: "Volumes",
-                            systemImage: "externaldrive.fill",
-                            color: .orange
-                        )
-                    }
-                    NavigationLink(destination: NetworksView(
-                        environmentID: manager.activeEnvironmentID,
-                        environmentName: manager.activeEnvironmentName
-                    )) {
-                        SettingsNavigationRow(
-                            title: "Networks",
-                            systemImage: "network",
-                            color: .teal
-                        )
-                    }
-                }
-
-                if manager.currentUser?.isAdmin == true {
-                    Section("Administration") {
-                        NavigationLink(destination: UsersView()) {
-                            SettingsNavigationRow(
-                                title: "Users",
-                                systemImage: "person.2.fill",
-                                color: .blue
-                            )
-                        }
-                        NavigationLink(destination: APIKeysView()) {
-                            SettingsNavigationRow(
-                                title: "API Keys",
-                                systemImage: "key.fill",
-                                color: .yellow
-                            )
-                        }
-                    }
-                }
-
+                serverSection
+                resourcesSection
+                if isAdmin { administrationSection }
+                aboutSection
+                applicationSection
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(role: .destructive) {
+                        showLogoutConfirm = true
+                    } label: {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .foregroundStyle(.red)
+                    }
+                    .accessibilityLabel("Sign Out")
+                }
+            }
+            .task {
+                await refreshCacheSize()
+                await loadVolumeSize()
+            }
             .confirmationDialog("Sign Out", isPresented: $showLogoutConfirm, titleVisibility: .visible) {
                 Button("Sign Out", role: .destructive) {
                     Task { await manager.logout() }
                 }
+            } message: {
+                Text("You'll be signed out of this server.")
+            }
+            .alert("Image Cache Cleared", isPresented: $showCacheCleared) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("All cached images will be reloaded from the server.")
             }
         }
     }
-}
 
-struct AccountSummaryRow: View {
-    let user: ArcaneUser
+    private func refreshCacheSize() async {
+        cacheSizeBytes = await ImageCache.shared.currentBytes()
+    }
 
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "person.circle.fill")
-                .font(.largeTitle)
-                .foregroundStyle(.tint)
-                .frame(width: 52, height: 52)
-                .glassEffect(.regular, in: .circle)
+    private func loadVolumeSize() async {
+        guard let client = manager.client, volumeSizeBytes == nil, !loadingVolumeSize else { return }
+        loadingVolumeSize = true
+        defer { loadingVolumeSize = false }
+        do {
+            let path = client.rest.environmentPath(manager.activeEnvironmentID, "volumes/sizes")
+            let sizes: [VolumeSizeInfo] = try await client.rest.get(path)
+            volumeSizeBytes = sizes.reduce(Int64(0)) { $0 + $1.size }
+        } catch {
+            // Slow / unsupported on some hosts — leave blank silently.
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(user.displayUsername)
-                    .font(.headline)
-                if let email = user.email {
-                    Text(email)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let roles = user.roles, !roles.isEmpty {
-                    Text(roles.joined(separator: ", ").capitalized)
-                        .font(.caption2)
+    // MARK: - Sections
+
+    @ViewBuilder
+    private var serverSection: some View {
+        Section {
+            NavigationLink(destination: EnvironmentsView()) {
+                SettingsRow(
+                    title: "Active Environment",
+                    subtitle: manager.activeEnvironmentName,
+                    systemImage: "server.rack",
+                    color: .blue
+                )
+            }
+            Button {
+                showChangeServerConfirm = true
+            } label: {
+                HStack {
+                    SettingsRow(
+                        title: "Server",
+                        subtitle: manager.serverURL.isEmpty ? "Not configured" : manager.serverURL,
+                        systemImage: "link",
+                        color: .blue,
+                        titleColor: .primary
+                    )
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(.tertiary)
                 }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .confirmationDialog(
+                "Change Server?",
+                isPresented: $showChangeServerConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Change Server", role: .destructive) {
+                    Task { await manager.logout() }
+                }
+            } message: {
+                Text("You'll be signed out and asked for a new server URL.")
+            }
+        } header: {
+            Text("Server")
+        } footer: {
+            if let user = manager.currentUser {
+                Text("Signed in as \(user.displayUsername). Tap the server row to switch.")
+            } else {
+                Text("Tap the server row to switch.")
             }
         }
-        .padding(.vertical, 4)
     }
+
+    @ViewBuilder
+    private var resourcesSection: some View {
+        Section("Resources") {
+            NavigationLink(destination: VolumesView(
+                environmentID: manager.activeEnvironmentID,
+                environmentName: manager.activeEnvironmentName
+            )) {
+                HStack {
+                    SettingsRow(title: "Volumes", systemImage: "externaldrive.fill", color: .orange)
+                    Spacer()
+                    if let size = volumeSizeBytes {
+                        Text(size.byteString)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else if loadingVolumeSize {
+                        ProgressView().scaleEffect(0.7)
+                    }
+                }
+            }
+            NavigationLink(destination: NetworksView(
+                environmentID: manager.activeEnvironmentID,
+                environmentName: manager.activeEnvironmentName
+            )) {
+                SettingsRow(title: "Networks", systemImage: "network", color: .teal)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var administrationSection: some View {
+        Section {
+            NavigationLink(destination: UsersView()) {
+                SettingsRow(title: "Users", systemImage: "person.2.fill", color: .blue)
+            }
+            NavigationLink(destination: APIKeysView()) {
+                SettingsRow(title: "API Keys", systemImage: "key.fill", color: .yellow)
+            }
+            NavigationLink(destination: ContainerRegistriesView()) {
+                SettingsRow(title: "Container Registries", systemImage: "shippingbox.fill", color: .purple)
+            }
+            NavigationLink(destination: TemplateRegistriesView()) {
+                SettingsRow(title: "Template Registries", systemImage: "doc.text.fill", color: .indigo)
+            }
+        } header: {
+            Text("Administration")
+        } footer: {
+            Text("Only administrators see this section.")
+        }
+    }
+
+    @ViewBuilder
+    private var applicationSection: some View {
+        Section {
+            Button(role: .destructive) {
+                showClearCacheConfirm = true
+            } label: {
+                HStack {
+                    SettingsRow(
+                        title: "Clear Image Cache",
+                        systemImage: "photo.stack",
+                        color: .red,
+                        titleColor: .red
+                    )
+                    Spacer()
+                    Text(cacheSizeText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .confirmationDialog(
+            "Clear Image Cache?",
+            isPresented: $showClearCacheConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Clear Cache", role: .destructive) {
+                Task {
+                    await ImageCache.shared.clear()
+                    await refreshCacheSize()
+                    showCacheCleared = true
+                }
+            }
+        } message: {
+            Text(cacheSizeBytes > 0
+                 ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images. They'll be re-downloaded as needed."
+                 : "This will clear all cached images.")
+        }
+    }
+
+    @ViewBuilder
+    private var aboutSection: some View {
+        Section("About") {
+            Link(destination: URL(string: "https://getarcane.app")!) {
+                SettingsExternalRow(title: "Documentation", systemImage: "globe", color: .blue)
+            }
+            ShareLink(item: URL(string: "https://getarcane.app")!) {
+                SettingsRow(title: "Share Arcane", systemImage: "square.and.arrow.up", color: .blue, titleColor: .primary)
+            }
+            Link(destination: URL(string: "https://discord.gg/WyXYpdyV3Z")!) {
+                SettingsExternalRow(title: "Join the Discord", systemImage: "bubble.left.and.bubble.right.fill", color: .indigo)
+            }
+            Link(destination: URL(string: "https://github.com/getarcaneapp/ios")!) {
+                SettingsExternalRow(title: "Contribute on GitHub", systemImage: "chevron.left.forwardslash.chevron.right", color: .purple)
+            }
+            Link(destination: URL(string: "https://github.com/getarcaneapp/ios/issues")!) {
+                SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
+            }
+            HStack {
+                SettingsRow(title: "Version", systemImage: "app.badge", color: .gray)
+                Spacer()
+                Text(appVersionString)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                SettingsRow(title: "Build", systemImage: "hammer", color: .gray)
+                Spacer()
+                Text(appBuildString)
+                    .font(.subheadline.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
 }
 
-struct SettingsNavigationRow: View {
+// MARK: - Reusable rows
+
+struct SettingsRow: View {
     let title: String
+    var subtitle: String? = nil
     let systemImage: String
     let color: Color
+    var titleColor: Color = .primary
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
                 .foregroundStyle(color)
                 .frame(width: 28)
-
-            Text(title)
-                .font(.body)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .foregroundStyle(titleColor)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
         }
     }
 }
 
-struct AppSettingsView: View {
-    @State private var showCacheCleared = false
+// External-link row with a matching outbound-arrow trailing affordance.
+struct SettingsExternalRow: View {
+    let title: String
+    let systemImage: String
+    let color: Color
 
     var body: some View {
-        List {
-            Section("Storage") {
-                Button {
-                    Task { await ImageCache.shared.clear() }
-                    showCacheCleared = true
-                } label: {
-                    Label("Clear Image Cache", systemImage: "photo.stack")
-                        .foregroundStyle(.primary)
-                }
-            }
+        HStack {
+            SettingsRow(title: title, systemImage: systemImage, color: color, titleColor: .primary)
+            Spacer()
+            Image(systemName: "arrow.up.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+    }
+}
 
-            Section("About") {
-                LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                LabeledContent("Build", value: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "")
-            }
-        }
-        .listStyle(.insetGrouped)
-        .navigationTitle("App Settings")
-        .navigationBarTitleDisplayMode(.inline)
-        .alert("Image Cache Cleared", isPresented: $showCacheCleared) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("All cached images will be reloaded from the server.")
-        }
+// Kept as an alias for any older callers; prefer SettingsRow.
+struct SettingsNavigationRow: View {
+    let title: String
+    let systemImage: String
+    let color: Color
+
+    var body: some View {
+        SettingsRow(title: title, systemImage: systemImage, color: color)
     }
 }
 
@@ -216,15 +355,8 @@ struct UsersView: View {
         }
         .navigationTitle("Users")
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Button { showCreateSheet = true } label: { Image(systemName: "plus") }
-                            .glassEffect()
-                        Button { Task { await loadUsers() } } label: { Image(systemName: "arrow.clockwise") }
-                            .glassEffect()
-                    }
-                }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showCreateSheet = true } label: { Image(systemName: "plus") }
             }
         }
         .task { await loadUsers() }
@@ -445,13 +577,8 @@ struct APIKeysView: View {
         }
         .navigationTitle("API Keys")
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Button { showCreateSheet = true } label: { Image(systemName: "plus") }.glassEffect()
-                        Button { Task { await loadKeys() } } label: { Image(systemName: "arrow.clockwise") }.glassEffect()
-                    }
-                }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showCreateSheet = true } label: { Image(systemName: "plus") }
             }
         }
         .task { await loadKeys() }
@@ -649,13 +776,8 @@ struct ContainerRegistriesView: View {
         .navigationTitle("Container Registries")
         .toolbar {
             if manager.currentUser?.isAdmin == true {
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    GlassEffectContainer(spacing: 8) {
-                        HStack(spacing: 8) {
-                            Button { showCreateRegistrySheet = true } label: { Image(systemName: "plus") }.glassEffect()
-                            Button { Task { await loadRegistries() } } label: { Image(systemName: "arrow.clockwise") }.glassEffect()
-                        }
-                    }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showCreateRegistrySheet = true } label: { Image(systemName: "plus") }
                 }
             }
         }
@@ -733,14 +855,11 @@ struct TemplateRegistriesView: View {
         .navigationTitle("Template Registries")
         .toolbar {
             if manager.currentUser?.isAdmin == true {
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    GlassEffectContainer(spacing: 8) {
-                        HStack(spacing: 8) {
-                            Button { showBrowser = true } label: { Image(systemName: "doc.text.magnifyingglass") }.glassEffect()
-                            Button { showCreateSheet = true } label: { Image(systemName: "plus") }.glassEffect()
-                            Button { Task { await loadRegistries() } } label: { Image(systemName: "arrow.clockwise") }.glassEffect()
-                        }
-                    }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showBrowser = true } label: { Image(systemName: "doc.text.magnifyingglass") }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }
                 }
             }
         }

@@ -8,6 +8,8 @@ struct DashboardView: View {
     @State private var dockerInfo: DockerInfo?
     @State private var environments: [ServerEnvironment] = []
     @State private var projectCount: Int?
+    @State private var volumeCount: Int?
+    @State private var volumeTotalBytes: Int64?
     @State private var isLoading = false
     @State private var hasLoadedOnce = false
     @State private var dockerError: String?
@@ -245,8 +247,8 @@ struct DashboardView: View {
 
             DashboardTile(
                 title: "Volumes",
-                value: "Storage",
-                subtitle: "Persistent data",
+                value: volumeTotalBytes.map { $0.byteString } ?? "--",
+                subtitle: volumeCount.map { "\($0) volume\($0 == 1 ? "" : "s")" } ?? "Persistent data",
                 icon: "externaldrive.fill",
                 color: .orange
             ) { showVolumes = true }
@@ -301,12 +303,17 @@ struct DashboardView: View {
         async let envTask: [ServerEnvironment] = (try? client.rest.get("environments")) ?? []
         async let dockerTask: DockerInfo? = loadDockerInfoSilent(client: client)
         async let projectsTask: [Project] = (try? client.rest.get(client.rest.environmentPath(envID, "projects"))) ?? []
+        async let volumeSizesTask: [VolumeSizeInfo]? = try? client.rest.get(client.rest.environmentPath(envID, "volumes/sizes"))
 
-        let (envs, info, projects) = await (envTask, dockerTask, projectsTask)
+        let (envs, info, projects, volumeSizes) = await (envTask, dockerTask, projectsTask, volumeSizesTask)
         if Task.isCancelled { return }
         environments = envs
         dockerInfo = info
         projectCount = projects.count
+        if let volumeSizes {
+            volumeCount = volumeSizes.count
+            volumeTotalBytes = volumeSizes.reduce(Int64(0)) { $0 + $1.size }
+        }
     }
 
     private func loadDockerInfo() async {

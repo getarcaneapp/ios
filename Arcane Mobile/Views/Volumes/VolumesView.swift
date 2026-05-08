@@ -7,6 +7,7 @@ struct VolumesView: View {
     let environmentName: String
 
     @State private var volumes: [VolumeInfo] = []
+    @State private var sizes: [String: Int64] = [:]
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
@@ -49,7 +50,7 @@ struct VolumesView: View {
                 List {
                     ForEach(filtered) { volume in
                         NavigationLink(destination: VolumeDetailView(volume: volume, environmentID: environmentID)) {
-                            VolumeRow(volume: volume)
+                            VolumeRow(volume: volume, size: sizes[volume.name])
                         }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
@@ -148,6 +149,18 @@ struct VolumesView: View {
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
+        await loadSizes()
+    }
+
+    private func loadSizes() async {
+        guard let client = manager.client else { return }
+        do {
+            let path = client.rest.environmentPath(environmentID, "volumes/sizes")
+            let entries: [VolumeSizeInfo] = try await client.rest.get(path)
+            sizes = Dictionary(uniqueKeysWithValues: entries.map { ($0.name, $0.size) })
+        } catch {
+            // Slow / unsupported on some hosts — leave sizes blank silently.
+        }
     }
 
     private struct VolumeListEnvelope: Decodable, Sendable {
@@ -173,8 +186,34 @@ struct VolumesView: View {
     }
 }
 
+struct UsageBadge: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.bold())
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(color.opacity(0.15), in: Capsule())
+    }
+}
+
 struct VolumeRow: View {
     let volume: VolumeInfo
+    var size: Int64? = nil
+
+    private var subtitleParts: [String] {
+        var parts: [String] = []
+        if let size, size > 0 {
+            parts.append(size.byteString)
+        }
+        if volume.driver.lowercased() != "local" {
+            parts.append(volume.driver)
+        }
+        return parts
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -185,17 +224,18 @@ struct VolumeRow: View {
                 .glassEffect(.regular, in: .circle)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(volume.name)
-                    .font(.headline)
-                    .lineLimit(1)
-                HStack(spacing: 8) {
-                    Text(volume.driver)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("•")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                    Text(volume.scope)
+                HStack(spacing: 6) {
+                    Text(volume.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                    if volume.inUse == true {
+                        UsageBadge(text: "In use", color: .green)
+                    } else if volume.inUse == false {
+                        UsageBadge(text: "Unused", color: .secondary)
+                    }
+                }
+                if !subtitleParts.isEmpty {
+                    Text(subtitleParts.joined(separator: " · "))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -211,6 +251,8 @@ struct VolumeDetailView: View {
     let environmentID: EnvironmentID
 
     @State private var showDeleteConfirm = false
+    @State private var sizeBytes: Int64? = nil
+    @State private var loadingSize = false
 
     var body: some View {
         List {
@@ -234,6 +276,17 @@ struct VolumeDetailView: View {
                 LabeledContent("Scope", value: volume.scope.capitalized)
                 if !volume.mountpoint.isEmpty { LabeledContent("Mount Point", value: volume.mountpoint) }
                 LabeledContent("Created", value: volume.createdAt)
+                HStack {
+                    Text("Size")
+                    Spacer()
+                    if let sizeBytes {
+                        Text(sizeBytes.byteString).foregroundStyle(.secondary)
+                    } else if loadingSize {
+                        ProgressView().scaleEffect(0.7)
+                    } else {
+                        Text("—").foregroundStyle(.secondary)
+                    }
+                }
             }
 
             let labels = volume.labelsDictionary
@@ -270,6 +323,24 @@ struct VolumeDetailView: View {
         }
         .confirmationDialog("Delete Volume", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) { /* handled by parent */ }
+        }
+        .task { await loadSize() }
+    }
+
+    private func loadSize() async {
+        guard let client = manager.client, sizeBytes == nil, !loadingSize else { return }
+        loadingSize = true
+        defer { loadingSize = false }
+        do {
+            let path = client.rest.environmentPath(environmentID, "volumes/sizes")
+            let sizes: [VolumeSizeInfo] = try await client.rest.get(path)
+            if let match = sizes.first(where: { $0.name == volume.name }) {
+                sizeBytes = match.size
+            } else {
+                sizeBytes = 0
+            }
+        } catch {
+            // Slow / unsupported on some hosts — leave as `—`.
         }
     }
 }

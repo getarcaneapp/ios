@@ -141,6 +141,12 @@ extension Project: @retroactive Identifiable {
     }
 }
 
+nonisolated struct VolumeSizeInfo: Codable, Sendable {
+    let name: String
+    let size: Int64
+    let refCount: Int64?
+}
+
 // Tolerant volume model — the OpenAPI-generated `Volume` type marks `labels`
 // and `options` as required, but the Docker daemon sends them as `null` when
 // empty, which the SDK can't decode. We fetch raw bytes on the volumes endpoint

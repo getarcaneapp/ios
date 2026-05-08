@@ -59,11 +59,6 @@ struct EnvironmentsView: View {
         .navigationTitle("Environments")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await loadEnvironments() } } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Picker("Sort", selection: $sortOrder) {
                         ForEach(ListSortOrder.allCases) { order in

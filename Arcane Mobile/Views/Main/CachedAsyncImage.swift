@@ -10,6 +10,10 @@ actor ImageCache {
     static let shared = ImageCache()
     nonisolated(unsafe) private let cache = NSCache<NSString, UIImage>()
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    // Approximate live size, in bytes. NSCache doesn't expose its current cost
+    // and may evict silently, so this can drift slightly upward. We reset to 0
+    // on `clear()` for accuracy after manual flushes.
+    private var approximateBytes: Int = 0
 
     private init() {
         cache.countLimit = 200
@@ -20,8 +24,11 @@ actor ImageCache {
         cache.object(forKey: url as NSString)
     }
 
+    func currentBytes() -> Int { approximateBytes }
+
     func clear() {
         cache.removeAllObjects()
+        approximateBytes = 0
         inFlight.values.forEach { $0.cancel() }
         inFlight.removeAll()
         Task { @MainActor in
@@ -41,6 +48,12 @@ actor ImageCache {
         inFlight[urlString] = task
         let result = await task.value
         inFlight.removeValue(forKey: urlString)
+        if let img = result {
+            // Approximate live bytes from the decoded pixel buffer
+            // (width * height * scale² * 4 bytes/pixel).
+            let pixels = img.size.width * img.size.height * img.scale * img.scale
+            approximateBytes += Int(pixels) * 4
+        }
         return result
     }
 }
