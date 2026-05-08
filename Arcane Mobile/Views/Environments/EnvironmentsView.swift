@@ -132,7 +132,7 @@ struct EnvironmentRow: View {
             }
 
             Spacer()
-            StatusBadge(status: environment.status ?? "unknown")
+            StatusBadge(status: environment.status)
         }
         .padding(.vertical, 4)
     }

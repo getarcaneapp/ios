@@ -11,43 +11,83 @@ struct ContainerDetailView: View {
     @State private var isActioning = false
     @State private var errorMessage: String?
     @State private var showLogs = false
+    @State private var showTerminal = false
+    @State private var showRename = false
     @State private var showDeleteConfirm = false
+    @State private var showKillConfirm = false
+    @State private var selectedTab: DetailTab = .overview
 
-    private var isRunning: Bool { container.isRunning }
-
-    var body: some View {
-        List {
-            // Status header
-            Section {
-                statusHeader
-            }
-
-            // Quick actions
-            Section("Actions") {
-                actionsSection
-            }
-
-            // Details
-            if let details {
-                configSection(details.config)
-                stateSection(details.state)
-                hostConfigSection(details.hostConfig)
-                let networks = details.networkSettings.networks.additionalProperties
-                if !networks.isEmpty {
-                    networkSection(networks)
-                }
+    private enum DetailTab: String, CaseIterable, Identifiable {
+        case overview, stats, inspect
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .overview: return "Overview"
+            case .stats: return "Stats"
+            case .inspect: return "Inspect"
             }
         }
-        .listStyle(.insetGrouped)
-        .navigationTitle(container.displayName)
+    }
+
+    private var statusString: String {
+        details?.state.status ?? container.status
+    }
+
+    private var isRunning: Bool {
+        if let running = details?.state.running { return running }
+        return container.isRunning
+    }
+
+    private var isPaused: Bool {
+        statusString.lowercased() == "paused"
+    }
+
+    private var displayedName: String {
+        if let name = details?.name {
+            let trimmed = name.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return container.displayName
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Section", selection: $selectedTab) {
+                ForEach(DetailTab.allCases) { tab in
+                    Text(tab.title).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+
+            switch selectedTab {
+            case .overview:
+                overviewTab
+            case .stats:
+                ContainerStatsView(container: container, environmentID: environmentID)
+            case .inspect:
+                ContainerInspectView(container: container, environmentID: environmentID)
+            }
+        }
+        .navigationTitle(displayedName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(role: .destructive) {
-                    showDeleteConfirm = true
+                Menu {
+                    Button {
+                        showRename = true
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                 } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
+                    Image(systemName: "ellipsis.circle")
                 }
                 .disabled(isActioning)
             }
@@ -56,9 +96,17 @@ struct ContainerDetailView: View {
         .refreshable { await loadDetails() }
         .sheet(isPresented: $showLogs) {
             LogsView(
-                title: container.displayName,
+                title: displayedName,
                 logStream: manager.client?.containers.logs(envID: environmentID, id: container.id)
             )
+        }
+        .fullScreenCover(isPresented: $showTerminal) {
+            ContainerTerminalView(container: container, environmentID: environmentID)
+        }
+        .sheet(isPresented: $showRename) {
+            RenameContainerSheet(currentName: displayedName) { newName in
+                await renameContainer(newName: newName)
+            }
         }
         .confirmationDialog("Delete Container", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
@@ -67,11 +115,49 @@ struct ContainerDetailView: View {
         } message: {
             Text("This will permanently delete the container and cannot be undone.")
         }
+        .confirmationDialog("Kill Container", isPresented: $showKillConfirm, titleVisibility: .visible) {
+            Button("Kill (SIGKILL)", role: .destructive) {
+                Task { await performAction(.kill) }
+            }
+        } message: {
+            Text("Sends SIGKILL — the container is terminated immediately without graceful shutdown. Use Stop for a graceful shutdown.")
+        }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    // MARK: - Overview tab
+
+    private var overviewTab: some View {
+        List {
+            Section {
+                statusHeader
+            }
+
+            Section("Actions") {
+                actionsSection
+            }
+
+            if let details {
+                configSection(details.config)
+                stateSection(details.state)
+                hostConfigSection(details.hostConfig)
+                if let ports = details.ports, !ports.isEmpty {
+                    ContainerPortsSection(ports: ports)
+                }
+                if let health = details.state.health {
+                    ContainerHealthSection(health: health)
+                }
+                let networks = details.networkSettings.networks.additionalProperties
+                if !networks.isEmpty {
+                    networkSection(networks)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
     }
 
     private var statusHeader: some View {
@@ -85,29 +171,53 @@ struct ContainerDetailView: View {
                         .glassEffect(.regular, in: .circle)
                 }
                 Circle()
-                    .fill(isRunning ? Color.green : Color.secondary.opacity(0.5))
+                    .fill(statusIndicatorColor)
                     .frame(width: 14, height: 14)
                     .offset(x: 2, y: 2)
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(container.displayName)
+                Text(displayedName)
                     .font(.title3.bold())
                     .lineLimit(2)
                 Text(container.image)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                StatusBadge(status: container.status)
+                StatusBadge(status: statusString)
                     .padding(.top, 2)
             }
         }
         .padding(.vertical, 4)
     }
 
+    private var statusIndicatorColor: Color {
+        switch statusString.lowercased() {
+        case "running": return .green
+        case "paused": return .orange
+        default: return .secondary.opacity(0.5)
+        }
+    }
+
     @ViewBuilder
     private var actionsSection: some View {
-        if isRunning {
+        if isPaused {
+            Button {
+                Task { await performAction(.unpause) }
+            } label: {
+                Label("Unpause", systemImage: "play.circle.fill")
+                    .foregroundStyle(.green)
+            }
+            .disabled(isActioning)
+
+            Button(role: .destructive) {
+                showKillConfirm = true
+            } label: {
+                Label("Kill", systemImage: "bolt.slash.fill")
+                    .foregroundStyle(.red)
+            }
+            .disabled(isActioning)
+        } else if isRunning {
             Button {
                 Task { await performAction(.stop) }
             } label: {
@@ -121,6 +231,22 @@ struct ContainerDetailView: View {
             } label: {
                 Label("Restart", systemImage: "arrow.clockwise.circle.fill")
                     .foregroundStyle(.orange)
+            }
+            .disabled(isActioning)
+
+            Button {
+                Task { await performAction(.pause) }
+            } label: {
+                Label("Pause", systemImage: "pause.circle.fill")
+                    .foregroundStyle(.orange)
+            }
+            .disabled(isActioning)
+
+            Button(role: .destructive) {
+                showKillConfirm = true
+            } label: {
+                Label("Kill", systemImage: "bolt.slash.fill")
+                    .foregroundStyle(.red)
             }
             .disabled(isActioning)
         } else {
@@ -145,6 +271,14 @@ struct ContainerDetailView: View {
             showLogs = true
         } label: {
             Label("View Logs", systemImage: "doc.text.fill")
+        }
+
+        if isRunning && !isPaused {
+            Button {
+                showTerminal = true
+            } label: {
+                Label("Terminal", systemImage: "terminal.fill")
+            }
         }
     }
 
@@ -232,7 +366,8 @@ struct ContainerDetailView: View {
     }
 
     // MARK: - Actions
-    private enum ContainerAction { case start, stop, restart, redeploy }
+
+    private enum ContainerAction { case start, stop, restart, pause, unpause, kill, redeploy }
 
     private func performAction(_ action: ContainerAction) async {
         guard let client = manager.client else { return }
@@ -243,6 +378,9 @@ struct ContainerDetailView: View {
             case .start: try await client.containers.start(envID: environmentID, id: container.id)
             case .stop: try await client.containers.stop(envID: environmentID, id: container.id)
             case .restart: try await client.containers.restart(envID: environmentID, id: container.id)
+            case .pause: try await client.pauseContainer(envID: environmentID, id: container.id)
+            case .unpause: try await client.unpauseContainer(envID: environmentID, id: container.id)
+            case .kill: try await client.killContainer(envID: environmentID, id: container.id)
             case .redeploy:
                 let path = client.rest.environmentPath(environmentID, "containers/\(container.id)/redeploy")
                 let _: ContainerInfo = try await client.rest.post(path, body: String?.none)
@@ -262,6 +400,19 @@ struct ContainerDetailView: View {
             let _: DataResponse<String> = try await client.rest.delete(path)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func renameContainer(newName: String) async -> Result<Void, Error> {
+        guard let client = manager.client else {
+            return .failure(ArcaneError.transport("No client"))
+        }
+        do {
+            try await client.renameContainer(envID: environmentID, id: container.id, newName: newName)
+            await loadDetails()
+            return .success(())
+        } catch {
+            return .failure(error)
         }
     }
 
