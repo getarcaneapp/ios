@@ -86,7 +86,7 @@ struct ContainerInspectView: View {
             rawJSON = String(decoding: data, as: UTF8.self)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 }

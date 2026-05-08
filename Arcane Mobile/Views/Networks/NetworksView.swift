@@ -47,17 +47,6 @@ struct NetworksView: View {
                 ContentUnavailableView("No Networks", systemImage: "network", description: Text("No networks found"))
             } else {
                 List {
-                    ResourceSearchControls(
-                        searchText: $searchText,
-                        sortOrder: $sortOrder,
-                        prompt: "Search networks",
-                        filterActive: activeFilterCount > 0
-                    ) {
-                        showFilterSheet = true
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-
                     ForEach(filtered) { network in
                         NavigationLink(destination: NetworkDetailView(network: network, environmentID: environmentID)) {
                             NetworkRow(network: network)
@@ -76,10 +65,22 @@ struct NetworksView: View {
         }
         .navigationTitle("Networks")
         .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search networks")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await loadNetworks() } } label: {
-                    Image(systemName: "arrow.clockwise")
+                Menu {
+                    Picker("Sort", selection: $sortOrder) {
+                        ForEach(ListSortOrder.allCases) { order in
+                            Label(order.title, systemImage: order.systemImage).tag(order)
+                        }
+                    }
+                    Button {
+                        showFilterSheet = true
+                    } label: {
+                        Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -136,7 +137,7 @@ struct NetworksView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "networks")
             networks = try await client.rest.get(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
     private func deleteNetwork(_ network: NetworkInfo) async {
@@ -258,7 +259,7 @@ struct NetworkDetailView: View {
 
         }
         .listStyle(.insetGrouped)
-        .navigationTitle(network.name ?? network.id)
+        .navigationTitle(network.name.isEmpty ? network.id : network.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -333,6 +334,6 @@ struct CreateNetworkView: View {
             let path = client.rest.environmentPath(environmentID, "networks")
             let _: NetworkInfo = try await client.rest.post(path, body: body)
             await onSuccess(); dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }

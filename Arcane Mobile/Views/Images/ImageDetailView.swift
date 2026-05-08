@@ -10,6 +10,10 @@ struct ImageDetailView: View {
     @State private var isLoading = false
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
+    @State private var updateInfo: ImageUpdateResponse?
+    @State private var isCheckingUpdate = false
+    @State private var vulnSummary: ScanSummary?
+    @State private var scannerStatus: ScannerStatus?
 
     var body: some View {
         List {
@@ -34,6 +38,7 @@ struct ImageDetailView: View {
                         ForEach(tags, id: \.self) { tag in
                             Text(tag).font(.caption.monospaced())
                         }
+                        updateCheckRow
                     }
                 }
 
@@ -49,10 +54,12 @@ struct ImageDetailView: View {
                 }
 
                 imageConfigSection(details.config)
+
+                vulnerabilitiesSection
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle(image.displayName)
+        .navigationTitle("Image Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -84,9 +91,12 @@ struct ImageDetailView: View {
                 Text(image.displayName)
                     .font(.title3.bold())
                     .lineLimit(2)
-                Text(String(image.id.prefix(12)))
-                    .font(.caption)
+                Text(image.id)
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 Text(image.size.byteString)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -122,6 +132,76 @@ struct ImageDetailView: View {
         }
     }
 
+    @ViewBuilder
+    private var updateCheckRow: some View {
+        if isCheckingUpdate {
+            HStack {
+                Text("Checking for updates…").foregroundStyle(.secondary)
+                Spacer()
+                ProgressView().scaleEffect(0.8)
+            }
+        } else if let info = updateInfo {
+            if let err = info.error, !err.isEmpty {
+                Label(err, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+                    .font(.caption)
+            } else if info.hasUpdate {
+                HStack {
+                    Image(systemName: "arrow.up.circle.fill").foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Update available").font(.caption.bold())
+                        if let latest = info.latestVersion, let current = info.currentVersion, latest != current {
+                            Text("\(current) → \(latest)").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Button("Recheck") { Task { await checkForUpdate() } }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
+            } else {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text("Up to date").font(.caption)
+                    Spacer()
+                    Button("Recheck") { Task { await checkForUpdate() } }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
+            }
+        } else {
+            Button {
+                Task { await checkForUpdate() }
+            } label: {
+                Label("Check for updates", systemImage: "arrow.up.arrow.down.circle")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var vulnerabilitiesSection: some View {
+        Section("Vulnerabilities") {
+            if let summary = vulnSummary {
+                NavigationLink(destination: ImageVulnerabilitiesView(imageID: image.id, imageDisplayName: image.displayName, environmentID: environmentID)) {
+                    SeveritySummaryRow(
+                        summary: summary.summary,
+                        scanTime: summary.scanTime,
+                        status: summary.status,
+                        error: summary.error
+                    )
+                }
+            } else if scannerStatus?.available == false {
+                Label("Scanner unavailable on host", systemImage: "shield.slash")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            } else {
+                NavigationLink(destination: ImageVulnerabilitiesView(imageID: image.id, imageDisplayName: image.displayName, environmentID: environmentID)) {
+                    Label("Not scanned yet — open to scan", systemImage: "shield")
+                }
+            }
+        }
+    }
+
     private func loadDetails() async {
         guard let client = manager.client else { return }
         isLoading = true
@@ -130,6 +210,28 @@ struct ImageDetailView: View {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
             details = try await client.rest.get(path)
         } catch {}
+        await loadVulnerabilitySummary()
+    }
+
+    private func loadVulnerabilitySummary() async {
+        guard let client = manager.client else { return }
+        async let statusTask: ScannerStatus? = try? client.rest.get(client.rest.environmentPath(environmentID, "vulnerabilities/scanner-status"))
+        async let summaryTask: ScanSummary? = try? client.rest.get(client.rest.environmentPath(environmentID, "images/\(image.id)/vulnerabilities/summary"))
+        scannerStatus = await statusTask
+        vulnSummary = await summaryTask
+    }
+
+    private func checkForUpdate() async {
+        guard let client = manager.client else { return }
+        isCheckingUpdate = true
+        defer { isCheckingUpdate = false }
+        do {
+            let path = client.rest.environmentPath(environmentID, "image-updates/check/\(image.id)")
+            let response: ImageUpdateResponse = try await client.rest.post(path, body: String?.none)
+            updateInfo = response
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func removeImage() async {
@@ -138,7 +240,7 @@ struct ImageDetailView: View {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 }

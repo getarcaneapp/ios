@@ -9,6 +9,7 @@ struct DashboardView: View {
     @State private var environments: [ServerEnvironment] = []
     @State private var projectCount: Int?
     @State private var isLoading = false
+    @State private var hasLoadedOnce = false
     @State private var dockerError: String?
     @State private var showPruneSheet = false
     @State private var showCreateProjectSheet = false
@@ -23,7 +24,7 @@ struct DashboardView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 14) {
-                    if isLoading && environments.isEmpty {
+                    if !hasLoadedOnce && isLoading {
                         ProgressView("Loading...")
                             .frame(maxWidth: .infinity)
                             .padding(.top, 60)
@@ -44,11 +45,6 @@ struct DashboardView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     environmentMenu
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await loadData() } } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showPruneSheet = true } label: {
@@ -297,13 +293,17 @@ struct DashboardView: View {
     private func loadData() async {
         guard let client = manager.client else { return }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            hasLoadedOnce = true
+        }
 
         async let envTask: [ServerEnvironment] = (try? client.rest.get("environments")) ?? []
         async let dockerTask: DockerInfo? = loadDockerInfoSilent(client: client)
         async let projectsTask: [Project] = (try? client.rest.get(client.rest.environmentPath(envID, "projects"))) ?? []
 
         let (envs, info, projects) = await (envTask, dockerTask, projectsTask)
+        if Task.isCancelled { return }
         environments = envs
         dockerInfo = info
         projectCount = projects.count
@@ -325,12 +325,21 @@ struct DashboardView: View {
             await MainActor.run { dockerError = nil }
             return info
         } catch let error as ArcaneError {
+            if Task.isCancelled || isCancellation(error) { return nil }
             await MainActor.run { dockerError = arcaneMessage(error) }
             return nil
         } catch {
+            if Task.isCancelled || error is CancellationError { return nil }
             await MainActor.run { dockerError = "Docker info unavailable" }
             return nil
         }
+    }
+
+    private func isCancellation(_ error: ArcaneError) -> Bool {
+        if case .transport(let msg) = error {
+            return msg.lowercased().contains("cancel")
+        }
+        return false
     }
 
     private func arcaneMessage(_ error: ArcaneError) -> String {
@@ -638,6 +647,8 @@ struct SystemPruneView: View {
     @State private var buildCacheMode = 0   // 0=none, 1=unusedOnly, 2=allCache, 3=olderThan
     @State private var buildCacheAge = "24h"
     @State private var isPruning = false
+    @State private var resultMessage: String?
+    @State private var errorMessage: String?
 
     private var selectedCount: Int {
         [containerMode, imageMode, networkMode, volumeMode, buildCacheMode]
@@ -724,6 +735,16 @@ struct SystemPruneView: View {
                     }
                 }
             }
+            .alert("Prune complete", isPresented: Binding(get: { resultMessage != nil }, set: { if !$0 { resultMessage = nil; dismiss() } })) {
+                Button("OK") { resultMessage = nil; dismiss() }
+            } message: {
+                Text(resultMessage ?? "")
+            }
+            .alert("Prune failed", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+                Button("OK") { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "")
+            }
         }
     }
 
@@ -745,26 +766,50 @@ struct SystemPruneView: View {
         isPruning = true
         defer { isPruning = false }
 
-        if containerMode > 0 {
-            let path = client.rest.environmentPath(environmentID, "containers/prune")
-            let _: DataResponse<String>? = try? await client.rest.post(path, body: String?.none)
+        let request = PruneAllRequest(
+            containers: containerMode > 0 ? PruneContainersOptions(
+                mode: containerMode == 1 ? "stopped" : "olderThan",
+                until: containerMode == 2 ? containerAge : nil
+            ) : nil,
+            images: imageMode > 0 ? PruneImagesOptions(
+                mode: imageMode == 1 ? "dangling" : (imageMode == 2 ? "all" : "olderThan"),
+                until: imageMode == 3 ? imageAge : nil
+            ) : nil,
+            volumes: volumeMode > 0 ? PruneVolumesOptions(
+                mode: volumeMode == 1 ? "anonymous" : "all"
+            ) : nil,
+            networks: networkMode > 0 ? PruneNetworksOptions(
+                mode: networkMode == 1 ? "unused" : "olderThan",
+                until: networkMode == 2 ? networkAge : nil
+            ) : nil,
+            buildCache: buildCacheMode > 0 ? PruneBuildCacheOptions(
+                mode: buildCacheMode == 1 ? "unused" : (buildCacheMode == 2 ? "all" : "olderThan"),
+                until: buildCacheMode == 3 ? buildCacheAge : nil
+            ) : nil
+        )
+
+        do {
+            let path = client.rest.environmentPath(environmentID, "system/prune")
+            let result: PruneAllResult = try await client.rest.post(path, body: request)
+            resultMessage = formatPruneResult(result)
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
         }
-        if imageMode > 0 {
-            let path = client.rest.environmentPath(environmentID, "images/prune")
-            let _: DataResponse<String>? = try? await client.rest.post(path, body: String?.none)
+    }
+
+    private func formatPruneResult(_ result: PruneAllResult) -> String {
+        var parts: [String] = []
+        if let n = result.containersPruned?.count, n > 0 { parts.append("\(n) container\(n == 1 ? "" : "s")") }
+        if let n = result.imagesDeleted?.count, n > 0 { parts.append("\(n) image\(n == 1 ? "" : "s")") }
+        if let n = result.volumesDeleted?.count, n > 0 { parts.append("\(n) volume\(n == 1 ? "" : "s")") }
+        if let n = result.networksDeleted?.count, n > 0 { parts.append("\(n) network\(n == 1 ? "" : "s")") }
+        var summary = parts.isEmpty ? "Nothing to remove." : "Removed " + parts.joined(separator: ", ") + "."
+        if let space = result.spaceReclaimed, space > 0 {
+            summary += " Freed \(space.byteString)."
         }
-        if networkMode > 0 {
-            let path = client.rest.environmentPath(environmentID, "networks/prune")
-            let _: DataResponse<String>? = try? await client.rest.post(path, body: String?.none)
+        if let errors = result.errors, !errors.isEmpty {
+            summary += "\nErrors: " + errors.prefix(3).joined(separator: "; ")
         }
-        if volumeMode > 0 {
-            let path = client.rest.environmentPath(environmentID, "volumes/prune")
-            let _: DataResponse<String>? = try? await client.rest.post(path, body: String?.none)
-        }
-        if buildCacheMode > 0 {
-            let path = client.rest.environmentPath(environmentID, "build/prune")
-            let _: DataResponse<String>? = try? await client.rest.post(path, body: String?.none)
-        }
-        dismiss()
+        return summary
     }
 }

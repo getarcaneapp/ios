@@ -240,7 +240,7 @@ struct UsersView: View {
         defer { isLoading = false }
         do {
             users = try await client.rest.get("users")
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
     private func deleteUser(_ user: ArcaneUser) async {
@@ -343,7 +343,7 @@ struct UserDetailView: View {
             let _: ArcaneUser = try await client.rest.put("users/\(user.id)", body: body)
             await onUpdate()
             dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }
 
@@ -406,7 +406,7 @@ struct CreateUserView: View {
             )
             let _: ArcaneUser = try await client.rest.post("users", body: body)
             await onSuccess(); dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }
 
@@ -604,7 +604,7 @@ struct CreateAPIKeyView: View {
             let created: APIKeyCreated = try await client.rest.post("api-keys", body: body)
             onCreated(created.key)
             dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }
 
@@ -948,7 +948,7 @@ struct RegistryFormView: View {
                 let _: ContainerRegistry = try await client.rest.post("container-registries", body: body)
             }
             await onSuccess(); dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }
 
@@ -1027,7 +1027,7 @@ struct TemplateRegistryFormView: View {
                 let _: TemplateRegistry = try await client.rest.post("templates/registries", body: body)
             }
             await onSuccess(); dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }
 
@@ -1095,7 +1095,7 @@ struct TemplateBrowserView: View {
         do {
             templates = try await client.rest.get("templates/all")
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 }
@@ -1186,7 +1186,7 @@ struct TemplatePreviewView: View {
             composeContent = loaded.content
             envContent = loaded.envContent
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 }

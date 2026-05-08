@@ -55,17 +55,6 @@ struct ContainersView: View {
                 ContentUnavailableView("No Containers", systemImage: "cube.box", description: Text("No containers found"))
             } else {
                 List {
-                    ResourceSearchControls(
-                        searchText: $searchText,
-                        sortOrder: $sortOrder,
-                        prompt: "Search containers",
-                        filterActive: activeFilterCount > 0
-                    ) {
-                        showFilterSheet = true
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-
                     if !runningContainers.isEmpty {
                         Section("Running") {
                             ForEach(runningContainers) { container in
@@ -87,10 +76,22 @@ struct ContainersView: View {
         }
         .navigationTitle("Containers")
         .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search containers")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await loadContainers() } } label: {
-                    Image(systemName: "arrow.clockwise")
+                Menu {
+                    Picker("Sort", selection: $sortOrder) {
+                        ForEach(ListSortOrder.allCases) { order in
+                            Label(order.title, systemImage: order.systemImage).tag(order)
+                        }
+                    }
+                    Button {
+                        showFilterSheet = true
+                    } label: {
+                        Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -174,7 +175,7 @@ struct ContainersView: View {
             let path = client.rest.environmentPath(environmentID, "containers")
             containers = try await client.rest.get(path)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 

@@ -47,17 +47,6 @@ struct VolumesView: View {
                 ContentUnavailableView("No Volumes", systemImage: "externaldrive", description: Text("No volumes found"))
             } else {
                 List {
-                    ResourceSearchControls(
-                        searchText: $searchText,
-                        sortOrder: $sortOrder,
-                        prompt: "Search volumes",
-                        filterActive: activeFilterCount > 0
-                    ) {
-                        showFilterSheet = true
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-
                     ForEach(filtered) { volume in
                         NavigationLink(destination: VolumeDetailView(volume: volume, environmentID: environmentID)) {
                             VolumeRow(volume: volume)
@@ -76,10 +65,22 @@ struct VolumesView: View {
         }
         .navigationTitle("Volumes")
         .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search volumes")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await loadVolumes() } } label: {
-                    Image(systemName: "arrow.clockwise")
+                Menu {
+                    Picker("Sort", selection: $sortOrder) {
+                        ForEach(ListSortOrder.allCases) { order in
+                            Label(order.title, systemImage: order.systemImage).tag(order)
+                        }
+                    }
+                    Button {
+                        showFilterSheet = true
+                    } label: {
+                        Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -138,10 +139,19 @@ struct VolumesView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "volumes")
-            volumes = try await client.rest.get(path)
+            // Bypass the SDK's strict OpenAPI decoder — Docker can send `null` for
+            // labels/options on empty volumes, but the generated Volume type requires
+            // a dictionary. We decode our tolerant VolumeInfo directly.
+            let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
+            let envelope = try JSONDecoder().decode(VolumeListEnvelope.self, from: raw)
+            volumes = envelope.data ?? []
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private struct VolumeListEnvelope: Decodable, Sendable {
+        let data: [VolumeInfo]?
     }
 
     private func deleteVolume(_ volume: VolumeInfo) async {
@@ -226,7 +236,7 @@ struct VolumeDetailView: View {
                 LabeledContent("Created", value: volume.createdAt)
             }
 
-            let labels = volume.labels.additionalProperties
+            let labels = volume.labelsDictionary
             if !labels.isEmpty {
                 Section("Labels") {
                     ForEach(Array(labels.keys.sorted()), id: \.self) { key in
@@ -235,7 +245,7 @@ struct VolumeDetailView: View {
                 }
             }
 
-            let options = volume.options.additionalProperties
+            let options = volume.optionsDictionary
             if !options.isEmpty {
                 Section("Options") {
                     ForEach(Array(options.keys.sorted()), id: \.self) { key in
@@ -311,8 +321,9 @@ struct CreateVolumeView: View {
         do {
             let body = ["name": name, "driver": driver]
             let path = client.rest.environmentPath(environmentID, "volumes")
-            let _: VolumeInfo = try await client.rest.post(path, body: body)
+            // Same decoder bypass as listVolumes — create returns the Volume too.
+            _ = try await client.transport.rawRequest(path, method: "POST", body: body)
             await onSuccess(); dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }

@@ -173,8 +173,8 @@ struct ProjectDetailView: View {
             actionOutput.append("Done.")
             await loadProject()
         } catch {
-            errorMessage = error.localizedDescription
-            actionOutput.append("Error: \(error.localizedDescription)")
+            errorMessage = friendlyErrorMessage(error)
+            actionOutput.append("Error: \(friendlyErrorMessage(error))")
         }
     }
 
@@ -185,7 +185,7 @@ struct ProjectDetailView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
     private func loadProject() async {
@@ -388,7 +388,7 @@ struct CreateProjectView: View {
                     .lowercased()
                     .replacingOccurrences(of: " ", with: "-")
             }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
     private func createProject() async {
@@ -404,6 +404,6 @@ struct CreateProjectView: View {
             let path = client.rest.environmentPath(environmentID, "projects")
             let _: Project = try await client.rest.post(path, body: body)
             await onSuccess(); dismiss()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }

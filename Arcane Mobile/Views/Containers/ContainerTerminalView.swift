@@ -198,12 +198,12 @@ struct ContainerTerminalView: View {
                 } catch is CancellationError {
                     // expected
                 } catch {
-                    connectError = "Disconnected: \(error.localizedDescription)"
+                    connectError = "Disconnected: \(friendlyErrorMessage(error))"
                 }
                 isConnected = false
             }
         } catch {
-            connectError = error.localizedDescription
+            connectError = friendlyErrorMessage(error)
             isConnecting = false
         }
     }

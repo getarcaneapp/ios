@@ -75,7 +75,7 @@ struct RenameContainerSheet: View {
         case .success:
             dismiss()
         case .failure(let error):
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 }

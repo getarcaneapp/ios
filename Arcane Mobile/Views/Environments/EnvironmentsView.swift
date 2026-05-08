@@ -94,7 +94,7 @@ struct EnvironmentsView: View {
         do {
             environments = try await client.rest.get("environments")
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 }
@@ -187,7 +187,7 @@ struct AddEnvironmentView: View {
             await onSuccess()
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 }

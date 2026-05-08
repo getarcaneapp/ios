@@ -89,7 +89,7 @@ final class ArcaneClientManager {
         } catch let error as ArcaneError {
             errorMessage = arcaneErrorMessage(error)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 

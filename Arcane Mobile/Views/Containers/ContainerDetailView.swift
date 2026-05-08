@@ -387,7 +387,7 @@ struct ContainerDetailView: View {
             }
             await loadDetails()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 
@@ -399,7 +399,7 @@ struct ContainerDetailView: View {
             let path = client.rest.environmentPath(environmentID, "containers/\(container.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 

@@ -59,17 +59,6 @@ struct ProjectsView: View {
                 ContentUnavailableView("No Projects", systemImage: "square.stack.3d.up", description: Text("No Compose projects found"))
             } else {
                 List {
-                    ResourceSearchControls(
-                        searchText: $searchText,
-                        sortOrder: $sortOrder,
-                        prompt: "Search projects",
-                        filterActive: activeFilterCount > 0
-                    ) {
-                        showFilterSheet = true
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-
                     if !activeProjects.isEmpty {
                         Section("Active") {
                             ForEach(activeProjects) { project in
@@ -91,17 +80,29 @@ struct ProjectsView: View {
         }
         .navigationTitle("Projects")
         .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search projects")
         .toolbar {
             if isAdmin {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     NavigationLink(destination: TemplateRegistriesView()) {
                         Image(systemName: "doc.text.magnifyingglass")
                     }
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await loadProjects() } } label: {
-                    Image(systemName: "arrow.clockwise")
+                Menu {
+                    Picker("Sort", selection: $sortOrder) {
+                        ForEach(ListSortOrder.allCases) { order in
+                            Label(order.title, systemImage: order.systemImage).tag(order)
+                        }
+                    }
+                    Button {
+                        showFilterSheet = true
+                    } label: {
+                        Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -147,7 +148,7 @@ struct ProjectsView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "projects")
             projects = try await client.rest.get(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
     private func projectLink(_ project: Project) -> some View {

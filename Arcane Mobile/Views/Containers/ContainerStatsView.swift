@@ -233,7 +233,7 @@ struct ContainerStatsView: View {
             } catch is CancellationError {
                 // expected on view dismissal
             } catch {
-                errorMessage = "Stats stream ended: \(error.localizedDescription)"
+                errorMessage = "Stats stream ended: \(friendlyErrorMessage(error))"
             }
             isStreaming = false
         }
