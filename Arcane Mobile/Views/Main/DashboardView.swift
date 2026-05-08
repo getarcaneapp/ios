@@ -14,11 +14,10 @@ struct DashboardView: View {
     @State private var hasLoadedOnce = false
     @State private var dockerError: String?
     @State private var showPruneSheet = false
-    @State private var showCreateProjectSheet = false
-    @State private var showPullImageSheet = false
-    @State private var showTemplateBrowser = false
     @State private var showVolumes = false
-    @State private var showDockerDetails = false
+    @State private var latestStats: SystemStatsFrame?
+    @State private var statsStreamTask: Task<Void, Never>?
+    @State private var isStreaming = false
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
 
@@ -36,7 +35,6 @@ struct DashboardView: View {
                             dockerErrorBanner(error)
                         }
                         overviewGrid
-                        quickActions
                     }
                 }
                 .padding(.horizontal)
@@ -57,16 +55,7 @@ struct DashboardView: View {
             .sheet(isPresented: $showPruneSheet) {
                 SystemPruneView(environmentID: envID)
             }
-            .sheet(isPresented: $showCreateProjectSheet) {
-                CreateProjectView(environmentID: envID) { await loadData() }
-            }
-            .sheet(isPresented: $showPullImageSheet) {
-                PullImageView(environmentID: envID) { await loadData() }
-            }
-            .sheet(isPresented: $showTemplateBrowser) {
-                TemplateBrowserView()
-            }
-            .sheet(isPresented: $showVolumes) {
+.sheet(isPresented: $showVolumes) {
                 NavigationStack {
                     VolumesView(
                         environmentID: envID,
@@ -75,6 +64,13 @@ struct DashboardView: View {
                 }
             }
             .task { await loadData() }
+            .task { startStatsStream() }
+            .onDisappear {
+                statsStreamTask?.cancel()
+                statsStreamTask = nil
+                isStreaming = false
+            }
+            .onChange(of: envID) { _, _ in restartStatsStream() }
             .refreshable { await loadData() }
         }
     }
@@ -82,10 +78,11 @@ struct DashboardView: View {
     // MARK: - Subviews
 
     private var activeEnvironmentCard: some View {
-        Button {
-            withAnimation(.snappy) {
-                showDockerDetails.toggle()
-            }
+        NavigationLink {
+            SystemInfoDetailView(
+                environmentID: envID,
+                environmentName: manager.activeEnvironmentName
+            )
         } label: {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 14) {
@@ -98,6 +95,7 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(manager.activeEnvironmentName)
                             .font(.headline)
+                            .foregroundStyle(.primary)
                         if let version = dockerInfo?.serverVersion {
                             Text("Docker \(version)")
                                 .font(.caption)
@@ -111,10 +109,9 @@ struct DashboardView: View {
 
                     Spacer()
                     StatusBadge(status: dockerError != nil ? "error" : (isLoading ? "loading" : "online"))
-                    Image(systemName: "chevron.down")
+                    Image(systemName: "chevron.right")
                         .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(showDockerDetails ? 180 : 0))
+                        .foregroundStyle(.tertiary)
                 }
 
                 HStack(spacing: 12) {
@@ -122,12 +119,29 @@ struct DashboardView: View {
                     DashboardMiniMetric(title: "Stopped", value: metricValue(dockerInfo?.containersStopped), color: .secondary)
                     DashboardMiniMetric(title: "Images", value: metricValue(dockerInfo?.images), color: .purple)
                 }
+                .frame(maxWidth: .infinity)
 
-                if showDockerDetails {
-                    Divider()
-                        .padding(.top, 2)
-                    dockerDetails
-                }
+                Divider()
+                    .padding(.vertical, 4)
+
+                resourceMetricRow(
+                    label: "CPU",
+                    icon: "cpu",
+                    color: .blue,
+                    percent: latestStats?.cpuPercent
+                )
+                resourceMetricRow(
+                    label: "Memory",
+                    icon: "memorychip",
+                    color: .purple,
+                    percent: memoryPercent
+                )
+                resourceMetricRow(
+                    label: "Disk",
+                    icon: "externaldrive",
+                    color: .orange,
+                    percent: diskPercent
+                )
             }
             .padding(16)
             .dashboardCardBackground(cornerRadius: 18)
@@ -135,57 +149,22 @@ struct DashboardView: View {
         .buttonStyle(.plain)
     }
 
-    private var dockerDetails: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardInfoGroup(title: "Host") {
-                DashboardInfoRow(label: "Name", value: dockerInfo?.name ?? "--")
-                DashboardInfoRow(label: "ID", value: dockerInfo?.id ?? "--")
-                DashboardInfoRow(label: "OS", value: dockerInfo?.operatingSystem ?? "--")
-                DashboardInfoRow(label: "Kernel", value: dockerInfo?.kernelVersion ?? "--")
-                DashboardInfoRow(label: "Architecture", value: dockerInfo?.architecture ?? "--")
-            }
-
-            DashboardInfoGroup(title: "Engine") {
-                DashboardInfoRow(label: "Docker Version", value: dockerInfo?.serverVersion ?? "--")
-                DashboardInfoRow(label: "API Version", value: dockerInfo?.apiVersion ?? "--")
-                DashboardInfoRow(label: "Go Version", value: dockerInfo?.goVersion ?? "--")
-                DashboardInfoRow(label: "Git Commit", value: dockerInfo?.gitCommit ?? "--")
-                DashboardInfoRow(label: "Build Time", value: dockerInfo?.buildTime ?? "--")
-            }
-
-            DashboardInfoGroup(title: "Resources") {
-                DashboardInfoRow(label: "CPUs", value: metricValue(dockerInfo?.ncpu))
-                DashboardInfoRow(label: "Memory", value: dockerInfo?.memTotal.byteString ?? "--")
-                DashboardInfoRow(label: "Containers", value: metricValue(dockerInfo?.containers))
-                DashboardInfoRow(label: "Paused", value: metricValue(dockerInfo?.containersPaused))
-                DashboardInfoRow(label: "Images", value: metricValue(dockerInfo?.images))
-            }
-
-            DashboardInfoGroup(title: "Runtime") {
-                DashboardInfoRow(label: "Storage Driver", value: dockerInfo?.driver ?? "--")
-                DashboardInfoRow(label: "Logging Driver", value: dockerInfo?.loggingDriver ?? "--")
-                DashboardInfoRow(label: "Cgroup Driver", value: dockerInfo?.cgroupDriver ?? "--")
-                DashboardInfoRow(label: "Cgroup Version", value: dockerInfo?.cgroupVersion ?? "--")
-                DashboardInfoRow(label: "Default Runtime", value: dockerInfo?.defaultRuntime ?? "--")
-                DashboardInfoRow(label: "Runtimes", value: dockerInfo?.runtimes.additionalProperties.keys.sorted().joined(separator: ", ") ?? "--")
-            }
-
-            DashboardInfoGroup(title: "Features") {
-                DashboardInfoRow(label: "Live Restore", value: boolValue(dockerInfo?.liveRestoreEnabled))
-                DashboardInfoRow(label: "Experimental", value: boolValue(dockerInfo?.experimentalBuild))
-                DashboardInfoRow(label: "Debug", value: boolValue(dockerInfo?.debug))
-                DashboardInfoRow(label: "IPv4 Forwarding", value: boolValue(dockerInfo?.iPv4Forwarding))
-                DashboardInfoRow(label: "Memory Limit", value: boolValue(dockerInfo?.memoryLimit))
-                DashboardInfoRow(label: "Swap Limit", value: boolValue(dockerInfo?.swapLimit))
-            }
-
-            if let warnings = dockerInfo?.warnings, !warnings.isEmpty {
-                DashboardInfoGroup(title: "Warnings") {
-                    ForEach(warnings, id: \.self) { warning in
-                        DashboardInfoRow(label: "Warning", value: warning)
-                    }
-                }
-            }
+    @ViewBuilder
+    private func resourceMetricRow(label: String, icon: String, color: Color, percent: Double?) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(color)
+                .frame(width: 16)
+            Text(label)
+                .font(.subheadline)
+                .frame(width: 60, alignment: .leading)
+            SmoothProgressBar(value: clampedPercent(percent) / 100, tint: barTint(percent))
+                .frame(height: 6)
+            Text(percentString(percent))
+                .font(.caption.monospacedDigit().weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, alignment: .trailing)
         }
     }
 
@@ -195,6 +174,8 @@ struct DashboardView: View {
                 Text("No Environments")
             } else {
                 ForEach(environments) { env in
+                    let isOnline = env.isOnline ?? false
+                    let isActive = env.id == manager.activeEnvironmentID.rawValue
                     Button {
                         manager.setActiveEnvironment(
                             id: EnvironmentID(rawValue: env.id),
@@ -204,9 +185,10 @@ struct DashboardView: View {
                     } label: {
                         Label(
                             env.name ?? env.id,
-                            systemImage: env.id == manager.activeEnvironmentID.rawValue ? "checkmark.circle.fill" : "server.rack"
+                            systemImage: isActive ? "checkmark.circle.fill" : "server.rack"
                         )
                     }
+                    .disabled(!isOnline && !isActive)
                 }
             }
         } label: {
@@ -255,24 +237,7 @@ struct DashboardView: View {
         }
     }
 
-    private var quickActions: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Quick Actions", icon: "bolt.fill")
-            HStack(spacing: 12) {
-                DashboardActionButton(title: "New Project", icon: "plus.square.on.square", color: .indigo) {
-                    showCreateProjectSheet = true
-                }
-                DashboardActionButton(title: "Pull Image", icon: "arrow.down.circle.fill", color: .purple) {
-                    showPullImageSheet = true
-                }
-                DashboardActionButton(title: "Templates", icon: "doc.text.magnifyingglass", color: .blue) {
-                    showTemplateBrowser = true
-                }
-            }
-        }
-    }
-
-    private func dockerErrorBanner(_ error: String) -> some View {
+private func dockerErrorBanner(_ error: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
@@ -366,9 +331,67 @@ struct DashboardView: View {
         return "\(value)"
     }
 
-    private func boolValue(_ value: Bool?) -> String {
-        guard let value else { return "--" }
-        return value ? "Yes" : "No"
+    // MARK: - Stats streaming
+
+    private func startStatsStream() {
+        guard statsStreamTask == nil, let client = manager.client else { return }
+        let stream = client.system.stats(envID: envID, interval: 2)
+        isStreaming = true
+        statsStreamTask = Task { @MainActor in
+            do {
+                for try await frame in stream {
+                    if Task.isCancelled { break }
+                    latestStats = frame
+                }
+            } catch is CancellationError {
+            } catch {
+            }
+            isStreaming = false
+        }
+    }
+
+    private func restartStatsStream() {
+        statsStreamTask?.cancel()
+        statsStreamTask = nil
+        latestStats = nil
+        startStatsStream()
+    }
+
+    private var memoryPercent: Double? {
+        if let p = latestStats?.memoryPercent { return p }
+        if let used = latestStats?.memoryUsageBytes,
+           let total = memoryTotalBytes, total > 0 {
+            return (Double(used) / Double(total)) * 100.0
+        }
+        return nil
+    }
+
+    private var memoryTotalBytes: Int64? {
+        latestStats?.memoryTotalBytes ?? dockerInfo?.memTotal
+    }
+
+    private var diskPercent: Double? {
+        guard let used = latestStats?.diskUsageBytes,
+              let total = latestStats?.diskTotalBytes,
+              total > 0 else { return nil }
+        return (Double(used) / Double(total)) * 100.0
+    }
+
+    private func percentString(_ v: Double?) -> String {
+        guard let v else { return "—" }
+        return String(format: "%.1f%%", v)
+    }
+
+    private func clampedPercent(_ v: Double?) -> Double {
+        guard let v else { return 0 }
+        return min(max(v, 0), 100)
+    }
+
+    private func barTint(_ v: Double?) -> Color {
+        guard let v else { return .secondary }
+        if v >= 90 { return .red }
+        if v >= 75 { return .orange }
+        return .blue
     }
 }
 
@@ -462,13 +485,32 @@ struct DashboardTile: View {
     }
 }
 
+struct SmoothProgressBar: View {
+    var value: Double
+    var tint: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(tint.opacity(0.18))
+                Capsule()
+                    .fill(tint)
+                    .frame(width: max(0, geo.size.width * min(max(value, 0), 1)))
+            }
+        }
+        .animation(.smooth(duration: 1.2), value: value)
+        .animation(.smooth(duration: 0.6), value: tint)
+    }
+}
+
 struct DashboardMiniMetric: View {
     let title: String
     let value: String
     let color: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(spacing: 2) {
             Text(value)
                 .font(.headline.bold())
                 .foregroundStyle(color)
@@ -476,37 +518,11 @@ struct DashboardMiniMetric: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 }
 
-struct DashboardActionButton: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.title3)
-                    .foregroundStyle(color)
-                Text(title)
-                    .font(.caption.bold())
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity, minHeight: 76)
-            .padding(.horizontal, 8)
-            .dashboardCardBackground(cornerRadius: 16)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private extension View {
+extension View {
     func dashboardCardBackground(cornerRadius: CGFloat) -> some View {
         background {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
