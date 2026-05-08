@@ -1,4 +1,3 @@
-import LocalAuthentication
 import SwiftUI
 import Arcane
 
@@ -152,28 +151,10 @@ struct SettingsNavigationRow: View {
 }
 
 struct AppSettingsView: View {
-    @SwiftUI.Environment(AppLockManager.self) private var lockManager
     @State private var showCacheCleared = false
-
-    private var appLockLabel: Label<Text, Image> {
-        switch lockManager.biometryType {
-        case .faceID:
-            Label("Require Face ID", systemImage: "faceid")
-        case .touchID:
-            Label("Require Touch ID", systemImage: "touchid")
-        default:
-            Label("Require App Lock", systemImage: "lock.fill")
-        }
-    }
 
     var body: some View {
         List {
-            Section("Security") {
-                Toggle(isOn: Bindable(lockManager).isLockEnabled) {
-                    appLockLabel
-                }
-            }
-
             Section("Storage") {
                 Button {
                     Task { await ImageCache.shared.clear() }
