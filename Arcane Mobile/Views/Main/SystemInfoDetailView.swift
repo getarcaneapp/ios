@@ -63,7 +63,7 @@ struct SystemInfoDetailView: View {
         HStack(spacing: 14) {
             Image(systemName: "server.rack")
                 .font(.title2)
-                .foregroundStyle(.blue)
+                .foregroundStyle(Color.accentColor)
                 .frame(width: 48, height: 48)
                 .background(Color(uiColor: .tertiarySystemFill), in: Circle())
 

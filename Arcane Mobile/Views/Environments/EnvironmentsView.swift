@@ -48,7 +48,7 @@ struct EnvironmentsView: View {
                                 } label: {
                                     Label("Set Active", systemImage: "checkmark.circle.fill")
                                 }
-                                .tint(.blue)
+                                .tint(Color.accentColor)
                             }
                         }
                     }
@@ -116,7 +116,7 @@ struct EnvironmentRow: View {
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(.blue, in: .capsule)
+                            .background(Color.accentColor, in: .capsule)
                     }
                 }
                 if let url = environment.url {

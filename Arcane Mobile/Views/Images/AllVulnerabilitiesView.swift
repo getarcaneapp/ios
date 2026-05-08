@@ -79,7 +79,7 @@ struct AllVulnerabilitiesView: View {
                 HStack {
                     metric("Images", value: "\(summary.totalImages)", color: .secondary)
                     Spacer()
-                    metric("Scanned", value: "\(summary.scannedImages)", color: .blue)
+                    metric("Scanned", value: "\(summary.scannedImages)", color: Color.accentColor)
                     if let s = summary.summary {
                         Spacer()
                         metric("Total CVEs", value: "\(s.total)", color: s.total > 0 ? .orange : .secondary)

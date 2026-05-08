@@ -89,7 +89,7 @@ struct ImageUpdatesView: View {
                     Spacer()
                     metric("With updates", value: "\(summary.imagesWithUpdates)", color: summary.imagesWithUpdates > 0 ? .orange : .secondary)
                     Spacer()
-                    metric("Digest", value: "\(summary.digestUpdates)", color: .blue)
+                    metric("Digest", value: "\(summary.digestUpdates)", color: Color.accentColor)
                     Spacer()
                     metric("Errors", value: "\(summary.errorsCount)", color: summary.errorsCount > 0 ? .red : .secondary)
                 }

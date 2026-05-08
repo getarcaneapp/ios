@@ -180,6 +180,21 @@ struct SettingsView: View {
             NavigationLink(destination: TemplateRegistriesView()) {
                 SettingsRow(title: "Template Registries", systemImage: "doc.text.fill", color: .indigo)
             }
+            NavigationLink(destination: NotificationSettingsView()) {
+                SettingsRow(title: "Notifications", systemImage: "bell.badge.fill", color: .red)
+            }
+            NavigationLink(destination: WebhooksView()) {
+                SettingsRow(title: "Webhooks", systemImage: "link.badge.plus", color: .green)
+            }
+            NavigationLink(destination: SystemSettingsView()) {
+                SettingsRow(title: "System Settings", systemImage: "slider.horizontal.3", color: .gray)
+            }
+            NavigationLink(destination: AuthenticationSettingsView()) {
+                SettingsRow(title: "Authentication", systemImage: "lock.shield.fill", color: .blue)
+            }
+            NavigationLink(destination: BuildSettingsView()) {
+                SettingsRow(title: "Builds", systemImage: "hammer.fill", color: .orange)
+            }
         } header: {
             Text("Administration")
         } footer: {
@@ -190,6 +205,9 @@ struct SettingsView: View {
     @ViewBuilder
     private var applicationSection: some View {
         Section {
+            NavigationLink(destination: AppearanceSettingsView()) {
+                SettingsRow(title: "Appearance", systemImage: "paintbrush.fill", color: .pink)
+            }
             Button(role: .destructive) {
                 showClearCacheConfirm = true
             } label: {
@@ -905,7 +923,7 @@ struct RegistryRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "shippingbox.fill")
-                .font(.title3).foregroundStyle(.blue)
+                .font(.title3).foregroundStyle(Color.accentColor)
                 .frame(width: 36, height: 36)
                 .glassEffect(.regular, in: .circle)
             VStack(alignment: .leading, spacing: 3) {

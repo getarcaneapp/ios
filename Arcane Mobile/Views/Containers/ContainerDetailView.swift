@@ -263,7 +263,7 @@ struct ContainerDetailView: View {
             Task { await performAction(.redeploy) }
         } label: {
             Label("Redeploy", systemImage: "arrow.triangle.2.circlepath.circle.fill")
-                .foregroundStyle(.blue)
+                .foregroundStyle(Color.accentColor)
         }
         .disabled(isActioning)
 

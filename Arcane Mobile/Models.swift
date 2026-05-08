@@ -55,6 +55,16 @@ typealias ComposeTemplate = Components.Schemas.TemplateTemplate
 typealias ComposeTemplateContent = Components.Schemas.TemplateTemplateContent
 typealias AnyCodable = JSONValue
 
+// MARK: - Notification type aliases
+typealias NotificationSettingsResponse = NotificationResponse
+typealias NotificationSettingsUpdate = NotificationUpdate
+
+// MARK: - Webhook type aliases
+typealias WebhookCreateModel = WebhookCreateInput
+typealias WebhookCreatedModel = WebhookCreated
+typealias WebhookSummaryModel = WebhookSummary
+typealias WebhookUpdateModel = WebhookUpdateInput
+
 struct DataResponse<T: Codable & Sendable>: Codable, Sendable {
     var data: T?
     var message: String?
@@ -205,6 +215,18 @@ extension TemplateRegistry: @retroactive Identifiable {}
 
 extension ComposeTemplate: @retroactive Identifiable {
     var iconUrl: String? { metadata?.iconUrl }
+}
+
+extension WebhookSummary: @retroactive Identifiable {}
+
+extension NotificationResponse: @retroactive Identifiable {}
+
+extension SettingDto: @retroactive Identifiable {
+    public var id: String { key }
+}
+
+extension PublicSetting: @retroactive Identifiable {
+    public var id: String { key }
 }
 
 extension JSONValue {

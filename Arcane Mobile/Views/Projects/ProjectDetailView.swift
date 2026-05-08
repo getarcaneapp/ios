@@ -180,7 +180,7 @@ struct ProjectDetailView: View {
         Button {
             startStreamingAction(suffix: "pull", title: "Pull Images")
         } label: {
-            Label("Pull Images", systemImage: "arrow.down.circle.fill").foregroundStyle(.blue)
+            Label("Pull Images", systemImage: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
         }
         .disabled(isActioning)
 

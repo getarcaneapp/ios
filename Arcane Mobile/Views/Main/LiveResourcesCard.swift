@@ -21,7 +21,7 @@ struct LiveResourcesCard: View {
             HStack(spacing: 8) {
                 Image(systemName: "gauge.with.dots.needle.bottom.50percent")
                     .font(.subheadline)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Color.accentColor)
                 Text("Live Resources")
                     .font(.subheadline.weight(.semibold))
                 Spacer()
@@ -40,21 +40,21 @@ struct LiveResourcesCard: View {
             metricRow(
                 label: "CPU",
                 icon: "cpu",
-                color: .blue,
+                color: Color.accentColor,
                 percent: latestStats?.cpuPercent,
                 detail: latestStats?.cpuCount.map { "\($0) core\($0 == 1 ? "" : "s")" }
             )
             metricRow(
                 label: "Memory",
                 icon: "memorychip",
-                color: .purple,
+                color: Color.accentColor,
                 percent: memoryPercent,
                 detail: memoryDetail
             )
             metricRow(
                 label: "Disk",
                 icon: "externaldrive",
-                color: .orange,
+                color: Color.accentColor,
                 percent: diskPercent,
                 detail: diskDetail
             )
@@ -174,6 +174,6 @@ struct LiveResourcesCard: View {
         guard let v else { return .secondary }
         if v >= 90 { return .red }
         if v >= 75 { return .orange }
-        return .blue
+        return Color.accentColor
     }
 }

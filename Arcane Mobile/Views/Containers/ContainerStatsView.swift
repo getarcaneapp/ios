@@ -32,14 +32,14 @@ struct ContainerStatsView: View {
                     .frame(maxWidth: .infinity, minHeight: 200)
                 } else {
                     summaryTiles
-                    chartCard(title: "CPU", color: .blue, unit: "%") { frame in
+                    chartCard(title: "CPU", color: Color.accentColor, unit: "%") { frame in
                         frame.cpuPercent
                     }
                     memoryCard
                     chartCard(title: "Network I/O", colors: [.green, .orange], legend: ["RX", "TX"], unit: "B/s") { frame in
                         [frame.netRxPerSec, frame.netTxPerSec]
                     }
-                    chartCard(title: "Block I/O", colors: [.purple, .pink], legend: ["Read", "Write"], unit: "B/s") { frame in
+                    chartCard(title: "Block I/O", colors: [Color.accentColor, Color.accentColor.opacity(0.5)], legend: ["Read", "Write"], unit: "B/s") { frame in
                         [frame.blockReadPerSec, frame.blockWritePerSec]
                     }
                 }
@@ -57,13 +57,13 @@ struct ContainerStatsView: View {
 
     private var summaryTiles: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            tile(title: "CPU", value: percentString(latest?.cpuPercent), systemImage: "cpu", tint: .blue)
+            tile(title: "CPU", value: percentString(latest?.cpuPercent), systemImage: "cpu", tint: Color.accentColor)
             tile(
                 title: "Memory",
                 value: memoryString(used: latest?.memoryUsed, limit: latest?.memoryLimit),
                 subtitle: percentString(latest?.memoryPercent),
                 systemImage: "memorychip",
-                tint: .indigo
+                tint: Color.accentColor
             )
             tile(
                 title: "Network",
@@ -77,7 +77,7 @@ struct ContainerStatsView: View {
                 value: "R \(rateString(latest?.blockReadPerSec))",
                 subtitle: "W \(rateString(latest?.blockWritePerSec))",
                 systemImage: "internaldrive",
-                tint: .purple
+                tint: Color.accentColor
             )
         }
     }

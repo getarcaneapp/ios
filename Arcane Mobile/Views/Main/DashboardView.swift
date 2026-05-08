@@ -88,7 +88,7 @@ struct DashboardView: View {
                 HStack(spacing: 14) {
                     Image(systemName: "server.rack")
                         .font(.title2)
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(Color.accentColor)
                         .frame(width: 48, height: 48)
                         .background(Color(uiColor: .tertiarySystemFill), in: Circle())
 
@@ -117,7 +117,7 @@ struct DashboardView: View {
                 HStack(spacing: 12) {
                     DashboardMiniMetric(title: "Running", value: metricValue(dockerInfo?.containersRunning), color: .green)
                     DashboardMiniMetric(title: "Stopped", value: metricValue(dockerInfo?.containersStopped), color: .secondary)
-                    DashboardMiniMetric(title: "Images", value: metricValue(dockerInfo?.images), color: .purple)
+                    DashboardMiniMetric(title: "Images", value: metricValue(dockerInfo?.images), color: Color.accentColor)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -127,19 +127,19 @@ struct DashboardView: View {
                 resourceMetricRow(
                     label: "CPU",
                     icon: "cpu",
-                    color: .blue,
+                    color: Color.accentColor,
                     percent: latestStats?.cpuPercent
                 )
                 resourceMetricRow(
                     label: "Memory",
                     icon: "memorychip",
-                    color: .purple,
+                    color: Color.accentColor,
                     percent: memoryPercent
                 )
                 resourceMetricRow(
                     label: "Disk",
                     icon: "externaldrive",
-                    color: .orange,
+                    color: Color.accentColor,
                     percent: diskPercent
                 )
             }
@@ -208,7 +208,7 @@ struct DashboardView: View {
                 value: dockerInfo != nil ? "\(total)" : "--",
                 subtitle: "\(running) running, \(stopped) stopped",
                 icon: "cube.box.fill",
-                color: .cyan
+                color: Color.accentColor
             ) { selectedTab = 1 }
 
             DashboardTile(
@@ -216,7 +216,7 @@ struct DashboardView: View {
                 value: dockerInfo != nil ? "\(images)" : "--",
                 subtitle: "Browse, pull, prune",
                 icon: "photo.stack.fill",
-                color: .purple
+                color: Color.accentColor
             ) { selectedTab = 2 }
 
             DashboardTile(
@@ -224,7 +224,7 @@ struct DashboardView: View {
                 value: projectCount.map(String.init) ?? "--",
                 subtitle: "Compose projects",
                 icon: "square.stack.3d.up.fill",
-                color: .indigo
+                color: Color.accentColor
             ) { selectedTab = 3 }
 
             DashboardTile(
@@ -232,7 +232,7 @@ struct DashboardView: View {
                 value: volumeTotalBytes.map { $0.byteString } ?? "--",
                 subtitle: volumeCount.map { "\($0) volume\($0 == 1 ? "" : "s")" } ?? "Persistent data",
                 icon: "externaldrive.fill",
-                color: .orange
+                color: Color.accentColor
             ) { showVolumes = true }
         }
     }
@@ -391,7 +391,7 @@ private func dockerErrorBanner(_ error: String) -> some View {
         guard let v else { return .secondary }
         if v >= 90 { return .red }
         if v >= 75 { return .orange }
-        return .blue
+        return Color.accentColor
     }
 }
 
@@ -425,7 +425,7 @@ struct EnvironmentDashboardCard: View {
 
             if isActive {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Color.accentColor)
             } else if let onSetActive {
                 Button("Use", action: onSetActive)
                     .font(.caption.bold())

@@ -120,7 +120,7 @@ struct ImageVulnerabilitiesView: View {
                                     } label: {
                                         Label("Unignore", systemImage: "eye")
                                     }
-                                    .tint(.blue)
+                                    .tint(Color.accentColor)
                                 } else {
                                     Button {
                                         ignoreTarget = vuln

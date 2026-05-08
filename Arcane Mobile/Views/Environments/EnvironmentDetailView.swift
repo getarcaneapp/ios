@@ -22,31 +22,31 @@ struct EnvironmentDetailView: View {
                 resourceLink(
                     title: "Containers",
                     icon: "cube.box.fill",
-                    color: .blue,
+                    color: Color.accentColor,
                     destination: ContainersView(environmentID: envID, environmentName: environment.name ?? environment.id)
                 )
                 resourceLink(
                     title: "Images",
                     icon: "photo.stack.fill",
-                    color: .purple,
+                    color: Color.accentColor,
                     destination: ImagesView(environmentID: envID, environmentName: environment.name ?? environment.id)
                 )
                 resourceLink(
                     title: "Volumes",
                     icon: "externaldrive.fill",
-                    color: .orange,
+                    color: Color.accentColor,
                     destination: VolumesView(environmentID: envID, environmentName: environment.name ?? environment.id)
                 )
                 resourceLink(
                     title: "Networks",
                     icon: "network",
-                    color: .teal,
+                    color: Color.accentColor,
                     destination: NetworksView(environmentID: envID, environmentName: environment.name ?? environment.id)
                 )
                 resourceLink(
                     title: "Projects",
                     icon: "square.stack.3d.up.fill",
-                    color: .indigo,
+                    color: Color.accentColor,
                     destination: ProjectsView(environmentID: envID, environmentName: environment.name ?? environment.id)
                 )
             }

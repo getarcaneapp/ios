@@ -111,7 +111,7 @@ struct ImagesView: View {
             if isAdmin {
                 ToolbarItem(placement: .navigationBarLeading) {
                     NavigationLink(destination: ContainerRegistriesView()) {
-                        Image(systemName: "shippingbox")
+                        Image(systemName: "key.shield")
                     }
                 }
             }
@@ -353,7 +353,7 @@ struct UpdateStateBadge: View {
                 .accessibilityLabel("Up to date")
         case .hasUpdate:
             Image(systemName: "arrow.up.circle.fill")
-                .foregroundStyle(.blue)
+                .foregroundStyle(Color.accentColor)
                 .imageScale(.small)
                 .accessibilityLabel("Update available")
         case .error(let message):
@@ -489,7 +489,7 @@ struct PullImageView: View {
         if s.contains("download") { return .blue }
         if s.contains("extract") { return .orange }
         if s.contains("complete") || s.contains("pull complete") { return .green }
-        return .accentColor
+        return Color.accentColor
     }
 
     private func pullImage() {

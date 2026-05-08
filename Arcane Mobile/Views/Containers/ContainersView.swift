@@ -253,7 +253,7 @@ struct ResourceSearchControls: View {
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.blue)
+            .foregroundStyle(Color.accentColor)
             .glassEffect(.regular, in: .circle)
 
             Button(action: onFilter) {
@@ -261,7 +261,7 @@ struct ResourceSearchControls: View {
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.blue)
+            .foregroundStyle(Color.accentColor)
             .glassEffect(.regular, in: .circle)
         }
         .padding(.top, 8)
@@ -278,7 +278,7 @@ struct ContainerRow: View {
                 CachedAsyncImage(url: container.iconUrl, size: 36) {
                     Image(systemName: "cube.box.fill")
                         .font(.title3)
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(Color.accentColor)
                         .frame(width: 36, height: 36)
                         .glassEffect(.regular, in: .circle)
                 }
