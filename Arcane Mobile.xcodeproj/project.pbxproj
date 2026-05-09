@@ -293,7 +293,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Arcane-Mobile-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Arcane Mobile";
+				INFOPLIST_KEY_CFBundleDisplayName = Arcane;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -336,7 +336,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Arcane-Mobile-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Arcane Mobile";
+				INFOPLIST_KEY_CFBundleDisplayName = Arcane;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

@@ -1141,7 +1141,7 @@ struct RegistryFormView: View {
     @State private var description = ""
     @State private var enabled = true
     @State private var insecure = false
-    @State private var registryType = "custom"
+    @State private var registryType = "generic"
     @State private var awsAccessKeyId = ""
     @State private var awsSecretAccessKey = ""
     @State private var awsRegion = ""
@@ -1149,6 +1149,15 @@ struct RegistryFormView: View {
     @State private var errorMessage: String?
 
     private var isEditing: Bool { registry != nil }
+    private var isAWS: Bool { registryType == "ecr" }
+
+    // Picker selects between generic and ecr; legacy "custom" maps to generic.
+    private var typeBinding: Binding<String> {
+        Binding(
+            get: { registryType == "ecr" ? "ecr" : "generic" },
+            set: { registryType = $0 }
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -1158,34 +1167,42 @@ struct RegistryFormView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     TextField("Description", text: $description)
-                    TextField("Type", text: $registryType)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    Picker("Type", selection: typeBinding) {
+                        Text("Generic").tag("generic")
+                        Text("AWS ECR").tag("ecr")
+                    }
                     Toggle("Enabled", isOn: $enabled)
                     Toggle("Insecure", isOn: $insecure)
                 }
 
-                Section("Credentials (optional)") {
-                    TextField("Username", text: $username)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField(isEditing ? "New token or password" : "Token or password", text: $token)
+                if !isAWS {
+                    Section("Credentials (optional)") {
+                        TextField("Username", text: $username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField(isEditing ? "New token or password" : "Token or password", text: $token)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
-                Section("AWS ECR (optional)") {
-                    TextField("Access Key ID", text: $awsAccessKeyId)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField(isEditing ? "New Secret Access Key" : "Secret Access Key", text: $awsSecretAccessKey)
-                    TextField("Region", text: $awsRegion)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                if isAWS {
+                    Section("AWS ECR") {
+                        TextField("Access Key ID", text: $awsAccessKeyId)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField(isEditing ? "New Secret Access Key" : "Secret Access Key", text: $awsSecretAccessKey)
+                        TextField("Region (e.g. us-east-1)", text: $awsRegion)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 if let error = errorMessage {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isAWS)
             .navigationTitle(isEditing ? "Edit Registry" : "Add Registry")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
