@@ -7,6 +7,7 @@ nonisolated private struct VolumeListEnvelope: Decodable, Sendable {
 
 struct VolumesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -42,6 +43,18 @@ struct VolumesView: View {
         }
     }
 
+    private var pinnedIDs: Set<String> {
+        pinnedStore.pinnedIDs(kind: .volume, envID: environmentID)
+    }
+
+    private var pinnedVolumes: [VolumeInfo] {
+        filtered.filter { pinnedIDs.contains($0.id) }
+    }
+
+    private var unpinnedVolumes: [VolumeInfo] {
+        filtered.filter { !pinnedIDs.contains($0.id) }
+    }
+
     var body: some View {
         Group {
             if isLoading && volumes.isEmpty {
@@ -52,27 +65,17 @@ struct VolumesView: View {
                 ContentUnavailableView("No Volumes", systemImage: "externaldrive", description: Text("No volumes found"))
             } else {
                 List {
-                    ForEach(filtered) { volume in
-                        NavigationLink(destination: VolumeDetailView(volume: volume, environmentID: environmentID)) {
-                            VolumeRow(volume: volume, size: sizes[volume.name])
-                        }
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                Task { await deleteVolume(volume) }
-                            } label: {
-                                DestructiveLabel(text: "Delete")
+                    if !pinnedVolumes.isEmpty {
+                        Section("Pinned") {
+                            ForEach(pinnedVolumes) { volume in
+                                volumeLink(volume)
                             }
-                            .tint(.red)
-                        } preview: {
-                            volumePreview(volume)
                         }
-                        .swipeActions(edge: .trailing) {
-                            Button {
-                                Task { await deleteVolume(volume) }
-                            } label: {
-                                DestructiveLabel(text: "Delete")
-                            }
-                            .tint(.red)
+                    }
+
+                    Section {
+                        ForEach(unpinnedVolumes) { volume in
+                            volumeLink(volume)
                         }
                     }
                 }
@@ -146,6 +149,46 @@ struct VolumesView: View {
                 }
             }
             .presentationDetents([.medium])
+        }
+    }
+
+    private func volumeLink(_ volume: VolumeInfo) -> some View {
+        let isPinned = pinnedIDs.contains(volume.id)
+        return NavigationLink(destination: VolumeDetailView(volume: volume, environmentID: environmentID)) {
+            VolumeRow(volume: volume, size: sizes[volume.name], isPinned: isPinned)
+        }
+        .contextMenu {
+            Button {
+                pinnedStore.togglePin(volume.id, kind: .volume, envID: environmentID)
+            } label: {
+                Label(isPinned ? "Unpin" : "Pin",
+                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            }
+            Button(role: .destructive) {
+                Task { await deleteVolume(volume) }
+            } label: {
+                DestructiveLabel(text: "Delete")
+            }
+            .tint(.red)
+        } preview: {
+            volumePreview(volume)
+        }
+        .swipeActions(edge: .leading) {
+            Button {
+                pinnedStore.togglePin(volume.id, kind: .volume, envID: environmentID)
+            } label: {
+                Label(isPinned ? "Unpin" : "Pin",
+                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            }
+            .tint(.yellow)
+        }
+        .swipeActions(edge: .trailing) {
+            Button {
+                Task { await deleteVolume(volume) }
+            } label: {
+                DestructiveLabel(text: "Delete")
+            }
+            .tint(.red)
         }
     }
 
@@ -270,6 +313,7 @@ struct UsageBadge: View {
 struct VolumeRow: View {
     let volume: VolumeInfo
     var size: Int64? = nil
+    var isPinned: Bool = false
 
     private var subtitleParts: [String] {
         var parts: [String] = []
@@ -295,6 +339,11 @@ struct VolumeRow: View {
                     Text(volume.name)
                         .font(.headline)
                         .lineLimit(1)
+                    if isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.yellow)
+                    }
                     if volume.inUse == true {
                         UsageBadge(text: "In use", color: .green)
                     } else if volume.inUse == false {

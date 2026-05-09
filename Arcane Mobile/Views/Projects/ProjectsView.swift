@@ -3,6 +3,7 @@ import Arcane
 
 struct ProjectsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -37,12 +38,20 @@ struct ProjectsView: View {
         }
     }
 
+    private var pinnedIDs: Set<String> {
+        pinnedStore.pinnedIDs(kind: .project, envID: environmentID)
+    }
+
+    private var pinnedProjects: [Project] {
+        filtered.filter { pinnedIDs.contains($0.id) }
+    }
+
     private var activeProjects: [Project] {
-        filtered.filter { !isStopped($0) }
+        filtered.filter { !isStopped($0) && !pinnedIDs.contains($0.id) }
     }
 
     private var stoppedProjects: [Project] {
-        filtered.filter(isStopped)
+        filtered.filter { isStopped($0) && !pinnedIDs.contains($0.id) }
     }
 
     private var isAdmin: Bool {
@@ -59,6 +68,14 @@ struct ProjectsView: View {
                 ContentUnavailableView("No Projects", systemImage: "square.stack.3d.up", description: Text("No Compose projects found"))
             } else {
                 List {
+                    if !pinnedProjects.isEmpty {
+                        Section("Pinned") {
+                            ForEach(pinnedProjects) { project in
+                                projectLink(project)
+                            }
+                        }
+                    }
+
                     if !activeProjects.isEmpty {
                         Section("Active") {
                             ForEach(activeProjects) { project in
@@ -163,10 +180,17 @@ struct ProjectsView: View {
     }
 
     private func projectLink(_ project: Project) -> some View {
-        NavigationLink(destination: ProjectDetailView(project: project, environmentID: environmentID)) {
-            ProjectRow(project: project)
+        let isPinned = pinnedIDs.contains(project.id)
+        return NavigationLink(destination: ProjectDetailView(project: project, environmentID: environmentID)) {
+            ProjectRow(project: project, isPinned: isPinned)
         }
         .contextMenu {
+            Button {
+                pinnedStore.togglePin(project.id, kind: .project, envID: environmentID)
+            } label: {
+                Label(isPinned ? "Unpin" : "Pin",
+                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            }
             Button(role: .destructive) {
                 Task { await deleteProject(project) }
             } label: {
@@ -175,6 +199,15 @@ struct ProjectsView: View {
             .tint(.red)
         } preview: {
             projectPreview(project)
+        }
+        .swipeActions(edge: .leading) {
+            Button {
+                pinnedStore.togglePin(project.id, kind: .project, envID: environmentID)
+            } label: {
+                Label(isPinned ? "Unpin" : "Pin",
+                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            }
+            .tint(.yellow)
         }
         .swipeActions(edge: .trailing) {
             Button {
@@ -237,6 +270,7 @@ struct ProjectsView: View {
 
 struct ProjectRow: View {
     let project: Project
+    var isPinned: Bool = false
 
     private var statusColor: Color {
         switch project.status.lowercased() {
@@ -258,9 +292,16 @@ struct ProjectRow: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(project.displayName)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(project.displayName)
+                        .font(.headline)
+                        .lineLimit(1)
+                    if isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.yellow)
+                    }
+                }
                 let count = project.serviceCount
                 Text("\(count) service\(count == 1 ? "" : "s")")
                     .font(.caption)

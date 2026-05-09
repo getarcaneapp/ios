@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct Arcane_MobileApp: App {
     @State private var clientManager = ArcaneClientManager()
+    @State private var pinnedStore = PinnedItemsStore.shared
     @AppStorage("accentColorHex") private var accentColorHex = ""
 
     private var accentColor: Color {
@@ -16,6 +17,7 @@ struct Arcane_MobileApp: App {
         WindowGroup {
             ContentView()
                 .environment(clientManager)
+                .environment(pinnedStore)
                 .tint(accentColorHex.isEmpty ? nil : accentColor)
                 .task {
                     await ImageCache.shared.trimDiskCache()

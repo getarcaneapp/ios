@@ -3,6 +3,7 @@ import Arcane
 
 struct ContainersView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -36,12 +37,20 @@ struct ContainersView: View {
         }
     }
 
+    private var pinnedIDs: Set<String> {
+        pinnedStore.pinnedIDs(kind: .container, envID: environmentID)
+    }
+
+    private var pinnedContainers: [ContainerInfo] {
+        filtered.filter { pinnedIDs.contains($0.id) }
+    }
+
     private var runningContainers: [ContainerInfo] {
-        filtered.filter(\.isRunning)
+        filtered.filter { $0.isRunning && !pinnedIDs.contains($0.id) }
     }
 
     private var stoppedContainers: [ContainerInfo] {
-        filtered.filter { !$0.isRunning }
+        filtered.filter { !$0.isRunning && !pinnedIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -55,6 +64,14 @@ struct ContainersView: View {
                 ContentUnavailableView("No Containers", systemImage: "cube.box", description: Text("No containers found"))
             } else {
                 List {
+                    if !pinnedContainers.isEmpty {
+                        Section("Pinned") {
+                            ForEach(pinnedContainers) { container in
+                                containerLink(container)
+                            }
+                        }
+                    }
+
                     if !runningContainers.isEmpty {
                         Section("Running") {
                             ForEach(runningContainers) { container in
@@ -134,13 +151,29 @@ struct ContainersView: View {
     }
 
     private func containerLink(_ container: ContainerInfo) -> some View {
-        NavigationLink(destination: ContainerDetailView(container: container, environmentID: environmentID)) {
-            ContainerRow(container: container)
+        let isPinned = pinnedIDs.contains(container.id)
+        return NavigationLink(destination: ContainerDetailView(container: container, environmentID: environmentID)) {
+            ContainerRow(container: container, isPinned: isPinned)
         }
         .contextMenu {
+            Button {
+                pinnedStore.togglePin(container.id, kind: .container, envID: environmentID)
+            } label: {
+                Label(isPinned ? "Unpin" : "Pin",
+                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            }
             containerMenuActions(for: container)
         } preview: {
             containerPreview(container)
+        }
+        .swipeActions(edge: .leading) {
+            Button {
+                pinnedStore.togglePin(container.id, kind: .container, envID: environmentID)
+            } label: {
+                Label(isPinned ? "Unpin" : "Pin",
+                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            }
+            .tint(.yellow)
         }
         .swipeActions(edge: .trailing) {
             containerSwipeActions(for: container)
@@ -355,6 +388,7 @@ struct ResourceSearchControls: View {
 
 struct ContainerRow: View {
     let container: ContainerInfo
+    var isPinned: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -373,9 +407,16 @@ struct ContainerRow: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(container.displayName)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(container.displayName)
+                        .font(.headline)
+                        .lineLimit(1)
+                    if isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.yellow)
+                    }
+                }
                 Text(container.image)
                     .font(.caption)
                     .foregroundStyle(.secondary)
