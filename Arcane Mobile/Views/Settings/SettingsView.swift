@@ -482,6 +482,12 @@ struct UserDetailView: View {
         _isAdmin = State(initialValue: user.isAdmin)
     }
 
+    private var hasChanges: Bool {
+        email != (user.email ?? "")
+            || displayName != (user.displayName ?? "")
+            || isAdmin != user.isAdmin
+    }
+
     var body: some View {
         Form {
             Section("User Info") {
@@ -503,7 +509,7 @@ struct UserDetailView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { Task { await saveUser() } }
-                    .disabled(isSaving)
+                    .disabled(isSaving || !hasChanges)
             }
         }
     }
@@ -1159,6 +1165,26 @@ struct RegistryFormView: View {
         )
     }
 
+    // For new registries, the URL field is required and Save enables once it's set.
+    // For edits, Save only enables when something actually differs from the loaded
+    // record (token/awsSecretAccessKey count as changed if any value was typed).
+    private var hasChanges: Bool {
+        guard let registry else { return !url.isEmpty }
+        let typeMatch = registryType == registry.registryType
+            || (typeBinding.wrappedValue == "generic"
+                && (registry.registryType == "generic" || registry.registryType == "custom"))
+        return url != registry.url
+            || username != registry.username
+            || description != (registry.description ?? "")
+            || enabled != registry.enabled
+            || insecure != registry.insecure
+            || !typeMatch
+            || awsAccessKeyId != (registry.awsAccessKeyId ?? "")
+            || awsRegion != (registry.awsRegion ?? "")
+            || !token.isEmpty
+            || !awsSecretAccessKey.isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1209,7 +1235,7 @@ struct RegistryFormView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isEditing ? "Save" : "Add") { Task { await saveRegistry() } }
-                        .disabled(url.isEmpty || isLoading)
+                        .disabled(url.isEmpty || isLoading || !hasChanges)
                 }
             }
             .onAppear { populateFields() }
@@ -1282,6 +1308,14 @@ struct TemplateRegistryFormView: View {
 
     private var isEditing: Bool { registry != nil }
 
+    private var hasChanges: Bool {
+        guard let registry else { return !name.isEmpty || !url.isEmpty }
+        return name != registry.name
+            || url != registry.url
+            || description != registry.description
+            || enabled != registry.enabled
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1304,7 +1338,7 @@ struct TemplateRegistryFormView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isEditing ? "Save" : "Add") { Task { await saveRegistry() } }
-                        .disabled(name.isEmpty || url.isEmpty || isLoading)
+                        .disabled(name.isEmpty || url.isEmpty || isLoading || !hasChanges)
                 }
             }
             .onAppear { populateFields() }

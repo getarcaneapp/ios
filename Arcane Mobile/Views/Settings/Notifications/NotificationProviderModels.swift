@@ -94,7 +94,7 @@ struct ProviderFieldDescriptor: Identifiable {
 
 // MARK: - Event Subscriptions
 
-struct EventSubscriptions {
+struct EventSubscriptions: Equatable {
     var imageUpdate: Bool = true
     var containerUpdate: Bool = true
     var vulnerabilityFound: Bool = true

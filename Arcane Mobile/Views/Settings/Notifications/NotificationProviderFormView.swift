@@ -18,8 +18,21 @@ struct NotificationProviderFormView: View {
     @State private var errorMessage: String?
     @State private var testResult: String?
 
+    // Snapshots taken in `populateForm` so Save can stay disabled until the
+    // user actually edits something (or, for new providers, fills required fields).
+    @State private var originalFormValues: [String: String] = [:]
+    @State private var originalEnabled = false
+    @State private var originalEvents = EventSubscriptions()
+
     private var fields: [ProviderFieldDescriptor] { fieldsForProvider(provider) }
     private var isEditing: Bool { existing != nil }
+
+    private var hasChanges: Bool {
+        guard isEditing else { return isValid }
+        return formValues != originalFormValues
+            || enabled != originalEnabled
+            || events != originalEvents
+    }
 
     var body: some View {
         Form {
@@ -64,7 +77,7 @@ struct NotificationProviderFormView: View {
                         Spacer()
                     }
                 }
-                .disabled(isSaving || !isValid)
+                .disabled(isSaving || !isValid || !hasChanges)
             }
 
             Section {
@@ -195,17 +208,22 @@ struct NotificationProviderFormView: View {
             }
         }
 
-        guard let existing else { return }
-
-        enabled = existing.enabled
-        let extracted = extractConfigValues(existing.config)
-        for (key, value) in extracted {
-            if EventSubscriptions.keys.contains(where: { $0.key == key }) {
-                continue
+        if let existing {
+            enabled = existing.enabled
+            let extracted = extractConfigValues(existing.config)
+            for (key, value) in extracted {
+                if EventSubscriptions.keys.contains(where: { $0.key == key }) {
+                    continue
+                }
+                formValues[key] = value
             }
-            formValues[key] = value
+            events = EventSubscriptions.from(extracted)
         }
-        events = EventSubscriptions.from(extracted)
+
+        // Snapshot for dirty-state comparison.
+        originalFormValues = formValues
+        originalEnabled = enabled
+        originalEvents = events
     }
 
     // MARK: - API
