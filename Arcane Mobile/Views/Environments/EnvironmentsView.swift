@@ -35,11 +35,26 @@ struct EnvironmentsView: View {
             } else {
                 List {
                     ForEach(sortedEnvironments) { env in
+                        let isActive = env.id == manager.activeEnvironmentID.rawValue
                         NavigationLink(destination: EnvironmentDetailView(environment: env)) {
-                            EnvironmentRow(environment: env, isActive: env.id == manager.activeEnvironmentID.rawValue)
+                            EnvironmentRow(environment: env, isActive: isActive)
+                        }
+                        .contextMenu {
+                            if !isActive {
+                                Button {
+                                    manager.setActiveEnvironment(
+                                        id: EnvironmentID(rawValue: env.id),
+                                        name: env.name ?? env.id
+                                    )
+                                } label: {
+                                    Label("Set Active", systemImage: "checkmark.circle.fill")
+                                }
+                            }
+                        } preview: {
+                            environmentPreview(env, isActive: isActive)
                         }
                         .swipeActions(edge: .leading) {
-                            if env.id != manager.activeEnvironmentID.rawValue {
+                            if !isActive {
                                 Button {
                                     manager.setActiveEnvironment(
                                         id: EnvironmentID(rawValue: env.id),
@@ -85,6 +100,28 @@ struct EnvironmentsView: View {
                 await loadEnvironments(refresh: true)
             }
         }
+    }
+
+    private func environmentPreview(_ env: ServerEnvironment, isActive: Bool) -> some View {
+        let online = env.isOnline ?? false
+        var badges: [RowPreviewCard.PreviewBadge] = [
+            .init(text: env.status.capitalized, color: online ? .green : .secondary)
+        ]
+        if isActive {
+            badges.insert(.init(text: "Active", color: .accentColor), at: 0)
+        }
+        var details: [RowPreviewCard.PreviewDetail] = []
+        if let url = env.url, !url.isEmpty {
+            details.append(.init(icon: "link", label: "URL", value: url))
+        }
+        details.append(.init(icon: "number", label: "ID", value: env.id))
+        return RowPreviewCard(
+            icon: "server.rack",
+            iconColor: online ? .green : .secondary,
+            title: env.name ?? env.id,
+            badges: badges,
+            details: details
+        )
     }
 
     private func loadEnvironments(refresh: Bool = false) async {

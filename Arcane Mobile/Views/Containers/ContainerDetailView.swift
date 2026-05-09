@@ -84,8 +84,9 @@ struct ContainerDetailView: View {
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        DestructiveLabel(text: "Delete")
                     }
+                    .tint(.red)
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }

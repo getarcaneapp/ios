@@ -216,16 +216,55 @@ struct ImagesView: View {
     }
 
     private func imageLink(_ image: ImageInfo) -> some View {
-        NavigationLink(destination: ImageDetailView(image: image, environmentID: environmentID)) {
-            ImageRow(image: image, updateState: updateState(for: image))
+        let state = updateState(for: image)
+        return NavigationLink(destination: ImageDetailView(image: image, environmentID: environmentID)) {
+            ImageRow(image: image, updateState: state)
         }
-        .swipeActions(edge: .trailing) {
+        .contextMenu {
             Button(role: .destructive) {
                 Task { await removeImage(image) }
             } label: {
-                Label("Delete", systemImage: "trash")
+                DestructiveLabel(text: "Delete")
             }
+            .tint(.red)
+        } preview: {
+            imagePreview(image, state: state)
         }
+        .swipeActions(edge: .trailing) {
+            Button {
+                Task { await removeImage(image) }
+            } label: {
+                DestructiveLabel(text: "Delete")
+            }
+            .tint(.red)
+        }
+    }
+
+    private func imagePreview(_ image: ImageInfo, state: ImageUpdateState) -> some View {
+        var badges: [RowPreviewCard.PreviewBadge] = [
+            .init(text: image.inUse ? "In Use" : "Unused",
+                  color: image.inUse ? .green : .secondary)
+        ]
+        switch state {
+        case .upToDate:
+            badges.append(.init(text: "Up to Date", color: .green))
+        case .hasUpdate:
+            badges.append(.init(text: "Update Available", color: .accentColor))
+        case .error:
+            badges.append(.init(text: "Check Failed", color: .red))
+        case .unknown:
+            break
+        }
+        return RowPreviewCard(
+            icon: "photo.stack.fill",
+            iconColor: .purple,
+            title: image.displayName,
+            badges: badges,
+            details: [
+                .init(icon: "internaldrive", label: "Size", value: image.size.byteString),
+                .init(icon: "number", label: "ID", value: image.id, monospaced: true)
+            ]
+        )
     }
 
     private func loadImages(reset: Bool, refresh: Bool = false) async {

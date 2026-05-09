@@ -51,10 +51,11 @@ struct SettingsView: View {
                 await refreshCacheSize()
                 await loadVolumeSize()
             }
-            .confirmationDialog("Sign Out", isPresented: $showLogoutConfirm, titleVisibility: .visible) {
+            .alert("Sign Out", isPresented: $showLogoutConfirm) {
                 Button("Sign Out", role: .destructive) {
                     Task { await manager.logout() }
                 }
+                Button("Cancel", role: .cancel) {}
             } message: {
                 Text("You'll be signed out of this server.")
             }
@@ -371,11 +372,12 @@ struct UsersView: View {
                             UserRow(user: user)
                         }
                         .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
+                            Button {
                                 Task { await deleteUser(user) }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                DestructiveLabel(text: "Delete")
                             }
+                            .tint(.red)
                         }
                     }
                 }
@@ -607,11 +609,12 @@ struct APIKeysView: View {
                         APIKeyRow(apiKey: key)
                             .swipeActions(edge: .trailing) {
                                 if key.isProtected != true {
-                                    Button(role: .destructive) {
+                                    Button {
                                         Task { await deleteKey(key) }
                                     } label: {
-                                        Label("Delete", systemImage: "trash")
+                                        DestructiveLabel(text: "Delete")
                                     }
+                                    .tint(.red)
                                 }
                             }
                     }
@@ -815,18 +818,18 @@ struct ContainerRegistriesView: View {
             } else {
                 List {
                     ForEach(registries) { registry in
-                        Button {
-                            editingRegistry = registry
-                        } label: {
-                            RegistryRow(registry: registry)
-                        }
-                        .buttonStyle(.plain)
+                        PressableRegistryRow(
+                            registry: registry,
+                            onEdit: { editingRegistry = registry },
+                            onDelete: { Task { await deleteRegistry(registry) } }
+                        )
                         .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
+                            Button {
                                 Task { await deleteRegistry(registry) }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                DestructiveLabel(text: "Delete")
                             }
+                            .tint(.red)
                         }
                     }
                 }
@@ -913,18 +916,18 @@ struct TemplateRegistriesView: View {
             } else {
                 List {
                     ForEach(registries) { registry in
-                        Button {
-                            editingRegistry = registry
-                        } label: {
-                            TemplateRegistryRow(registry: registry)
-                        }
-                        .buttonStyle(.plain)
+                        PressableTemplateRegistryRow(
+                            registry: registry,
+                            onEdit: { editingRegistry = registry },
+                            onDelete: { Task { await deleteTemplateRegistry(registry) } }
+                        )
                         .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
+                            Button {
                                 Task { await deleteTemplateRegistry(registry) }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                DestructiveLabel(text: "Delete")
                             }
+                            .tint(.red)
                         }
                     }
                 }
@@ -1021,6 +1024,41 @@ struct RegistryRow: View {
     }
 }
 
+private struct PressableRegistryRow: View {
+    let registry: ContainerRegistry
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        Button(action: onEdit) {
+            RegistryRow(registry: registry)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(action: onEdit) {
+                Label("Edit", systemImage: "pencil")
+            }
+            Button(role: .destructive, action: onDelete) {
+                DestructiveLabel(text: "Delete")
+            }
+            .tint(.red)
+        } preview: {
+            RowPreviewCard(
+                icon: "shippingbox.fill",
+                iconColor: .accentColor,
+                title: registry.name ?? registry.id,
+                badges: [
+                    .init(text: registry.enabled ? "Enabled" : "Disabled",
+                          color: registry.enabled ? .green : .secondary)
+                ],
+                details: [
+                    .init(icon: "link", label: "URL", value: registry.url)
+                ]
+            )
+        }
+    }
+}
+
 struct TemplateRegistryRow: View {
     let registry: TemplateRegistry
 
@@ -1045,6 +1083,49 @@ struct TemplateRegistryRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+private struct PressableTemplateRegistryRow: View {
+    let registry: TemplateRegistry
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        Button(action: onEdit) {
+            TemplateRegistryRow(registry: registry)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button(action: onEdit) {
+                Label("Edit", systemImage: "pencil")
+            }
+            Button(role: .destructive, action: onDelete) {
+                DestructiveLabel(text: "Delete")
+            }
+            .tint(.red)
+        } preview: {
+            RowPreviewCard(
+                icon: "doc.text.fill",
+                iconColor: .indigo,
+                title: registry.name,
+                badges: [
+                    .init(text: registry.enabled ? "Enabled" : "Disabled",
+                          color: registry.enabled ? .green : .secondary)
+                ],
+                details: detailRows
+            )
+        }
+    }
+
+    private var detailRows: [RowPreviewCard.PreviewDetail] {
+        var rows: [RowPreviewCard.PreviewDetail] = [
+            .init(icon: "link", label: "URL", value: registry.url)
+        ]
+        if let error = registry.lastFetchError, !error.isEmpty {
+            rows.append(.init(icon: "exclamationmark.triangle", label: "Last Fetch Error", value: error))
+        }
+        return rows
     }
 }
 

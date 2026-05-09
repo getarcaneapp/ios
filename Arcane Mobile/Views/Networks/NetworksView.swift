@@ -51,12 +51,23 @@ struct NetworksView: View {
                         NavigationLink(destination: NetworkDetailView(network: network, environmentID: environmentID)) {
                             NetworkRow(network: network)
                         }
-                        .swipeActions(edge: .trailing) {
+                        .contextMenu {
                             Button(role: .destructive) {
                                 Task { await deleteNetwork(network) }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                DestructiveLabel(text: "Delete")
                             }
+                            .tint(.red)
+                        } preview: {
+                            networkPreview(network)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button {
+                                Task { await deleteNetwork(network) }
+                            } label: {
+                                DestructiveLabel(text: "Delete")
+                            }
+                            .tint(.red)
                         }
                     }
                 }
@@ -131,6 +142,33 @@ struct NetworksView: View {
             }
             .presentationDetents([.medium])
         }
+    }
+
+    private func networkPreview(_ network: NetworkInfo) -> some View {
+        var badges: [RowPreviewCard.PreviewBadge] = [
+            .init(text: network.driver.capitalized, color: .teal)
+        ]
+        if network.isInternal {
+            badges.append(.init(text: "Internal", color: .orange))
+        }
+        var details: [RowPreviewCard.PreviewDetail] = [
+            .init(icon: "globe", label: "Scope", value: network.scope.capitalized)
+        ]
+        if network.containerCount > 0 {
+            details.insert(.init(
+                icon: "shippingbox",
+                label: "Connected Containers",
+                value: "\(network.containerCount)"
+            ), at: 0)
+        }
+        details.append(.init(icon: "number", label: "ID", value: network.id, monospaced: true))
+        return RowPreviewCard(
+            icon: "network",
+            iconColor: .teal,
+            title: network.name.isEmpty ? network.id : network.name,
+            badges: badges,
+            details: details
+        )
     }
 
     private func loadNetworks(refresh: Bool = false) async {

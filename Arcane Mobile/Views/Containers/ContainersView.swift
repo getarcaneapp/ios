@@ -137,9 +137,65 @@ struct ContainersView: View {
         NavigationLink(destination: ContainerDetailView(container: container, environmentID: environmentID)) {
             ContainerRow(container: container)
         }
+        .contextMenu {
+            containerMenuActions(for: container)
+        } preview: {
+            containerPreview(container)
+        }
         .swipeActions(edge: .trailing) {
             containerSwipeActions(for: container)
         }
+    }
+
+    @ViewBuilder
+    private func containerMenuActions(for container: ContainerInfo) -> some View {
+        if container.isRunning {
+            Button {
+                Task { await stopContainer(container) }
+            } label: {
+                Label("Stop", systemImage: "stop.fill")
+            }
+            Button {
+                Task { await restartContainer(container) }
+            } label: {
+                Label("Restart", systemImage: "arrow.clockwise")
+            }
+        } else {
+            Button {
+                Task { await startContainer(container) }
+            } label: {
+                Label("Start", systemImage: "play.fill")
+            }
+            Button(role: .destructive) {
+                Task { await removeContainer(container) }
+            } label: {
+                DestructiveLabel(text: "Remove")
+            }
+            .tint(.red)
+        }
+    }
+
+    private func containerPreview(_ container: ContainerInfo) -> some View {
+        var details: [RowPreviewCard.PreviewDetail] = [
+            .init(icon: "photo", label: "Image", value: container.image),
+            .init(icon: "info.circle", label: "Status", value: container.status)
+        ]
+        if let firstName = container.names?.first {
+            let trimmed = firstName.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if !trimmed.isEmpty {
+                details.append(.init(icon: "tag", label: "Name", value: trimmed))
+            }
+        }
+        return RowPreviewCard(
+            icon: "cube.box.fill",
+            iconColor: container.isRunning ? .green : .secondary,
+            title: container.displayName,
+            badges: [
+                .init(text: container.isRunning ? "Running" : "Stopped",
+                      color: container.isRunning ? .green : .secondary)
+            ],
+            details: details
+        )
     }
 
     @ViewBuilder
@@ -164,6 +220,16 @@ struct ContainersView: View {
             }
             .tint(.green)
         }
+    }
+
+    private func removeContainer(_ container: ContainerInfo) async {
+        guard let client = manager.client else { return }
+        do {
+            let path = client.rest.environmentPath(environmentID, "containers/\(container.id)")
+            let _: DataResponse<String> = try await client.rest.delete(path)
+            containers.removeAll { $0.id == container.id }
+            await invalidateContainerCaches()
+        } catch {}
     }
 
     private func loadContainers(refresh: Bool = false) async {

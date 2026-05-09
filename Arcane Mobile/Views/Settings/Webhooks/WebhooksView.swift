@@ -19,12 +19,31 @@ struct WebhooksView: View {
                 List {
                     ForEach(webhooks) { webhook in
                         WebhookRow(webhook: webhook)
-                            .swipeActions(edge: .trailing) {
+                            .contextMenu {
+                                Button {
+                                    Task { await toggleWebhook(webhook) }
+                                } label: {
+                                    Label(
+                                        webhook.enabled ? "Disable" : "Enable",
+                                        systemImage: webhook.enabled ? "pause.circle" : "play.circle"
+                                    )
+                                }
                                 Button(role: .destructive) {
                                     Task { await deleteWebhook(webhook) }
                                 } label: {
-                                    Label("Delete", systemImage: "trash")
+                                    DestructiveLabel(text: "Delete")
                                 }
+                                .tint(.red)
+                            } preview: {
+                                webhookPreview(webhook)
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button {
+                                    Task { await deleteWebhook(webhook) }
+                                } label: {
+                                    DestructiveLabel(text: "Delete")
+                                }
+                                .tint(.red)
                             }
                             .swipeActions(edge: .leading) {
                                 Button {
@@ -116,6 +135,37 @@ struct WebhooksView: View {
         await cached.invalidate(envID: manager.activeEnvironmentID, paths: [
             client.rest.environmentPath(manager.activeEnvironmentID, "webhooks") + "*"
         ])
+    }
+
+    private func webhookPreview(_ webhook: WebhookSummary) -> some View {
+        var details: [RowPreviewCard.PreviewDetail] = [
+            .init(icon: "arrow.right.circle", label: "Action", value: webhook.actionType.capitalized),
+            .init(icon: "key", label: "Token", value: webhook.tokenPrefix + "…")
+        ]
+        if let targetName = webhook.targetName, !targetName.isEmpty {
+            details.insert(.init(icon: "scope", label: "Target", value: targetName), at: 0)
+        }
+        return RowPreviewCard(
+            icon: webhookIcon(for: webhook.targetType),
+            iconColor: .accentColor,
+            title: webhook.name,
+            badges: [
+                .init(text: webhook.enabled ? "Enabled" : "Disabled",
+                      color: webhook.enabled ? .green : .secondary),
+                .init(text: webhook.targetType.capitalized, color: .accentColor)
+            ],
+            details: details
+        )
+    }
+
+    private func webhookIcon(for targetType: String) -> String {
+        switch targetType {
+        case "container": return "shippingbox"
+        case "project": return "folder"
+        case "updater": return "arrow.triangle.2.circlepath"
+        case "gitops": return "arrow.triangle.branch"
+        default: return "link"
+        }
     }
 }
 

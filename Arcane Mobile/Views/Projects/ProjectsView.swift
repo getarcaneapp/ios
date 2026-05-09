@@ -162,6 +162,67 @@ struct ProjectsView: View {
         NavigationLink(destination: ProjectDetailView(project: project, environmentID: environmentID)) {
             ProjectRow(project: project)
         }
+        .contextMenu {
+            Button(role: .destructive) {
+                Task { await deleteProject(project) }
+            } label: {
+                DestructiveLabel(text: "Delete")
+            }
+            .tint(.red)
+        } preview: {
+            projectPreview(project)
+        }
+        .swipeActions(edge: .trailing) {
+            Button {
+                Task { await deleteProject(project) }
+            } label: {
+                DestructiveLabel(text: "Delete")
+            }
+            .tint(.red)
+        }
+    }
+
+    private func projectPreview(_ project: Project) -> some View {
+        let status = project.status.lowercased()
+        let color: Color
+        switch status {
+        case "running": color = .green
+        case "stopped", "exited": color = .red
+        case "partial", "partially running": color = .orange
+        default: color = .secondary
+        }
+        var details: [RowPreviewCard.PreviewDetail] = [
+            .init(icon: "circle.grid.2x2", label: "Services",
+                  value: "\(project.runningCount)/\(project.serviceCount) running")
+        ]
+        if let version = project.composeVersion {
+            details.append(.init(icon: "doc.text", label: "Compose Version", value: version))
+        }
+        details.append(.init(icon: "calendar", label: "Created", value: project.createdAt))
+        return RowPreviewCard(
+            icon: "square.stack.3d.up.fill",
+            iconColor: color,
+            title: project.displayName,
+            badges: [
+                .init(text: project.status.capitalized, color: color)
+            ],
+            details: details
+        )
+    }
+
+    private func deleteProject(_ project: Project) async {
+        guard let client = manager.client else { return }
+        do {
+            let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/destroy")
+            let _: DataResponse<String> = try await client.rest.delete(path)
+            projects.removeAll { $0.id == project.id }
+            if let cached = manager.cached {
+                await cached.invalidate(envID: environmentID, paths: [
+                    client.rest.environmentPath(environmentID, "projects"),
+                    client.rest.environmentPath(environmentID, "projects/*")
+                ])
+            }
+        } catch {}
     }
 
     private func isStopped(_ project: Project) -> Bool {

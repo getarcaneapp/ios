@@ -56,12 +56,23 @@ struct VolumesView: View {
                         NavigationLink(destination: VolumeDetailView(volume: volume, environmentID: environmentID)) {
                             VolumeRow(volume: volume, size: sizes[volume.name])
                         }
-                        .swipeActions(edge: .trailing) {
+                        .contextMenu {
                             Button(role: .destructive) {
                                 Task { await deleteVolume(volume) }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                DestructiveLabel(text: "Delete")
                             }
+                            .tint(.red)
+                        } preview: {
+                            volumePreview(volume)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button {
+                                Task { await deleteVolume(volume) }
+                            } label: {
+                                DestructiveLabel(text: "Delete")
+                            }
+                            .tint(.red)
                         }
                     }
                 }
@@ -136,6 +147,31 @@ struct VolumesView: View {
             }
             .presentationDetents([.medium])
         }
+    }
+
+    private func volumePreview(_ volume: VolumeInfo) -> some View {
+        var badges: [RowPreviewCard.PreviewBadge] = []
+        if let inUse = volume.inUse {
+            badges.append(.init(text: inUse ? "In Use" : "Unused",
+                                color: inUse ? .green : .secondary))
+        }
+        var details: [RowPreviewCard.PreviewDetail] = [
+            .init(icon: "gearshape", label: "Driver", value: volume.driver),
+            .init(icon: "globe", label: "Scope", value: volume.scope.capitalized)
+        ]
+        if let size = sizes[volume.name], size > 0 {
+            details.insert(.init(icon: "internaldrive", label: "Size", value: size.byteString), at: 0)
+        }
+        if !volume.mountpoint.isEmpty {
+            details.append(.init(icon: "folder", label: "Mount Point", value: volume.mountpoint))
+        }
+        return RowPreviewCard(
+            icon: "externaldrive.fill",
+            iconColor: .orange,
+            title: volume.name,
+            badges: badges,
+            details: details
+        )
     }
 
     private func loadVolumes(refresh: Bool = false) async {
