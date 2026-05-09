@@ -178,6 +178,17 @@ nonisolated struct VolumeInfo: Codable, Sendable, Identifiable {
     var optionsDictionary: [String: String] { options ?? [:] }
 }
 
+// Tolerant project-files model — the OpenAPI-generated `ProjectDetails` type
+// requires Int64 fields (mem_limit, cpu_quota, shm_size, stop_grace_period,
+// etc.) on parsed compose services, but the backend can pass those through
+// as strings ("256m", "30s") since compose accepts either form. This struct
+// only decodes the fields the compose-file editor actually needs.
+nonisolated struct ProjectFiles: Codable, Sendable {
+    let name: String
+    let composeContent: String?
+    let envContent: String?
+}
+
 extension NetworkInfo: @retroactive Identifiable {
     var isInternal: Bool { false }
     var containerCount: Int { 0 }

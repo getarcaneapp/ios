@@ -278,6 +278,10 @@ struct ProjectDetailView: View {
     }
 }
 
+private struct ProjectFilesEnvelope: Decodable {
+    let data: ProjectFiles?
+}
+
 struct ComposeFileView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
@@ -392,10 +396,17 @@ struct ComposeFileView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(projectID)")
-            let project: Project = try await client.rest.get(path)
-            name = project.name
-            let loadedCompose = project.composeContent ?? ""
-            let loadedEnv = project.envContent ?? ""
+            // Bypass the SDK's strict OpenAPI decoder — the parsed `services`
+            // array on ProjectDetails requires Int64 for fields like memLimit
+            // and shmSize, but compose preserves those as strings ("256m").
+            let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
+            let envelope = try JSONDecoder().decode(ProjectFilesEnvelope.self, from: raw)
+            guard let files = envelope.data else {
+                throw ArcaneError.decoding("Missing project files in response")
+            }
+            name = files.name
+            let loadedCompose = files.composeContent ?? ""
+            let loadedEnv = files.envContent ?? ""
             composeContent = loadedCompose
             envContent = loadedEnv
             originalCompose = loadedCompose
@@ -418,7 +429,9 @@ struct ComposeFileView: View {
                 "envContent": AnyCodable(envContent)
             ]
             let path = client.rest.environmentPath(environmentID, "projects/\(projectID)")
-            let _: Project = try await client.rest.put(path, body: body)
+            // PUT also returns ProjectDetails; bypass the strict decoder since
+            // we don't use the response body.
+            _ = try await client.transport.rawRequest(path, method: "PUT", body: body)
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
