@@ -130,8 +130,8 @@ struct EnvironmentsView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            if let result: [ServerEnvironment] = try await cached.getGlobal(
-                "environments", as: [ServerEnvironment].self, policy: .environments,
+            if let result: [ServerEnvironment] = try await cached.getListGlobal(
+                "environments", elementType: ServerEnvironment.self, policy: .environments,
                 refresh: refresh,
                 onFresh: { fresh in environments = fresh }
             ) {

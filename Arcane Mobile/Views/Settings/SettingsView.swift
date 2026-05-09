@@ -408,8 +408,8 @@ struct UsersView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            if let result: [ArcaneUser] = try await cached.getGlobal(
-                "users", as: [ArcaneUser].self, policy: .users,
+            if let result: [ArcaneUser] = try await cached.getListGlobal(
+                "users", elementType: ArcaneUser.self, policy: .users,
                 refresh: refresh,
                 onFresh: { fresh in users = fresh }
             ) {
@@ -657,8 +657,8 @@ struct APIKeysView: View {
         if apiKeys.isEmpty { isLoading = true }
         defer { isLoading = false }
         do {
-            if let result: [APIKey] = try await cached.getGlobal(
-                "api-keys", as: [APIKey].self, policy: .apiKeys,
+            if let result: [APIKey] = try await cached.getListGlobal(
+                "api-keys", elementType: APIKey.self, policy: .apiKeys,
                 refresh: refresh,
                 onFresh: { fresh in apiKeys = fresh }
             ) {
@@ -881,8 +881,8 @@ struct ContainerRegistriesView: View {
         if registries.isEmpty { isLoading = true }
         defer { isLoading = false }
         do {
-            if let result: [ContainerRegistry] = try await cached.getGlobal(
-                "container-registries", as: [ContainerRegistry].self,
+            if let result: [ContainerRegistry] = try await cached.getListGlobal(
+                "container-registries", elementType: ContainerRegistry.self,
                 policy: .registries, refresh: refresh,
                 onFresh: { fresh in registries = fresh }
             ) {
@@ -985,8 +985,8 @@ struct TemplateRegistriesView: View {
         if registries.isEmpty { isLoading = true }
         defer { isLoading = false }
         do {
-            if let result: [TemplateRegistry] = try await cached.getGlobal(
-                "templates/registries", as: [TemplateRegistry].self,
+            if let result: [TemplateRegistry] = try await cached.getListGlobal(
+                "templates/registries", elementType: TemplateRegistry.self,
                 policy: .templates, refresh: refresh,
                 onFresh: { fresh in registries = fresh }
             ) {

@@ -93,8 +93,8 @@ struct WebhooksView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks")
-            if let result: [WebhookSummary] = try await cached.get(
-                path, as: [WebhookSummary].self, policy: .webhooks,
+            if let result: [WebhookSummary] = try await cached.getList(
+                path, elementType: WebhookSummary.self, policy: .webhooks,
                 envID: manager.activeEnvironmentID, refresh: refresh,
                 onFresh: { fresh in webhooks = fresh }
             ) {

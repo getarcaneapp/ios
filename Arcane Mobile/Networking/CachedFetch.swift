@@ -88,6 +88,78 @@ struct CachedClient: Sendable {
         )
     }
 
+    /// List variant of `get(...)`: decodes the response through `LenientArray`
+    /// so a single malformed element doesn't fail the whole list. Use for any
+    /// `[T]` API endpoint where one bad item shouldn't kill the screen.
+    @discardableResult
+    func getList<E: Codable & Sendable>(
+        _ path: String,
+        elementType: E.Type,
+        policy: CachePolicy,
+        envID: EnvironmentID,
+        refresh: Bool = false,
+        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil
+    ) async throws -> [E]? {
+        let onFreshWrapped: (@MainActor @Sendable (LenientArray<E>) -> Void)?
+        if let onFresh {
+            onFreshWrapped = { wrapped in onFresh(wrapped.elements) }
+        } else {
+            onFreshWrapped = nil
+        }
+        let result: LenientArray<E>? = try await get(
+            path, as: LenientArray<E>.self, policy: policy,
+            envID: envID, refresh: refresh, onFresh: onFreshWrapped
+        )
+        return result?.elements
+    }
+
+    /// Global variant of `getList(...)` for non-env-scoped list endpoints
+    /// (`users`, `environments`, `api-keys`, etc.).
+    @discardableResult
+    func getListGlobal<E: Codable & Sendable>(
+        _ path: String,
+        elementType: E.Type,
+        policy: CachePolicy,
+        refresh: Bool = false,
+        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil
+    ) async throws -> [E]? {
+        try await getList(
+            path, elementType: elementType, policy: policy,
+            envID: EnvironmentID(rawValue: "_global_"),
+            refresh: refresh, onFresh: onFresh
+        )
+    }
+
+    /// Custom-fetcher variant that wraps the fetcher result in a `LenientArray`
+    /// before caching, so paginated/raw fetchers also benefit from per-item
+    /// decode tolerance.
+    @discardableResult
+    func getListCustom<E: Codable & Sendable>(
+        path: String,
+        elementType: E.Type,
+        policy: CachePolicy,
+        envID: EnvironmentID,
+        refresh: Bool = false,
+        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil,
+        fetcher: @Sendable @escaping () async throws -> [E]
+    ) async throws -> [E]? {
+        let wrappedFetcher: @Sendable () async throws -> LenientArray<E> = {
+            LenientArray(elements: try await fetcher())
+        }
+        let onFreshWrapped: (@MainActor @Sendable (LenientArray<E>) -> Void)?
+        if let onFresh {
+            onFreshWrapped = { wrapped in onFresh(wrapped.elements) }
+        } else {
+            onFreshWrapped = nil
+        }
+        let result: LenientArray<E>? = try await getCustom(
+            path: path, as: LenientArray<E>.self, policy: policy,
+            envID: envID, refresh: refresh,
+            onFresh: onFreshWrapped, fetcher: wrappedFetcher
+        )
+        return result?.elements
+    }
+
     /// Same SWR semantics as `get(...)`, but the caller supplies the fetcher.
     /// Use when the underlying call isn't a plain `client.rest.get(...)`
     /// (e.g. custom raw-decode paths like the Volumes list).

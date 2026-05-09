@@ -178,8 +178,8 @@ struct NetworksView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "networks")
-            if let result: [NetworkInfo] = try await cached.get(
-                path, as: [NetworkInfo].self, policy: .networks,
+            if let result: [NetworkInfo] = try await cached.getList(
+                path, elementType: NetworkInfo.self, policy: .networks,
                 envID: environmentID, refresh: refresh,
                 onFresh: { fresh in networks = fresh }
             ) {

@@ -285,8 +285,8 @@ struct ImagesView: View {
                 let fetcher: @Sendable () async throws -> [ImageInfo] = {
                     try await client.rest.get(path, query: query)
                 }
-                if let result: [ImageInfo] = try await cached.getCustom(
-                    path: cachePath, as: [ImageInfo].self, policy: .imagesList,
+                if let result: [ImageInfo] = try await cached.getListCustom(
+                    path: cachePath, elementType: ImageInfo.self, policy: .imagesList,
                     envID: environmentID, refresh: refresh,
                     onFresh: { fresh in
                         images = fresh

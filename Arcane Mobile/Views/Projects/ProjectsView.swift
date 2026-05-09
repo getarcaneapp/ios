@@ -101,6 +101,10 @@ struct ProjectsView: View {
                     } label: {
                         Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
                     }
+                    Divider()
+                    NavigationLink(destination: ArchivedProjectsView(environmentID: environmentID)) {
+                        Label("Archived Projects", systemImage: "archivebox")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
@@ -148,8 +152,8 @@ struct ProjectsView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "projects")
-            if let result: [Project] = try await cached.get(
-                path, as: [Project].self, policy: .projects,
+            if let result: [Project] = try await cached.getList(
+                path, elementType: Project.self, policy: .projects,
                 envID: environmentID, refresh: refresh,
                 onFresh: { fresh in projects = fresh }
             ) {

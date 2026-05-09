@@ -53,7 +53,9 @@ struct ImageDetailView: View {
                     }
                 }
 
-                imageConfigSection(details.config)
+                if let config = details.config {
+                    imageConfigSection(config)
+                }
 
                 vulnerabilitiesSection
             }

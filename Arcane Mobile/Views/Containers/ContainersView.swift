@@ -239,8 +239,8 @@ struct ContainersView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "containers")
-            if let result: [ContainerInfo] = try await cached.get(
-                path, as: [ContainerInfo].self, policy: .containersList,
+            if let result: [ContainerInfo] = try await cached.getList(
+                path, elementType: ContainerInfo.self, policy: .containersList,
                 envID: environmentID, refresh: refresh,
                 onFresh: { fresh in containers = fresh }
             ) {

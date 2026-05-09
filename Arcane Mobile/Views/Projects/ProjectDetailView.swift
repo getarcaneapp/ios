@@ -81,6 +81,19 @@ struct ProjectDetailView: View {
                     } label: {
                         Label("View Compose File", systemImage: "doc.text")
                     }
+                    if currentProject.isArchived {
+                        Button {
+                            Task { await unarchiveProject() }
+                        } label: {
+                            Label("Unarchive Project", systemImage: "tray.and.arrow.up")
+                        }
+                    } else {
+                        Button {
+                            Task { await archiveProject() }
+                        } label: {
+                            Label("Archive Project", systemImage: "archivebox")
+                        }
+                    }
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
@@ -252,6 +265,40 @@ struct ProjectDetailView: View {
         }
     }
 
+    private func archiveProject() async {
+        guard let client = manager.client else { return }
+        isActioning = true
+        actionStatus = "Archiving…"
+        errorMessage = nil
+        defer { isActioning = false }
+        do {
+            let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/archive")
+            let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
+            await invalidateProjectCaches()
+            dismiss()
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+            actionStatus = nil
+        }
+    }
+
+    private func unarchiveProject() async {
+        guard let client = manager.client else { return }
+        isActioning = true
+        actionStatus = "Unarchiving…"
+        errorMessage = nil
+        defer { isActioning = false }
+        do {
+            let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/unarchive")
+            let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
+            await invalidateProjectCaches()
+            dismiss()
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+            actionStatus = nil
+        }
+    }
+
     private func loadProject(refresh: Bool = false) async {
         guard let client = manager.client, let cached = manager.cached else { return }
         if refreshedProject == nil { isLoading = true }
@@ -271,7 +318,7 @@ struct ProjectDetailView: View {
     private func invalidateProjectCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
         await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "projects"),
+            client.rest.environmentPath(environmentID, "projects") + "*",
             client.rest.environmentPath(environmentID, "projects/*"),
             client.rest.environmentPath(environmentID, "containers"),
             client.rest.environmentPath(environmentID, "containers/*")

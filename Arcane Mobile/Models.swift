@@ -32,27 +32,23 @@ enum ListSortOrder: String, CaseIterable, Identifiable {
 }
 
 // MARK: - App compatibility names backed by libarcane-swift exports
+//
+// Display models (`Project`, `ContainerInfo`, `ImageInfo`, `ImageDetails`,
+// `NetworkInfo`, `ServerEnvironment`, `ArcaneUser`, `APIKey`,
+// `ContainerRegistry`, `TemplateRegistry`, `ComposeTemplate`,
+// `ComposeTemplateContent`, `WebhookSummary`) live in `ResilientModels.swift`
+// as hand-written, schema-tolerant structs that decode every field with
+// `decodeIfPresent`. Only request/sub-type aliases that flow *into* the SDK
+// stay here.
 
-typealias ImageInfo = ImageSummary
-typealias ContainerInfo = ContainerSummary
-typealias ServerEnvironment = Arcane.Environment
-typealias Project = ProjectDetails
-typealias NetworkInfo = NetworkSummary
-typealias ImageDetails = ImageDetailSummary
-typealias ImageConfig = Components.Schemas.DetailSummaryConfigStruct
-typealias ArcaneUser = User
 typealias CreateUserRequest = CreateUser
 typealias UpdateUserRequest = UpdateUser
-typealias APIKey = ApiKey
 typealias CreateAPIKeyRequest = CreateApiKey
 typealias APIKeyCreated = ApiKeyCreatedDto
 typealias CreateContainerRegistryRequest = Components.Schemas.CreateContainerRegistryRequest
 typealias UpdateContainerRegistryRequest = Components.Schemas.UpdateContainerRegistryRequest
-typealias TemplateRegistry = Components.Schemas.TemplateTemplateRegistry
 typealias CreateTemplateRegistryRequest = Components.Schemas.TemplateCreateRegistryRequest
 typealias UpdateTemplateRegistryRequest = Components.Schemas.TemplateUpdateRegistryRequest
-typealias ComposeTemplate = Components.Schemas.TemplateTemplate
-typealias ComposeTemplateContent = Components.Schemas.TemplateTemplateContent
 typealias AnyCodable = JSONValue
 
 // MARK: - Notification type aliases
@@ -97,24 +93,9 @@ struct DataResponse<T: Codable & Sendable>: Codable, Sendable {
 
 // MARK: - Display helpers
 
-extension ImageInfo: @retroactive Identifiable {
-    var displayName: String {
-        if let tag = repoTags?.first(where: { $0 != "<none>:<none>" }) { return tag }
-        if !repo.isEmpty { return tag.isEmpty ? repo : "\(repo):\(tag)" }
-        return String(id.prefix(12))
-    }
-}
-
-extension ContainerInfo: @retroactive Identifiable {
-    var iconUrl: String? { labels.additionalProperties["com.getarcaneapp.icon"] }
-
-    var displayName: String {
-        let first = names?.first?.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
-        return first.isEmpty ? String(id.prefix(12)) : first
-    }
-
-    var isRunning: Bool { state.lowercased() == "running" }
-}
+// `ImageInfo`, `ContainerInfo`, `ServerEnvironment`, `Project` and their
+// computed properties (displayName, isRunning, statusColor, isOnline, etc.)
+// now live as concrete types in `ResilientModels.swift`.
 
 extension ContainerConfig {
     var image: String? { nil }
@@ -123,32 +104,6 @@ extension ContainerConfig {
 
 extension ContainerHostConfig {
     var binds: [String]? { nil }
-}
-
-extension ImageConfig {
-    var entrypoint: [String]? { nil }
-    var user: String? { nil }
-    var labels: [String: String]? { nil }
-}
-
-extension ServerEnvironment: @retroactive Identifiable {
-    var url: String? { apiUrl }
-    var agentVersion: String? { nil }
-    var isOnline: Bool? { status.lowercased() == "online" || status.lowercased() == "up" || connected == true }
-}
-
-extension Project: @retroactive Identifiable {
-    var displayName: String { name }
-    var composeVersion: String? { nil }
-
-    var statusColor: String {
-        switch status.lowercased() {
-        case "running": return "green"
-        case "stopped", "exited": return "red"
-        case "partial", "partially running": return "orange"
-        default: return "gray"
-        }
-    }
 }
 
 nonisolated struct VolumeSizeInfo: Codable, Sendable {
@@ -189,15 +144,9 @@ nonisolated struct ProjectFiles: Codable, Sendable {
     let envContent: String?
 }
 
-extension NetworkInfo: @retroactive Identifiable {
-    var isInternal: Bool { false }
-    var containerCount: Int { 0 }
-    var attachable: Bool? { nil }
-    var ipam: NetworkIPAM? { nil }
-    var containers: [String: NetworkContainer]? { nil }
-    var labelsDictionary: [String: String] { labels.additionalProperties }
-    var optionsDictionary: [String: String] { options.additionalProperties }
-}
+// `NetworkInfo`, `ArcaneUser`, `APIKey`, `ContainerRegistry`,
+// `TemplateRegistry`, `ComposeTemplate`, `WebhookSummary` and their helpers
+// now live as concrete types in `ResilientModels.swift`.
 
 struct NetworkContainer: Codable, Hashable, Sendable {
     var name: String?
@@ -206,29 +155,6 @@ struct NetworkContainer: Codable, Hashable, Sendable {
     var iPv4Address: String?
     var iPv6Address: String?
 }
-
-extension ArcaneUser: @retroactive Identifiable {
-    var isAdmin: Bool { roles?.contains("admin") ?? false }
-    var displayUsername: String { username }
-    var lastLogin: String? { nil }
-}
-
-extension APIKey: @retroactive Identifiable {
-    var isProtected: Bool? { isStatic }
-    var permissions: [String]? { nil }
-}
-
-extension ContainerRegistry: @retroactive Identifiable {
-    var name: String? { url }
-}
-
-extension TemplateRegistry: @retroactive Identifiable {}
-
-extension ComposeTemplate: @retroactive Identifiable {
-    var iconUrl: String? { metadata?.iconUrl }
-}
-
-extension WebhookSummary: @retroactive Identifiable {}
 
 extension NotificationResponse: @retroactive Identifiable {}
 

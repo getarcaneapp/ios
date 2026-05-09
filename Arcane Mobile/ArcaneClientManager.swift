@@ -83,12 +83,12 @@ final class ArcaneClientManager {
         do {
             let response = try await client.auth.login(username: username, password: password)
             currentUser = ArcaneUser(
-                canDelete: true,
-                email: response.user.email,
                 id: response.user.id,
-                requiresPasswordChange: response.user.requiresPasswordChange,
+                username: response.user.username,
+                email: response.user.email,
                 roles: response.user.roles,
-                username: response.user.username
+                canDelete: true,
+                requiresPasswordChange: response.user.requiresPasswordChange
             )
             authState = .authenticated
         } catch let error as ArcaneError {
@@ -121,12 +121,12 @@ final class ArcaneClientManager {
             }
             let user = try await client.auth.me()
             currentUser = ArcaneUser(
-                canDelete: true,
-                email: user.email,
                 id: user.id,
-                requiresPasswordChange: user.requiresPasswordChange,
+                username: user.username,
+                email: user.email,
                 roles: user.roles,
-                username: user.username
+                canDelete: true,
+                requiresPasswordChange: user.requiresPasswordChange
             )
             authState = .authenticated
         } catch {

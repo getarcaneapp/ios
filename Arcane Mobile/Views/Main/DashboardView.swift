@@ -283,8 +283,8 @@ private func dockerErrorBanner(_ error: String) -> some View {
 
     private func loadEnvironmentsCached(refresh: Bool) async -> [ServerEnvironment] {
         guard let cached = manager.cached else { return [] }
-        return (try? await cached.getGlobal(
-            "environments", as: [ServerEnvironment].self,
+        return (try? await cached.getListGlobal(
+            "environments", elementType: ServerEnvironment.self,
             policy: .environments, refresh: refresh,
             onFresh: { fresh in environments = fresh }
         )) ?? []
@@ -293,8 +293,8 @@ private func dockerErrorBanner(_ error: String) -> some View {
     private func loadProjectsCountCached(client: ArcaneClient, refresh: Bool) async -> [Project] {
         guard let cached = manager.cached else { return [] }
         let path = client.rest.environmentPath(envID, "projects")
-        return (try? await cached.get(
-            path, as: [Project].self, policy: .projects,
+        return (try? await cached.getList(
+            path, elementType: Project.self, policy: .projects,
             envID: envID, refresh: refresh,
             onFresh: { fresh in projectCount = fresh.count }
         )) ?? []
