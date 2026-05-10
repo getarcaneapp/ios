@@ -121,10 +121,6 @@ struct AppearanceSettingsView: View {
                 }
                 .foregroundStyle(.red)
             }
-
-            Section("Preview") {
-                previewContent
-            }
         }
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
@@ -133,38 +129,5 @@ struct AppearanceSettingsView: View {
                 customColor = color
             }
         }
-    }
-
-    @ViewBuilder
-    private var previewContent: some View {
-        let previewColor: Color = {
-            if accentColorHex.isEmpty { return .accentColor }
-            return Color(hex: accentColorHex) ?? .accentColor
-        }()
-
-        VStack(spacing: 16) {
-            HStack(spacing: 16) {
-                Image(systemName: "star.fill")
-                    .foregroundStyle(previewColor)
-                    .font(.title2)
-                Image(systemName: "bell.fill")
-                    .foregroundStyle(previewColor)
-                    .font(.title2)
-                Image(systemName: "gear")
-                    .foregroundStyle(previewColor)
-                    .font(.title2)
-            }
-
-            Toggle("Sample Toggle", isOn: .constant(true))
-                .tint(previewColor)
-
-            ProgressView(value: 0.65)
-                .tint(previewColor)
-
-            Button("Sample Button") {}
-                .buttonStyle(.borderedProminent)
-                .tint(previewColor)
-        }
-        .padding(.vertical, 8)
     }
 }

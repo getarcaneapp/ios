@@ -3,6 +3,8 @@ import Arcane
 
 struct ContainerDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.dismiss) private var dismiss
     let container: ContainerInfo
     let environmentID: EnvironmentID
 
@@ -387,6 +389,7 @@ struct ContainerDetailView: View {
                 let _: ContainerInfo = try await client.rest.post(path, body: String?.none)
             }
             await invalidateContainerCaches()
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
             await loadDetails()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -401,6 +404,8 @@ struct ContainerDetailView: View {
             let path = client.rest.environmentPath(environmentID, "containers/\(container.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
             await invalidateContainerCaches()
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
+            dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -413,6 +418,7 @@ struct ContainerDetailView: View {
         do {
             try await client.renameContainer(envID: environmentID, id: container.id, newName: newName)
             await invalidateContainerCaches()
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
             await loadDetails()
             return .success(())
         } catch {

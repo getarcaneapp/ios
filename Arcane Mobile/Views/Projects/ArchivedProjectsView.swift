@@ -3,6 +3,7 @@ import Arcane
 
 struct ArchivedProjectsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
 
     @State private var projects: [Project] = []
@@ -14,6 +15,10 @@ struct ArchivedProjectsView: View {
         projects.sorted { lhs, rhs in
             (lhs.archivedAt ?? .distantPast) > (rhs.archivedAt ?? .distantPast)
         }
+    }
+
+    private var mutationVersion: Int {
+        mutationStore.version(kind: .projects, envID: environmentID)
     }
 
     var body: some View {
@@ -61,6 +66,9 @@ struct ArchivedProjectsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .refreshable { await load(refresh: true) }
+        .onChange(of: mutationVersion) { _, _ in
+            Task { await load(refresh: true) }
+        }
     }
 
     private func load(refresh: Bool = false) async {
@@ -98,6 +106,7 @@ struct ArchivedProjectsView: View {
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             projects.removeAll { $0.id == project.id }
             await invalidateProjectCaches()
+            mutationStore.markChanged(kind: .projects, envID: environmentID)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

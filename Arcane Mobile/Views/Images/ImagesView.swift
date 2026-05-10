@@ -3,6 +3,7 @@ import Arcane
 
 struct ImagesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -52,8 +53,19 @@ struct ImagesView: View {
         filtered.filter { !$0.inUse }
     }
 
+    private var listSections: [StableListSection<String, ImageInfo>] {
+        [
+            .init(id: "used", title: "Used", items: usedImages),
+            .init(id: "unused", title: "Unused", items: unusedImages)
+        ]
+    }
+
     private var isAdmin: Bool {
         manager.currentUser?.isAdmin == true
+    }
+
+    private var mutationVersion: Int {
+        mutationStore.version(kind: .images, envID: environmentID)
     }
 
     var body: some View {
@@ -78,20 +90,8 @@ struct ImagesView: View {
                 }
             } else {
                 List {
-                    if !usedImages.isEmpty {
-                        Section("Used") {
-                            ForEach(usedImages) { image in
-                                imageLink(image)
-                            }
-                        }
-                    }
-
-                    if !unusedImages.isEmpty {
-                        Section("Unused") {
-                            ForEach(unusedImages) { image in
-                                imageLink(image)
-                            }
-                        }
+                    StableSectionedList(listSections) { image in
+                        imageLink(image)
                     }
 
                     if hasMore {
@@ -172,9 +172,7 @@ struct ImagesView: View {
             Text("Remove all dangling images. This cannot be undone.")
         }
         .sheet(isPresented: $showPruneSheet) {
-            ImagePruneView(environmentID: environmentID) {
-                await loadImages(reset: true)
-            }
+            ImagePruneView(environmentID: environmentID) {}
         }
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
@@ -202,16 +200,13 @@ struct ImagesView: View {
         .task { await loadImages(reset: true) }
         .refreshable { await loadImages(reset: true, refresh: true) }
         .sheet(isPresented: $showPullSheet) {
-            PullImageView(environmentID: environmentID) {
-                await invalidateImageCaches()
-                await loadImages(reset: true, refresh: true)
-            }
+            PullImageView(environmentID: environmentID) {}
         }
         .sheet(isPresented: $showUploadSheet) {
-            UploadImageView(environmentID: environmentID) {
-                await invalidateImageCaches()
-                await loadImages(reset: true, refresh: true)
-            }
+            UploadImageView(environmentID: environmentID) {}
+        }
+        .onChange(of: mutationVersion) { _, _ in
+            Task { await loadImages(reset: true, refresh: true) }
         }
     }
 
@@ -361,7 +356,7 @@ struct ImagesView: View {
             let path = client.rest.environmentPath(environmentID, "images/prune")
             let _: ImagePruneReport = try await client.rest.post(path, body: body)
             await invalidateImageCaches()
-            await loadImages(reset: true, refresh: true)
+            mutationStore.markChanged(kind: .images, envID: environmentID)
         } catch {}
     }
 
@@ -372,6 +367,7 @@ struct ImagesView: View {
             let _: DataResponse<String> = try await client.rest.delete(path)
             images.removeAll { $0.id == image.id }
             await invalidateImageCaches()
+            mutationStore.markChanged(kind: .images, envID: environmentID)
         } catch {}
     }
 }
@@ -441,6 +437,7 @@ struct UpdateStateBadge: View {
 
 struct PullImageView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
     let onComplete: () async -> Void
@@ -602,6 +599,13 @@ struct PullImageView: View {
                 if !Task.isCancelled, errorMessage == nil {
                     didComplete = true
                     statusLine = "Pull complete"
+                    if let cached = manager.cached {
+                        await cached.invalidate(envID: environmentID, paths: [
+                            client.rest.environmentPath(environmentID, "images") + "*",
+                            client.rest.environmentPath(environmentID, "images/*")
+                        ])
+                    }
+                    mutationStore.markChanged(kind: .images, envID: environmentID)
                     await onComplete()
                 }
             } catch is CancellationError {

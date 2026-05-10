@@ -3,6 +3,7 @@ import Arcane
 
 struct NetworksView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -21,6 +22,10 @@ struct NetworksView: View {
     }
 
     private var activeFilterCount: Int { typeFilter != .all ? 1 : 0 }
+
+    private var mutationVersion: Int {
+        mutationStore.version(kind: .networks, envID: environmentID)
+    }
 
     private var filtered: [NetworkInfo] {
         networks.filter { network in
@@ -108,10 +113,7 @@ struct NetworksView: View {
         .task { await loadNetworks() }
         .refreshable { await loadNetworks(refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
-            CreateNetworkView(environmentID: environmentID) {
-                await invalidateNetworkCaches()
-                await loadNetworks(refresh: true)
-            }
+            CreateNetworkView(environmentID: environmentID) {}
         }
         .alert("Prune Networks", isPresented: $showPruneConfirm) {
             Button("Prune", role: .destructive) { Task { await pruneNetworks() } }
@@ -141,6 +143,9 @@ struct NetworksView: View {
                 }
             }
             .presentationDetents([.medium])
+        }
+        .onChange(of: mutationVersion) { _, _ in
+            Task { await loadNetworks(refresh: true) }
         }
     }
 
@@ -195,6 +200,7 @@ struct NetworksView: View {
             let _: DataResponse<String> = try await client.rest.delete(path)
             networks.removeAll { $0.id == network.id }
             await invalidateNetworkCaches()
+            mutationStore.markChanged(kind: .networks, envID: environmentID)
         } catch {}
     }
 
@@ -204,7 +210,7 @@ struct NetworksView: View {
             let path = client.rest.environmentPath(environmentID, "networks/prune")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateNetworkCaches()
-            await loadNetworks(refresh: true)
+            mutationStore.markChanged(kind: .networks, envID: environmentID)
         } catch {}
     }
 
@@ -259,10 +265,13 @@ struct NetworkRow: View {
 
 struct NetworkDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.dismiss) private var dismiss
     let network: NetworkInfo
     let environmentID: EnvironmentID
 
     @State private var showDeleteConfirm = false
+    @State private var errorMessage: String?
 
     var body: some View {
         List {
@@ -330,13 +339,39 @@ struct NetworkDetailView: View {
             }
         }
         .confirmationDialog("Delete Network", isPresented: $showDeleteConfirm) {
-            Button("Delete", role: .destructive) {}
+            Button("Delete", role: .destructive) {
+                Task { await deleteNetwork() }
+            }
+        }
+        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private func deleteNetwork() async {
+        guard let client = manager.client else { return }
+        do {
+            let path = client.rest.environmentPath(environmentID, "networks/\(network.id)")
+            let _: DataResponse<String> = try await client.rest.delete(path)
+            if let cached = manager.cached {
+                await cached.invalidate(envID: environmentID, paths: [
+                    client.rest.environmentPath(environmentID, "networks"),
+                    client.rest.environmentPath(environmentID, "networks/*")
+                ])
+            }
+            mutationStore.markChanged(kind: .networks, envID: environmentID)
+            dismiss()
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 }
 
 struct CreateNetworkView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
     let onSuccess: () async -> Void
@@ -391,6 +426,13 @@ struct CreateNetworkView: View {
             ]
             let path = client.rest.environmentPath(environmentID, "networks")
             let _: NetworkInfo = try await client.rest.post(path, body: body)
+            if let cached = manager.cached {
+                await cached.invalidate(envID: environmentID, paths: [
+                    client.rest.environmentPath(environmentID, "networks"),
+                    client.rest.environmentPath(environmentID, "networks/*")
+                ])
+            }
+            mutationStore.markChanged(kind: .networks, envID: environmentID)
             await onSuccess(); dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }

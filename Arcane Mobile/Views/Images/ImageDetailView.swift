@@ -3,6 +3,8 @@ import Arcane
 
 struct ImageDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.dismiss) private var dismiss
     let image: ImageInfo
     let environmentID: EnvironmentID
 
@@ -78,6 +80,11 @@ struct ImageDetailView: View {
             Button("Remove", role: .destructive) { Task { await removeImage() } }
         } message: {
             Text("This will remove the image from the host.")
+        }
+        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
         }
     }
 
@@ -253,6 +260,8 @@ struct ImageDetailView: View {
                     client.rest.environmentPath(environmentID, "images/*")
                 ])
             }
+            mutationStore.markChanged(kind: .images, envID: environmentID)
+            dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

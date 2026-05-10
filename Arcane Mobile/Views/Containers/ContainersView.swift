@@ -4,6 +4,7 @@ import Arcane
 struct ContainersView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -53,6 +54,18 @@ struct ContainersView: View {
         filtered.filter { !$0.isRunning && !pinnedIDs.contains($0.id) }
     }
 
+    private var listSections: [StableListSection<String, ContainerInfo>] {
+        [
+            .init(id: "pinned", title: "Pinned", items: pinnedContainers),
+            .init(id: "running", title: "Running", items: runningContainers),
+            .init(id: "stopped", title: "Stopped", items: stoppedContainers)
+        ]
+    }
+
+    private var mutationVersion: Int {
+        mutationStore.version(kind: .containers, envID: environmentID)
+    }
+
     var body: some View {
         Group {
             if isLoading && containers.isEmpty {
@@ -64,28 +77,8 @@ struct ContainersView: View {
                 ContentUnavailableView("No Containers", systemImage: "cube.box", description: Text("No containers found"))
             } else {
                 List {
-                    if !pinnedContainers.isEmpty {
-                        Section("Pinned") {
-                            ForEach(pinnedContainers) { container in
-                                containerLink(container)
-                            }
-                        }
-                    }
-
-                    if !runningContainers.isEmpty {
-                        Section("Running") {
-                            ForEach(runningContainers) { container in
-                                containerLink(container)
-                            }
-                        }
-                    }
-
-                    if !stoppedContainers.isEmpty {
-                        Section("Stopped") {
-                            ForEach(stoppedContainers) { container in
-                                containerLink(container)
-                            }
-                        }
+                    StableSectionedList(listSections) { container in
+                        containerLink(container)
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -148,6 +141,9 @@ struct ContainersView: View {
         }
         .task { await loadContainers() }
         .refreshable { await loadContainers(refresh: true) }
+        .onChange(of: mutationVersion) { _, _ in
+            Task { await loadContainers(refresh: true) }
+        }
     }
 
     private func containerLink(_ container: ContainerInfo) -> some View {
@@ -157,7 +153,7 @@ struct ContainersView: View {
         }
         .contextMenu {
             Button {
-                pinnedStore.togglePin(container.id, kind: .container, envID: environmentID)
+                togglePin(container)
             } label: {
                 Label(isPinned ? "Unpin" : "Pin",
                       systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
@@ -166,9 +162,9 @@ struct ContainersView: View {
         } preview: {
             containerPreview(container)
         }
-        .swipeActions(edge: .leading) {
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
-                pinnedStore.togglePin(container.id, kind: .container, envID: environmentID)
+                togglePinAfterSwipe(container)
             } label: {
                 Label(isPinned ? "Unpin" : "Pin",
                       systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
@@ -177,6 +173,21 @@ struct ContainersView: View {
         }
         .swipeActions(edge: .trailing) {
             containerSwipeActions(for: container)
+        }
+    }
+
+    private func togglePinAfterSwipe(_ container: ContainerInfo) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            togglePin(container)
+        }
+    }
+
+    private func togglePin(_ container: ContainerInfo) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            pinnedStore.togglePin(container.id, kind: .container, envID: environmentID)
         }
     }
 
@@ -262,6 +273,7 @@ struct ContainersView: View {
             let _: DataResponse<String> = try await client.rest.delete(path)
             containers.removeAll { $0.id == container.id }
             await invalidateContainerCaches()
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
         } catch {}
     }
 
@@ -289,7 +301,7 @@ struct ContainersView: View {
         do {
             try await client.containers.start(envID: environmentID, id: container.id)
             await invalidateContainerCaches()
-            await loadContainers(refresh: true)
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
         } catch {}
     }
 
@@ -298,7 +310,7 @@ struct ContainersView: View {
         do {
             try await client.containers.stop(envID: environmentID, id: container.id)
             await invalidateContainerCaches()
-            await loadContainers(refresh: true)
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
         } catch {}
     }
 
@@ -308,7 +320,7 @@ struct ContainersView: View {
             let path = client.rest.environmentPath(environmentID, "containers/prune")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateContainerCaches()
-            await loadContainers(refresh: true)
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
         } catch {}
     }
 
@@ -317,7 +329,7 @@ struct ContainersView: View {
         do {
             try await client.containers.restart(envID: environmentID, id: container.id)
             await invalidateContainerCaches()
-            await loadContainers(refresh: true)
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
         } catch {}
     }
 

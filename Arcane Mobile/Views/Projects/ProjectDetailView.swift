@@ -3,6 +3,7 @@ import Arcane
 
 struct ProjectDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let project: Project
     let environmentID: EnvironmentID
@@ -129,6 +130,7 @@ struct ProjectDetailView: View {
                 body: action.body
             ) {
                 await invalidateProjectCaches()
+                mutationStore.markChanged(kind: .projects, envID: environmentID)
                 await loadProject(refresh: true)
             }
         }
@@ -241,6 +243,7 @@ struct ProjectDetailView: View {
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             actionStatus = "Done."
             await invalidateProjectCaches()
+            mutationStore.markChanged(kind: .projects, envID: environmentID)
             await loadProject(refresh: true)
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -258,6 +261,7 @@ struct ProjectDetailView: View {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/destroy")
             let _: DataResponse<String> = try await client.rest.delete(path)
             await invalidateProjectCaches()
+            mutationStore.markChanged(kind: .projects, envID: environmentID)
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -275,6 +279,7 @@ struct ProjectDetailView: View {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/archive")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateProjectCaches()
+            mutationStore.markChanged(kind: .projects, envID: environmentID)
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -292,6 +297,7 @@ struct ProjectDetailView: View {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/unarchive")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateProjectCaches()
+            mutationStore.markChanged(kind: .projects, envID: environmentID)
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -489,6 +495,7 @@ struct ComposeFileView: View {
 
 struct CreateProjectView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
     let prefilledName: String?
@@ -672,6 +679,13 @@ struct CreateProjectView: View {
             ]
             let path = client.rest.environmentPath(environmentID, "projects")
             let _: Project = try await client.rest.post(path, body: body)
+            if let cached = manager.cached {
+                await cached.invalidate(envID: environmentID, paths: [
+                    client.rest.environmentPath(environmentID, "projects") + "*",
+                    client.rest.environmentPath(environmentID, "projects/*")
+                ])
+            }
+            mutationStore.markChanged(kind: .projects, envID: environmentID)
             await onSuccess(); dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }

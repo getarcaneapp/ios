@@ -4,6 +4,7 @@ import Arcane
 struct ProjectsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -54,8 +55,20 @@ struct ProjectsView: View {
         filtered.filter { isStopped($0) && !pinnedIDs.contains($0.id) }
     }
 
+    private var listSections: [StableListSection<String, Project>] {
+        [
+            .init(id: "pinned", title: "Pinned", items: pinnedProjects),
+            .init(id: "active", title: "Active", items: activeProjects),
+            .init(id: "stopped", title: "Stopped", items: stoppedProjects)
+        ]
+    }
+
     private var isAdmin: Bool {
         manager.currentUser?.isAdmin == true
+    }
+
+    private var mutationVersion: Int {
+        mutationStore.version(kind: .projects, envID: environmentID)
     }
 
     var body: some View {
@@ -68,28 +81,8 @@ struct ProjectsView: View {
                 ContentUnavailableView("No Projects", systemImage: "square.stack.3d.up", description: Text("No Compose projects found"))
             } else {
                 List {
-                    if !pinnedProjects.isEmpty {
-                        Section("Pinned") {
-                            ForEach(pinnedProjects) { project in
-                                projectLink(project)
-                            }
-                        }
-                    }
-
-                    if !activeProjects.isEmpty {
-                        Section("Active") {
-                            ForEach(activeProjects) { project in
-                                projectLink(project)
-                            }
-                        }
-                    }
-
-                    if !stoppedProjects.isEmpty {
-                        Section("Stopped") {
-                            ForEach(stoppedProjects) { project in
-                                projectLink(project)
-                            }
-                        }
+                    StableSectionedList(listSections) { project in
+                        projectLink(project)
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -135,7 +128,7 @@ struct ProjectsView: View {
         .task { await loadProjects() }
         .refreshable { await loadProjects(refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
-            CreateProjectView(environmentID: environmentID) { await loadProjects(refresh: true) }
+            CreateProjectView(environmentID: environmentID) {}
         }
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
@@ -159,6 +152,9 @@ struct ProjectsView: View {
                 }
             }
             .presentationDetents([.medium])
+        }
+        .onChange(of: mutationVersion) { _, _ in
+            Task { await loadProjects(refresh: true) }
         }
     }
 
@@ -186,7 +182,7 @@ struct ProjectsView: View {
         }
         .contextMenu {
             Button {
-                pinnedStore.togglePin(project.id, kind: .project, envID: environmentID)
+                togglePin(project)
             } label: {
                 Label(isPinned ? "Unpin" : "Pin",
                       systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
@@ -200,9 +196,9 @@ struct ProjectsView: View {
         } preview: {
             projectPreview(project)
         }
-        .swipeActions(edge: .leading) {
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
-                pinnedStore.togglePin(project.id, kind: .project, envID: environmentID)
+                togglePinAfterSwipe(project)
             } label: {
                 Label(isPinned ? "Unpin" : "Pin",
                       systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
@@ -216,6 +212,21 @@ struct ProjectsView: View {
                 DestructiveLabel(text: "Delete")
             }
             .tint(.red)
+        }
+    }
+
+    private func togglePinAfterSwipe(_ project: Project) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            togglePin(project)
+        }
+    }
+
+    private func togglePin(_ project: Project) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            pinnedStore.togglePin(project.id, kind: .project, envID: environmentID)
         }
     }
 
@@ -253,13 +264,17 @@ struct ProjectsView: View {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/destroy")
             let _: DataResponse<String> = try await client.rest.delete(path)
             projects.removeAll { $0.id == project.id }
-            if let cached = manager.cached {
-                await cached.invalidate(envID: environmentID, paths: [
-                    client.rest.environmentPath(environmentID, "projects"),
-                    client.rest.environmentPath(environmentID, "projects/*")
-                ])
-            }
+            await invalidateProjectCaches()
+            mutationStore.markChanged(kind: .projects, envID: environmentID)
         } catch {}
+    }
+
+    private func invalidateProjectCaches() async {
+        guard let cached = manager.cached, let client = manager.client else { return }
+        await cached.invalidate(envID: environmentID, paths: [
+            client.rest.environmentPath(environmentID, "projects") + "*",
+            client.rest.environmentPath(environmentID, "projects/*")
+        ])
     }
 
     private func isStopped(_ project: Project) -> Bool {

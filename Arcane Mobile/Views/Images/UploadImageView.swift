@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct UploadImageView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
     let onComplete: () async -> Void
@@ -186,6 +187,13 @@ struct UploadImageView: View {
                 progress = 1.0
                 let parsed = try? JSONDecoder().decode(APIResponseEnvelope<LoadResult>.self, from: data)
                 output = parsed?.data?.stream ?? "Upload complete."
+                if let cached = manager.cached {
+                    await cached.invalidate(envID: environmentID, paths: [
+                        client.rest.environmentPath(environmentID, "images") + "*",
+                        client.rest.environmentPath(environmentID, "images/*")
+                    ])
+                }
+                mutationStore.markChanged(kind: .images, envID: environmentID)
                 await onComplete()
             } catch is CancellationError {
                 errorMessage = "Cancelled"

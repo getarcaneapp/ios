@@ -182,7 +182,7 @@ struct AuthenticationSettingsView: View {
             let rawData = try await client.transport.rawRequest("oidc/status", body: Optional<String>.none, authorized: false)
             let status = try JSONDecoder().decode(OidcStatusInfo.self, from: rawData)
             oidcEnvForced = status.envForced
-            oidcEnvConfigured = status.envConfigured ?? false
+            oidcEnvConfigured = status.envConfigured
         } catch {
             // Silently ignore — fields remain editable if status check fails
         }

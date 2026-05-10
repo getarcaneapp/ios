@@ -3,6 +3,7 @@ import Arcane
 
 struct EnvironmentsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @State private var environments: [ServerEnvironment] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -13,6 +14,10 @@ struct EnvironmentsView: View {
         environments.sorted {
             sortOrder.areInIncreasingOrder($0.name ?? $0.id, $1.name ?? $1.id)
         }
+    }
+
+    private var mutationVersion: Int {
+        mutationStore.version(kind: .environments)
     }
 
     var body: some View {
@@ -93,12 +98,10 @@ struct EnvironmentsView: View {
         .task { await loadEnvironments() }
         .refreshable { await loadEnvironments(refresh: true) }
         .sheet(isPresented: $showAddEnvironment) {
-            AddEnvironmentView {
-                if let cached = manager.cached {
-                    await cached.invalidateGlobal(paths: ["environments"])
-                }
-                await loadEnvironments(refresh: true)
-            }
+            AddEnvironmentView {}
+        }
+        .onChange(of: mutationVersion) { _, _ in
+            Task { await loadEnvironments(refresh: true) }
         }
     }
 
@@ -184,6 +187,7 @@ struct EnvironmentRow: View {
 
 struct AddEnvironmentView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
@@ -228,6 +232,10 @@ struct AddEnvironmentView: View {
         do {
             let body: [String: String] = ["name": name, "url": url]
             let _: ServerEnvironment = try await client.rest.post("environments", body: body)
+            if let cached = manager.cached {
+                await cached.invalidateGlobal(paths: ["environments"])
+            }
+            mutationStore.markChanged(kind: .environments)
             await onSuccess()
             dismiss()
         } catch {

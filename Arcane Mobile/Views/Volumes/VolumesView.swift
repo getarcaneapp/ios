@@ -8,6 +8,7 @@ nonisolated private struct VolumeListEnvelope: Decodable, Sendable {
 struct VolumesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -55,6 +56,17 @@ struct VolumesView: View {
         filtered.filter { !pinnedIDs.contains($0.id) }
     }
 
+    private var listSections: [StableListSection<String, VolumeInfo>] {
+        [
+            .init(id: "pinned", title: "Pinned", items: pinnedVolumes),
+            .init(id: "volumes", items: unpinnedVolumes)
+        ]
+    }
+
+    private var mutationVersion: Int {
+        mutationStore.version(kind: .volumes, envID: environmentID)
+    }
+
     var body: some View {
         Group {
             if isLoading && volumes.isEmpty {
@@ -65,18 +77,8 @@ struct VolumesView: View {
                 ContentUnavailableView("No Volumes", systemImage: "externaldrive", description: Text("No volumes found"))
             } else {
                 List {
-                    if !pinnedVolumes.isEmpty {
-                        Section("Pinned") {
-                            ForEach(pinnedVolumes) { volume in
-                                volumeLink(volume)
-                            }
-                        }
-                    }
-
-                    Section {
-                        ForEach(unpinnedVolumes) { volume in
-                            volumeLink(volume)
-                        }
+                    StableSectionedList(listSections) { volume in
+                        volumeLink(volume)
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -116,10 +118,7 @@ struct VolumesView: View {
         .task { await loadVolumes() }
         .refreshable { await loadVolumes(refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
-            CreateVolumeView(environmentID: environmentID) {
-                await invalidateVolumeCaches()
-                await loadVolumes(refresh: true)
-            }
+            CreateVolumeView(environmentID: environmentID) {}
         }
         .alert("Prune Unused Volumes", isPresented: $showPruneConfirm) {
             Button("Prune", role: .destructive) { Task { await pruneVolumes() } }
@@ -150,6 +149,9 @@ struct VolumesView: View {
             }
             .presentationDetents([.medium])
         }
+        .onChange(of: mutationVersion) { _, _ in
+            Task { await loadVolumes(refresh: true) }
+        }
     }
 
     private func volumeLink(_ volume: VolumeInfo) -> some View {
@@ -159,7 +161,7 @@ struct VolumesView: View {
         }
         .contextMenu {
             Button {
-                pinnedStore.togglePin(volume.id, kind: .volume, envID: environmentID)
+                togglePin(volume)
             } label: {
                 Label(isPinned ? "Unpin" : "Pin",
                       systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
@@ -173,9 +175,9 @@ struct VolumesView: View {
         } preview: {
             volumePreview(volume)
         }
-        .swipeActions(edge: .leading) {
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
-                pinnedStore.togglePin(volume.id, kind: .volume, envID: environmentID)
+                togglePinAfterSwipe(volume)
             } label: {
                 Label(isPinned ? "Unpin" : "Pin",
                       systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
@@ -189,6 +191,21 @@ struct VolumesView: View {
                 DestructiveLabel(text: "Delete")
             }
             .tint(.red)
+        }
+    }
+
+    private func togglePinAfterSwipe(_ volume: VolumeInfo) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            togglePin(volume)
+        }
+    }
+
+    private func togglePin(_ volume: VolumeInfo) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            pinnedStore.togglePin(volume.id, kind: .volume, envID: environmentID)
         }
     }
 
@@ -273,6 +290,7 @@ struct VolumesView: View {
             let _: DataResponse<String> = try await client.rest.delete(path)
             volumes.removeAll { $0.name == volume.name }
             await invalidateVolumeCaches()
+            mutationStore.markChanged(kind: .volumes, envID: environmentID)
         } catch {}
     }
 
@@ -282,7 +300,7 @@ struct VolumesView: View {
             let path = client.rest.environmentPath(environmentID, "volumes/prune")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateVolumeCaches()
-            await loadVolumes(refresh: true)
+            mutationStore.markChanged(kind: .volumes, envID: environmentID)
         } catch {}
     }
 
@@ -363,12 +381,15 @@ struct VolumeRow: View {
 
 struct VolumeDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.dismiss) private var dismiss
     let volume: VolumeInfo
     let environmentID: EnvironmentID
 
     @State private var showDeleteConfirm = false
     @State private var sizeBytes: Int64? = nil
     @State private var loadingSize = false
+    @State private var errorMessage: String?
 
     var body: some View {
         List {
@@ -438,9 +459,16 @@ struct VolumeDetailView: View {
             }
         }
         .confirmationDialog("Delete Volume", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { /* handled by parent */ }
+            Button("Delete", role: .destructive) {
+                Task { await deleteVolume() }
+            }
         }
         .task { await loadSize() }
+        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func loadSize() async {
@@ -459,10 +487,30 @@ struct VolumeDetailView: View {
             // Slow / unsupported on some hosts — leave as `—`.
         }
     }
+
+    private func deleteVolume() async {
+        guard let client = manager.client else { return }
+        do {
+            let path = client.rest.environmentPath(environmentID, "volumes/\(volume.name)")
+            let _: DataResponse<String> = try await client.rest.delete(path)
+            if let cached = manager.cached {
+                await cached.invalidate(envID: environmentID, paths: [
+                    client.rest.environmentPath(environmentID, "volumes"),
+                    client.rest.environmentPath(environmentID, "volumes/sizes"),
+                    client.rest.environmentPath(environmentID, "volumes/*")
+                ])
+            }
+            mutationStore.markChanged(kind: .volumes, envID: environmentID)
+            dismiss()
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
 }
 
 struct CreateVolumeView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
     let onSuccess: () async -> Void
@@ -510,6 +558,14 @@ struct CreateVolumeView: View {
             let path = client.rest.environmentPath(environmentID, "volumes")
             // Same decoder bypass as listVolumes — create returns the Volume too.
             _ = try await client.transport.rawRequest(path, method: "POST", body: body)
+            if let cached = manager.cached {
+                await cached.invalidate(envID: environmentID, paths: [
+                    client.rest.environmentPath(environmentID, "volumes"),
+                    client.rest.environmentPath(environmentID, "volumes/sizes"),
+                    client.rest.environmentPath(environmentID, "volumes/*")
+                ])
+            }
+            mutationStore.markChanged(kind: .volumes, envID: environmentID)
             await onSuccess(); dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }

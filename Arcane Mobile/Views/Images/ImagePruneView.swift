@@ -3,6 +3,7 @@ import Arcane
 
 struct ImagePruneView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
     let onComplete: () async -> Void
@@ -109,6 +110,13 @@ struct ImagePruneView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "images/prune")
             let report: ImagePruneReport = try await client.rest.post(path, body: body)
+            if let cached = manager.cached {
+                await cached.invalidate(envID: environmentID, paths: [
+                    client.rest.environmentPath(environmentID, "images") + "*",
+                    client.rest.environmentPath(environmentID, "images/*")
+                ])
+            }
+            mutationStore.markChanged(kind: .images, envID: environmentID)
             resultMessage = formatResult(report)
             await onComplete()
         } catch {
