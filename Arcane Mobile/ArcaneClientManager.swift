@@ -21,6 +21,13 @@ final class ArcaneClientManager {
     var isLoading: Bool = false
     var errorMessage: String?
 
+    // MARK: - Demo mode
+    var isDemoActive: Bool = false
+    var isStartingDemo: Bool = false
+    var demoEndsAt: Date?
+    var demoExpiredMessage: String?
+    private var demoExpiryTask: Task<Void, Never>?
+
     // MARK: - Active environment
     var activeEnvironmentID: EnvironmentID = .localDocker
     var activeEnvironmentName: String = "Local Docker"
@@ -99,6 +106,10 @@ final class ArcaneClientManager {
     }
 
     func logout() async {
+        if isDemoActive {
+            await endDemo(reason: .userInitiated)
+            return
+        }
         guard let client else { return }
         isLoading = true
         defer { isLoading = false }
@@ -106,6 +117,94 @@ final class ArcaneClientManager {
         currentUser = nil
         authState = .login
         await ResponseCache.shared.invalidateAll()
+    }
+
+    // MARK: - Demo
+
+    enum DemoEndReason {
+        case userInitiated
+        case expired
+    }
+
+    func startDemo() async {
+        isLoading = true
+        isStartingDemo = true
+        errorMessage = nil
+        demoExpiredMessage = nil
+        defer {
+            isLoading = false
+            isStartingDemo = false
+        }
+        do {
+            let session = try await DemoService.shared.startInstance()
+            configure(serverURL: DemoService.demoBaseURL.absoluteString)
+
+            guard let client else {
+                errorMessage = "Failed to configure demo client"
+                return
+            }
+
+            do {
+                let response = try await client.auth.login(username: session.username, password: session.password)
+                currentUser = ArcaneUser(
+                    id: response.user.id,
+                    username: response.user.username,
+                    email: response.user.email,
+                    roles: response.user.roles,
+                    canDelete: false,
+                    requiresPasswordChange: response.user.requiresPasswordChange
+                )
+                authState = .authenticated
+                isDemoActive = true
+                demoEndsAt = session.endsAt
+                DemoService.shared.startHeartbeat()
+                scheduleDemoExpiry(at: session.endsAt)
+            } catch let error as ArcaneError {
+                errorMessage = arcaneErrorMessage(error)
+                await DemoService.shared.endSession()
+            } catch {
+                errorMessage = friendlyErrorMessage(error)
+                await DemoService.shared.endSession()
+            }
+        } catch let error as DemoError {
+            errorMessage = error.errorDescription
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    func endDemo(reason: DemoEndReason) async {
+        demoExpiryTask?.cancel()
+        demoExpiryTask = nil
+
+        await DemoService.shared.endSession()
+
+        try? await client?.auth.logout()
+        currentUser = nil
+        isDemoActive = false
+        demoEndsAt = nil
+        serverURL = ""
+        client = nil
+        authState = .setup
+        await ResponseCache.shared.invalidateAll()
+
+        if reason == .expired {
+            demoExpiredMessage = "Your demo ended. Start a new one or connect to your own server."
+        }
+    }
+
+    private func scheduleDemoExpiry(at date: Date) {
+        demoExpiryTask?.cancel()
+        let interval = date.timeIntervalSinceNow
+        guard interval > 0 else {
+            Task { await endDemo(reason: .expired) }
+            return
+        }
+        demoExpiryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            if Task.isCancelled { return }
+            await self?.endDemo(reason: .expired)
+        }
     }
 
     func checkExistingAuth() async {

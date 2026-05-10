@@ -14,7 +14,10 @@ struct ContentView: View {
             case .login:
                 LoginView(mode: .login)
             case .authenticated:
-                MainTabView()
+                VStack(spacing: 0) {
+                    DemoBanner()
+                    MainTabView()
+                }
             }
         }
         .task {

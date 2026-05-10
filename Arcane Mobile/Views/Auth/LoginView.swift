@@ -36,6 +36,10 @@ struct LoginView: View {
                         errorBanner(error)
                     }
 
+                    if let info = manager.demoExpiredMessage {
+                        infoBanner(info)
+                    }
+
                     actions
 
                     Spacer(minLength: 0)
@@ -181,6 +185,29 @@ struct LoginView: View {
         .transition(.scale(scale: 0.95).combined(with: .opacity))
     }
 
+    private func infoBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(.blue)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+            Button {
+                manager.demoExpiredMessage = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(.blue.opacity(0.12), in: .rect(cornerRadius: 12))
+        .transition(.scale(scale: 0.95).combined(with: .opacity))
+    }
+
     // MARK: - Actions
 
     @ViewBuilder
@@ -188,13 +215,21 @@ struct LoginView: View {
         VStack(spacing: 8) {
             if isSetupMode {
                 Button(action: connectToServer) {
-                    Label("Connect", systemImage: "arrow.right")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
+                    ZStack {
+                        Label("Connect", systemImage: "arrow.right")
+                            .opacity(manager.isLoading && !manager.isStartingDemo ? 0 : 1)
+                        if manager.isLoading && !manager.isStartingDemo {
+                            ProgressView().controlSize(.regular)
+                        }
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.extraLarge)
                 .disabled(serverURL.isEmpty || manager.isLoading)
+
+                demoSection
 
                 if canEditServer {
                     Button("Cancel") {
@@ -230,6 +265,51 @@ struct LoginView: View {
                 .tint(.secondary)
             }
         }
+    }
+
+    @ViewBuilder
+    private var demoSection: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                VStack { Divider() }
+                Text("OR")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                VStack { Divider() }
+            }
+            .padding(.vertical, 4)
+
+            Button {
+                Task { await manager.startDemo() }
+            } label: {
+                ZStack {
+                    Label("Try the demo", systemImage: "sparkles")
+                        .opacity(manager.isStartingDemo ? 0 : 1)
+                    if manager.isStartingDemo {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Spinning up your demo…")
+                                .font(.subheadline)
+                        }
+                    }
+                }
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .tint(.accentColor)
+            .disabled(manager.isLoading)
+
+            Text(manager.isStartingDemo
+                 ? "This usually takes about 30 seconds."
+                 : "Spins up a temporary instance for ~10 minutes. No account needed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - Intent
