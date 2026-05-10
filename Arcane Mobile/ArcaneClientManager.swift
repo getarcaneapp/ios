@@ -1,5 +1,6 @@
 import Foundation
 import Arcane
+import ActivityKit
 
 enum AppAuthState {
     case setup          // No server URL configured
@@ -27,6 +28,7 @@ final class ArcaneClientManager {
     var demoEndsAt: Date?
     var demoExpiredMessage: String?
     private var demoExpiryTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var demoActivity: Activity<ArcaneDemoWidgetAttributes>?
 
     // MARK: - Active environment
     var activeEnvironmentID: EnvironmentID = .localDocker
@@ -159,6 +161,7 @@ final class ArcaneClientManager {
                 demoEndsAt = session.endsAt
                 DemoService.shared.startHeartbeat()
                 scheduleDemoExpiry(at: session.endsAt)
+                startLiveActivity(endsAt: session.endsAt)
             } catch let error as ArcaneError {
                 errorMessage = arcaneErrorMessage(error)
                 await DemoService.shared.endSession()
@@ -177,6 +180,7 @@ final class ArcaneClientManager {
         demoExpiryTask?.cancel()
         demoExpiryTask = nil
 
+        await endLiveActivity()
         await DemoService.shared.endSession()
 
         try? await client?.auth.logout()
@@ -190,6 +194,43 @@ final class ArcaneClientManager {
 
         if reason == .expired {
             demoExpiredMessage = "Your demo ended. Start a new one or connect to your own server."
+        }
+    }
+
+    private func startLiveActivity(endsAt: Date) {
+        let info = ActivityAuthorizationInfo()
+        guard info.areActivitiesEnabled else {
+            print("[DemoLiveActivity] Activities not enabled — frequentPushesEnabled=\(info.frequentPushesEnabled)")
+            return
+        }
+        let attributes = ArcaneDemoWidgetAttributes()
+        let state = ArcaneDemoWidgetAttributes.ContentState(startedAt: Date(), endsAt: endsAt)
+        do {
+            demoActivity = try Activity.request(
+                attributes: attributes,
+                content: .init(state: state, staleDate: endsAt),
+                pushType: nil
+            )
+            print("[DemoLiveActivity] Started activity id=\(demoActivity?.id ?? "?")")
+        } catch {
+            print("[DemoLiveActivity] Failed to start: \(error)")
+            demoActivity = nil
+        }
+    }
+
+    private func endLiveActivity() async {
+        demoActivity = nil
+        await Self.endAllDemoActivities()
+    }
+
+    nonisolated private static func endAllDemoActivities() async {
+        let now = Date()
+        let content = ActivityContent(
+            state: ArcaneDemoWidgetAttributes.ContentState(startedAt: now, endsAt: now),
+            staleDate: nil
+        )
+        for activity in Activity<ArcaneDemoWidgetAttributes>.activities {
+            await activity.end(content, dismissalPolicy: .immediate)
         }
     }
 

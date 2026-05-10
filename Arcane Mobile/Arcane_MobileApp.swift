@@ -24,6 +24,11 @@ struct Arcane_MobileApp: App {
                 .task {
                     await ImageCache.shared.trimDiskCache()
                 }
+                .onOpenURL { url in
+                    if url.scheme == "arcane-mobile", url.host == "end-demo" {
+                        Task { await clientManager.endDemo(reason: .userInitiated) }
+                    }
+                }
         }
     }
 }

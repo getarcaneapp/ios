@@ -7,18 +7,23 @@ struct DemoBanner: View {
         if manager.isDemoActive, let endsAt = manager.demoEndsAt {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let remaining = max(0, endsAt.timeIntervalSince(context.date))
-                HStack(spacing: 10) {
+                let isLowTime = remaining < 60
+
+                HStack(spacing: 12) {
                     Image(systemName: "sparkles")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.tint)
+                        .frame(width: 28, height: 28)
+                        .background(.tint.opacity(0.12), in: .circle)
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Demo Mode")
-                            .font(.caption.weight(.semibold))
-                        Text("\(formatRemaining(remaining)) left")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text("\(formatRemaining(remaining)) remaining")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(isLowTime ? .orange : .secondary)
+                            .contentTransition(.numericText(countsDown: true))
                     }
 
                     Spacer(minLength: 8)
@@ -26,22 +31,22 @@ struct DemoBanner: View {
                     Button {
                         Task { await manager.endDemo(reason: .userInitiated) }
                     } label: {
-                        Text("End demo")
-                            .font(.caption.weight(.semibold))
+                        Text("End")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .foregroundStyle(.tint)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(.accentColor)
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.tint(.accentColor.opacity(0.18)), in: .capsule)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
-                .overlay(
-                    Rectangle()
-                        .fill(.tint.opacity(0.4))
-                        .frame(height: 0.5),
-                    alignment: .bottom
-                )
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .glassEffect(.regular, in: .rect(cornerRadius: 22))
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 4)
+                .animation(.smooth(duration: 0.4), value: isLowTime)
             }
         }
     }
