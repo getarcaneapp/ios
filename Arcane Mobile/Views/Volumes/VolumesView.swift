@@ -103,16 +103,19 @@ struct VolumesView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("More options")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: {
                     Image(systemName: "plus")
                 }
+                .accessibilityLabel("Create volume")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showPruneConfirm = true } label: {
                     Image(systemName: "trash")
                 }
+                .accessibilityLabel("Prune unused volumes")
             }
         }
         .task { await loadVolumes() }
@@ -351,6 +354,7 @@ struct VolumeRow: View {
                 .foregroundStyle(.orange)
                 .frame(width: 36, height: 36)
                 .glassEffect(.regular, in: .circle)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -361,6 +365,7 @@ struct VolumeRow: View {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
                             .foregroundStyle(.yellow)
+                            .accessibilityHidden(true)
                     }
                     if volume.inUse == true {
                         UsageBadge(text: "In use", color: .green)
@@ -376,6 +381,17 @@ struct VolumeRow: View {
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var accessibilityDescription: String {
+        var parts: [String] = [volume.name]
+        if isPinned { parts.append("pinned") }
+        if volume.inUse == true { parts.append("in use") }
+        else if volume.inUse == false { parts.append("unused") }
+        if !subtitleParts.isEmpty { parts.append(subtitleParts.joined(separator: ", ")) }
+        return parts.joined(separator: ", ")
     }
 }
 

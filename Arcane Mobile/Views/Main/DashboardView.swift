@@ -47,11 +47,13 @@ struct DashboardView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     environmentMenu
+                        .accessibilityLabel("Switch Environment")
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showPruneSheet = true } label: {
                         Image(systemName: "trash")
                     }
+                    .accessibilityLabel("System Prune")
                 }
             }
             .sheet(isPresented: $showPruneSheet) {
@@ -105,6 +107,7 @@ struct DashboardView: View {
                             Image(systemName: "server.rack")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.primary)
+                                .accessibilityHidden(true)
                             Text(manager.activeEnvironmentName)
                                 .font(.subheadline.weight(.semibold))
                                 .lineLimit(1)
@@ -118,6 +121,7 @@ struct DashboardView: View {
                     Spacer()
                     liveIndicator
                 }
+                .accessibilityElement(children: .combine)
 
                 HStack(spacing: 10) {
                     StatRing(
@@ -169,6 +173,7 @@ struct DashboardView: View {
             Circle()
                 .fill(active ? Color.green : Color.secondary)
                 .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
             Text(active ? "LIVE" : "IDLE")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(active ? Color.green : Color.secondary)
@@ -176,6 +181,8 @@ struct DashboardView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
         .background((active ? Color.green : Color.secondary).opacity(0.14), in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(active ? "Live stats streaming" : "Stats stream idle")
     }
 
     private func percentShort(_ v: Double?) -> String {
@@ -510,27 +517,38 @@ struct StatRing: View {
     var size: CGFloat = 78
     var lineWidth: CGFloat = 9
 
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric private var scaledSize: CGFloat = 1
+    @ScaledMetric private var scaledLineWidth: CGFloat = 1
+
+    private var effectiveSize: CGFloat { size * min(scaledSize, 1.6) }
+    private var effectiveLineWidth: CGFloat { lineWidth * min(scaledLineWidth, 1.6) }
+
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .stroke(tint.opacity(0.18), lineWidth: lineWidth)
+                    .stroke(tint.opacity(0.18), lineWidth: effectiveLineWidth)
                 Circle()
                     .trim(from: 0, to: max(0.001, min(value, 1.0)))
-                    .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .stroke(tint, style: StrokeStyle(lineWidth: effectiveLineWidth, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .animation(.smooth(duration: 1.2), value: value)
+                    .animation(reduceMotion ? nil : .smooth(duration: 1.2), value: value)
                 Text(valueText)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
                     .monospacedDigit()
+                    .foregroundStyle(.primary)
+                    .minimumScaleFactor(0.6)
             }
-            .frame(width: size, height: size)
+            .frame(width: effectiveSize, height: effectiveSize)
             Text(label)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label) usage")
+        .accessibilityValue(valueText)
     }
 }
 
@@ -542,24 +560,29 @@ struct DashboardGlassTile: View {
     let tint: Color
     let action: () -> Void
 
+    @ScaledMetric private var iconDiscSize: CGFloat = 32
+    @ScaledMetric private var minTileHeight: CGFloat = 112
+
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Image(systemName: icon)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(.subheadline, weight: .semibold))
                         .foregroundStyle(tint)
-                        .frame(width: 32, height: 32)
+                        .frame(width: iconDiscSize, height: iconDiscSize)
                         .background(tint.opacity(0.16), in: Circle())
                         .overlay(Circle().stroke(tint.opacity(0.22), lineWidth: 0.5))
+                        .accessibilityHidden(true)
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
 
                 Text(value)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(.title2, design: .rounded).weight(.bold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
@@ -574,11 +597,15 @@ struct DashboardGlassTile: View {
                         .lineLimit(1)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: minTileHeight, alignment: .leading)
             .padding(12)
             .dashboardCardBackground(cornerRadius: 18)
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(value)")
+        .accessibilityHint(subtitle)
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -630,6 +657,8 @@ struct SmoothProgressBar: View {
     var value: Double
     var tint: Color
 
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
@@ -640,8 +669,9 @@ struct SmoothProgressBar: View {
                     .frame(width: max(0, geo.size.width * min(max(value, 0), 1)))
             }
         }
-        .animation(.smooth(duration: 1.2), value: value)
-        .animation(.smooth(duration: 0.6), value: tint)
+        .animation(reduceMotion ? nil : .smooth(duration: 1.2), value: value)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.6), value: tint)
+        .accessibilityHidden(true)
     }
 }
 
@@ -660,6 +690,8 @@ struct DashboardMiniMetric: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value)")
     }
 }
 

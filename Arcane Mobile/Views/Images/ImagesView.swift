@@ -142,11 +142,13 @@ struct ImagesView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("More options")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showPullSheet = true } label: {
                     Image(systemName: "arrow.down.circle")
                 }
+                .accessibilityLabel("Pull image")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
@@ -163,6 +165,7 @@ struct ImagesView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
+                .accessibilityLabel("Prune images")
             }
         }
         .alert("Prune Dangling Images", isPresented: $showPruneConfirm) {
@@ -390,6 +393,7 @@ struct ImageRow: View {
                 .foregroundStyle(.purple)
                 .frame(width: 36, height: 36)
                 .glassEffect(.regular, in: .circle)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -406,6 +410,7 @@ struct ImageRow: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
 

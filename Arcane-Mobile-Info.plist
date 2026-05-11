@@ -15,5 +15,32 @@
 			</array>
 		</dict>
 	</array>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>arcane.shortcut.dashboard</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Dashboard</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>chart.bar.fill</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>arcane.shortcut.containers</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Containers</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>cube.box.fill</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>arcane.shortcut.projects</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Projects</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>square.stack.3d.up.fill</string>
+		</dict>
+	</array>
 </dict>
 </plist>

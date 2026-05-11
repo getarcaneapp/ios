@@ -132,6 +132,8 @@ struct ProjectDetailView: View {
                 await invalidateProjectCaches()
                 mutationStore.markChanged(kind: .projects, envID: environmentID)
                 await loadProject(refresh: true)
+                HapticsManager.success()
+                ReviewPrompter.shared.recordSuccess()
             }
         }
         .confirmationDialog("Delete Project", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
@@ -245,9 +247,12 @@ struct ProjectDetailView: View {
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
             await loadProject(refresh: true)
+            HapticsManager.success()
+            ReviewPrompter.shared.recordSuccess()
         } catch {
             errorMessage = friendlyErrorMessage(error)
             actionStatus = nil
+            HapticsManager.warning()
         }
     }
 

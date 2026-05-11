@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import TipKit
 import Arcane
 
 struct MainTabView: View {
@@ -7,6 +8,8 @@ struct MainTabView: View {
     @State private var selectedTab: String = AppTab.dashboard.id
     @State private var swapTarget: AppTab? = nil
     @State private var store = NavTabsStore.shared
+    @State private var router = QuickActionRouter.shared
+    @AppStorage("arcane.tip.tabSwapDismissed") private var tabSwapTipDismissed = false
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
 
@@ -14,7 +17,8 @@ struct MainTabView: View {
         store.visibleTabs(isAdmin: isAdmin)
     }
 
-    var body: some View {
+    @ViewBuilder
+    private var coreTabView: some View {
         TabView(selection: $selectedTab) {
             ForEach(visibleTabs) { tab in
                 Tab(tab.title, systemImage: tab.systemImage, value: tab.id) {
@@ -27,21 +31,88 @@ struct MainTabView: View {
                 SettingsView()
             }
         }
+    }
+
+    var body: some View {
+        Group {
+            if tabSwapTipDismissed {
+                coreTabView
+            } else {
+                // The accessory modifier reserves a slot above the floating tab
+                // bar. Apply it only while the tip is undismissed so the slot
+                // disappears entirely once the user dismisses or long-presses.
+                coreTabView
+                    .tabViewBottomAccessory {
+                        TabSwapHintBanner {
+                            tabSwapTipDismissed = true
+                            TabSwapTip.didDiscoverFeature = true
+                        }
+                    }
+            }
+        }
         .background {
             TabBarLongPressInstaller { idx in
                 let tabs = visibleTabs
                 guard idx >= 0, idx < tabs.count else { return }
+                HapticsManager.medium()
+                tabSwapTipDismissed = true
+                TabSwapTip.didDiscoverFeature = true
                 swapTarget = tabs[idx]
             }
         }
         .sheet(item: $swapTarget) { current in
             TabSwapSheet(current: current) { replacement in
+                HapticsManager.success()
                 store.swap(pinned: current, with: replacement)
                 if selectedTab == current.id { selectedTab = replacement.id }
                 swapTarget = nil
             }
             .environment(manager)
         }
+        .onChange(of: router.pendingTabID) { _, newValue in
+            guard let target = newValue else { return }
+            selectedTab = target
+            router.pendingTabID = nil
+        }
+        .onAppear {
+            if let target = router.pendingTabID {
+                selectedTab = target
+                router.pendingTabID = nil
+            }
+        }
+    }
+}
+
+// MARK: - Hint banner
+
+/// Compact one-liner sized to fit the `tabViewBottomAccessory` slot. Shows
+/// once and stays dismissed forever once tapped X or the user long-presses a
+/// tab (which sets the same `@AppStorage` key).
+private struct TabSwapHintBanner: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "hand.tap.fill")
+                .foregroundStyle(.blue)
+                .accessibilityHidden(true)
+            Text("Long-press a tab to customize")
+                .font(.footnote.weight(.medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: 4)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.tertiary)
+                    .imageScale(.medium)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss hint")
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Hint: long-press a tab to customize the tab bar")
     }
 }
 

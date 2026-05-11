@@ -97,6 +97,7 @@ struct ProjectsView: View {
                     NavigationLink(destination: TemplateRegistriesView()) {
                         Image(systemName: "doc.text.magnifyingglass")
                     }
+                    .accessibilityLabel("Template registries")
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -118,11 +119,13 @@ struct ProjectsView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("More options")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: {
                     Image(systemName: "plus")
                 }
+                .accessibilityLabel("Create project")
             }
         }
         .task { await loadProjects() }
@@ -223,6 +226,7 @@ struct ProjectsView: View {
     }
 
     private func togglePin(_ project: Project) {
+        HapticsManager.light()
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -305,6 +309,7 @@ struct ProjectRow: View {
                     .frame(width: 36, height: 36)
                     .glassEffect(.regular, in: .circle)
             }
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
@@ -315,6 +320,7 @@ struct ProjectRow: View {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
                             .foregroundStyle(.yellow)
+                            .accessibilityHidden(true)
                     }
                 }
                 let count = project.serviceCount
@@ -328,5 +334,16 @@ struct ProjectRow: View {
             StatusBadge(status: project.status)
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var accessibilityDescription: String {
+        let count = project.serviceCount
+        var parts: [String] = [project.displayName]
+        if isPinned { parts.append("pinned") }
+        parts.append(project.status)
+        parts.append("\(count) service\(count == 1 ? "" : "s")")
+        return parts.joined(separator: ", ")
     }
 }

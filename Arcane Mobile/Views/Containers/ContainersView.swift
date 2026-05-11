@@ -103,11 +103,13 @@ struct ContainersView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("More options")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showPruneConfirm = true } label: {
                     Image(systemName: "trash")
                 }
+                .accessibilityLabel("Prune stopped containers")
             }
         }
         .alert("Prune Stopped Containers", isPresented: $showPruneConfirm) {
@@ -184,6 +186,7 @@ struct ContainersView: View {
     }
 
     private func togglePin(_ container: ContainerInfo) {
+        HapticsManager.light()
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -274,7 +277,11 @@ struct ContainersView: View {
             containers.removeAll { $0.id == container.id }
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-        } catch {}
+            HapticsManager.success()
+            ReviewPrompter.shared.recordSuccess()
+        } catch {
+            HapticsManager.warning()
+        }
     }
 
     private func loadContainers(refresh: Bool = false) async {
@@ -302,7 +309,11 @@ struct ContainersView: View {
             try await client.containers.start(envID: environmentID, id: container.id)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-        } catch {}
+            HapticsManager.success()
+            ReviewPrompter.shared.recordSuccess()
+        } catch {
+            HapticsManager.warning()
+        }
     }
 
     private func stopContainer(_ container: ContainerInfo) async {
@@ -311,7 +322,11 @@ struct ContainersView: View {
             try await client.containers.stop(envID: environmentID, id: container.id)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-        } catch {}
+            HapticsManager.success()
+            ReviewPrompter.shared.recordSuccess()
+        } catch {
+            HapticsManager.warning()
+        }
     }
 
     private func pruneContainers() async {
@@ -321,7 +336,11 @@ struct ContainersView: View {
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-        } catch {}
+            HapticsManager.success()
+            ReviewPrompter.shared.recordSuccess()
+        } catch {
+            HapticsManager.warning()
+        }
     }
 
     private func restartContainer(_ container: ContainerInfo) async {
@@ -330,7 +349,11 @@ struct ContainersView: View {
             try await client.containers.restart(envID: environmentID, id: container.id)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-        } catch {}
+            HapticsManager.success()
+            ReviewPrompter.shared.recordSuccess()
+        } catch {
+            HapticsManager.warning()
+        }
     }
 
     private func invalidateContainerCaches() async {
@@ -417,6 +440,7 @@ struct ContainerRow: View {
                     .frame(width: 10, height: 10)
                     .offset(x: 2, y: 2)
             }
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
@@ -427,6 +451,7 @@ struct ContainerRow: View {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
                             .foregroundStyle(.yellow)
+                            .accessibilityHidden(true)
                     }
                 }
                 Text(container.image)
@@ -442,5 +467,16 @@ struct ContainerRow: View {
                 .foregroundStyle(container.isRunning ? .green : .secondary)
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var accessibilityDescription: String {
+        var parts: [String] = [container.displayName]
+        if isPinned { parts.append("pinned") }
+        parts.append(container.isRunning ? "running" : "stopped")
+        parts.append(container.image)
+        parts.append(container.status)
+        return parts.joined(separator: ", ")
     }
 }

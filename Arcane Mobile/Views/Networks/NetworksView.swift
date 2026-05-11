@@ -98,16 +98,19 @@ struct NetworksView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("More options")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: {
                     Image(systemName: "plus")
                 }
+                .accessibilityLabel("Create network")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showPruneConfirm = true } label: {
                     Image(systemName: "trash")
                 }
+                .accessibilityLabel("Prune unused networks")
             }
         }
         .task { await loadNetworks() }

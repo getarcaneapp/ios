@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum AccentColorOption: String, CaseIterable, Identifiable {
     case blue, indigo, purple, pink, red, orange, yellow, green, teal, mint, cyan
@@ -112,6 +113,29 @@ struct AppearanceSettingsView: View {
                 }
             } header: {
                 Text("Custom")
+            }
+
+            if UIApplication.shared.supportsAlternateIcons {
+                Section {
+                    NavigationLink(destination: AppIconPickerView()) {
+                        HStack(spacing: 12) {
+                            if let image = UIImage(named: UIApplication.shared.alternateIconName ?? "AppIcon") {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 32, height: 32)
+                                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            } else {
+                                Image(systemName: "app.fill")
+                                    .foregroundStyle(.blue)
+                                    .frame(width: 32, height: 32)
+                            }
+                            Text("App Icon")
+                        }
+                    }
+                } header: {
+                    Text("Icon")
+                }
             }
 
             Section {
