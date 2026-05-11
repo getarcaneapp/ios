@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var cacheSizeBytes: Int = 0
     @State private var volumeSizeBytes: Int64? = nil
     @State private var loadingVolumeSize = false
+    @State private var showWhatsNew = false
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
 
@@ -28,6 +29,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                mainTabsSection
                 serverSection
                 resourcesSection
                 if isAdmin { administrationSection }
@@ -64,6 +66,11 @@ struct SettingsView: View {
             } message: {
                 Text("Cached images and API responses will be reloaded from the server.")
             }
+            .sheet(isPresented: $showWhatsNew) {
+                if let latest = ReleaseNotes.latest {
+                    WhatsNewView(note: latest)
+                }
+            }
         }
     }
 
@@ -95,6 +102,41 @@ struct SettingsView: View {
     }
 
     // MARK: - Sections
+
+    private var pinnedTabs: Set<AppTab> {
+        _ = NavTabsStore.shared.version
+        return Set(NavTabsStore.shared.pinnedTabs)
+    }
+
+    @ViewBuilder
+    private var mainTabsSection: some View {
+        // Only Dashboard lives in its own section when displaced — Containers,
+        // Images, and Projects fall into the Resources section instead.
+        let displaced = AppTab.mainDefaults
+            .filter { $0.section == .main && !pinnedTabs.contains($0) }
+        if !displaced.isEmpty {
+            Section("Overview") {
+                ForEach(displaced) { tab in
+                    NavigationLink(destination: mainTabDestination(tab)) {
+                        SettingsRow(
+                            title: tab.title,
+                            systemImage: tab.systemImage,
+                            color: tab.iconColor
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func mainTabDestination(_ tab: AppTab) -> some View {
+        // Settings shows displaced main tabs as drill-down links. Dashboard
+        // expects a Binding<String> for its quick-jump tiles — when reached
+        // from Settings, those tiles can't switch the main tab bar, so wire
+        // them to a constant binding that simply no-ops.
+        appTabDestination(tab, manager: manager, selectedTab: .constant(""))
+    }
 
     @ViewBuilder
     private var serverSection: some View {
@@ -150,66 +192,59 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var resourcesSection: some View {
-        Section("Resources") {
-            NavigationLink(destination: VolumesView(
-                environmentID: manager.activeEnvironmentID,
-                environmentName: manager.activeEnvironmentName
-            )) {
-                HStack {
-                    SettingsRow(title: "Volumes", systemImage: "externaldrive.fill", color: .orange)
-                    Spacer()
-                    if let size = volumeSizeBytes {
-                        Text(size.byteString)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else if loadingVolumeSize {
-                        ProgressView().scaleEffect(0.7)
+        let visibleResources = AppTab.allCases.filter { $0.section == .resources && !pinnedTabs.contains($0) }
+        if !visibleResources.isEmpty {
+            Section("Resources") {
+                ForEach(visibleResources) { tab in
+                    NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
+                        resourceRow(tab)
                     }
                 }
-            }
-            NavigationLink(destination: NetworksView(
-                environmentID: manager.activeEnvironmentID,
-                environmentName: manager.activeEnvironmentName
-            )) {
-                SettingsRow(title: "Networks", systemImage: "network", color: .teal)
             }
         }
     }
 
     @ViewBuilder
+    private func resourceRow(_ tab: AppTab) -> some View {
+        if tab == .volumes {
+            HStack {
+                SettingsRow(title: tab.title, systemImage: tab.systemImage, color: tab.iconColor)
+                Spacer()
+                if let size = volumeSizeBytes {
+                    Text(size.byteString)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else if loadingVolumeSize {
+                    ProgressView().scaleEffect(0.7)
+                }
+            }
+        } else {
+            SettingsRow(title: tab.title, systemImage: tab.systemImage, color: tab.iconColor)
+        }
+    }
+
+    @ViewBuilder
     private var administrationSection: some View {
-        Section {
-            NavigationLink(destination: UsersView()) {
-                SettingsRow(title: "Users", systemImage: "person.2.fill", color: .blue)
+        let visibleAdminTabs: [AppTab] = [
+            .users, .apiKeys, .containerRegistries, .templateRegistries,
+            .notifications, .webhooks, .systemSettings, .authentication, .builds
+        ].filter { !pinnedTabs.contains($0) }
+        if !visibleAdminTabs.isEmpty {
+            Section {
+                ForEach(visibleAdminTabs) { tab in
+                    NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
+                        SettingsRow(
+                            title: tab.title,
+                            systemImage: tab.systemImage,
+                            color: tab.iconColor
+                        )
+                    }
+                }
+            } header: {
+                Text("Administration")
+            } footer: {
+                Text("Only administrators see this section.")
             }
-            NavigationLink(destination: APIKeysView()) {
-                SettingsRow(title: "API Keys", systemImage: "key.fill", color: .yellow)
-            }
-            NavigationLink(destination: ContainerRegistriesView()) {
-                SettingsRow(title: "Container Registries", systemImage: "shippingbox.fill", color: .purple)
-            }
-            NavigationLink(destination: TemplateRegistriesView()) {
-                SettingsRow(title: "Template Registries", systemImage: "doc.text.fill", color: .indigo)
-            }
-            NavigationLink(destination: NotificationSettingsView()) {
-                SettingsRow(title: "Notifications", systemImage: "bell.badge.fill", color: .red)
-            }
-            NavigationLink(destination: WebhooksView()) {
-                SettingsRow(title: "Webhooks", systemImage: "link.badge.plus", color: .green)
-            }
-            NavigationLink(destination: SystemSettingsView()) {
-                SettingsRow(title: "System Settings", systemImage: "slider.horizontal.3", color: .gray)
-            }
-            NavigationLink(destination: AuthenticationSettingsView()) {
-                SettingsRow(title: "Authentication", systemImage: "lock.shield.fill", color: .blue)
-            }
-            NavigationLink(destination: BuildSettingsView()) {
-                SettingsRow(title: "Builds", systemImage: "hammer.fill", color: .orange)
-            }
-        } header: {
-            Text("Administration")
-        } footer: {
-            Text("Only administrators see this section.")
         }
     }
 
@@ -274,6 +309,19 @@ struct SettingsView: View {
             Link(destination: URL(string: "https://github.com/getarcaneapp/ios/issues")!) {
                 SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
             }
+            Button {
+                showWhatsNew = true
+            } label: {
+                HStack {
+                    SettingsRow(title: "What's New", systemImage: "sparkles", color: .yellow, titleColor: .primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             HStack {
                 SettingsRow(title: "Version", systemImage: "app.badge", color: .gray)
                 Spacer()

@@ -4,7 +4,7 @@ import Arcane
 
 struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @Binding var selectedTab: Int
+    @Binding var selectedTab: String
     @State private var dockerInfo: DockerInfo?
     @State private var environments: [ServerEnvironment] = []
     @State private var projectCount: Int?
@@ -24,13 +24,14 @@ struct DashboardView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 14) {
+                LazyVStack(spacing: 12) {
+                    dashboardHeader
                     if !hasLoadedOnce && isLoading {
                         ProgressView("Loading...")
                             .frame(maxWidth: .infinity)
                             .padding(.top, 60)
                     } else {
-                        activeEnvironmentCard
+                        heroServerCard
                         if let error = dockerError {
                             dockerErrorBanner(error)
                         }
@@ -38,10 +39,11 @@ struct DashboardView: View {
                     }
                 }
                 .padding(.horizontal)
-                .padding(.bottom, 24)
+                .padding(.bottom, 16)
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Dashboard")
+            .navigationTitle("")
+            .toolbarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     environmentMenu
@@ -77,95 +79,108 @@ struct DashboardView: View {
 
     // MARK: - Subviews
 
-    private var activeEnvironmentCard: some View {
+    private var dashboardHeader: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Dashboard")
+                .font(.system(.title, design: .default).bold())
+                .foregroundStyle(.primary)
+            Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var heroServerCard: some View {
         NavigationLink {
             SystemInfoDetailView(
                 environmentID: envID,
                 environmentName: manager.activeEnvironmentName
             )
         } label: {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 14) {
-                    Image(systemName: "server.rack")
-                        .font(.title2)
-                        .foregroundStyle(Color.accentColor)
-                        .frame(width: 48, height: 48)
-                        .background(Color(uiColor: .tertiarySystemFill), in: Circle())
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(manager.activeEnvironmentName)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "server.rack")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Text(manager.activeEnvironmentName)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                        }
                         if let version = dockerInfo?.serverVersion {
                             Text("Docker \(version)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else if dockerError != nil {
-                            Text("Docker info unavailable")
-                                .font(.caption)
+                                .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
                     }
-
                     Spacer()
-                    StatusBadge(status: dockerError != nil ? "error" : (isLoading ? "loading" : "online"))
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .foregroundStyle(.tertiary)
+                    liveIndicator
                 }
 
-                HStack(spacing: 12) {
-                    DashboardMiniMetric(title: "Running", value: metricValue(dockerInfo?.containersRunning), color: .green)
-                    DashboardMiniMetric(title: "Stopped", value: metricValue(dockerInfo?.containersStopped), color: .secondary)
-                    DashboardMiniMetric(title: "Images", value: metricValue(dockerInfo?.images), color: Color.accentColor)
+                HStack(spacing: 10) {
+                    StatRing(
+                        value: clampedPercent(latestStats?.cpuPercent) / 100,
+                        valueText: percentShort(latestStats?.cpuPercent),
+                        label: "CPU",
+                        tint: .blue,
+                        size: 62,
+                        lineWidth: 7
+                    )
+                    StatRing(
+                        value: clampedPercent(memoryPercent) / 100,
+                        valueText: percentShort(memoryPercent),
+                        label: "Memory",
+                        tint: .purple,
+                        size: 62,
+                        lineWidth: 7
+                    )
+                    StatRing(
+                        value: clampedPercent(diskPercent) / 100,
+                        valueText: percentShort(diskPercent),
+                        label: "Disk",
+                        tint: .teal,
+                        size: 62,
+                        lineWidth: 7
+                    )
                 }
                 .frame(maxWidth: .infinity)
 
                 Divider()
-                    .padding(.vertical, 4)
 
-                resourceMetricRow(
-                    label: "CPU",
-                    icon: "cpu",
-                    color: Color.accentColor,
-                    percent: latestStats?.cpuPercent
-                )
-                resourceMetricRow(
-                    label: "Memory",
-                    icon: "memorychip",
-                    color: Color.accentColor,
-                    percent: memoryPercent
-                )
-                resourceMetricRow(
-                    label: "Disk",
-                    icon: "externaldrive",
-                    color: Color.accentColor,
-                    percent: diskPercent
-                )
+                HStack(spacing: 12) {
+                    DashboardMiniMetric(title: "Running", value: metricValue(dockerInfo?.containersRunning), color: .green)
+                    DashboardMiniMetric(title: "Stopped", value: metricValue(dockerInfo?.containersStopped), color: .secondary)
+                    DashboardMiniMetric(title: "Images", value: metricValue(dockerInfo?.images), color: .purple)
+                }
+                .frame(maxWidth: .infinity)
             }
-            .padding(16)
-            .dashboardCardBackground(cornerRadius: 18)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dashboardCardBackground(cornerRadius: 20)
         }
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
-    private func resourceMetricRow(label: String, icon: String, color: Color, percent: Double?) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(color)
-                .frame(width: 16)
-            Text(label)
-                .font(.subheadline)
-                .frame(width: 60, alignment: .leading)
-            SmoothProgressBar(value: clampedPercent(percent) / 100, tint: barTint(percent))
-                .frame(height: 6)
-            Text(percentString(percent))
-                .font(.caption.monospacedDigit().weight(.medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .trailing)
+    private var liveIndicator: some View {
+        let active = isStreaming
+        return HStack(spacing: 5) {
+            Circle()
+                .fill(active ? Color.green : Color.secondary)
+                .frame(width: 6, height: 6)
+            Text(active ? "LIVE" : "IDLE")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(active ? Color.green : Color.secondary)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background((active ? Color.green : Color.secondary).opacity(0.14), in: Capsule())
+    }
+
+    private func percentShort(_ v: Double?) -> String {
+        guard let v else { return "—" }
+        return String(format: "%.0f%%", min(max(v, 0), 100))
     }
 
     private var environmentMenu: some View {
@@ -197,42 +212,42 @@ struct DashboardView: View {
     }
 
     private var overviewGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             let running = dockerInfo?.containersRunning ?? 0
             let total = dockerInfo?.containers ?? 0
             let stopped = dockerInfo?.containersStopped ?? 0
             let images = dockerInfo?.images ?? 0
 
-            DashboardTile(
+            DashboardGlassTile(
                 title: "Containers",
-                value: dockerInfo != nil ? "\(total)" : "--",
-                subtitle: "\(running) running, \(stopped) stopped",
+                value: dockerInfo != nil ? "\(total)" : "—",
+                subtitle: "\(running) running · \(stopped) stopped",
                 icon: "cube.box.fill",
-                color: Color.accentColor
-            ) { selectedTab = 1 }
+                tint: .blue
+            ) { selectedTab = AppTab.containers.id }
 
-            DashboardTile(
+            DashboardGlassTile(
                 title: "Images",
-                value: dockerInfo != nil ? "\(images)" : "--",
+                value: dockerInfo != nil ? "\(images)" : "—",
                 subtitle: "Browse, pull, prune",
                 icon: "photo.stack.fill",
-                color: Color.accentColor
-            ) { selectedTab = 2 }
+                tint: .purple
+            ) { selectedTab = AppTab.images.id }
 
-            DashboardTile(
+            DashboardGlassTile(
                 title: "Projects",
-                value: projectCount.map(String.init) ?? "--",
+                value: projectCount.map(String.init) ?? "—",
                 subtitle: "Compose projects",
                 icon: "square.stack.3d.up.fill",
-                color: Color.accentColor
-            ) { selectedTab = 3 }
+                tint: .orange
+            ) { selectedTab = AppTab.projects.id }
 
-            DashboardTile(
+            DashboardGlassTile(
                 title: "Volumes",
-                value: volumeTotalBytes.map { $0.byteString } ?? "--",
+                value: volumeTotalBytes.map { $0.byteString } ?? "—",
                 subtitle: volumeCount.map { "\($0) volume\($0 == 1 ? "" : "s")" } ?? "Persistent data",
                 icon: "externaldrive.fill",
-                color: Color.accentColor
+                tint: .teal
             ) { showVolumes = true }
         }
     }
@@ -484,6 +499,88 @@ struct EnvironmentDashboardCard: View {
 }
 
 // MARK: - Shared components (used across views)
+
+/// Apple-Fitness-inspired progress ring with the current value at its center
+/// and a label beneath. Used for the live CPU/Memory/Disk gauges in the hero.
+struct StatRing: View {
+    let value: Double
+    let valueText: String
+    let label: String
+    let tint: Color
+    var size: CGFloat = 78
+    var lineWidth: CGFloat = 9
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .stroke(tint.opacity(0.18), lineWidth: lineWidth)
+                Circle()
+                    .trim(from: 0, to: max(0.001, min(value, 1.0)))
+                    .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.smooth(duration: 1.2), value: value)
+                Text(valueText)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+            }
+            .frame(width: size, height: size)
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct DashboardGlassTile: View {
+    let title: String
+    let value: String
+    let subtitle: String
+    let icon: String
+    let tint: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 32, height: 32)
+                        .background(tint.opacity(0.16), in: Circle())
+                        .overlay(Circle().stroke(tint.opacity(0.22), lineWidth: 0.5))
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                }
+
+                Text(value)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
+            .padding(12)
+            .dashboardCardBackground(cornerRadius: 18)
+        }
+        .buttonStyle(.plain)
+    }
+}
 
 struct DashboardTile: View {
     let title: String

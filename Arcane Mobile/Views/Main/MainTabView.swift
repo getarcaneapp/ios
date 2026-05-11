@@ -1,42 +1,135 @@
 import SwiftUI
+import UIKit
 import Arcane
 
 struct MainTabView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @State private var selectedTab: Int = 0
+    @State private var selectedTab: String = AppTab.dashboard.id
+    @State private var swapTarget: AppTab? = nil
+    @State private var store = NavTabsStore.shared
+
+    private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
+
+    private var visibleTabs: [AppTab] {
+        store.visibleTabs(isAdmin: isAdmin)
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab("Dashboard", systemImage: "chart.bar.fill", value: 0) {
-                DashboardView(selectedTab: $selectedTab)
-            }
-            Tab("Containers", systemImage: "cube.box.fill", value: 1) {
-                NavigationStack {
-                    ContainersView(
-                        environmentID: manager.activeEnvironmentID,
-                        environmentName: manager.activeEnvironmentName
-                    )
+            ForEach(visibleTabs) { tab in
+                Tab(tab.title, systemImage: tab.systemImage, value: tab.id) {
+                    NavigationStack {
+                        appTabDestination(tab, manager: manager, selectedTab: $selectedTab)
+                    }
                 }
             }
-            Tab("Images", systemImage: "photo.stack.fill", value: 2) {
-                NavigationStack {
-                    ImagesView(
-                        environmentID: manager.activeEnvironmentID,
-                        environmentName: manager.activeEnvironmentName
-                    )
-                }
-            }
-            Tab("Projects", systemImage: "square.stack.3d.up.fill", value: 3) {
-                NavigationStack {
-                    ProjectsView(
-                        environmentID: manager.activeEnvironmentID,
-                        environmentName: manager.activeEnvironmentName
-                    )
-                }
-            }
-            Tab("Settings", systemImage: "gearshape.fill", value: 4) {
+            Tab("Settings", systemImage: "gearshape.fill", value: "settings") {
                 SettingsView()
             }
+        }
+        .background {
+            TabBarLongPressInstaller { idx in
+                let tabs = visibleTabs
+                guard idx >= 0, idx < tabs.count else { return }
+                swapTarget = tabs[idx]
+            }
+        }
+        .sheet(item: $swapTarget) { current in
+            TabSwapSheet(current: current) { replacement in
+                store.swap(pinned: current, with: replacement)
+                if selectedTab == current.id { selectedTab = replacement.id }
+                swapTarget = nil
+            }
+            .environment(manager)
+        }
+    }
+}
+
+// MARK: - Long-press detection
+
+/// Attaches a `UILongPressGestureRecognizer` to the underlying `UITabBar`
+/// once it's available in the window hierarchy. Uses `cancelsTouchesInView =
+/// false` so normal tab taps continue to work. Only fires for the first 4 tab
+/// slots — the rightmost (Settings) slot is treated as a no-op.
+private struct TabBarLongPressInstaller: UIViewRepresentable {
+    let onLongPress: (Int) -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onLongPress = onLongPress
+        if !context.coordinator.installed {
+            DispatchQueue.main.async {
+                tryInstall(from: uiView, coordinator: context.coordinator, retries: 10)
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onLongPress: onLongPress)
+    }
+
+    private func tryInstall(from anchor: UIView, coordinator: Coordinator, retries: Int) {
+        guard !coordinator.installed else { return }
+        if let window = anchor.window, let tabBar = findTabBar(in: window) {
+            let lp = UILongPressGestureRecognizer(
+                target: coordinator,
+                action: #selector(Coordinator.handle(_:))
+            )
+            lp.minimumPressDuration = 0.4
+            lp.cancelsTouchesInView = false
+            lp.delegate = coordinator
+            tabBar.addGestureRecognizer(lp)
+            coordinator.installed = true
+            coordinator.tabBar = tabBar
+            return
+        }
+        guard retries > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak anchor] in
+            guard let anchor else { return }
+            tryInstall(from: anchor, coordinator: coordinator, retries: retries - 1)
+        }
+    }
+
+    private func findTabBar(in view: UIView) -> UITabBar? {
+        if let tb = view as? UITabBar { return tb }
+        for sub in view.subviews {
+            if let tb = findTabBar(in: sub) { return tb }
+        }
+        return nil
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onLongPress: (Int) -> Void
+        weak var tabBar: UITabBar?
+        var installed = false
+
+        init(onLongPress: @escaping (Int) -> Void) {
+            self.onLongPress = onLongPress
+        }
+
+        @objc func handle(_ gr: UILongPressGestureRecognizer) {
+            guard gr.state == .began, let tabBar else { return }
+            let loc = gr.location(in: tabBar)
+            let slots = max(tabBar.items?.count ?? 5, 1)
+            guard tabBar.bounds.width > 0 else { return }
+            let slotWidth = tabBar.bounds.width / CGFloat(slots)
+            let idx = min(max(Int(loc.x / slotWidth), 0), slots - 1)
+            // The rightmost slot is Settings — locked, no swap.
+            if idx >= slots - 1 { return }
+            onLongPress(idx)
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+        ) -> Bool {
+            true
         }
     }
 }

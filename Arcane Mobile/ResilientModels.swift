@@ -103,7 +103,7 @@ nonisolated struct ContainerInfo: Codable, Hashable, Sendable, Identifiable {
     }
 
     var isRunning: Bool { state.lowercased() == "running" }
-    var iconUrl: String? { labels?["com.getarcaneapp.icon"] }
+    var iconUrl: String? { labels?["com.getarcaneapp.arcane.icon"] }
 
     enum CodingKeys: String, CodingKey {
         case id, image, state, status, names, labels, imageId, command, created
