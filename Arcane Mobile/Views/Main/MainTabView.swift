@@ -25,6 +25,7 @@ struct MainTabView: View {
                     NavigationStack {
                         appTabDestination(tab, manager: manager, selectedTab: $selectedTab)
                     }
+                    .id(tab.isEnvironmentScoped ? "\(tab.id)-\(manager.activeEnvironmentID.rawValue)" : tab.id)
                 }
             }
             Tab("Settings", systemImage: "gearshape.fill", value: "settings") {

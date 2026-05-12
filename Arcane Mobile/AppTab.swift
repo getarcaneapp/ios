@@ -118,6 +118,23 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Whether the destination view reads from `manager.activeEnvironmentID`.
+    /// MainTabView ties these tabs' view identity to the active env so they
+    /// rebuild — and capture the new env — when the user switches environments.
+    /// Without this, background tabs hold the env captured at first build
+    /// (often the .localDocker default "0") and pull-to-refresh hits the wrong env.
+    var isEnvironmentScoped: Bool {
+        switch self {
+        case .dashboard, .containers, .images, .projects, .volumes, .networks,
+             .ports, .updates, .gitOps, .swarm, .jobs:
+            return true
+        case .events, .gitRepositories, .users, .apiKeys,
+             .containerRegistries, .templateRegistries,
+             .notifications, .webhooks, .systemSettings, .authentication, .builds:
+            return false
+        }
+    }
+
     static let mainDefaults: [AppTab] = [.dashboard, .containers, .images, .projects]
     static var promotable: [AppTab] { AppTab.allCases.filter { !AppTab.mainDefaults.contains($0) } }
 }
