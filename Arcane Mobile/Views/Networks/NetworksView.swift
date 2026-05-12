@@ -326,6 +326,9 @@ struct NetworkDetailView: View {
     let network: NetworkInfo
     let environmentID: EnvironmentID
 
+    @State private var inspect: NetworkInspect?
+    @State private var isLoadingInspect = false
+    @State private var inspectError: String?
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
 
@@ -354,39 +357,62 @@ struct NetworkDetailView: View {
                 LabeledContent("ID", value: String(network.id.prefix(12)))
                 LabeledContent("Driver", value: network.driver)
                 LabeledContent("Scope", value: network.scope.capitalized)
-                if network.isInternal { LabeledContent("Internal", value: "Yes") }
-                if let attachable = network.attachable { LabeledContent("Attachable", value: attachable ? "Yes" : "No") }
+                if let inspect {
+                    if inspect._internal { LabeledContent("Internal", value: "Yes") }
+                    LabeledContent("Attachable", value: inspect.attachable ? "Yes" : "No")
+                    LabeledContent("IPv4", value: inspect.enableIPv4 ? "Enabled" : "Disabled")
+                    LabeledContent("IPv6", value: inspect.enableIPv6 ? "Enabled" : "Disabled")
+                }
                 NavigationLink("Topology") {
                     NetworkTopologyView(environmentID: environmentID)
                 }
             }
 
-            if let ipam = network.ipam {
+            if let ipam = inspect?.ipam {
                 Section("IPAM") {
-                    if let driver = ipam.driver { LabeledContent("Driver", value: driver) }
-                    ForEach(ipam.config ?? [], id: \.subnet) { config in
-                        if let subnet = config.subnet { LabeledContent("Subnet", value: subnet) }
-                        if let gw = config.gateway { LabeledContent("Gateway", value: gw) }
+                    if let driver = ipam.driver, !driver.isEmpty {
+                        LabeledContent("Driver", value: driver)
                     }
-                }
-            }
-
-            if let containers = network.containers, !containers.isEmpty {
-                Section("Connected Containers (\(containers.count))") {
-                    ForEach(Array(containers.keys.sorted()), id: \.self) { key in
-                        if let c = containers[key] {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(c.name ?? String(key.prefix(12))).font(.headline)
-                                if let ip = c.iPv4Address, !ip.isEmpty {
-                                    Text(ip).font(.caption).foregroundStyle(.secondary)
-                                }
+                    ForEach(Array((ipam.config ?? []).enumerated()), id: \.offset) { _, config in
+                        if let subnet = config.subnet, !subnet.isEmpty {
+                            LabeledContent("Subnet") {
+                                Text(subnet).font(.body.monospaced())
                             }
-                            .padding(.vertical, 2)
+                        }
+                        if let gw = config.gateway, !gw.isEmpty {
+                            LabeledContent("Gateway") {
+                                Text(gw).font(.body.monospaced())
+                            }
+                        }
+                        if let range = config.ipRange, !range.isEmpty {
+                            LabeledContent("IP Range") {
+                                Text(range).font(.body.monospaced())
+                            }
                         }
                     }
                 }
             }
 
+            connectedContainersSection
+
+            if isLoadingInspect && inspect == nil {
+                Section {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text("Loading network details…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if let inspectError, inspect == nil {
+                Section {
+                    Label(inspectError, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
         }
         .listStyle(.insetGrouped)
         .navigationTitle(network.name.isEmpty ? network.id : network.name)
@@ -403,6 +429,8 @@ struct NetworkDetailView: View {
                 }
             }
         }
+        .task { await loadInspect() }
+        .refreshable { await loadInspect() }
         .confirmationDialog("Delete Network", isPresented: $showDeleteConfirm) {
             Button("Delete", role: .destructive) {
                 Task { await deleteNetwork() }
@@ -412,6 +440,45 @@ struct NetworkDetailView: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var connectedContainersSection: some View {
+        if let endpoints = inspect?.containersList, !endpoints.isEmpty {
+            Section("Connected Containers (\(endpoints.count))") {
+                ForEach(endpoints, id: \.id) { endpoint in
+                    NetworkContainerRow(endpoint: endpoint)
+                }
+            }
+        } else if let containers = inspect?.containers.additionalProperties, !containers.isEmpty {
+            let sortedKeys = Array(containers.keys.sorted())
+            Section("Connected Containers (\(sortedKeys.count))") {
+                ForEach(sortedKeys, id: \.self) { key in
+                    if let endpoint = containers[key] {
+                        NetworkContainerRow(
+                            id: key,
+                            name: endpoint.name,
+                            ipv4: endpoint.iPv4Address,
+                            ipv6: endpoint.iPv6Address
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadInspect() async {
+        guard let client = manager.client else { return }
+        if inspect == nil { isLoadingInspect = true }
+        defer { isLoadingInspect = false }
+        do {
+            let path = client.rest.environmentPath(environmentID, "networks/\(network.id)")
+            let result: NetworkInspect = try await client.rest.get(path)
+            inspect = result
+            inspectError = nil
+        } catch {
+            inspectError = friendlyErrorMessage(error)
         }
     }
 
@@ -500,5 +567,58 @@ struct CreateNetworkView: View {
             mutationStore.markChanged(kind: .networks, envID: environmentID)
             await onSuccess(); dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
+    }
+}
+
+private struct NetworkContainerRow: View {
+    let id: String
+    let name: String?
+    let ipv4: String?
+    let ipv6: String?
+
+    init(id: String, name: String?, ipv4: String?, ipv6: String?) {
+        self.id = id
+        self.name = name
+        self.ipv4 = ipv4
+        self.ipv6 = ipv6
+    }
+
+    init(endpoint: NetworkContainerEndpoint) {
+        self.id = endpoint.id
+        self.name = endpoint.name
+        self.ipv4 = endpoint.ipv4Address
+        self.ipv6 = endpoint.ipv6Address
+    }
+
+    private var displayName: String {
+        let trimmed = (name ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        return trimmed.isEmpty ? String(id.prefix(12)) : trimmed
+    }
+
+    private var displayIP: String {
+        if let v4 = ipv4, !v4.isEmpty { return v4 }
+        if let v6 = ipv6, !v6.isEmpty { return v6 }
+        return "—"
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "shippingbox")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(displayIP)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
     }
 }
