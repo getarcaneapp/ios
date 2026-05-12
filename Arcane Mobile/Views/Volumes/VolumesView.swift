@@ -16,6 +16,7 @@ struct VolumesView: View {
     @State private var sizes: [String: Int64] = [:]
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var actionErrorMessage: String?
     @State private var searchText = ""
     @State private var showCreateSheet = false
     @State private var showPruneConfirm = false
@@ -131,6 +132,17 @@ struct VolumesView: View {
         } message: {
             Text("All unused volumes will be permanently deleted.")
         }
+        .alert(
+            "Action Failed",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
                 Form {
@@ -190,12 +202,11 @@ struct VolumesView: View {
             .tint(.yellow)
         }
         .swipeActions(edge: .trailing) {
-            Button {
+            Button(role: .destructive) {
                 Task { await deleteVolume(volume) }
             } label: {
                 DestructiveLabel(text: "Delete")
             }
-            .tint(.red)
         }
     }
 
@@ -293,10 +304,14 @@ struct VolumesView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "volumes/\(volume.name)")
             let _: DataResponse<String> = try await client.rest.delete(path)
-            volumes.removeAll { $0.name == volume.name }
+            withAnimation {
+                volumes.removeAll { $0.name == volume.name }
+            }
             await invalidateVolumeCaches()
             mutationStore.markChanged(kind: .volumes, envID: environmentID)
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func pruneVolumes() async {
@@ -306,7 +321,9 @@ struct VolumesView: View {
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateVolumeCaches()
             mutationStore.markChanged(kind: .volumes, envID: environmentID)
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func invalidateVolumeCaches() async {

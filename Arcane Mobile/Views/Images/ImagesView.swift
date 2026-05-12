@@ -10,6 +10,7 @@ struct ImagesView: View {
     @State private var images: [ImageInfo] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var actionErrorMessage: String?
     @State private var searchText = ""
     @State private var updateInfo: [String: ImageUpdateResponse] = [:]
     @State private var showPullSheet = false
@@ -174,6 +175,17 @@ struct ImagesView: View {
         } message: {
             Text("Remove all dangling images. This cannot be undone.")
         }
+        .alert(
+            "Couldn't Delete Image",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
         .sheet(isPresented: $showPruneSheet) {
             ImagePruneView(environmentID: environmentID) {}
         }
@@ -229,12 +241,11 @@ struct ImagesView: View {
             imagePreview(image, state: state)
         }
         .swipeActions(edge: .trailing) {
-            Button {
+            Button(role: .destructive) {
                 Task { await removeImage(image) }
             } label: {
                 DestructiveLabel(text: "Delete")
             }
-            .tint(.red)
         }
     }
 
@@ -368,10 +379,14 @@ struct ImagesView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
-            images.removeAll { $0.id == image.id }
+            withAnimation {
+                images.removeAll { $0.id == image.id }
+            }
             await invalidateImageCaches()
             mutationStore.markChanged(kind: .images, envID: environmentID)
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 }
 

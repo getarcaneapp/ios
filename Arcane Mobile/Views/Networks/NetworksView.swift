@@ -10,6 +10,7 @@ struct NetworksView: View {
     @State private var networks: [NetworkInfo] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var actionErrorMessage: String?
     @State private var searchText = ""
     @State private var showCreateSheet = false
     @State private var showPruneConfirm = false
@@ -67,12 +68,11 @@ struct NetworksView: View {
                             networkPreview(network)
                         }
                         .swipeActions(edge: .trailing) {
-                            Button {
+                            Button(role: .destructive) {
                                 Task { await deleteNetwork(network) }
                             } label: {
                                 DestructiveLabel(text: "Delete")
                             }
-                            .tint(.red)
                         }
                     }
                 }
@@ -123,6 +123,17 @@ struct NetworksView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Remove all unused networks.")
+        }
+        .alert(
+            "Action Failed",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
         }
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
@@ -201,10 +212,14 @@ struct NetworksView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "networks/\(network.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
-            networks.removeAll { $0.id == network.id }
+            withAnimation {
+                networks.removeAll { $0.id == network.id }
+            }
             await invalidateNetworkCaches()
             mutationStore.markChanged(kind: .networks, envID: environmentID)
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func pruneNetworks() async {
@@ -214,7 +229,9 @@ struct NetworksView: View {
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateNetworkCaches()
             mutationStore.markChanged(kind: .networks, envID: environmentID)
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func invalidateNetworkCaches() async {

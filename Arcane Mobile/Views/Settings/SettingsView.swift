@@ -298,6 +298,7 @@ struct UsersView: View {
     @State private var users: [ArcaneUser] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var actionErrorMessage: String?
     @State private var showCreateSheet = false
 
     var body: some View {
@@ -313,12 +314,11 @@ struct UsersView: View {
                             UserRow(user: user)
                         }
                         .swipeActions(edge: .trailing) {
-                            Button {
+                            Button(role: .destructive) {
                                 Task { await deleteUser(user) }
                             } label: {
                                 DestructiveLabel(text: "Delete")
                             }
-                            .tint(.red)
                         }
                     }
                 }
@@ -340,6 +340,17 @@ struct UsersView: View {
                 }
                 await loadUsers(refresh: true)
             }
+        }
+        .alert(
+            "Couldn't Delete User",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
         }
     }
 
@@ -363,11 +374,15 @@ struct UsersView: View {
         guard let client = manager.client else { return }
         do {
             let _: DataResponse<String> = try await client.rest.delete("users/\(user.id)")
-            users.removeAll { $0.id == user.id }
+            withAnimation {
+                users.removeAll { $0.id == user.id }
+            }
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["users", "users/*"])
             }
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 }
 
@@ -543,6 +558,7 @@ struct APIKeysView: View {
     @State private var isLoading = false
     @State private var showCreateSheet = false
     @State private var createdKey: String?
+    @State private var actionErrorMessage: String?
 
     var body: some View {
         Group {
@@ -556,12 +572,11 @@ struct APIKeysView: View {
                         APIKeyRow(apiKey: key)
                             .swipeActions(edge: .trailing) {
                                 if key.isProtected != true {
-                                    Button {
+                                    Button(role: .destructive) {
                                         Task { await deleteKey(key) }
                                     } label: {
                                         DestructiveLabel(text: "Delete")
                                     }
-                                    .tint(.red)
                                 }
                             }
                     }
@@ -591,6 +606,17 @@ struct APIKeysView: View {
         .sheet(item: Binding(get: { createdKey.map { CreatedKeyWrapper(key: $0) } }, set: { _ in createdKey = nil })) { wrapper in
             NewAPIKeyView(key: wrapper.key)
         }
+        .alert(
+            "Couldn't Delete API Key",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
     }
 
     private func loadKeys(refresh: Bool = false) async {
@@ -612,11 +638,15 @@ struct APIKeysView: View {
         guard let client = manager.client else { return }
         do {
             let _: DataResponse<String> = try await client.rest.delete("api-keys/\(key.id)")
-            apiKeys.removeAll { $0.id == key.id }
+            withAnimation {
+                apiKeys.removeAll { $0.id == key.id }
+            }
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["api-keys", "api-keys/*"])
             }
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 }
 
@@ -753,6 +783,7 @@ struct ContainerRegistriesView: View {
     @State private var isLoading = false
     @State private var showCreateRegistrySheet = false
     @State private var editingRegistry: ContainerRegistry?
+    @State private var actionErrorMessage: String?
 
     var body: some View {
         Group {
@@ -771,12 +802,11 @@ struct ContainerRegistriesView: View {
                             onDelete: { Task { await deleteRegistry(registry) } }
                         )
                         .swipeActions(edge: .trailing) {
-                            Button {
+                            Button(role: .destructive) {
                                 Task { await deleteRegistry(registry) }
                             } label: {
                                 DestructiveLabel(text: "Delete")
                             }
-                            .tint(.red)
                         }
                     }
                 }
@@ -815,6 +845,17 @@ struct ContainerRegistriesView: View {
                 await loadRegistries(refresh: true)
             }
         }
+        .alert(
+            "Couldn't Delete Registry",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
     }
 
     private func loadRegistries(refresh: Bool = false) async {
@@ -836,11 +877,15 @@ struct ContainerRegistriesView: View {
         guard manager.currentUser?.isAdmin == true, let client = manager.client else { return }
         do {
             let _: DataResponse<String> = try await client.rest.delete("container-registries/\(registry.id)")
-            registries.removeAll { $0.id == registry.id }
+            withAnimation {
+                registries.removeAll { $0.id == registry.id }
+            }
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["container-registries", "container-registries/*"])
             }
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 }
 
@@ -851,6 +896,7 @@ struct TemplateRegistriesView: View {
     @State private var showCreateSheet = false
     @State private var showBrowser = false
     @State private var editingRegistry: TemplateRegistry?
+    @State private var actionErrorMessage: String?
 
     var body: some View {
         Group {
@@ -869,12 +915,11 @@ struct TemplateRegistriesView: View {
                             onDelete: { Task { await deleteTemplateRegistry(registry) } }
                         )
                         .swipeActions(edge: .trailing) {
-                            Button {
+                            Button(role: .destructive) {
                                 Task { await deleteTemplateRegistry(registry) }
                             } label: {
                                 DestructiveLabel(text: "Delete")
                             }
-                            .tint(.red)
                         }
                     }
                 }
@@ -919,6 +964,17 @@ struct TemplateRegistriesView: View {
                 await loadRegistries(refresh: true)
             }
         }
+        .alert(
+            "Couldn't Delete Registry",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
     }
 
     private func loadRegistries(refresh: Bool = false) async {
@@ -940,11 +996,15 @@ struct TemplateRegistriesView: View {
         guard manager.currentUser?.isAdmin == true, let client = manager.client else { return }
         do {
             let _: DataResponse<String> = try await client.rest.delete("templates/registries/\(registry.id)")
-            registries.removeAll { $0.id == registry.id }
+            withAnimation {
+                registries.removeAll { $0.id == registry.id }
+            }
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
             }
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 }
 

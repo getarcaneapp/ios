@@ -81,7 +81,7 @@ struct NotificationSettingsView: View {
                 }
                 .swipeActions(edge: .trailing) {
                     if existing != nil {
-                        Button {
+                        Button(role: .destructive) {
                             Task { await deleteProvider(provider) }
                         } label: {
                             DestructiveLabel(text: "Delete")

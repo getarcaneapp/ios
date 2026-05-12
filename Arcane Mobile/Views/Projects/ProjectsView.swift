@@ -11,6 +11,7 @@ struct ProjectsView: View {
     @State private var projects: [Project] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var actionErrorMessage: String?
     @State private var searchText = ""
     @State private var showCreateSheet = false
     @State private var showFilterSheet = false
@@ -160,6 +161,17 @@ struct ProjectsView: View {
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadProjects(refresh: true) }
         }
+        .alert(
+            "Couldn't Delete Project",
+            isPresented: Binding(
+                get: { actionErrorMessage != nil },
+                set: { if !$0 { actionErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { actionErrorMessage = nil }
+        } message: {
+            Text(actionErrorMessage ?? "")
+        }
     }
 
     private func loadProjects(refresh: Bool = false) async {
@@ -210,12 +222,11 @@ struct ProjectsView: View {
             .tint(.yellow)
         }
         .swipeActions(edge: .trailing) {
-            Button {
+            Button(role: .destructive) {
                 Task { await deleteProject(project) }
             } label: {
                 DestructiveLabel(text: "Delete")
             }
-            .tint(.red)
         }
     }
 
@@ -268,10 +279,14 @@ struct ProjectsView: View {
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/destroy")
             let _: DataResponse<String> = try await client.rest.delete(path)
-            projects.removeAll { $0.id == project.id }
+            withAnimation {
+                projects.removeAll { $0.id == project.id }
+            }
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func invalidateProjectCaches() async {

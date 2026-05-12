@@ -38,12 +38,11 @@ struct WebhooksView: View {
                                 webhookPreview(webhook)
                             }
                             .swipeActions(edge: .trailing) {
-                                Button {
+                                Button(role: .destructive) {
                                     Task { await deleteWebhook(webhook) }
                                 } label: {
                                     DestructiveLabel(text: "Delete")
                                 }
-                                .tint(.red)
                             }
                             .swipeActions(edge: .leading) {
                                 Button {
