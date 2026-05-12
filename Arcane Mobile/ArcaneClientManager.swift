@@ -1,11 +1,21 @@
 import Foundation
 import Arcane
+import ArcaneOIDC
+import AuthenticationServices
 
 enum AppAuthState {
     case setup          // No server URL configured
     case authenticating // Server URL set, checking existing tokens
     case login          // Server URL configured, not authenticated
     case authenticated  // Logged in
+}
+
+// URL scheme + path used for native OIDC callbacks. Must match the
+// `OIDC_MOBILE_REDIRECT_URIS` allowlist on the backend and the OIDC
+// provider's registered redirect URIs.
+enum ArcaneMobileOIDC {
+    static let callbackURLScheme = "arcane-mobile"
+    static let redirectURI = "arcane-mobile://oidc-callback"
 }
 
 @Observable
@@ -20,6 +30,15 @@ final class ArcaneClientManager {
     var currentUser: ArcaneUser?
     var isLoading: Bool = false
     var errorMessage: String?
+
+    // MARK: - OIDC
+    struct OIDCDisplayInfo: Sendable {
+        let enabled: Bool
+        let providerName: String
+        let providerLogoUrl: String
+    }
+    var oidcInfo: OIDCDisplayInfo?
+    var isOIDCSigningIn: Bool = false
 
     // MARK: - Demo mode
     var isDemoActive: Bool = false
@@ -75,7 +94,38 @@ final class ArcaneClientManager {
         serverURL = trimmed
         client = Self.makeClient(url: parsed)
         authState = .login
+        oidcInfo = nil
         Task { await ResponseCache.shared.invalidateAll() }
+        Task { await refreshOIDCStatus() }
+    }
+
+    func refreshOIDCStatus() async {
+        guard let client else {
+            oidcInfo = nil
+            return
+        }
+        do {
+            // The login page has no auth yet, so use the public settings
+            // endpoint which exposes oidcEnabled + provider display fields.
+            let data = try await client.transport.rawRequest(
+                "environments/0/settings/public",
+                body: Optional<String>.none,
+                authorized: false
+            )
+            let settings = try JSONDecoder().decode([PublicSetting].self, from: data)
+            let dict = Dictionary(uniqueKeysWithValues: settings.map { ($0.key, $0.value) })
+            oidcInfo = OIDCDisplayInfo(
+                enabled: dict["oidcEnabled"]?.lowercased() == "true",
+                providerName: dict["oidcProviderName"] ?? "",
+                providerLogoUrl: dict["oidcProviderLogoUrl"] ?? ""
+            )
+        } catch {
+            oidcInfo = nil
+        }
+    }
+
+    var isOIDCAvailable: Bool {
+        oidcInfo?.enabled == true
     }
 
     // MARK: - Auth
@@ -98,6 +148,41 @@ final class ArcaneClientManager {
                 requiresPasswordChange: response.user.requiresPasswordChange
             )
             authState = .authenticated
+        } catch let error as ArcaneError {
+            errorMessage = arcaneErrorMessage(error)
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    @MainActor
+    func loginWithOIDC(anchor: ASPresentationAnchor) async {
+        guard let client else {
+            errorMessage = "No server configured"
+            return
+        }
+        errorMessage = nil
+        isOIDCSigningIn = true
+        defer { isOIDCSigningIn = false }
+        do {
+            let authenticator = OIDCAuthenticator(client: client)
+            let result = try await authenticator.signIn(
+                callbackURLScheme: ArcaneMobileOIDC.callbackURLScheme,
+                redirectURI: ArcaneMobileOIDC.redirectURI,
+                presenting: anchor
+            )
+            currentUser = ArcaneUser(
+                id: result.user.id,
+                username: result.user.username,
+                email: result.user.email,
+                roles: result.user.roles,
+                canDelete: true,
+                requiresPasswordChange: result.user.requiresPasswordChange
+            )
+            authState = .authenticated
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            // User cancelled the system sheet — no error message needed.
+            return
         } catch let error as ArcaneError {
             errorMessage = arcaneErrorMessage(error)
         } catch {
@@ -216,6 +301,7 @@ final class ArcaneClientManager {
             let hasCredential = try await client.authManager.hasRefreshCredential()
             guard hasCredential else {
                 authState = .login
+                await refreshOIDCStatus()
                 return
             }
             let user = try await client.auth.me()
@@ -230,6 +316,7 @@ final class ArcaneClientManager {
             authState = .authenticated
         } catch {
             authState = .login
+            await refreshOIDCStatus()
         }
     }
 

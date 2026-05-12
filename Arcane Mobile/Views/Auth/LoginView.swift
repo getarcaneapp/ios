@@ -1,5 +1,6 @@
 import SwiftUI
 import Arcane
+import AuthenticationServices
 
 enum LoginMode {
     case setup   // First-time server URL entry
@@ -14,6 +15,7 @@ struct LoginView: View {
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var showSetup: Bool = false
+    @State private var showsPasswordForm: Bool = false
     @FocusState private var focusedField: Field?
 
     private enum Field: Hashable {
@@ -22,6 +24,13 @@ struct LoginView: View {
 
     private var isSetupMode: Bool { mode == .setup || showSetup }
     private var canEditServer: Bool { mode == .login }
+
+    // When OIDC is enabled, the password form is hidden behind a disclosure
+    // so the provider button is the primary action. The user can still reveal
+    // it to sign in locally (e.g. admin fallback).
+    private var shouldShowPasswordFields: Bool {
+        !manager.isOIDCAvailable || showsPasswordForm
+    }
 
     var body: some View {
         ScrollView {
@@ -146,24 +155,26 @@ struct LoginView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
 
-            Divider().padding(.leading, 16)
+            if shouldShowPasswordFields {
+                Divider().padding(.leading, 16)
 
-            FieldRow(icon: "person", label: "Username") {
-                TextField("Username", text: $username)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($focusedField, equals: .username)
-                    .submitLabel(.next)
-                    .onSubmit { focusedField = .password }
-            }
+                FieldRow(icon: "person", label: "Username") {
+                    TextField("Username", text: $username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($focusedField, equals: .username)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .password }
+                }
 
-            Divider().padding(.leading, 16)
+                Divider().padding(.leading, 16)
 
-            FieldRow(icon: "lock", label: "Password") {
-                SecureField("Password", text: $password)
-                    .focused($focusedField, equals: .password)
-                    .submitLabel(.go)
-                    .onSubmit { signIn() }
+                FieldRow(icon: "lock", label: "Password") {
+                    SecureField("Password", text: $password)
+                        .focused($focusedField, equals: .password)
+                        .submitLabel(.go)
+                        .onSubmit { signIn() }
+                }
             }
         }
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 14))
@@ -240,20 +251,27 @@ struct LoginView: View {
                     .tint(.secondary)
                 }
             } else {
-                Button(action: signIn) {
-                    ZStack {
-                        Label("Sign In", systemImage: "person.fill.checkmark")
-                            .opacity(manager.isLoading ? 0 : 1)
-                        if manager.isLoading {
-                            ProgressView().controlSize(.regular)
-                        }
-                    }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+                if manager.isOIDCAvailable {
+                    oidcPrimaryButton
+                    passwordDisclosure
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.extraLarge)
-                .disabled(username.isEmpty || password.isEmpty || manager.isLoading)
+
+                if shouldShowPasswordFields {
+                    Button(action: signIn) {
+                        ZStack {
+                            Label("Sign In", systemImage: "person.fill.checkmark")
+                                .opacity(manager.isLoading ? 0 : 1)
+                            if manager.isLoading {
+                                ProgressView().controlSize(.regular)
+                            }
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.extraLarge)
+                    .disabled(username.isEmpty || password.isEmpty || manager.isLoading)
+                }
 
                 Button("Change Server") {
                     focusedField = nil
@@ -263,6 +281,66 @@ struct LoginView: View {
                 .controlSize(.large)
                 .tint(.secondary)
             }
+        }
+    }
+
+    private var providerDisplayName: String {
+        let name = manager.oidcInfo?.providerName ?? ""
+        return name.isEmpty ? "OIDC" : name
+    }
+
+    @ViewBuilder
+    private var oidcPrimaryButton: some View {
+        Button(action: signInWithOIDC) {
+            ZStack {
+                Label("Continue with \(providerDisplayName)", systemImage: "key.fill")
+                    .opacity(manager.isOIDCSigningIn ? 0 : 1)
+                if manager.isOIDCSigningIn {
+                    ProgressView().controlSize(.regular)
+                }
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.extraLarge)
+        .disabled(manager.isLoading || manager.isOIDCSigningIn)
+    }
+
+    @ViewBuilder
+    private var passwordDisclosure: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                VStack { Divider() }
+                Text("OR")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                VStack { Divider() }
+            }
+            .padding(.vertical, 4)
+
+            Button {
+                focusedField = nil
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    showsPasswordForm.toggle()
+                }
+                if showsPasswordForm {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        focusedField = .username
+                    }
+                }
+            } label: {
+                Label(
+                    showsPasswordForm ? "Hide password sign in" : "Sign in with username and password",
+                    systemImage: showsPasswordForm ? "chevron.up" : "chevron.down"
+                )
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .tint(.secondary)
+            .disabled(manager.isLoading || manager.isOIDCSigningIn)
         }
     }
 
@@ -322,6 +400,28 @@ struct LoginView: View {
     private func signIn() {
         focusedField = nil
         Task { await manager.login(username: username, password: password) }
+    }
+
+    private func signInWithOIDC() {
+        focusedField = nil
+        let anchor = OIDCPresentationAnchorProvider.current()
+        Task { await manager.loginWithOIDC(anchor: anchor) }
+    }
+}
+
+private enum OIDCPresentationAnchorProvider {
+    @MainActor
+    static func current() -> ASPresentationAnchor {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            if let key = windowScene.windows.first(where: { $0.isKeyWindow }) {
+                return key
+            }
+            if let first = windowScene.windows.first {
+                return first
+            }
+        }
+        return ASPresentationAnchor()
     }
 }
 
