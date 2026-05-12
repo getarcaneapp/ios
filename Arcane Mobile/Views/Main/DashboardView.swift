@@ -24,7 +24,7 @@ struct DashboardView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 12) {
+                VStack(spacing: 12) {
                     dashboardHeader
                     if !hasLoadedOnce && isLoading {
                         ProgressView("Loading...")
@@ -59,7 +59,7 @@ struct DashboardView: View {
             .sheet(isPresented: $showPruneSheet) {
                 SystemPruneView(environmentID: envID)
             }
-.sheet(isPresented: $showVolumes) {
+            .sheet(isPresented: $showVolumes) {
                 NavigationStack {
                     VolumesView(
                         environmentID: envID,
@@ -219,43 +219,46 @@ struct DashboardView: View {
     }
 
     private var overviewGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-            let running = dockerInfo?.containersRunning ?? 0
-            let total = dockerInfo?.containers ?? 0
-            let stopped = dockerInfo?.containersStopped ?? 0
-            let images = dockerInfo?.images ?? 0
+        let running = dockerInfo?.containersRunning ?? 0
+        let total = dockerInfo?.containers ?? 0
+        let stopped = dockerInfo?.containersStopped ?? 0
+        let images = dockerInfo?.images ?? 0
 
-            DashboardGlassTile(
-                title: "Containers",
-                value: dockerInfo != nil ? "\(total)" : "—",
-                subtitle: "\(running) running · \(stopped) stopped",
-                icon: "cube.box.fill",
-                tint: .blue
-            ) { selectedTab = AppTab.containers.id }
+        return Grid(horizontalSpacing: 10, verticalSpacing: 10) {
+            GridRow {
+                DashboardGlassTile(
+                    title: "Containers",
+                    value: dockerInfo != nil ? "\(total)" : "—",
+                    subtitle: "\(running) running · \(stopped) stopped",
+                    icon: "cube.box.fill",
+                    tint: .blue
+                ) { selectedTab = AppTab.containers.id }
 
-            DashboardGlassTile(
-                title: "Images",
-                value: dockerInfo != nil ? "\(images)" : "—",
-                subtitle: "Browse, pull, prune",
-                icon: "photo.stack.fill",
-                tint: .purple
-            ) { selectedTab = AppTab.images.id }
+                DashboardGlassTile(
+                    title: "Images",
+                    value: dockerInfo != nil ? "\(images)" : "—",
+                    subtitle: "Browse, pull, prune",
+                    icon: "photo.stack.fill",
+                    tint: .purple
+                ) { selectedTab = AppTab.images.id }
+            }
+            GridRow {
+                DashboardGlassTile(
+                    title: "Projects",
+                    value: projectCount.map(String.init) ?? "—",
+                    subtitle: "",
+                    icon: "square.stack.3d.up.fill",
+                    tint: .orange
+                ) { selectedTab = AppTab.projects.id }
 
-            DashboardGlassTile(
-                title: "Projects",
-                value: projectCount.map(String.init) ?? "—",
-                subtitle: "Compose projects",
-                icon: "square.stack.3d.up.fill",
-                tint: .orange
-            ) { selectedTab = AppTab.projects.id }
-
-            DashboardGlassTile(
-                title: "Volumes",
-                value: volumeTotalBytes.map { $0.byteString } ?? "—",
-                subtitle: volumeCount.map { "\($0) volume\($0 == 1 ? "" : "s")" } ?? "Persistent data",
-                icon: "externaldrive.fill",
-                tint: .teal
-            ) { showVolumes = true }
+                DashboardGlassTile(
+                    title: "Volumes",
+                    value: volumeTotalBytes.map { $0.byteString } ?? "—",
+                    subtitle: volumeCount.map { "\($0) volume\($0 == 1 ? "" : "s")" } ?? "Persistent data",
+                    icon: "externaldrive.fill",
+                    tint: .teal
+                ) { showVolumes = true }
+            }
         }
     }
 

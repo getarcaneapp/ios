@@ -56,29 +56,33 @@ struct ContainerStatsView: View {
     }
 
     private var summaryTiles: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-            tile(title: "CPU", value: percentString(latest?.cpuPercent), systemImage: "cpu", tint: Color.accentColor)
-            tile(
-                title: "Memory",
-                value: memoryString(used: latest?.memoryUsed, limit: latest?.memoryLimit),
-                subtitle: percentString(latest?.memoryPercent),
-                systemImage: "memorychip",
-                tint: Color.accentColor
-            )
-            tile(
-                title: "Network",
-                value: "↓ \(rateString(latest?.netRxPerSec))",
-                subtitle: "↑ \(rateString(latest?.netTxPerSec))",
-                systemImage: "network",
-                tint: .green
-            )
-            tile(
-                title: "Block I/O",
-                value: "R \(rateString(latest?.blockReadPerSec))",
-                subtitle: "W \(rateString(latest?.blockWritePerSec))",
-                systemImage: "internaldrive",
-                tint: Color.accentColor
-            )
+        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+            GridRow {
+                tile(title: "CPU", value: percentString(latest?.cpuPercent), systemImage: "cpu", tint: Color.accentColor)
+                tile(
+                    title: "Memory",
+                    value: memoryString(used: latest?.memoryUsed, limit: latest?.memoryLimit),
+                    subtitle: percentString(latest?.memoryPercent),
+                    systemImage: "memorychip",
+                    tint: Color.accentColor
+                )
+            }
+            GridRow {
+                tile(
+                    title: "Network",
+                    value: "↓ \(rateString(latest?.netRxPerSec))",
+                    subtitle: "↑ \(rateString(latest?.netTxPerSec))",
+                    systemImage: "network",
+                    tint: .green
+                )
+                tile(
+                    title: "Block I/O",
+                    value: "R \(rateString(latest?.blockReadPerSec))",
+                    subtitle: "W \(rateString(latest?.blockWritePerSec))",
+                    systemImage: "internaldrive",
+                    tint: Color.accentColor
+                )
+            }
         }
     }
 

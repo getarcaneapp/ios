@@ -38,7 +38,7 @@ struct StreamingActionView: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 4) {
                         if lines.isEmpty {
                             HStack {
                                 ProgressView().scaleEffect(0.8)
@@ -59,7 +59,7 @@ struct StreamingActionView: View {
                 }
                 .onChange(of: lines.count) { _, _ in
                     if let last = lines.last {
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                        withAnimation(.none) { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
             }

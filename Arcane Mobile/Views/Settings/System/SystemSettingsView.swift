@@ -53,7 +53,6 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
             .init(key: "projectsDirectory", label: "Projects Directory", type: .text),
             .init(key: "swarmStackSourcesDirectory", label: "Swarm Stack Sources", type: .text),
             .init(key: "followProjectSymlinks", label: "Follow Project Symlinks", type: .boolean),
-            .init(key: "dockerClientRefreshInterval", label: "Client Refresh Interval", type: .cron),
             .init(key: "dockerPruneMode", label: "Prune Mode", type: .select(["all", "dangling"])),
         ]
     ),
@@ -64,10 +63,8 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
         summary: "Automatic image updates and polling",
         fields: [
             .init(key: "autoUpdate", label: "Enabled", type: .boolean),
-            .init(key: "autoUpdateInterval", label: "Update Interval", type: .cron),
             .init(key: "autoUpdateExcludedContainers", label: "Excluded Containers", type: .text),
             .init(key: "pollingEnabled", label: "Polling Enabled", type: .boolean),
-            .init(key: "pollingInterval", label: "Polling Interval", type: .cron),
         ]
     ),
     .init(
@@ -77,7 +74,6 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
         summary: "Restart unhealthy containers automatically",
         fields: [
             .init(key: "autoHealEnabled", label: "Enabled", type: .boolean),
-            .init(key: "autoHealInterval", label: "Check Interval", type: .cron),
             .init(key: "autoHealMaxRestarts", label: "Max Restarts", type: .number),
             .init(key: "autoHealRestartWindow", label: "Restart Window (min)", type: .number),
             .init(key: "autoHealExcludedContainers", label: "Excluded Containers", type: .text),
@@ -90,7 +86,6 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
         summary: "Automatically clean up unused resources",
         fields: [
             .init(key: "scheduledPruneEnabled", label: "Enabled", type: .boolean),
-            .init(key: "scheduledPruneInterval", label: "Schedule", type: .cron),
             .init(key: "scheduledPruneContainers", label: "Prune Containers", type: .boolean),
             .init(key: "scheduledPruneImages", label: "Prune Images", type: .boolean),
             .init(key: "scheduledPruneVolumes", label: "Prune Volumes", type: .boolean),
@@ -114,7 +109,6 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
         summary: "Trivy scanner configuration",
         fields: [
             .init(key: "vulnerabilityScanEnabled", label: "Enabled", type: .boolean),
-            .init(key: "vulnerabilityScanInterval", label: "Scan Interval", type: .cron),
             .init(key: "trivyImage", label: "Trivy Image", type: .text),
             .init(key: "trivyNetwork", label: "Network", type: .text),
             .init(key: "trivySecurityOpts", label: "Security Options", type: .text),
@@ -151,17 +145,6 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
             .init(key: "gitSyncMaxFiles", label: "Max Files", type: .number),
             .init(key: "gitSyncMaxTotalSizeMb", label: "Max Total Size (MB)", type: .number),
             .init(key: "gitSyncMaxBinarySizeMb", label: "Max Binary Size (MB)", type: .number),
-        ]
-    ),
-    .init(
-        id: "background-jobs",
-        title: "Background Jobs",
-        icon: "calendar.badge.clock",
-        summary: "Cron schedules for system tasks",
-        fields: [
-            .init(key: "environmentHealthInterval", label: "Health Check Interval", type: .cron),
-            .init(key: "eventCleanupInterval", label: "Event Cleanup Interval", type: .cron),
-            .init(key: "gitopsSyncInterval", label: "GitOps Sync Interval", type: .cron),
         ]
     ),
     .init(

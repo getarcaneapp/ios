@@ -488,7 +488,7 @@ struct PullImageView: View {
                     Divider()
                     ScrollViewReader { proxy in
                         ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 ForEach(layerOrder, id: \.self) { layerID in
                                     if let event = layers[layerID] {
                                         layerRow(event)
@@ -501,7 +501,7 @@ struct PullImageView: View {
                         }
                         .onChange(of: layerOrder.count) { _, _ in
                             if let last = layerOrder.last {
-                                proxy.scrollTo(last, anchor: .bottom)
+                                withAnimation(.none) { proxy.scrollTo(last, anchor: .bottom) }
                             }
                         }
                     }

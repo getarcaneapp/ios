@@ -1,4 +1,5 @@
 import SwiftUI
+import Arcane
 
 enum LoginMode {
     case setup   // First-time server URL entry
@@ -6,7 +7,7 @@ enum LoginMode {
 }
 
 struct LoginView: View {
-    @Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     var mode: LoginMode
 
     @State private var serverURL: String = ""
@@ -23,35 +24,33 @@ struct LoginView: View {
     private var canEditServer: Bool { mode == .login }
 
     var body: some View {
-        GeometryReader { geo in
-            ScrollView {
-                VStack(spacing: 28) {
-                    Spacer(minLength: 0)
+        ScrollView {
+            VStack(spacing: 28) {
+                Spacer(minLength: 0)
 
-                    headerSection
+                headerSection
 
-                    formCard
+                formCard
 
-                    if let error = manager.errorMessage {
-                        errorBanner(error)
-                    }
-
-                    if let info = manager.demoExpiredMessage {
-                        infoBanner(info)
-                    }
-
-                    actions
-
-                    Spacer(minLength: 0)
+                if let error = manager.errorMessage {
+                    errorBanner(error)
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 24)
-                .frame(minHeight: geo.size.height)
-                .frame(maxWidth: .infinity)
+
+                if let info = manager.demoExpiredMessage {
+                    infoBanner(info)
+                }
+
+                actions
+
+                Spacer(minLength: 0)
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollDismissesKeyboard(.interactively)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 24)
+            .frame(maxWidth: .infinity)
+            .containerRelativeFrame(.vertical, alignment: .center) { length, _ in length }
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(.interactively)
         .background(
             LinearGradient(
                 colors: [Color(.systemBackground), Color.accentColor.opacity(0.08)],

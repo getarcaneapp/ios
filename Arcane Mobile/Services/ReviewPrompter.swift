@@ -39,7 +39,9 @@ final class ReviewPrompter {
             .first(where: { $0.activationState == .foregroundActive })
         else { return }
 
-        SKStoreReviewController.requestReview(in: scene)
+        Task {
+             AppStore.requestReview(in: scene)
+        }
         UserDefaults.standard.set(currentVersion, forKey: Self.lastPromptVersionKey)
     }
 }

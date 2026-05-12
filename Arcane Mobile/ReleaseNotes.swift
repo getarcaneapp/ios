@@ -2,16 +2,48 @@ import SwiftUI
 
 struct ReleaseNote: Identifiable, Hashable {
     let version: String
-    let items: [Item]
+    let new: [Bullet]
+    let changed: [Bullet]
+    let fixed: [Bullet]
 
     var id: String { version }
 
-    struct Item: Identifiable, Hashable {
-        let symbol: String
-        let color: Color
-        let title: String
-        let body: String
-        var id: String { title }
+    init(
+        version: String,
+        new: [Bullet] = [],
+        changed: [Bullet] = [],
+        fixed: [Bullet] = []
+    ) {
+        self.version = version
+        self.new = new
+        self.changed = changed
+        self.fixed = fixed
+    }
+
+    struct Bullet: Hashable {
+        let text: String
+        let badge: Badge?
+
+        init(_ text: String, badge: Badge? = nil) {
+            self.text = text
+            self.badge = badge
+        }
+    }
+
+    enum Badge: Hashable {
+        case premium
+
+        var label: String {
+            switch self {
+            case .premium: return "Premium"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .premium: return .purple
+            }
+        }
     }
 }
 
@@ -21,25 +53,29 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.1.0",
-            items: [
-                .init(
-                    symbol: "rectangle.bottomthird.inset.filled",
-                    color: .blue,
-                    title: "Customizable Tab Bar",
-                    body: "Long-press any tab in the bottom bar to swap it with a destination from Settings. Pin your most-used screens — like Volumes, Networks, or Users — for one-tap access."
-                ),
-                .init(
-                    symbol: "pin.fill",
-                    color: .orange,
-                    title: "Pin Your Favorites",
-                    body: "Pin containers, projects, and resources to keep them at the top of every list."
-                ),
-                .init(
-                    symbol: "archivebox.fill",
-                    color: .indigo,
-                    title: "Archived Projects",
-                    body: "Stopped projects collapse into an Archived section so your active work stays front and center."
-                ),
+            new: [
+                .init("Initial Arcane Mobile Beta release"),
+                .init("Customizable bottom tab bar — long-press any tab to swap"),
+                .init("Pin containers, projects, and resources to keep them at the top"),
+                .init("Archived projects collapse into their own section"),
+                .init("Redesigned Updater Status and Updater History screens"),
+                .init("Redesigned Events list with severity filtering"),
+                .init("Ports grouped by container"),
+                .init("Show More pagination on Events and Updater History"),
+                .init("Reset to defaults from the tab customization sheet"),
+            ],
+            changed: [
+                .init("Reorganized navigation to match the web app (Management / Resources / Swarm / Administration)"),
+                .init("Tab customization sheet now uses a tile grid and opens to full height"),
+                .init("Smoother scrolling on the dashboard, container stats, and tab picker"),
+                .init("Removed OIDC sign-in from the login screen"),
+                .init("Removed Build Workspace (build settings still available to admins)"),
+            ],
+            fixed: [
+                .init("Container and project icons no longer crop wider artwork"),
+                .init("Events sort newest-first"),
+                .init("GitOps icon now renders"),
+                .init("Reduced memory use on long image lists"),
             ]
         ),
     ]

@@ -45,6 +45,11 @@ final class NavTabsStore {
         save(current)
     }
 
+    func resetToDefaults() {
+        UserDefaults.standard.removeObject(forKey: Self.storageKey)
+        version &+= 1
+    }
+
     private func save(_ tabs: [AppTab]) {
         let ids = tabs.map { $0.rawValue }
         if let data = try? JSONEncoder().encode(ids) {

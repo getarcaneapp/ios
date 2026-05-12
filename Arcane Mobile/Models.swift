@@ -144,18 +144,6 @@ nonisolated struct ProjectFiles: Codable, Sendable {
     let envContent: String?
 }
 
-// `NetworkInfo`, `ArcaneUser`, `APIKey`, `ContainerRegistry`,
-// `TemplateRegistry`, `ComposeTemplate`, `WebhookSummary` and their helpers
-// now live as concrete types in `ResilientModels.swift`.
-
-struct NetworkContainer: Codable, Hashable, Sendable {
-    var name: String?
-    var endpointID: String?
-    var macAddress: String?
-    var iPv4Address: String?
-    var iPv6Address: String?
-}
-
 extension NotificationResponse: @retroactive Identifiable {}
 
 extension SettingDto: @retroactive Identifiable {

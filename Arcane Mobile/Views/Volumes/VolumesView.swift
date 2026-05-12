@@ -48,18 +48,20 @@ struct VolumesView: View {
         pinnedStore.pinnedIDs(kind: .volume, envID: environmentID)
     }
 
-    private var pinnedVolumes: [VolumeInfo] {
-        filtered.filter { pinnedIDs.contains($0.id) }
-    }
-
-    private var unpinnedVolumes: [VolumeInfo] {
-        filtered.filter { !pinnedIDs.contains($0.id) }
-    }
-
     private var listSections: [StableListSection<String, VolumeInfo>] {
-        [
-            .init(id: "pinned", title: "Pinned", items: pinnedVolumes),
-            .init(id: "volumes", items: unpinnedVolumes)
+        let pinned: Set<String> = pinnedIDs
+        var pinnedItems: [VolumeInfo] = []
+        var unpinned: [VolumeInfo] = []
+        for volume in filtered {
+            if pinned.contains(volume.id) {
+                pinnedItems.append(volume)
+            } else {
+                unpinned.append(volume)
+            }
+        }
+        return [
+            .init(id: "pinned", title: "Pinned", items: pinnedItems),
+            .init(id: "volumes", items: unpinned)
         ]
     }
 
@@ -439,6 +441,12 @@ struct VolumeDetailView: View {
                     } else {
                         Text("—").foregroundStyle(.secondary)
                     }
+                }
+                NavigationLink("Browse Files") {
+                    VolumeBrowserView(environmentID: environmentID, volumeName: volume.name)
+                }
+                NavigationLink("Backups") {
+                    VolumeBackupsView(environmentID: environmentID, volumeName: volume.name)
                 }
             }
 

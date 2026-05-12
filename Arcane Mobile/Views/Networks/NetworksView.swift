@@ -299,6 +299,9 @@ struct NetworkDetailView: View {
                 LabeledContent("Scope", value: network.scope.capitalized)
                 if network.isInternal { LabeledContent("Internal", value: "Yes") }
                 if let attachable = network.attachable { LabeledContent("Attachable", value: attachable ? "Yes" : "No") }
+                NavigationLink("Topology") {
+                    NetworkTopologyView(environmentID: environmentID)
+                }
             }
 
             if let ipam = network.ipam {

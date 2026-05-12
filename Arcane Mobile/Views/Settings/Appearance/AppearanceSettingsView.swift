@@ -57,22 +57,26 @@ struct AppearanceSettingsView: View {
             Section {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 48), spacing: 12)], spacing: 12) {
                     ForEach(AccentColorOption.allCases.filter { $0 != .custom }) { option in
-                        Circle()
-                            .fill(option.color)
-                            .frame(width: 48, height: 48)
-                            .overlay {
-                                if selectedOption == option.rawValue {
-                                    Image(systemName: "checkmark")
-                                        .font(.headline.bold())
-                                        .foregroundStyle(.white)
-                                }
+                        Button {
+                            selectedOption = option.rawValue
+                            if let hex = option.hex {
+                                accentColorHex = hex
                             }
-                            .onTapGesture {
-                                selectedOption = option.rawValue
-                                if let hex = option.hex {
-                                    accentColorHex = hex
+                        } label: {
+                            Circle()
+                                .fill(option.color)
+                                .frame(width: 48, height: 48)
+                                .overlay {
+                                    if selectedOption == option.rawValue {
+                                        Image(systemName: "checkmark")
+                                            .font(.headline.bold())
+                                            .foregroundStyle(.white)
+                                    }
                                 }
-                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(option.rawValue.capitalized))
+                        .accessibilityAddTraits(selectedOption == option.rawValue ? .isSelected : [])
                     }
                 }
                 .padding(.vertical, 8)

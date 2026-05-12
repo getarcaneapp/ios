@@ -43,23 +43,24 @@ struct ProjectsView: View {
         pinnedStore.pinnedIDs(kind: .project, envID: environmentID)
     }
 
-    private var pinnedProjects: [Project] {
-        filtered.filter { pinnedIDs.contains($0.id) }
-    }
-
-    private var activeProjects: [Project] {
-        filtered.filter { !isStopped($0) && !pinnedIDs.contains($0.id) }
-    }
-
-    private var stoppedProjects: [Project] {
-        filtered.filter { isStopped($0) && !pinnedIDs.contains($0.id) }
-    }
-
     private var listSections: [StableListSection<String, Project>] {
-        [
-            .init(id: "pinned", title: "Pinned", items: pinnedProjects),
-            .init(id: "active", title: "Active", items: activeProjects),
-            .init(id: "stopped", title: "Stopped", items: stoppedProjects)
+        let pinned: Set<String> = pinnedIDs
+        var pinnedItems: [Project] = []
+        var active: [Project] = []
+        var stopped: [Project] = []
+        for project in filtered {
+            if pinned.contains(project.id) {
+                pinnedItems.append(project)
+            } else if isStopped(project) {
+                stopped.append(project)
+            } else {
+                active.append(project)
+            }
+        }
+        return [
+            .init(id: "pinned", title: "Pinned", items: pinnedItems),
+            .init(id: "active", title: "Active", items: active),
+            .init(id: "stopped", title: "Stopped", items: stopped)
         ]
     }
 

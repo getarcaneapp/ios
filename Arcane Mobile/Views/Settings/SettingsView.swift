@@ -5,40 +5,32 @@ struct SettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var showLogoutConfirm = false
     @State private var showChangeServerConfirm = false
-    @State private var showClearCacheConfirm = false
-    @State private var showCacheCleared = false
-    @State private var cacheSizeBytes: Int = 0
     @State private var volumeSizeBytes: Int64? = nil
     @State private var loadingVolumeSize = false
-    @State private var showWhatsNew = false
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
-
-    private var appVersionString: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-    }
-
-    private var appBuildString: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
-    }
-
-    private var cacheSizeText: String {
-        cacheSizeBytes > 0 ? Int64(cacheSizeBytes).byteString : "Empty"
-    }
 
     var body: some View {
         NavigationStack {
             List {
-                mainTabsSection
                 serverSection
+                managementSection
                 resourcesSection
-                if isAdmin { administrationSection }
-                aboutSection
-                applicationSection
+                swarmSection
+                administrationSection
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Settings")
             .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink {
+                        AppSettingsView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("App Settings")
+                }
+                ToolbarSpacer(.fixed, placement: .navigationBarTrailing)
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(role: .destructive) {
                         showLogoutConfirm = true
@@ -50,7 +42,6 @@ struct SettingsView: View {
                 }
             }
             .task {
-                await refreshCacheSize()
                 await loadVolumeSize()
             }
             .alert("Sign Out", isPresented: $showLogoutConfirm) {
@@ -61,23 +52,7 @@ struct SettingsView: View {
             } message: {
                 Text("You'll be signed out of this server.")
             }
-            .alert("Cache Cleared", isPresented: $showCacheCleared) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("Cached images and API responses will be reloaded from the server.")
-            }
-            .sheet(isPresented: $showWhatsNew) {
-                if let latest = ReleaseNotes.latest {
-                    WhatsNewView(note: latest)
-                }
-            }
         }
-    }
-
-    private func refreshCacheSize() async {
-        async let images = ImageCache.shared.currentBytes()
-        async let responses = ResponseCache.shared.diskBytes()
-        cacheSizeBytes = await images + responses
     }
 
     private func loadVolumeSize() async {
@@ -108,16 +83,21 @@ struct SettingsView: View {
         return Set(NavTabsStore.shared.pinnedTabs)
     }
 
+    private func visibleTabs(in section: AppTab.Section) -> [AppTab] {
+        AppTab.allCases.filter { tab in
+            tab.section == section
+                && !pinnedTabs.contains(tab)
+                && (isAdmin || !tab.requiresAdmin)
+        }
+    }
+
     @ViewBuilder
-    private var mainTabsSection: some View {
-        // Only Dashboard lives in its own section when displaced — Containers,
-        // Images, and Projects fall into the Resources section instead.
-        let displaced = AppTab.mainDefaults
-            .filter { $0.section == .main && !pinnedTabs.contains($0) }
-        if !displaced.isEmpty {
-            Section("Overview") {
-                ForEach(displaced) { tab in
-                    NavigationLink(destination: mainTabDestination(tab)) {
+    private var managementSection: some View {
+        let tabs = visibleTabs(in: .management)
+        if !tabs.isEmpty {
+            Section("Management") {
+                ForEach(tabs) { tab in
+                    NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
                         SettingsRow(
                             title: tab.title,
                             systemImage: tab.systemImage,
@@ -130,12 +110,21 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    private func mainTabDestination(_ tab: AppTab) -> some View {
-        // Settings shows displaced main tabs as drill-down links. Dashboard
-        // expects a Binding<String> for its quick-jump tiles — when reached
-        // from Settings, those tiles can't switch the main tab bar, so wire
-        // them to a constant binding that simply no-ops.
-        appTabDestination(tab, manager: manager, selectedTab: .constant(""))
+    private var swarmSection: some View {
+        let tabs = visibleTabs(in: .swarm)
+        if !tabs.isEmpty {
+            Section("Swarm") {
+                ForEach(tabs) { tab in
+                    NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
+                        SettingsRow(
+                            title: tab.title,
+                            systemImage: tab.systemImage,
+                            color: tab.iconColor
+                        )
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -192,10 +181,10 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var resourcesSection: some View {
-        let visibleResources = AppTab.allCases.filter { $0.section == .resources && !pinnedTabs.contains($0) }
-        if !visibleResources.isEmpty {
+        let tabs = visibleTabs(in: .resources)
+        if !tabs.isEmpty {
             Section("Resources") {
-                ForEach(visibleResources) { tab in
+                ForEach(tabs) { tab in
                     NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
                         resourceRow(tab)
                     }
@@ -225,13 +214,10 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var administrationSection: some View {
-        let visibleAdminTabs: [AppTab] = [
-            .users, .apiKeys, .containerRegistries, .templateRegistries,
-            .notifications, .webhooks, .systemSettings, .authentication, .builds
-        ].filter { !pinnedTabs.contains($0) }
-        if !visibleAdminTabs.isEmpty {
+        let tabs = visibleTabs(in: .administration)
+        if !tabs.isEmpty {
             Section {
-                ForEach(visibleAdminTabs) { tab in
+                ForEach(tabs) { tab in
                     NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
                         SettingsRow(
                             title: tab.title,
@@ -242,99 +228,6 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("Administration")
-            } footer: {
-                Text("Only administrators see this section.")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var applicationSection: some View {
-        Section {
-            NavigationLink(destination: AppearanceSettingsView()) {
-                SettingsRow(title: "Appearance", systemImage: "paintbrush.fill", color: .pink)
-            }
-            Button(role: .destructive) {
-                showClearCacheConfirm = true
-            } label: {
-                HStack {
-                    SettingsRow(
-                        title: "Clear Cache",
-                        systemImage: "trash",
-                        color: .red,
-                        titleColor: .red
-                    )
-                    Spacer()
-                    Text(cacheSizeText)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .confirmationDialog(
-            "Clear Cache?",
-            isPresented: $showClearCacheConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Cache", role: .destructive) {
-                Task {
-                    await ImageCache.shared.clear()
-                    await ResponseCache.shared.invalidateAll()
-                    await refreshCacheSize()
-                    showCacheCleared = true
-                }
-            }
-        } message: {
-            Text(cacheSizeBytes > 0
-                 ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images and API data. Everything will be re-fetched as needed."
-                 : "This will clear all cached images and API data.")
-        }
-    }
-
-    @ViewBuilder
-    private var aboutSection: some View {
-        Section("About") {
-            Link(destination: URL(string: "https://getarcane.app")!) {
-                SettingsExternalRow(title: "Documentation", systemImage: "globe", color: .blue)
-            }
-            ShareLink(item: URL(string: "https://getarcane.app")!) {
-                SettingsRow(title: "Share Arcane", systemImage: "square.and.arrow.up", color: .blue, titleColor: .primary)
-            }
-            Link(destination: URL(string: "https://discord.gg/WyXYpdyV3Z")!) {
-                SettingsExternalRow(title: "Join the Discord", systemImage: "bubble.left.and.bubble.right.fill", color: .indigo)
-            }
-            Link(destination: URL(string: "https://github.com/getarcaneapp/ios")!) {
-                SettingsExternalRow(title: "Contribute on GitHub", systemImage: "chevron.left.forwardslash.chevron.right", color: .purple)
-            }
-            Link(destination: URL(string: "https://github.com/getarcaneapp/ios/issues")!) {
-                SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
-            }
-            Button {
-                showWhatsNew = true
-            } label: {
-                HStack {
-                    SettingsRow(title: "What's New", systemImage: "sparkles", color: .yellow, titleColor: .primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            HStack {
-                SettingsRow(title: "Version", systemImage: "app.badge", color: .gray)
-                Spacer()
-                Text(appVersionString)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            HStack {
-                SettingsRow(title: "Build", systemImage: "hammer", color: .gray)
-                Spacer()
-                Text(appBuildString)
-                    .font(.subheadline.monospaced())
-                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -1439,7 +1332,12 @@ struct TemplateBrowserView: View {
         let groups = Dictionary(grouping: templates) { template in
             template.registry?.name ?? (template.isRemote ? "Remote" : "Local")
         }
-        return groups.keys.sorted().map { ($0, groups[$0] ?? []) }
+        return groups.keys.sorted().map { key in
+            let sorted = (groups[key] ?? []).sorted {
+                $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+            return (key, sorted)
+        }
     }
 
     var body: some View {
@@ -1456,7 +1354,7 @@ struct TemplateBrowserView: View {
                     List {
                         ForEach(groupedTemplates, id: \.0) { registryName, templates in
                             Section(registryName) {
-                                ForEach(templates.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) { template in
+                                ForEach(templates) { template in
                                     NavigationLink(destination: TemplatePreviewView(template: template)) {
                                         TemplateRow(template: template)
                                     }

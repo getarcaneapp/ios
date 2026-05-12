@@ -22,10 +22,12 @@ struct ContentView: View {
                 }
                 .onAppear(perform: evaluateWhatsNew)
                 .sheet(isPresented: $showWhatsNew) {
-                    if let latest = ReleaseNotes.latest {
-                        WhatsNewView(note: latest)
-                            .onDisappear { lastSeenVersion = latest.version }
-                    }
+                    WhatsNewView()
+                        .onDisappear {
+                            if let latest = ReleaseNotes.latest {
+                                lastSeenVersion = latest.version
+                            }
+                        }
                 }
             }
         }

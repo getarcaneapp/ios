@@ -5,15 +5,16 @@ struct LogsView: View {
     let title: String
     let logStream: LogStream?
 
-    @State private var lines: [LogLine] = []
+    @State private var lines: [IdentifiedLogLine] = []
+    @State private var nextLineID: UInt64 = 0
     @State private var isStreaming = false
     @State private var autoScroll = true
     @State private var searchText = ""
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
-    private var filteredLines: [LogLine] {
+    private var filteredLines: [IdentifiedLogLine] {
         guard !searchText.isEmpty else { return lines }
-        return lines.filter { $0.text.localizedCaseInsensitiveContains(searchText) }
+        return lines.filter { $0.line.text.localizedCaseInsensitiveContains(searchText) }
     }
 
     var body: some View {
@@ -21,18 +22,17 @@ struct LogsView: View {
             ZStack(alignment: .bottom) {
                 ScrollViewReader { proxy in
                     List {
-                        ForEach(Array(filteredLines.enumerated()), id: \.offset) { index, line in
-                            LogLineView(line: line)
-                                .id(index)
+                        ForEach(filteredLines) { entry in
+                            LogLineView(line: entry.line)
                                 .listRowBackground(Color.clear)
                                 .listRowInsets(.init(top: 1, leading: 12, bottom: 1, trailing: 12))
                         }
                     }
                     .listStyle(.plain)
-                    .onChange(of: filteredLines.count) { _, newCount in
-                        if autoScroll && newCount > 0 {
+                    .onChange(of: filteredLines.last?.id) { _, lastID in
+                        if autoScroll, let lastID {
                             withAnimation(.none) {
-                                proxy.scrollTo(newCount - 1, anchor: .bottom)
+                                proxy.scrollTo(lastID, anchor: .bottom)
                             }
                         }
                     }
@@ -87,7 +87,8 @@ struct LogsView: View {
         do {
             for try await line in stream {
                 await MainActor.run {
-                    lines.append(line)
+                    lines.append(IdentifiedLogLine(id: nextLineID, line: line))
+                    nextLineID &+= 1
                     // Cap at 5000 lines to avoid memory issues
                     if lines.count > 5000 {
                         lines.removeFirst(100)

@@ -1,10 +1,11 @@
 import SwiftUI
 import CryptoKit
+import ImageIO
 
 // MARK: - Shared URL image cache
 
 extension Notification.Name {
-    static let imageCacheDidClear = Notification.Name("ImageCacheDidClear")
+    nonisolated static let imageCacheDidClear = Notification.Name("ImageCacheDidClear")
 }
 
 actor ImageCache {
@@ -35,6 +36,14 @@ actor ImageCache {
         cache.object(forKey: url as NSString)
     }
 
+    nonisolated subscript(url: String, maxPixelSize maxPixel: Int) -> UIImage? {
+        cache.object(forKey: Self.memoryKey(url: url, maxPixel: maxPixel) as NSString)
+    }
+
+    private static func memoryKey(url: String, maxPixel: Int) -> String {
+        maxPixel > 0 ? "\(url)|\(maxPixel)" : url
+    }
+
     func currentBytes() -> Int {
         approximateBytes + diskBytesOnDisk()
     }
@@ -49,42 +58,60 @@ actor ImageCache {
         ) {
             for url in entries { try? FileManager.default.removeItem(at: url) }
         }
-        Task { @MainActor in
-            NotificationCenter.default.post(name: .imageCacheDidClear, object: nil)
-        }
+        NotificationCenter.default.post(name: .imageCacheDidClear, object: nil)
     }
 
-    func load(_ urlString: String, using fetcher: @escaping (String) async -> Data?) async -> UIImage? {
-        if let cached = cache.object(forKey: urlString as NSString) { return cached }
-        if let existing = inFlight[urlString] { return await existing.value }
+    func load(_ urlString: String, maxPixelSize: Int = 0, using fetcher: @escaping (String) async -> Data?) async -> UIImage? {
+        let memKey = Self.memoryKey(url: urlString, maxPixel: maxPixelSize) as NSString
+        if let cached = cache.object(forKey: memKey) { return cached }
+        if let existing = inFlight[memKey as String] { return await existing.value }
 
         if !didTrim {
             didTrim = true
             Task.detached(priority: .background) { [weak self] in await self?.trimDiskCache() }
         }
 
-        if let (img, cost) = loadFromDisk(urlString) {
-            cache.setObject(img, forKey: urlString as NSString, cost: cost)
+        if let (img, cost) = loadFromDisk(urlString, maxPixelSize: maxPixelSize) {
+            cache.setObject(img, forKey: memKey, cost: cost)
+            approximateBytes += cost
             return img
         }
 
         let task = Task<UIImage?, Never> {
-            guard let data = await fetcher(urlString),
-                  let img = UIImage(data: data) else { return nil }
-            self.cache.setObject(img, forKey: urlString as NSString, cost: data.count)
+            guard let data = await fetcher(urlString) else { return nil }
             self.writeToDisk(urlString, data: data)
+            guard let img = Self.decode(data: data, maxPixelSize: maxPixelSize) else { return nil }
+            let cost = Self.approximateCost(of: img)
+            self.cache.setObject(img, forKey: memKey, cost: cost)
+            self.approximateBytes += cost
             return img
         }
-        inFlight[urlString] = task
+        inFlight[memKey as String] = task
         let result = await task.value
-        inFlight.removeValue(forKey: urlString)
-        if let img = result {
-            // Approximate live bytes from the decoded pixel buffer
-            // (width * height * scale² * 4 bytes/pixel).
-            let pixels = img.size.width * img.size.height * img.scale * img.scale
-            approximateBytes += Int(pixels) * 4
-        }
+        inFlight.removeValue(forKey: memKey as String)
         return result
+    }
+
+    private static func decode(data: Data, maxPixelSize: Int) -> UIImage? {
+        guard maxPixelSize > 0 else { return UIImage(data: data) }
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+            return UIImage(data: data)
+        }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return UIImage(data: data)
+        }
+        return UIImage(cgImage: cgImage)
+    }
+
+    private static func approximateCost(of img: UIImage) -> Int {
+        let pixels = img.size.width * img.size.height * img.scale * img.scale
+        return Int(pixels) * 4
     }
 
     // MARK: - Disk tier
@@ -95,15 +122,15 @@ actor ImageCache {
         return diskDirectory.appendingPathComponent(name)
     }
 
-    private func loadFromDisk(_ key: String) -> (UIImage, Int)? {
+    private func loadFromDisk(_ key: String, maxPixelSize: Int) -> (UIImage, Int)? {
         let url = diskURL(for: key)
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
-              let img = UIImage(data: data) else { return nil }
+              let img = Self.decode(data: data, maxPixelSize: maxPixelSize) else { return nil }
         // Touch mtime so LRU-by-mtime trim keeps recently-used files alive.
         try? FileManager.default.setAttributes(
             [.modificationDate: Date()], ofItemAtPath: url.path
         )
-        return (img, data.count)
+        return (img, Self.approximateCost(of: img))
     }
 
     private nonisolated func writeToDisk(_ key: String, data: Data) {
@@ -165,19 +192,19 @@ actor ImageCache {
 
 // MARK: - Async image view with cache + deduplication
 
-struct CachedAsyncImage: View {
+struct CachedAsyncImage<Fallback: View>: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let url: String?
     let size: CGFloat
-    let fallback: AnyView
+    let fallback: Fallback
 
     @State private var image: UIImage? = nil
     @State private var lastLoaded: String? = nil
 
-    init(url: String?, size: CGFloat = 36, @ViewBuilder fallback: () -> some View) {
+    init(url: String?, size: CGFloat = 36, @ViewBuilder fallback: () -> Fallback) {
         self.url = url
         self.size = size
-        self.fallback = AnyView(fallback())
+        self.fallback = fallback()
     }
 
     var body: some View {
@@ -185,9 +212,8 @@ struct CachedAsyncImage: View {
             if let img = image {
                 Image(uiImage: img)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
                     .frame(width: size, height: size)
-                    .clipShape(.circle)
             } else {
                 fallback
                     .frame(width: size, height: size)
@@ -231,16 +257,23 @@ struct CachedAsyncImage: View {
         return url
     }
 
+    private var maxPixelSize: Int {
+        let scale = UITraitCollection.current.displayScale
+        let effectiveScale = scale > 0 ? scale : 3
+        return Int((size * effectiveScale).rounded(.up))
+    }
+
     private func load() {
         guard let resolved = resolvedURL(), resolved != lastLoaded else { return }
-        if let cached = ImageCache.shared[resolved] {
+        let maxPixel = maxPixelSize
+        if let cached = ImageCache.shared[resolved, maxPixelSize: maxPixel] {
             image = cached
             lastLoaded = resolved
             return
         }
         lastLoaded = resolved
         Task {
-            if let loaded = await ImageCache.shared.load(resolved, using: manager.fetchImageData) {
+            if let loaded = await ImageCache.shared.load(resolved, maxPixelSize: maxPixel, using: manager.fetchImageData) {
                 image = loaded
             }
         }

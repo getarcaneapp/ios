@@ -6,12 +6,13 @@ import Arcane
 /// to render the destination view for a tab.
 enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case dashboard, containers, images, projects
-    case volumes, networks
+    case volumes, networks, ports, updates, events
+    case gitRepositories, gitOps, swarm
     case users, apiKeys, containerRegistries, templateRegistries,
-         notifications, webhooks, systemSettings, authentication, builds
+         notifications, webhooks, systemSettings, authentication, builds, jobs
 
     enum Section: Hashable {
-        case main, resources, administration
+        case management, resources, swarm, administration
     }
 
     var id: String { rawValue }
@@ -24,6 +25,12 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .projects: return "Projects"
         case .volumes: return "Volumes"
         case .networks: return "Networks"
+        case .ports: return "Ports"
+        case .updates: return "Updates"
+        case .events: return "Events"
+        case .gitRepositories: return "Git Repositories"
+        case .gitOps: return "GitOps"
+        case .swarm: return "Swarm"
         case .users: return "Users"
         case .apiKeys: return "API Keys"
         case .containerRegistries: return "Container Registries"
@@ -33,6 +40,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .systemSettings: return "System Settings"
         case .authentication: return "Authentication"
         case .builds: return "Builds"
+        case .jobs: return "Jobs"
         }
     }
 
@@ -44,6 +52,12 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .projects: return "square.stack.3d.up.fill"
         case .volumes: return "externaldrive.fill"
         case .networks: return "network"
+        case .ports: return "point.3.connected.trianglepath.dotted"
+        case .updates: return "arrow.triangle.2.circlepath"
+        case .events: return "clock.badge.exclamationmark"
+        case .gitRepositories: return "arrow.triangle.branch"
+        case .gitOps: return "arrow.triangle.merge"
+        case .swarm: return "square.stack.3d.up"
         case .users: return "person.2.fill"
         case .apiKeys: return "key.fill"
         case .containerRegistries: return "shippingbox.fill"
@@ -53,6 +67,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .systemSettings: return "slider.horizontal.3"
         case .authentication: return "lock.shield.fill"
         case .builds: return "hammer.fill"
+        case .jobs: return "calendar.badge.clock"
         }
     }
 
@@ -61,6 +76,11 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .dashboard, .containers, .images, .projects: return .blue
         case .volumes: return .orange
         case .networks: return .teal
+        case .ports: return .cyan
+        case .updates: return .green
+        case .events: return .red
+        case .gitRepositories, .gitOps: return .indigo
+        case .swarm: return .mint
         case .users: return .blue
         case .apiKeys: return .yellow
         case .containerRegistries: return .purple
@@ -70,25 +90,36 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .systemSettings: return .gray
         case .authentication: return .blue
         case .builds: return .orange
+        case .jobs: return .pink
         }
     }
 
     var section: Section {
         switch self {
-        case .dashboard:
-            return .main
-        case .containers, .images, .projects, .volumes, .networks:
+        case .dashboard, .projects, .containerRegistries, .templateRegistries, .gitRepositories, .gitOps:
+            return .management
+        case .containers, .images, .builds, .updates, .networks, .ports, .volumes, .jobs:
             return .resources
-        case .users, .apiKeys, .containerRegistries, .templateRegistries,
-             .notifications, .webhooks, .systemSettings, .authentication, .builds:
+        case .swarm:
+            return .swarm
+        case .events, .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication:
             return .administration
         }
     }
 
-    var requiresAdmin: Bool { section == .administration }
+    var requiresAdmin: Bool {
+        switch self {
+        case .containerRegistries, .templateRegistries, .gitRepositories, .gitOps,
+             .builds, .jobs, .swarm,
+             .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication:
+            return true
+        case .dashboard, .projects, .containers, .images, .updates, .networks, .ports, .volumes, .events:
+            return false
+        }
+    }
 
     static let mainDefaults: [AppTab] = [.dashboard, .containers, .images, .projects]
-    static var promotable: [AppTab] { AppTab.allCases.filter { $0.section != .main } }
+    static var promotable: [AppTab] { AppTab.allCases.filter { !AppTab.mainDefaults.contains($0) } }
 }
 
 /// Single source of truth for building a destination view from an AppTab.
@@ -128,6 +159,18 @@ func appTabDestination(
             environmentID: manager.activeEnvironmentID,
             environmentName: manager.activeEnvironmentName
         )
+    case .ports:
+        PortsView(environmentID: manager.activeEnvironmentID)
+    case .updates:
+        UpdatesView(environmentID: manager.activeEnvironmentID)
+    case .events:
+        EventsView()
+    case .gitRepositories:
+        GitRepositoriesView()
+    case .gitOps:
+        GitOpsSyncsView(environmentID: manager.activeEnvironmentID)
+    case .swarm:
+        SwarmView(environmentID: manager.activeEnvironmentID)
     case .users:
         UsersView()
     case .apiKeys:
@@ -146,5 +189,7 @@ func appTabDestination(
         AuthenticationSettingsView()
     case .builds:
         BuildSettingsView()
+    case .jobs:
+        JobsView(environmentID: manager.activeEnvironmentID)
     }
 }
