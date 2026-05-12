@@ -32,15 +32,23 @@ struct ContainerInspectView: View {
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView([.horizontal, .vertical]) {
+                ScrollView {
                     Text(filteredJSON)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(14)
+                        .background(
+                            Color(uiColor: .secondarySystemGroupedBackground),
+                            in: .rect(cornerRadius: 14)
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                 }
             }
         }
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Inspect")
         .searchable(text: $searchText, prompt: "Filter lines")
         .toolbar {
