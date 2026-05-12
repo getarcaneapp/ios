@@ -28,6 +28,12 @@ struct NetworksView: View {
         mutationStore.version(kind: .networks, envID: environmentID)
     }
 
+    private static let systemNetworkNames: Set<String> = ["host", "bridge", "none"]
+
+    private static func isSystem(_ network: NetworkInfo) -> Bool {
+        systemNetworkNames.contains(network.name.lowercased())
+    }
+
     private var filtered: [NetworkInfo] {
         networks.filter { network in
             let matchesSearch = searchText.isEmpty ||
@@ -43,6 +49,14 @@ struct NetworksView: View {
         }
     }
 
+    private var systemNetworks: [NetworkInfo] {
+        filtered.filter { Self.isSystem($0) }
+    }
+
+    private var userNetworks: [NetworkInfo] {
+        filtered.filter { !Self.isSystem($0) }
+    }
+
     var body: some View {
         Group {
             if isLoading && networks.isEmpty {
@@ -53,25 +67,47 @@ struct NetworksView: View {
                 ContentUnavailableView("No Networks", systemImage: "network", description: Text("No networks found"))
             } else {
                 List {
-                    ForEach(filtered) { network in
-                        NavigationLink(destination: NetworkDetailView(network: network, environmentID: environmentID)) {
-                            NetworkRow(network: network)
-                        }
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                Task { await deleteNetwork(network) }
-                            } label: {
-                                DestructiveLabel(text: "Delete")
+                    if !systemNetworks.isEmpty {
+                        Section {
+                            ForEach(systemNetworks) { network in
+                                NavigationLink(destination: NetworkDetailView(network: network, environmentID: environmentID)) {
+                                    NetworkRow(network: network)
+                                }
+                                .contextMenu {
+                                    // No actions — built-in Docker networks cannot be deleted.
+                                } preview: {
+                                    networkPreview(network)
+                                }
                             }
-                            .tint(.red)
-                        } preview: {
-                            networkPreview(network)
+                        } header: {
+                            Text("Built-in")
+                        } footer: {
+                            Text("Built-in Docker networks can't be removed.")
                         }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                Task { await deleteNetwork(network) }
-                            } label: {
-                                DestructiveLabel(text: "Delete")
+                    }
+                    if !userNetworks.isEmpty {
+                        Section(systemNetworks.isEmpty ? "" : "Custom") {
+                            ForEach(userNetworks) { network in
+                                NavigationLink(destination: NetworkDetailView(network: network, environmentID: environmentID)) {
+                                    NetworkRow(network: network)
+                                }
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        Task { await deleteNetwork(network) }
+                                    } label: {
+                                        DestructiveLabel(text: "Delete")
+                                    }
+                                    .tint(.red)
+                                } preview: {
+                                    networkPreview(network)
+                                }
+                                .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) {
+                                        Task { await deleteNetwork(network) }
+                                    } label: {
+                                        DestructiveLabel(text: "Delete")
+                                    }
+                                }
                             }
                         }
                     }
@@ -293,6 +329,10 @@ struct NetworkDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
 
+    private var isBuiltIn: Bool {
+        ["host", "bridge", "none"].contains(network.name.lowercased())
+    }
+
     var body: some View {
         List {
             Section {
@@ -352,12 +392,14 @@ struct NetworkDetailView: View {
         .navigationTitle(network.name.isEmpty ? network.id : network.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(role: .destructive) {
-                    showDeleteConfirm = true
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
+            if !isBuiltIn {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.red)
+                    }
                 }
             }
         }
