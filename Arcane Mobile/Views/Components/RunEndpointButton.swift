@@ -28,10 +28,12 @@ struct RunEndpointButton: View {
         isRunning = true
         defer { isRunning = false }
         do {
-            _ = try await ArcaneAPIHelpers.send(client: client, path: path(client), method: .post)
+            _ = try await client.transport.rawRequest(path(client), method: "POST", body: EmptyJSONObject())
             message = "Completed"
         } catch {
             message = friendlyErrorMessage(error)
         }
     }
 }
+
+private nonisolated struct EmptyJSONObject: Encodable, Sendable {}

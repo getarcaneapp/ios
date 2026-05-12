@@ -252,7 +252,9 @@ struct LoginView: View {
                 }
             } else {
                 if manager.isOIDCAvailable {
-                    oidcPrimaryButton
+                    if !showsPasswordForm {
+                        oidcPrimaryButton
+                    }
                     passwordDisclosure
                 }
 
@@ -412,16 +414,19 @@ struct LoginView: View {
 private enum OIDCPresentationAnchorProvider {
     @MainActor
     static func current() -> ASPresentationAnchor {
-        for scene in UIApplication.shared.connectedScenes {
-            guard let windowScene = scene as? UIWindowScene else { continue }
-            if let key = windowScene.windows.first(where: { $0.isKeyWindow }) {
+        let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        for scene in windowScenes {
+            if let key = scene.windows.first(where: { $0.isKeyWindow }) {
                 return key
             }
-            if let first = windowScene.windows.first {
+            if let first = scene.windows.first {
                 return first
             }
         }
-        return ASPresentationAnchor()
+        guard let scene = windowScenes.first else {
+            preconditionFailure("OIDC sign-in invoked with no connected window scene")
+        }
+        return ASPresentationAnchor(windowScene: scene)
     }
 }
 

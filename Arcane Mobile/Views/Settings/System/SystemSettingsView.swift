@@ -163,6 +163,8 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
 struct SystemSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
+    private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
+
     var body: some View {
         List {
             Section {
@@ -173,6 +175,26 @@ struct SystemSettingsView: View {
                 }
             } footer: {
                 Text("Settings apply to the active environment: \(manager.activeEnvironmentName)")
+            }
+
+            if isAdmin {
+                Section("Maintenance") {
+                    NavigationLink(destination: SystemUpgradeView()) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 28)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Upgrade Arcane")
+                                Text("Update to the latest Arcane release")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
             }
         }
         .listStyle(.insetGrouped)
