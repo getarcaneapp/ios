@@ -15,6 +15,7 @@ struct LoginView: View {
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var showSetup: Bool = false
+    
     @State private var showsPasswordForm: Bool = false
     @FocusState private var focusedField: Field?
 

@@ -11,16 +11,10 @@ struct StreamingActionView: View {
     let bodyData: Data?
     let onComplete: () async -> Void
 
-    @State private var lines: [Entry] = []
-    @State private var isRunning = true
-    @State private var didFail = false
-    @State private var errorMessage: String?
-
-    private struct Entry: Identifiable {
-        let id = UUID()
-        let text: String
-        let isError: Bool
-    }
+    @State private var lines: [InstallStreamLine] = []
+    @State private var status: InstallStreamStatus = .running
+    @State private var seenPhases: [String] = []
+    @State private var currentPhase: String? = nil
 
     init(title: String,
          path: String,
@@ -35,65 +29,25 @@ struct StreamingActionView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if lines.isEmpty {
-                            HStack {
-                                ProgressView().scaleEffect(0.8)
-                                Text("Starting…").foregroundStyle(.secondary)
-                            }
-                            .padding(.top, 8)
-                        }
-                        ForEach(lines) { entry in
-                            Text(entry.text)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundStyle(entry.isError ? .red : .primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(entry.id)
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                }
-                .onChange(of: lines.count) { _, _ in
-                    if let last = lines.last {
-                        withAnimation(.none) { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
-                }
-            }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Close") { dismiss() }
-                        .disabled(isRunning)
-                }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if isRunning {
-                        ProgressView().scaleEffect(0.8)
-                    } else if didFail {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
-                    } else {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    }
-                }
-            }
-            .task { await runStream() }
-        }
-        .interactiveDismissDisabled(isRunning)
+        InstallStreamSheet(
+            title: title,
+            status: status,
+            currentPhase: currentPhase,
+            seenPhases: seenPhases,
+            lines: lines,
+            onDismiss: { dismiss() }
+        )
+        .interactiveDismissDisabled(!status.isTerminal)
+        .task { await runStream() }
     }
 
     private func runStream() async {
         guard let client = manager.client else {
-            append(text: "No client available", isError: true)
-            isRunning = false; didFail = true
+            fail(with: "No client available")
             return
         }
         guard let url = URL(string: manager.serverURL) else {
-            append(text: "Invalid server URL", isError: true)
-            isRunning = false; didFail = true
+            fail(with: "Invalid server URL")
             return
         }
 
@@ -107,26 +61,60 @@ struct StreamingActionView: View {
                 body: bodyData
             )
             for try await line in stream {
+                let isError = line.error != nil
                 let display = line.displayText
                 if !display.isEmpty {
-                    append(text: display, isError: line.error != nil)
+                    append(text: display, isError: isError)
+                }
+                if !isError {
+                    updatePhase(from: line)
                 }
             }
-            isRunning = false
+            withAnimation(.smooth(duration: 0.25)) {
+                status = .success
+                currentPhase = "Complete"
+            }
             await onComplete()
         } catch let error as NDJSONError {
-            append(text: error.errorDescription ?? "Stream failed", isError: true)
-            isRunning = false; didFail = true
+            let message = error.errorDescription ?? "Stream failed"
+            append(text: message, isError: true)
+            fail(with: message)
         } catch {
-            append(text: friendlyErrorMessage(error), isError: true)
-            isRunning = false; didFail = true
+            let message = friendlyErrorMessage(error)
+            append(text: message, isError: true)
+            fail(with: message)
         }
     }
 
     private func append(text: String, isError: Bool) {
-        lines.append(Entry(text: text, isError: isError))
+        lines.append(InstallStreamLine(text: text, isError: isError))
         if lines.count > 2000 { lines.removeFirst(200) }
     }
+
+    private func updatePhase(from line: StreamingProgressLine) {
+        let raw = (line.phase?.trimmed.nilIfEmpty) ?? (line.status?.trimmed.nilIfEmpty)
+        guard let phase = raw else { return }
+        if phase == currentPhase { return }
+        withAnimation(.smooth(duration: 0.25)) {
+            currentPhase = phase
+            if !seenPhases.contains(phase) {
+                seenPhases.append(phase)
+            }
+        }
+    }
+
+    private func fail(with message: String) {
+        withAnimation(.smooth(duration: 0.25)) {
+            status = .failure(message)
+            currentPhase = "Failed"
+        }
+        HapticsManager.warning()
+    }
+}
+
+private extension String {
+    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 nonisolated struct StreamingProgressLine: Decodable, Sendable {

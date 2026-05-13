@@ -558,12 +558,14 @@ struct PullImageView: View {
             .navigationTitle("Pull Image")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(isPulling ? "Stop" : "Cancel") {
-                        if isPulling {
-                            pullTask?.cancel()
-                        } else {
-                            dismiss()
+                if !didComplete {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(isPulling ? "Stop" : "Cancel") {
+                            if isPulling {
+                                pullTask?.cancel()
+                            } else {
+                                dismiss()
+                            }
                         }
                     }
                 }
