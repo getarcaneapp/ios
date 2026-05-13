@@ -28,4 +28,51 @@ extension ArcaneClient {
         let path = rest.environmentPath(envID, "containers/\(id)/rename") + query
         let _: MessageResponse = try await rest.post(path, body: String?.none)
     }
+
+    func listProjectsPage(
+        envID: EnvironmentID,
+        start: Int = 0,
+        limit: Int = 50,
+        archivedOnly: Bool = false
+    ) async throws -> ProjectListPage {
+        var query = [
+            URLQueryItem(name: "start", value: "\(start)"),
+            URLQueryItem(name: "limit", value: "\(limit)")
+        ]
+        if archivedOnly {
+            query.append(URLQueryItem(name: "archived", value: "true"))
+        }
+        let path = rest.environmentPath(envID, "projects")
+        let raw = try await transport.rawRequest(path, query: query, body: Optional<String>.none)
+        do {
+            return try ArcaneJSON.makeDecoder().decode(ProjectListPage.self, from: raw)
+        } catch {
+            throw ArcaneError.decoding(String(describing: error))
+        }
+    }
+
+    func listAllProjects(
+        envID: EnvironmentID,
+        archivedOnly: Bool = false,
+        pageSize: Int = 100
+    ) async throws -> [Project] {
+        var start = 0
+        var allProjects: [Project] = []
+
+        while true {
+            let page = try await listProjectsPage(
+                envID: envID,
+                start: start,
+                limit: pageSize,
+                archivedOnly: archivedOnly
+            )
+            allProjects.append(contentsOf: page.data)
+
+            if page.data.isEmpty || page.pagination.currentPage >= page.pagination.totalPages {
+                return allProjects
+            }
+
+            start += max(Int(page.pagination.itemsPerPage), pageSize)
+        }
+    }
 }

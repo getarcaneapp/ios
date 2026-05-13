@@ -420,9 +420,8 @@ struct CreateWebhookView: View {
         defer { loadingTargets = false }
         do {
             let containerPath = client.rest.environmentPath(manager.activeEnvironmentID, "containers")
-            let projectPath = client.rest.environmentPath(manager.activeEnvironmentID, "projects")
             async let c: [ContainerInfo] = client.rest.get(containerPath)
-            async let p: [Project] = client.rest.get(projectPath)
+            async let p: [Project] = client.listAllProjects(envID: manager.activeEnvironmentID)
             containers = (try? await c) ?? []
             projects = (try? await p) ?? []
         }

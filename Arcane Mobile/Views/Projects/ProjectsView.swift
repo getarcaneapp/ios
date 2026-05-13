@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct ProjectsView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
@@ -15,6 +17,10 @@ struct ProjectsView: View {
     @State private var searchText = ""
     @State private var showCreateSheet = false
     @State private var showFilterSheet = false
+    @State private var pendingDeleteProject: Project?
+    @State private var loadGeneration = 0
+    @State private var currentPage = 1
+    @State private var hasMore = false
     @State private var statusFilter = ProjectStatusFilter.all
     @State private var sortOrder = ListSortOrder.ascending
 
@@ -73,100 +79,163 @@ struct ProjectsView: View {
         mutationStore.version(kind: .projects, envID: environmentID)
     }
 
-    var body: some View {
-        Group {
-            if isLoading && projects.isEmpty {
-                ProgressView("Loading projects...").frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = errorMessage, projects.isEmpty {
-                ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
-            } else if projects.isEmpty {
-                ContentUnavailableView("No Projects", systemImage: "square.stack.3d.up", description: Text("No Compose projects found"))
-            } else {
-                List {
-                    StableSectionedList(listSections) { project in
-                        projectLink(project)
-                    }
+    private var deleteAlertPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteProject != nil },
+            set: { if !$0 { pendingDeleteProject = nil } }
+        )
+    }
+
+    private var actionErrorPresented: Binding<Bool> {
+        Binding(
+            get: { actionErrorMessage != nil },
+            set: { if !$0 { actionErrorMessage = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading && projects.isEmpty {
+            ProgressView("Loading projects...")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error = errorMessage, projects.isEmpty {
+            ContentUnavailableView(
+                "Error",
+                systemImage: "exclamationmark.triangle",
+                description: Text(error)
+            )
+        } else if projects.isEmpty {
+            ContentUnavailableView(
+                "No Projects",
+                systemImage: "square.stack.3d.up",
+                description: Text("No Compose projects found")
+            )
+        } else {
+            projectsList
+        }
+    }
+
+    private var projectsList: some View {
+        List {
+            StableSectionedList(listSections) { project in
+                projectLink(project)
+            }
+
+            if hasMore {
+                Button("Load More") {
+                    Task { await loadMore() }
                 }
-                .listStyle(.insetGrouped)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
         }
+        .listStyle(.insetGrouped)
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if isAdmin {
+            ToolbarItem(placement: .navigationBarLeading) {
+                NavigationLink(destination: TemplateRegistriesView()) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                }
+                .accessibilityLabel("Template registries")
+            }
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            moreOptionsMenu
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button { showCreateSheet = true } label: {
+                Image(systemName: "plus")
+            }
+            .accessibilityLabel("Create project")
+        }
+    }
+
+    private var moreOptionsMenu: some View {
+        Menu {
+            Picker("Sort", selection: $sortOrder) {
+                ForEach(ListSortOrder.allCases) { order in
+                    Label(order.title, systemImage: order.systemImage).tag(order)
+                }
+            }
+            Button {
+                showFilterSheet = true
+            } label: {
+                Label(
+                    activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
+                    systemImage: "line.3.horizontal.decrease.circle"
+                )
+            }
+            Divider()
+            NavigationLink(destination: ArchivedProjectsView(environmentID: environmentID)) {
+                Label("Archived Projects", systemImage: "archivebox")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("More options")
+    }
+
+    private var filterSheetContent: some View {
+        NavigationStack {
+            Form {
+                Section("Status") {
+                    Picker("Status", selection: $statusFilter) {
+                        ForEach(ProjectStatusFilter.allCases, id: \.self) { f in
+                            Text(f.rawValue).tag(f)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
+            }
+            .navigationTitle("Filter")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showFilterSheet = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    var body: some View {
+        content
         .navigationTitle("Projects")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search projects")
         .toolbar {
-            if isAdmin {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink(destination: TemplateRegistriesView()) {
-                        Image(systemName: "doc.text.magnifyingglass")
-                    }
-                    .accessibilityLabel("Template registries")
-                }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Picker("Sort", selection: $sortOrder) {
-                        ForEach(ListSortOrder.allCases) { order in
-                            Label(order.title, systemImage: order.systemImage).tag(order)
-                        }
-                    }
-                    Button {
-                        showFilterSheet = true
-                    } label: {
-                        Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
-                    }
-                    Divider()
-                    NavigationLink(destination: ArchivedProjectsView(environmentID: environmentID)) {
-                        Label("Archived Projects", systemImage: "archivebox")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .accessibilityLabel("More options")
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showCreateSheet = true } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel("Create project")
-            }
+            toolbarContent
         }
-        .task { await loadProjects() }
-        .refreshable { await loadProjects(refresh: true) }
+        .task { await loadProjects(reset: true) }
+        .refreshable { await loadProjects(reset: true, refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
             CreateProjectView(environmentID: environmentID) {}
         }
-        .sheet(isPresented: $showFilterSheet) {
-            NavigationStack {
-                Form {
-                    Section("Status") {
-                        Picker("Status", selection: $statusFilter) {
-                            ForEach(ProjectStatusFilter.allCases, id: \.self) { f in
-                                Text(f.rawValue).tag(f)
-                            }
-                        }
-                        .pickerStyle(.inline)
-                        .labelsHidden()
-                    }
-                }
-                .navigationTitle("Filter")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showFilterSheet = false }
-                    }
-                }
-            }
-            .presentationDetents([.medium])
-        }
+        .sheet(isPresented: $showFilterSheet) { filterSheetContent }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadProjects(refresh: true) }
+            Task { await loadProjects(reset: true, refresh: true) }
+        }
+        .alert(
+            "Delete Project",
+            isPresented: deleteAlertPresented,
+            presenting: pendingDeleteProject
+        ) { project in
+            Button("Delete", role: .destructive) {
+                Task { await deleteProject(project, removeFiles: false) }
+            }
+            Button("Delete and Remove Files", role: .destructive) {
+                Task { await deleteProject(project, removeFiles: true) }
+            }
+            Button("Cancel", role: .cancel) { pendingDeleteProject = nil }
+        } message: { _ in
+            Text("Remove the project from Arcane, or also remove its files from disk.")
         }
         .alert(
             "Couldn't Delete Project",
-            isPresented: Binding(
-                get: { actionErrorMessage != nil },
-                set: { if !$0 { actionErrorMessage = nil } }
-            )
+            isPresented: actionErrorPresented
         ) {
             Button("OK", role: .cancel) { actionErrorMessage = nil }
         } message: {
@@ -174,21 +243,82 @@ struct ProjectsView: View {
         }
     }
 
-    private func loadProjects(refresh: Bool = false) async {
-        guard let client = manager.client, let cached = manager.cached else { return }
+    private func loadProjects(reset: Bool, refresh: Bool = false) async {
+        guard let client = manager.client else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
+        let requestedPage = reset ? 1 : currentPage + 1
+        let start = max(0, (requestedPage - 1) * Self.pageSize)
         if projects.isEmpty { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
-        do {
-            let path = client.rest.environmentPath(environmentID, "projects")
-            if let result: [Project] = try await cached.getList(
-                path, elementType: Project.self, policy: .projects,
-                envID: environmentID, refresh: refresh,
-                onFresh: { fresh in projects = fresh }
-            ) {
-                projects = result
+        defer {
+            if loadGeneration == generation {
+                isLoading = false
             }
-        } catch { errorMessage = friendlyErrorMessage(error) }
+        }
+        do {
+            let response: ProjectListPage?
+            if reset, let cached = manager.cached {
+                let path = client.rest.environmentPath(environmentID, "projects")
+                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)"
+                let captured = client
+                let fetcher: @Sendable () async throws -> ProjectListPage = {
+                    try await captured.listProjectsPage(
+                        envID: environmentID,
+                        start: 0,
+                        limit: Self.pageSize
+                    )
+                }
+                response = try await cached.getCustom(
+                    path: cachePath,
+                    as: ProjectListPage.self,
+                    policy: .projects,
+                    envID: environmentID,
+                    refresh: refresh,
+                    onFresh: { fresh in
+                        applyProjectsPage(fresh, reset: true, generation: generation)
+                    },
+                    fetcher: fetcher
+                )
+            } else {
+                response = try await client.listProjectsPage(
+                    envID: environmentID,
+                    start: start,
+                    limit: Self.pageSize
+                )
+            }
+
+            guard let response else {
+                guard loadGeneration == generation else { return }
+                if reset {
+                    projects = []
+                    currentPage = 1
+                    hasMore = false
+                }
+                return
+            }
+            applyProjectsPage(response, reset: reset, generation: generation)
+        } catch {
+            guard loadGeneration == generation else { return }
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    private func applyProjectsPage(_ response: ProjectListPage, reset: Bool, generation: Int) {
+        guard loadGeneration == generation else { return }
+        if reset {
+            projects = response.data
+        } else {
+            let existing = Set(projects.map(\.id))
+            projects.append(contentsOf: response.data.filter { !existing.contains($0.id) })
+        }
+        currentPage = max(Int(response.pagination.currentPage), 1)
+        hasMore = response.pagination.currentPage < response.pagination.totalPages
+    }
+
+    private func loadMore() async {
+        guard hasMore else { return }
+        await loadProjects(reset: false)
     }
 
     private func projectLink(_ project: Project) -> some View {
@@ -204,7 +334,7 @@ struct ProjectsView: View {
                       systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
             }
             Button(role: .destructive) {
-                Task { await deleteProject(project) }
+                pendingDeleteProject = project
             } label: {
                 DestructiveLabel(text: "Delete")
             }
@@ -223,7 +353,7 @@ struct ProjectsView: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                Task { await deleteProject(project) }
+                pendingDeleteProject = project
             } label: {
                 DestructiveLabel(text: "Delete")
             }
@@ -274,11 +404,13 @@ struct ProjectsView: View {
         )
     }
 
-    private func deleteProject(_ project: Project) async {
+    private func deleteProject(_ project: Project, removeFiles: Bool) async {
         guard let client = manager.client else { return }
+        pendingDeleteProject = nil
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/destroy")
-            let _: DataResponse<String> = try await client.rest.delete(path)
+            let request = DestroyProjectRequest(removeFiles: removeFiles, removeVolumes: false)
+            let _: DataResponse<String> = try await client.transport.request(path, method: "DELETE", body: request)
             withAnimation {
                 projects.removeAll { $0.id == project.id }
             }

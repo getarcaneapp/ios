@@ -217,6 +217,17 @@ nonisolated struct PullImageRequest: Encodable, Sendable {
     let tag: String?
 }
 
+nonisolated struct ProjectListPage: Codable, Sendable {
+    let success: Bool
+    let data: [Project]
+    let pagination: PaginationResponse
+}
+
+nonisolated struct DestroyProjectRequest: Encodable, Sendable {
+    let removeFiles: Bool
+    let removeVolumes: Bool
+}
+
 nonisolated struct PullProgressEvent: Decodable, Sendable {
     let type: String?
     let phase: String?

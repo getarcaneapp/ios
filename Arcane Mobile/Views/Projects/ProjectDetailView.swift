@@ -136,10 +136,14 @@ struct ProjectDetailView: View {
                 ReviewPrompter.shared.recordSuccess()
             }
         }
-        .confirmationDialog("Delete Project", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { Task { await deleteProject() } }
+        .alert("Delete Project", isPresented: $showDeleteConfirm) {
+            Button("Delete", role: .destructive) { Task { await deleteProject(removeFiles: false) } }
+            Button("Delete and Remove Files", role: .destructive) {
+                Task { await deleteProject(removeFiles: true) }
+            }
+            Button("Cancel", role: .cancel) { showDeleteConfirm = false }
         } message: {
-            Text("This removes the project from Arcane. Files on disk are preserved.")
+            Text("Remove the project from Arcane, or also remove its files from disk.")
         }
     }
 
@@ -256,7 +260,7 @@ struct ProjectDetailView: View {
         }
     }
 
-    private func deleteProject() async {
+    private func deleteProject(removeFiles: Bool) async {
         guard let client = manager.client else { return }
         isActioning = true
         actionStatus = "Deleting…"
@@ -264,7 +268,8 @@ struct ProjectDetailView: View {
         defer { isActioning = false }
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/destroy")
-            let _: DataResponse<String> = try await client.rest.delete(path)
+            let request = DestroyProjectRequest(removeFiles: removeFiles, removeVolumes: false)
+            let _: DataResponse<String> = try await client.transport.request(path, method: "DELETE", body: request)
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
             dismiss()

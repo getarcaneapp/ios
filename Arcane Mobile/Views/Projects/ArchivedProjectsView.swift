@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct ArchivedProjectsView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
@@ -10,6 +12,9 @@ struct ArchivedProjectsView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var unarchivingID: String?
+    @State private var currentPage = 1
+    @State private var hasMore = false
+    @State private var loadGeneration = 0
 
     private var sortedProjects: [Project] {
         projects.sorted { lhs, rhs in
@@ -58,43 +63,104 @@ struct ArchivedProjectsView: View {
                                 .tint(.indigo)
                             }
                     }
+
+                    if hasMore {
+                        Button("Load More") {
+                            Task { await loadMore() }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
                 .listStyle(.insetGrouped)
             }
         }
         .navigationTitle("Archived Projects")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
-        .refreshable { await load(refresh: true) }
+        .task { await load(reset: true) }
+        .refreshable { await load(reset: true, refresh: true) }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await load(refresh: true) }
+            Task { await load(reset: true, refresh: true) }
         }
     }
 
-    private func load(refresh: Bool = false) async {
-        guard let client = manager.client, let cached = manager.cached else { return }
+    private func load(reset: Bool, refresh: Bool = false) async {
+        guard let client = manager.client else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
+        let requestedPage = reset ? 1 : currentPage + 1
+        let start = max(0, (requestedPage - 1) * Self.pageSize)
         if projects.isEmpty { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            if loadGeneration == generation {
+                isLoading = false
+            }
+        }
         do {
-            let basePath = client.rest.environmentPath(environmentID, "projects")
-            let cachePath = "\(basePath)?archived=true"
-            let query = [URLQueryItem(name: "archived", value: "true")]
-            let captured = client
-            let fetcher: @Sendable () async throws -> [Project] = {
-                try await captured.rest.get(basePath, query: query)
+            let response: ProjectListPage?
+            if reset, let cached = manager.cached {
+                let path = client.rest.environmentPath(environmentID, "projects")
+                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)&archived=true"
+                let captured = client
+                let fetcher: @Sendable () async throws -> ProjectListPage = {
+                    try await captured.listProjectsPage(
+                        envID: environmentID,
+                        start: 0,
+                        limit: Self.pageSize,
+                        archivedOnly: true
+                    )
+                }
+                response = try await cached.getCustom(
+                    path: cachePath,
+                    as: ProjectListPage.self,
+                    policy: .projects,
+                    envID: environmentID,
+                    refresh: refresh,
+                    onFresh: { fresh in
+                        applyProjectsPage(fresh, reset: true, generation: generation)
+                    },
+                    fetcher: fetcher
+                )
+            } else {
+                response = try await client.listProjectsPage(
+                    envID: environmentID,
+                    start: start,
+                    limit: Self.pageSize,
+                    archivedOnly: true
+                )
             }
-            if let result: [Project] = try await cached.getListCustom(
-                path: cachePath, elementType: Project.self, policy: .projects,
-                envID: environmentID, refresh: refresh,
-                onFresh: { fresh in projects = fresh },
-                fetcher: fetcher
-            ) {
-                projects = result
+
+            guard let response else {
+                guard loadGeneration == generation else { return }
+                if reset {
+                    projects = []
+                    currentPage = 1
+                    hasMore = false
+                }
+                return
             }
+            applyProjectsPage(response, reset: reset, generation: generation)
         } catch {
+            guard loadGeneration == generation else { return }
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func applyProjectsPage(_ response: ProjectListPage, reset: Bool, generation: Int) {
+        guard loadGeneration == generation else { return }
+        if reset {
+            projects = response.data
+        } else {
+            let existing = Set(projects.map(\.id))
+            projects.append(contentsOf: response.data.filter { !existing.contains($0.id) })
+        }
+        currentPage = max(Int(response.pagination.currentPage), 1)
+        hasMore = response.pagination.currentPage < response.pagination.totalPages
+    }
+
+    private func loadMore() async {
+        guard hasMore else { return }
+        await load(reset: false)
     }
 
     private func unarchive(_ project: Project) async {

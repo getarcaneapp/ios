@@ -292,14 +292,14 @@ private func dockerErrorBanner(_ error: String) -> some View {
 
         async let envTask: [ServerEnvironment] = loadEnvironmentsCached(refresh: refresh)
         async let dockerTask: DockerInfo? = loadDockerInfoSilent(client: client, refresh: refresh)
-        async let projectsTask: [Project] = loadProjectsCountCached(client: client, refresh: refresh)
+        async let projectCountTask: Int? = loadProjectsCountCached(client: client, refresh: refresh)
         async let volumeSizesTask: [VolumeSizeInfo]? = loadVolumeSizesCached(client: client, refresh: refresh)
 
-        let (envs, info, projects, volumeSizes) = await (envTask, dockerTask, projectsTask, volumeSizesTask)
+        let (envs, info, projectTotal, volumeSizes) = await (envTask, dockerTask, projectCountTask, volumeSizesTask)
         if Task.isCancelled { return }
         environments = envs
         dockerInfo = info
-        projectCount = projects.count
+        projectCount = projectTotal
         if let volumeSizes {
             volumeCount = volumeSizes.count
             volumeTotalBytes = volumeSizes.reduce(Int64(0)) { $0 + $1.size }
@@ -315,14 +315,15 @@ private func dockerErrorBanner(_ error: String) -> some View {
         )) ?? []
     }
 
-    private func loadProjectsCountCached(client: ArcaneClient, refresh: Bool) async -> [Project] {
-        guard let cached = manager.cached else { return [] }
-        let path = client.rest.environmentPath(envID, "projects")
-        return (try? await cached.getList(
-            path, elementType: Project.self, policy: .projects,
+    private func loadProjectsCountCached(client: ArcaneClient, refresh: Bool) async -> Int? {
+        guard let cached = manager.cached else { return nil }
+        let path = client.rest.environmentPath(envID, "projects/counts")
+        let counts = try? await cached.get(
+            path, as: ProjectStatusCounts.self, policy: .dashboardCounts,
             envID: envID, refresh: refresh,
-            onFresh: { fresh in projectCount = fresh.count }
-        )) ?? []
+            onFresh: { fresh in projectCount = Int(fresh.totalProjects) }
+        )
+        return counts.map { Int($0.totalProjects) }
     }
 
     private func loadVolumeSizesCached(client: ArcaneClient, refresh: Bool) async -> [VolumeSizeInfo]? {
