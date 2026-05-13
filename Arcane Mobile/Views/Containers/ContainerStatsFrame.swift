@@ -1,7 +1,7 @@
 import Foundation
 import Arcane
 
-struct ContainerStatsFrame: Identifiable, Hashable {
+nonisolated struct ContainerStatsFrame: Identifiable, Hashable, Sendable {
     let id = UUID()
     let timestamp: Date
     let cpuPercent: Double
@@ -93,22 +93,22 @@ struct ContainerStatsFrame: Identifiable, Hashable {
 }
 
 extension JSONValue {
-    var asObject: [String: JSONValue]? {
+    nonisolated var asObject: [String: JSONValue]? {
         if case let .object(v) = self { return v } else { return nil }
     }
-    var asArray: [JSONValue]? {
+    nonisolated var asArray: [JSONValue]? {
         if case let .array(v) = self { return v } else { return nil }
     }
-    var asInt64: Int64? {
+    nonisolated var asInt64: Int64? {
         if case let .number(v) = self { return Int64(v) } else { return nil }
     }
-    var asDouble: Double? {
+    nonisolated var asDouble: Double? {
         if case let .number(v) = self { return v } else { return nil }
     }
-    var asString: String? {
+    nonisolated var asString: String? {
         if case let .string(v) = self { return v } else { return nil }
     }
-    var asBool: Bool? {
+    nonisolated var asBool: Bool? {
         if case let .bool(v) = self { return v } else { return nil }
     }
 }

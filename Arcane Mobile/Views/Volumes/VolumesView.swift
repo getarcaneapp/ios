@@ -505,7 +505,13 @@ struct VolumeDetailView: View {
             }
         }
         .task { await loadSize() }
-        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")

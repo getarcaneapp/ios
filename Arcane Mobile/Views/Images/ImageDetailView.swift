@@ -81,7 +81,13 @@ struct ImageDetailView: View {
         } message: {
             Text("This will remove the image from the host.")
         }
-        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")

@@ -125,7 +125,13 @@ struct ContainerDetailView: View {
         } message: {
             Text("Sends SIGKILL — the container is terminated immediately without graceful shutdown. Use Stop for a graceful shutdown.")
         }
-        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+        .alert(
+            "Error",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")

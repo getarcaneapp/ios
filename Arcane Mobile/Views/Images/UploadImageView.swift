@@ -151,14 +151,41 @@ struct UploadImageView: View {
         progress = 0
         errorMessage = nil
         output = nil
+        let cached = manager.cached
+        let filename = pickedName
+        let onComplete = onComplete
+        let setProgress: @MainActor @Sendable (Double) -> Void = { progress = $0 }
+        let finishSuccess: @MainActor @Sendable (String) -> Void = { message in
+            progress = 1.0
+            output = message
+        }
+        let setError: @MainActor @Sendable (String) -> Void = { message in
+            errorMessage = message
+        }
+        let markChanged: @MainActor @Sendable () -> Void = {
+            mutationStore.markChanged(kind: .images, envID: environmentID)
+        }
+        let finishUpload: @MainActor @Sendable () -> Void = {
+            isUploading = false
+            uploadTask = nil
+        }
+        let runOnComplete: @MainActor @Sendable () async -> Void = {
+            await onComplete()
+        }
 
-        uploadTask = Task {
-            defer { isUploading = false; uploadTask = nil }
+        uploadTask = Task { @concurrent in
+            defer {
+                Task { await finishUpload() }
+            }
             let needsScope = url.startAccessingSecurityScopedResource()
             defer { if needsScope { url.stopAccessingSecurityScopedResource() } }
 
             do {
-                let multipartFile = try buildMultipartTempFile(fileURL: url, fieldName: "file", filename: pickedName)
+                let multipartFile = try Self.buildMultipartTempFile(
+                    fileURL: url,
+                    fieldName: "file",
+                    filename: filename
+                )
                 defer { try? FileManager.default.removeItem(at: multipartFile.tempURL) }
 
                 let api = NDJSONStream.apiURL(serverURL: serverURL, path: client.rest.environmentPath(environmentID, "images/upload"))
@@ -171,9 +198,7 @@ struct UploadImageView: View {
                 }
 
                 let delegate = UploadProgressDelegate { fraction in
-                    Task { @MainActor in
-                        self.progress = fraction
-                    }
+                    Task { await setProgress(fraction) }
                 }
                 let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
                 let (data, response) = try await session.upload(for: request, fromFile: multipartFile.tempURL)
@@ -184,31 +209,30 @@ struct UploadImageView: View {
                     let body = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
                     throw NDJSONError(statusCode: http.statusCode, message: body)
                 }
-                progress = 1.0
                 let parsed = try? JSONDecoder().decode(APIResponseEnvelope<LoadResult>.self, from: data)
-                output = parsed?.data?.stream ?? "Upload complete."
-                if let cached = manager.cached {
+                await finishSuccess(parsed?.data?.stream ?? "Upload complete.")
+                if let cached {
                     await cached.invalidate(envID: environmentID, paths: [
                         client.rest.environmentPath(environmentID, "images") + "*",
                         client.rest.environmentPath(environmentID, "images/*")
                     ])
                 }
-                mutationStore.markChanged(kind: .images, envID: environmentID)
-                await onComplete()
+                await markChanged()
+                await runOnComplete()
             } catch is CancellationError {
-                errorMessage = "Cancelled"
+                await setError("Cancelled")
             } catch {
-                errorMessage = friendlyErrorMessage(error)
+                await setError(friendlyErrorMessage(error))
             }
         }
     }
 
-    private struct MultipartFile {
+    private struct MultipartFile: Sendable {
         let tempURL: URL
         let boundary: String
     }
 
-    private func buildMultipartTempFile(fileURL: URL, fieldName: String, filename: String) throws -> MultipartFile {
+    private nonisolated static func buildMultipartTempFile(fileURL: URL, fieldName: String, filename: String) throws -> MultipartFile {
         let boundary = "----ArcaneMobileBoundary\(UUID().uuidString)"
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("upload-\(UUID().uuidString).bin")
         FileManager.default.createFile(atPath: tempURL.path, contents: nil)

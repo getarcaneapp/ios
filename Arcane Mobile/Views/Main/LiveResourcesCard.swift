@@ -138,18 +138,24 @@ struct LiveResourcesCard: View {
         streamError = nil
         let stream = client.system.stats(envID: environmentID, interval: 2)
         isStreaming = true
-        streamTask = Task { @MainActor in
+        streamTask = Task { @concurrent in
             do {
                 for try await frame in stream {
                     if Task.isCancelled { break }
-                    latestStats = frame
+                    await MainActor.run {
+                        latestStats = frame
+                    }
                 }
             } catch is CancellationError {
                 // expected
             } catch {
-                streamError = "Live metrics paused"
+                await MainActor.run {
+                    streamError = "Live metrics paused"
+                }
             }
-            isStreaming = false
+            await MainActor.run {
+                isStreaming = false
+            }
         }
     }
 

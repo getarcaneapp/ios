@@ -1,7 +1,7 @@
 import Foundation
 import Arcane
 
-enum NDJSONStream {
+nonisolated enum NDJSONStream {
     static func stream<T: Decodable & Sendable>(
         _ type: T.Type,
         client: ArcaneClient,

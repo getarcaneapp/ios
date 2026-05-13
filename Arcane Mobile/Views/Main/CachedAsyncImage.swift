@@ -199,7 +199,8 @@ struct CachedAsyncImage<Fallback: View>: View {
     let fallback: Fallback
 
     @State private var image: UIImage? = nil
-    @State private var lastLoaded: String? = nil
+    @State private var currentTargetURL: String? = nil
+    @State private var loadGeneration = 0
 
     init(url: String?, size: CGFloat = 36, @ViewBuilder fallback: () -> Fallback) {
         self.url = url
@@ -223,7 +224,7 @@ struct CachedAsyncImage<Fallback: View>: View {
         .onChange(of: url) { load() }
         .onReceive(NotificationCenter.default.publisher(for: .imageCacheDidClear)) { _ in
             image = nil
-            lastLoaded = nil
+            currentTargetURL = nil
             load()
         }
     }
@@ -264,16 +265,29 @@ struct CachedAsyncImage<Fallback: View>: View {
     }
 
     private func load() {
-        guard let resolved = resolvedURL(), resolved != lastLoaded else { return }
+        let resolved = resolvedURL()
+        guard resolved != currentTargetURL else {
+            if resolved == nil {
+                image = nil
+            }
+            return
+        }
+
+        loadGeneration += 1
+        let generation = loadGeneration
+        currentTargetURL = resolved
+        image = nil
+
+        guard let resolved else { return }
         let maxPixel = maxPixelSize
         if let cached = ImageCache.shared[resolved, maxPixelSize: maxPixel] {
             image = cached
-            lastLoaded = resolved
             return
         }
-        lastLoaded = resolved
+
         Task {
             if let loaded = await ImageCache.shared.load(resolved, maxPixelSize: maxPixel, using: manager.fetchImageData) {
+                guard loadGeneration == generation, currentTargetURL == resolved else { return }
                 image = loaded
             }
         }

@@ -221,25 +221,39 @@ struct ContainerStatsView: View {
         let envID = environmentID
         let id = container.id
         let stream = client.containers.stats(envID: envID, id: id)
+        let existingFrames = frames
+        let existingLatest = latest ?? existingFrames.last
+        let windowSize = windowSize
         isStreaming = true
-        streamTask = Task { @MainActor in
+        streamTask = Task { @concurrent in
+            var bufferedFrames = existingFrames
+            var previousFrame = existingLatest
             do {
                 for try await frame in stream {
                     if Task.isCancelled { break }
-                    if let parsed = ContainerStatsFrame.from(json: frame, previous: frames.last) {
-                        frames.append(parsed)
-                        if frames.count > windowSize {
-                            frames.removeFirst(frames.count - windowSize)
+                    if let parsed = ContainerStatsFrame.from(json: frame, previous: previousFrame) {
+                        previousFrame = parsed
+                        bufferedFrames.append(parsed)
+                        if bufferedFrames.count > windowSize {
+                            bufferedFrames.removeFirst(bufferedFrames.count - windowSize)
                         }
-                        latest = parsed
+                        let framesSnapshot = bufferedFrames
+                        await MainActor.run {
+                            frames = framesSnapshot
+                            latest = parsed
+                        }
                     }
                 }
             } catch is CancellationError {
                 // expected on view dismissal
             } catch {
-                errorMessage = "Stats stream ended: \(friendlyErrorMessage(error))"
+                await MainActor.run {
+                    errorMessage = "Stats stream ended: \(friendlyErrorMessage(error))"
+                }
             }
-            isStreaming = false
+            await MainActor.run {
+                isStreaming = false
+            }
         }
     }
 

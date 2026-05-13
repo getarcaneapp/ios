@@ -183,7 +183,7 @@ struct ContainerTerminalView: View {
             isConnected = true
             isConnecting = false
             inputFocused = true
-            outputTask = Task { @MainActor in
+            outputTask = Task { @concurrent in
                 do {
                     for try await chunk in s.output {
                         if Task.isCancelled { break }
@@ -193,14 +193,21 @@ struct ContainerTerminalView: View {
                         if raw.contains("\u{001b}[6n") {
                             try? await s.send("\u{001b}[1;1R")
                         }
-                        appendOutput(AnsiSanitizer.strip(raw))
+                        let stripped = AnsiSanitizer.strip(raw)
+                        await MainActor.run {
+                            appendOutput(stripped)
+                        }
                     }
                 } catch is CancellationError {
                     // expected
                 } catch {
-                    connectError = "Disconnected: \(friendlyErrorMessage(error))"
+                    await MainActor.run {
+                        connectError = "Disconnected: \(friendlyErrorMessage(error))"
+                    }
                 }
-                isConnected = false
+                await MainActor.run {
+                    isConnected = false
+                }
             }
         } catch {
             connectError = friendlyErrorMessage(error)
@@ -230,7 +237,7 @@ struct ContainerTerminalView: View {
 /// Best-effort stripper for ANSI escape sequences emitted by interactive
 /// shells. v1 does not interpret them, so we drop the noisy ones rather than
 /// printing literal `[6n`, `[?2004h`, etc. Bell (\a) is also discarded.
-enum AnsiSanitizer {
+nonisolated enum AnsiSanitizer {
     static func strip(_ input: String) -> String {
         guard input.contains("\u{001b}") || input.contains("\u{0007}") else { return input }
         var output = String()

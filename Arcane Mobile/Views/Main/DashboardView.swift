@@ -406,16 +406,20 @@ private func dockerErrorBanner(_ error: String) -> some View {
         guard statsStreamTask == nil, let client = manager.client else { return }
         let stream = client.system.stats(envID: envID, interval: 2)
         isStreaming = true
-        statsStreamTask = Task { @MainActor in
+        statsStreamTask = Task { @concurrent in
             do {
                 for try await frame in stream {
                     if Task.isCancelled { break }
-                    latestStats = frame
+                    await MainActor.run {
+                        latestStats = frame
+                    }
                 }
             } catch is CancellationError {
             } catch {
             }
-            isStreaming = false
+            await MainActor.run {
+                isStreaming = false
+            }
         }
     }
 
