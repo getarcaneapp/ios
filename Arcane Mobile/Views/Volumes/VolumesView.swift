@@ -1,11 +1,9 @@
 import SwiftUI
 import Arcane
 
-nonisolated private struct VolumeListEnvelope: Decodable, Sendable {
-    let data: [VolumeInfo]?
-}
-
 struct VolumesView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
@@ -23,6 +21,9 @@ struct VolumesView: View {
     @State private var showFilterSheet = false
     @State private var scopeFilter = VolumeScopeFilter.all
     @State private var sortOrder = ListSortOrder.ascending
+    @State private var currentPage = 1
+    @State private var hasMore = false
+    @State private var loadGeneration = 0
 
     private enum VolumeScopeFilter: String, CaseIterable {
         case all = "All", local = "Local", global = "Global"
@@ -52,17 +53,21 @@ struct VolumesView: View {
     private var listSections: [StableListSection<String, VolumeInfo>] {
         let pinned: Set<String> = pinnedIDs
         var pinnedItems: [VolumeInfo] = []
-        var unpinned: [VolumeInfo] = []
+        var used: [VolumeInfo] = []
+        var unused: [VolumeInfo] = []
         for volume in filtered {
             if pinned.contains(volume.id) {
                 pinnedItems.append(volume)
+            } else if volume.inUse == true {
+                used.append(volume)
             } else {
-                unpinned.append(volume)
+                unused.append(volume)
             }
         }
         return [
             .init(id: "pinned", title: "Pinned", items: pinnedItems),
-            .init(id: "volumes", items: unpinned)
+            .init(id: "used", title: "Used", items: used),
+            .init(id: "unused", title: "Unused", items: unused)
         ]
     }
 
@@ -82,6 +87,13 @@ struct VolumesView: View {
                 List {
                     StableSectionedList(listSections) { volume in
                         volumeLink(volume)
+                    }
+
+                    if hasMore {
+                        Button("Load More") {
+                            Task { await loadMore() }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -121,8 +133,8 @@ struct VolumesView: View {
                 .accessibilityLabel("Prune unused volumes")
             }
         }
-        .task { await loadVolumes() }
-        .refreshable { await loadVolumes(refresh: true) }
+        .task { await loadVolumes(reset: true) }
+        .refreshable { await loadVolumes(reset: true, refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
             CreateVolumeView(environmentID: environmentID) {}
         }
@@ -167,7 +179,7 @@ struct VolumesView: View {
             .presentationDetents([.medium])
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadVolumes(refresh: true) }
+            Task { await loadVolumes(reset: true, refresh: true) }
         }
     }
 
@@ -250,34 +262,76 @@ struct VolumesView: View {
         )
     }
 
-    private func loadVolumes(refresh: Bool = false) async {
-        guard let client = manager.client, let cached = manager.cached else { return }
+    private func loadVolumes(reset: Bool, refresh: Bool = false) async {
+        guard let client = manager.client else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
+        let requestedPage = reset ? 1 : currentPage + 1
+        let start = max(0, (requestedPage - 1) * Self.pageSize)
         if volumes.isEmpty { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
-        let path = client.rest.environmentPath(environmentID, "volumes")
+        defer {
+            if loadGeneration == generation {
+                isLoading = false
+            }
+        }
         do {
-            // Bypass the SDK's strict OpenAPI decoder — Docker can send `null` for
-            // labels/options on empty volumes, but the generated Volume type requires
-            // a dictionary. We decode our tolerant VolumeInfo directly, then store
-            // the post-decoded array in the response cache.
-            let fetcher: @Sendable () async throws -> [VolumeInfo] = {
-                let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
-                let envelope = try JSONDecoder().decode(VolumeListEnvelope.self, from: raw)
-                return envelope.data ?? []
+            let response: VolumeListPage?
+            if reset, let cached = manager.cached {
+                let path = client.rest.environmentPath(environmentID, "volumes")
+                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)"
+                let fetcher: @Sendable () async throws -> VolumeListPage = {
+                    try await client.listVolumesPage(
+                        envID: environmentID,
+                        start: 0,
+                        limit: Self.pageSize
+                    )
+                }
+                response = try await cached.getCustom(
+                    path: cachePath,
+                    as: VolumeListPage.self,
+                    policy: .volumes,
+                    envID: environmentID,
+                    refresh: refresh,
+                    onFresh: { fresh in applyVolumesPage(fresh, reset: true, generation: generation) },
+                    fetcher: fetcher
+                )
+            } else {
+                response = try await client.listVolumesPage(
+                    envID: environmentID,
+                    start: start,
+                    limit: Self.pageSize
+                )
             }
-            if let result = try await cached.getCustom(
-                path: path, as: [VolumeInfo].self, policy: .volumes,
-                envID: environmentID, refresh: refresh,
-                onFresh: { fresh in volumes = fresh },
-                fetcher: fetcher
-            ) {
-                volumes = result
+            guard let response else {
+                guard loadGeneration == generation else { return }
+                if reset {
+                    volumes = []
+                    currentPage = 1
+                    hasMore = false
+                }
+                return
             }
+            applyVolumesPage(response, reset: reset, generation: generation)
         } catch {
+            guard loadGeneration == generation else { return }
             errorMessage = friendlyErrorMessage(error)
         }
-        await loadSizes(refresh: refresh)
+        if reset || sizes.isEmpty {
+            await loadSizes(refresh: refresh)
+        }
+    }
+
+    private func applyVolumesPage(_ response: VolumeListPage, reset: Bool, generation: Int) {
+        guard loadGeneration == generation else { return }
+        if reset {
+            volumes = response.data
+        } else {
+            let existing = Set(volumes.map(\.id))
+            volumes.append(contentsOf: response.data.filter { !existing.contains($0.id) })
+        }
+        currentPage = max(Int(response.pagination.currentPage), 1)
+        hasMore = response.pagination.currentPage < response.pagination.totalPages
     }
 
     private func loadSizes(refresh: Bool = false) async {
@@ -296,6 +350,11 @@ struct VolumesView: View {
         } catch {
             // Slow / unsupported on some hosts — leave sizes blank silently.
         }
+    }
+
+    private func loadMore() async {
+        guard hasMore else { return }
+        await loadVolumes(reset: false)
     }
 
 

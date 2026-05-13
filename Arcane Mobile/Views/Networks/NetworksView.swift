@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct NetworksView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
@@ -17,6 +19,9 @@ struct NetworksView: View {
     @State private var showFilterSheet = false
     @State private var typeFilter = NetworkTypeFilter.all
     @State private var sortOrder = ListSortOrder.ascending
+    @State private var currentPage = 1
+    @State private var hasMore = false
+    @State private var loadGeneration = 0
 
     private enum NetworkTypeFilter: String, CaseIterable {
         case all = "All", standard = "Standard", internalOnly = "Internal"
@@ -111,6 +116,12 @@ struct NetworksView: View {
                             }
                         }
                     }
+                    if hasMore {
+                        Button("Load More") {
+                            Task { await loadMore() }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
                 .listStyle(.insetGrouped)
             }
@@ -149,8 +160,8 @@ struct NetworksView: View {
                 .accessibilityLabel("Prune unused networks")
             }
         }
-        .task { await loadNetworks() }
-        .refreshable { await loadNetworks(refresh: true) }
+        .task { await loadNetworks(reset: true) }
+        .refreshable { await loadNetworks(reset: true, refresh: true) }
         .sheet(isPresented: $showCreateSheet) {
             CreateNetworkView(environmentID: environmentID) {}
         }
@@ -195,7 +206,7 @@ struct NetworksView: View {
             .presentationDetents([.medium])
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadNetworks(refresh: true) }
+            Task { await loadNetworks(reset: true, refresh: true) }
         }
     }
 
@@ -226,21 +237,78 @@ struct NetworksView: View {
         )
     }
 
-    private func loadNetworks(refresh: Bool = false) async {
-        guard let client = manager.client, let cached = manager.cached else { return }
+    private func loadNetworks(reset: Bool, refresh: Bool = false) async {
+        guard let client = manager.client else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
+        let requestedPage = reset ? 1 : currentPage + 1
+        let start = max(0, (requestedPage - 1) * Self.pageSize)
         if networks.isEmpty { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
-        do {
-            let path = client.rest.environmentPath(environmentID, "networks")
-            if let result: [NetworkInfo] = try await cached.getList(
-                path, elementType: NetworkInfo.self, policy: .networks,
-                envID: environmentID, refresh: refresh,
-                onFresh: { fresh in networks = fresh }
-            ) {
-                networks = result
+        defer {
+            if loadGeneration == generation {
+                isLoading = false
             }
-        } catch { errorMessage = friendlyErrorMessage(error) }
+        }
+        do {
+            let response: NetworkListPage?
+            if reset, let cached = manager.cached {
+                let path = client.rest.environmentPath(environmentID, "networks")
+                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)"
+                let fetcher: @Sendable () async throws -> NetworkListPage = {
+                    try await client.listNetworksPage(
+                        envID: environmentID,
+                        start: 0,
+                        limit: Self.pageSize
+                    )
+                }
+                response = try await cached.getCustom(
+                    path: cachePath,
+                    as: NetworkListPage.self,
+                    policy: .networks,
+                    envID: environmentID,
+                    refresh: refresh,
+                    onFresh: { fresh in applyNetworksPage(fresh, reset: true, generation: generation) },
+                    fetcher: fetcher
+                )
+            } else {
+                response = try await client.listNetworksPage(
+                    envID: environmentID,
+                    start: start,
+                    limit: Self.pageSize
+                )
+            }
+            guard let response else {
+                guard loadGeneration == generation else { return }
+                if reset {
+                    networks = []
+                    currentPage = 1
+                    hasMore = false
+                }
+                return
+            }
+            applyNetworksPage(response, reset: reset, generation: generation)
+        } catch {
+            guard loadGeneration == generation else { return }
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    private func applyNetworksPage(_ response: NetworkListPage, reset: Bool, generation: Int) {
+        guard loadGeneration == generation else { return }
+        if reset {
+            networks = response.data
+        } else {
+            let existing = Set(networks.map(\.id))
+            networks.append(contentsOf: response.data.filter { !existing.contains($0.id) })
+        }
+        currentPage = max(Int(response.pagination.currentPage), 1)
+        hasMore = response.pagination.currentPage < response.pagination.totalPages
+    }
+
+    private func loadMore() async {
+        guard hasMore else { return }
+        await loadNetworks(reset: false)
     }
 
     private func deleteNetwork(_ network: NetworkInfo) async {

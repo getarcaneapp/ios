@@ -223,6 +223,24 @@ nonisolated struct ProjectListPage: Codable, Sendable {
     let pagination: PaginationResponse
 }
 
+nonisolated struct ImageListPage: Codable, Sendable {
+    let success: Bool
+    let data: [ImageInfo]
+    let pagination: PaginationResponse
+}
+
+nonisolated struct NetworkListPage: Codable, Sendable {
+    let success: Bool
+    let data: [NetworkInfo]
+    let pagination: PaginationResponse
+}
+
+nonisolated struct VolumeListPage: Codable, Sendable {
+    let success: Bool
+    let data: [VolumeInfo]
+    let pagination: PaginationResponse
+}
+
 nonisolated struct DestroyProjectRequest: Encodable, Sendable {
     let removeFiles: Bool
     let removeVolumes: Bool

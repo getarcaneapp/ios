@@ -75,4 +75,62 @@ extension ArcaneClient {
             start += max(Int(page.pagination.itemsPerPage), pageSize)
         }
     }
+
+    func listImagesPage(
+        envID: EnvironmentID,
+        start: Int = 0,
+        limit: Int = 50
+    ) async throws -> ImageListPage {
+        let query = [
+            URLQueryItem(name: "start", value: "\(start)"),
+            URLQueryItem(name: "limit", value: "\(limit)")
+        ]
+        let path = rest.environmentPath(envID, "images")
+        let raw = try await transport.rawRequest(path, query: query, body: Optional<String>.none)
+        do {
+            return try ArcaneJSON.makeDecoder().decode(ImageListPage.self, from: raw)
+        } catch {
+            throw ArcaneError.decoding(String(describing: error))
+        }
+    }
+
+    func listNetworksPage(
+        envID: EnvironmentID,
+        start: Int = 0,
+        limit: Int = 50
+    ) async throws -> NetworkListPage {
+        let query = [
+            URLQueryItem(name: "start", value: "\(start)"),
+            URLQueryItem(name: "limit", value: "\(limit)")
+        ]
+        let path = rest.environmentPath(envID, "networks")
+        let raw = try await transport.rawRequest(path, query: query, body: Optional<String>.none)
+        do {
+            return try ArcaneJSON.makeDecoder().decode(NetworkListPage.self, from: raw)
+        } catch {
+            throw ArcaneError.decoding(String(describing: error))
+        }
+    }
+
+    func listVolumesPage(
+        envID: EnvironmentID,
+        start: Int = 0,
+        limit: Int = 50,
+        includeInternal: Bool = false
+    ) async throws -> VolumeListPage {
+        var query = [
+            URLQueryItem(name: "start", value: "\(start)"),
+            URLQueryItem(name: "limit", value: "\(limit)")
+        ]
+        if includeInternal {
+            query.append(URLQueryItem(name: "includeInternal", value: "true"))
+        }
+        let path = rest.environmentPath(envID, "volumes")
+        let raw = try await transport.rawRequest(path, query: query, body: Optional<String>.none)
+        do {
+            return try ArcaneJSON.makeDecoder().decode(VolumeListPage.self, from: raw)
+        } catch {
+            throw ArcaneError.decoding(String(describing: error))
+        }
+    }
 }

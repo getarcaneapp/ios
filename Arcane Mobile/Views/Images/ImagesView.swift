@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct ImagesView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
@@ -19,7 +21,7 @@ struct ImagesView: View {
     @State private var showUploadSheet = false
     @State private var currentPage = 1
     @State private var hasMore = false
-    @State private var totalPages: Int64 = 1
+    @State private var loadGeneration = 0
     @State private var showFilterSheet = false
     @State private var tagsFilter = ImageTagsFilter.all
     @State private var sortOrder = ListSortOrder.ascending
@@ -278,48 +280,77 @@ struct ImagesView: View {
 
     private func loadImages(reset: Bool, refresh: Bool = false) async {
         guard let client = manager.client else { return }
-        if reset { currentPage = 1 }
+        loadGeneration += 1
+        let generation = loadGeneration
+        let requestedPage = reset ? 1 : currentPage + 1
+        let start = max(0, (requestedPage - 1) * Self.pageSize)
         if images.isEmpty { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
+        defer {
+            if loadGeneration == generation {
+                isLoading = false
+            }
+        }
         do {
-            let path = client.rest.environmentPath(environmentID, "images")
-            let query = [URLQueryItem(name: "page", value: "\(currentPage)"),
-                         URLQueryItem(name: "pageSize", value: "50")]
-            // Only the first page is cached — subsequent pages always hit network.
-            let useCache = reset && currentPage == 1
-            let newImages: [ImageInfo]
-            if useCache, let cached = manager.cached {
-                let cachePath = "\(path)?page=1&pageSize=50"
-                let fetcher: @Sendable () async throws -> [ImageInfo] = {
-                    try await client.rest.get(path, query: query)
+            let response: ImageListPage?
+            if reset, let cached = manager.cached {
+                let path = client.rest.environmentPath(environmentID, "images")
+                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)"
+                let fetcher: @Sendable () async throws -> ImageListPage = {
+                    try await client.listImagesPage(
+                        envID: environmentID,
+                        start: 0,
+                        limit: Self.pageSize
+                    )
                 }
-                if let result: [ImageInfo] = try await cached.getListCustom(
-                    path: cachePath, elementType: ImageInfo.self, policy: .imagesList,
-                    envID: environmentID, refresh: refresh,
+                response = try await cached.getCustom(
+                    path: cachePath,
+                    as: ImageListPage.self,
+                    policy: .imagesList,
+                    envID: environmentID,
+                    refresh: refresh,
                     onFresh: { fresh in
-                        images = fresh
-                        Task { await loadUpdateInfo(for: fresh) }
+                        applyImagesPage(fresh, reset: true, generation: generation)
+                        Task { await loadUpdateInfo(for: fresh.data) }
                     },
                     fetcher: fetcher
-                ) {
-                    newImages = result
-                } else {
-                    newImages = []
+                )
+            } else {
+                response = try await client.listImagesPage(
+                    envID: environmentID,
+                    start: start,
+                    limit: Self.pageSize
+                )
+            }
+
+            guard let response else {
+                guard loadGeneration == generation else { return }
+                if reset {
+                    images = []
+                    currentPage = 1
+                    hasMore = false
                 }
-            } else {
-                newImages = try await client.rest.get(path, query: query)
+                return
             }
-            if reset {
-                images = newImages
-            } else {
-                images.append(contentsOf: newImages)
-            }
-            hasMore = newImages.count == 50
-            await loadUpdateInfo(for: newImages)
+            applyImagesPage(response, reset: reset, generation: generation)
+            await loadUpdateInfo(for: response.data)
         } catch {
+            guard loadGeneration == generation else { return }
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func applyImagesPage(_ response: ImageListPage, reset: Bool, generation: Int) {
+        guard loadGeneration == generation else { return }
+        if reset {
+            images = response.data
+            updateInfo = [:]
+        } else {
+            let existing = Set(images.map(\.id))
+            images.append(contentsOf: response.data.filter { !existing.contains($0.id) })
+        }
+        currentPage = max(Int(response.pagination.currentPage), 1)
+        hasMore = response.pagination.currentPage < response.pagination.totalPages
     }
 
     private func invalidateImageCaches() async {
@@ -359,7 +390,7 @@ struct ImagesView: View {
     }
 
     private func loadMore() async {
-        currentPage += 1
+        guard hasMore else { return }
         await loadImages(reset: false)
     }
 
