@@ -29,8 +29,8 @@ struct PortsView: View {
         return ports.filter { port in
             port.containerName.localizedCaseInsensitiveContains(trimmed) ||
             port._protocol.localizedCaseInsensitiveContains(trimmed) ||
-            "\(port.containerPort)".contains(trimmed) ||
-            (port.hostPort.map { "\($0)" } ?? "").contains(trimmed) ||
+            portString(port.containerPort).contains(trimmed) ||
+            (port.hostPort.map(portString) ?? "").contains(trimmed) ||
             (port.hostIp ?? "").localizedCaseInsensitiveContains(trimmed)
         }
     }
@@ -120,11 +120,11 @@ private struct PortMappingRow: View {
                         Image(systemName: "arrow.right")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-                        Text("\(port.containerPort)")
+                        Text(portString(port.containerPort))
                             .font(.subheadline.weight(.semibold).monospaced())
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("\(port.containerPort)")
+                        Text(portString(port.containerPort))
                             .font(.subheadline.weight(.semibold).monospaced())
                         Text("(internal)")
                             .font(.caption2)
@@ -153,7 +153,7 @@ private struct PortMappingRow: View {
     private func hostString(_ port: PortMapping) -> String {
         let ip = port.hostIp.flatMap { $0.isEmpty ? nil : $0 } ?? "0.0.0.0"
         guard let hostPort = port.hostPort else { return ip }
-        return "\(ip):\(hostPort)"
+        return "\(ip):\(portString(hostPort))"
     }
 
     private var protocolTint: Color {
@@ -178,11 +178,11 @@ private struct PortMappingDetailView: View {
                             .font(.subheadline.monospaced())
                             .textSelection(.enabled)
                     }
-                    LabeledContent("Host Port", value: "\(hostPort)")
+                    LabeledContent("Host Port", value: portString(hostPort))
                 } else {
                     LabeledContent("Exposure", value: "Internal only")
                 }
-                LabeledContent("Container Port", value: "\(port.containerPort)")
+                LabeledContent("Container Port", value: portString(port.containerPort))
                 LabeledContent("Protocol", value: port._protocol.uppercased())
                 LabeledContent("Published", value: port.isPublished ? "Yes" : "No")
             }
@@ -205,6 +205,10 @@ private struct PortMappingDetailView: View {
     private var hostString: String {
         let ip = port.hostIp.flatMap { $0.isEmpty ? nil : $0 } ?? "0.0.0.0"
         guard let hostPort = port.hostPort else { return ip }
-        return "\(ip):\(hostPort)"
+        return "\(ip):\(portString(hostPort))"
     }
+}
+
+private func portString<T: BinaryInteger>(_ value: T) -> String {
+    String(value)
 }
