@@ -434,12 +434,21 @@ struct ImageRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "photo.stack.fill")
-                .font(.title3)
-                .foregroundStyle(.purple)
-                .frame(width: 36, height: 36)
-                .glassEffect(.regular, in: .circle)
-                .accessibilityHidden(true)
+            if #available(iOS 26, *) {
+                Image(systemName: "photo.stack.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .glassEffect(.regular.tint(.purple), in: .circle)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "photo.stack.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.purple, in: .circle)
+                    .accessibilityHidden(true)
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -448,9 +457,6 @@ struct ImageRow: View {
                         .lineLimit(1)
                     UpdateStateBadge(state: updateState)
                 }
-                Text(image.size.byteString)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)

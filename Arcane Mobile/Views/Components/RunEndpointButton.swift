@@ -12,12 +12,29 @@ struct RunEndpointButton: View {
     @State private var message: String?
 
     var body: some View {
-        Button(role: destructive ? .destructive : nil) {
-            Task { await run() }
-        } label: {
-            Label(isRunning ? "Running..." : title, systemImage: systemImage)
+        if #available(iOS 26, *) {
+            Button(role: destructive ? .destructive : nil) {
+                Task { await run() }
+            } label: {
+                Label(isRunning ? "Running..." : title, systemImage: systemImage)
+            }
+            .disabled(isRunning)
+            .buttonStyle(.glassProminent)
+            messageOverlay
+        } else {
+            Button(role: destructive ? .destructive : nil) {
+                Task { await run() }
+            } label: {
+                Label(isRunning ? "Running..." : title, systemImage: systemImage)
+            }
+            .disabled(isRunning)
+            .buttonStyle(.borderedProminent)
+            messageOverlay
         }
-        .disabled(isRunning)
+    }
+
+    @ViewBuilder
+    private var messageOverlay: some View {
         if let message {
             Text(message).font(.caption).foregroundStyle(.secondary)
         }

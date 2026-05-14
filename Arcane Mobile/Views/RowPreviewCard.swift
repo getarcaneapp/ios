@@ -49,11 +49,21 @@ struct RowPreviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.title)
-                    .foregroundStyle(iconColor)
-                    .frame(width: 52, height: 52)
-                    .background(iconColor.opacity(0.15), in: .circle)
+                if #available(iOS 26, *) {
+                    Image(systemName: icon)
+                        .font(.title)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.white)
+                        .frame(width: 52, height: 52)
+                        .glassEffect(.regular.tint(iconColor), in: .circle)
+                } else {
+                    Image(systemName: icon)
+                        .font(.title)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.white)
+                        .frame(width: 52, height: 52)
+                        .background(iconColor, in: .circle)
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
@@ -71,12 +81,21 @@ struct RowPreviewCard: View {
                     if !badges.isEmpty {
                         HStack(spacing: 6) {
                             ForEach(badges, id: \.self) { badge in
-                                Text(badge.text)
-                                    .font(.caption2.weight(.semibold))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .foregroundStyle(badge.color)
-                                    .background(badge.color.opacity(0.15), in: .capsule)
+                                if #available(iOS 26, *) {
+                                    Text(badge.text)
+                                        .font(.caption2.weight(.semibold))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .foregroundStyle(.white)
+                                        .glassEffect(.regular.tint(badge.color), in: .capsule)
+                                } else {
+                                    Text(badge.text)
+                                        .font(.caption2.weight(.semibold))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .foregroundStyle(badge.color)
+                                        .background(badge.color.opacity(0.15), in: .capsule)
+                                }
                             }
                         }
                         .padding(.top, 2)

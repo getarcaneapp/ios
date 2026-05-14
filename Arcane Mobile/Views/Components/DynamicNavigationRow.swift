@@ -17,6 +17,7 @@ struct DynamicNavigationRow<Destination: View>: View {
                 }
             } icon: {
                 Image(systemName: systemImage)
+                    .symbolRenderingMode(.hierarchical)
             }
         }
     }

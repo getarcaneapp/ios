@@ -427,12 +427,21 @@ struct VolumeRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "externaldrive.fill")
-                .font(.title3)
-                .foregroundStyle(.orange)
-                .frame(width: 36, height: 36)
-                .glassEffect(.regular, in: .circle)
-                .accessibilityHidden(true)
+            if #available(iOS 26, *) {
+                Image(systemName: "externaldrive.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .glassEffect(.regular.tint(.teal), in: .circle)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "externaldrive.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.teal, in: .circle)
+                    .accessibilityHidden(true)
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -450,11 +459,6 @@ struct VolumeRow: View {
                     } else if volume.inUse == false {
                         UsageBadge(text: "Unused", color: .secondary)
                     }
-                }
-                if !subtitleParts.isEmpty {
-                    Text(subtitleParts.joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
         }

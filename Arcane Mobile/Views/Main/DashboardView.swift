@@ -106,6 +106,7 @@ struct DashboardView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "server.rack")
                                 .font(.caption.weight(.semibold))
+                                .symbolRenderingMode(.hierarchical)
                                 .foregroundStyle(.primary)
                                 .accessibilityHidden(true)
                             Text(manager.activeEnvironmentName)
@@ -169,20 +170,26 @@ struct DashboardView: View {
 
     private var liveIndicator: some View {
         let active = isStreaming
-        return HStack(spacing: 5) {
+        let color = active ? Color.green : Color.secondary
+        let content = HStack(spacing: 5) {
             Circle()
-                .fill(active ? Color.green : Color.secondary)
+                .fill(color)
                 .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
             Text(active ? "LIVE" : "IDLE")
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(active ? Color.green : Color.secondary)
+                .foregroundStyle(color)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background((active ? Color.green : Color.secondary).opacity(0.14), in: Capsule())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(active ? "Live stats streaming" : "Stats stream idle")
+
+        if #available(iOS 26, *) {
+            return AnyView(content.glassEffect(.regular.tint(color), in: Capsule()))
+        } else {
+            return AnyView(content.background(color.opacity(0.14), in: Capsule()))
+        }
     }
 
     private func percentShort(_ v: Double?) -> String {
@@ -229,7 +236,6 @@ struct DashboardView: View {
                 DashboardGlassTile(
                     title: "Containers",
                     value: dockerInfo != nil ? "\(total)" : "—",
-                    subtitle: "\(running) running · \(stopped) stopped",
                     icon: "cube.box.fill",
                     tint: .blue
                 ) { selectedTab = AppTab.containers.id }
@@ -237,7 +243,6 @@ struct DashboardView: View {
                 DashboardGlassTile(
                     title: "Images",
                     value: dockerInfo != nil ? "\(images)" : "—",
-                    subtitle: "Browse, pull, prune",
                     icon: "photo.stack.fill",
                     tint: .purple
                 ) { selectedTab = AppTab.images.id }
@@ -246,7 +251,6 @@ struct DashboardView: View {
                 DashboardGlassTile(
                     title: "Projects",
                     value: projectCount.map(String.init) ?? "—",
-                    subtitle: "",
                     icon: "square.stack.3d.up.fill",
                     tint: .orange
                 ) { selectedTab = AppTab.projects.id }
@@ -254,7 +258,6 @@ struct DashboardView: View {
                 DashboardGlassTile(
                     title: "Volumes",
                     value: volumeTotalBytes.map { $0.byteString } ?? "—",
-                    subtitle: volumeCount.map { "\($0) volume\($0 == 1 ? "" : "s")" } ?? "Persistent data",
                     icon: "externaldrive.fill",
                     tint: .teal
                 ) { showVolumes = true }
@@ -563,31 +566,42 @@ struct StatRing: View {
 struct DashboardGlassTile: View {
     let title: String
     let value: String
-    let subtitle: String
-    let icon: String
+    let icon: String // Subtitle removed
     let tint: Color
     let action: () -> Void
 
-    @ScaledMetric private var iconDiscSize: CGFloat = 32
-    @ScaledMetric private var minTileHeight: CGFloat = 112
+    @ScaledMetric private var iconDiscSize: CGFloat = 36
+    @ScaledMetric private var minTileHeight: CGFloat = 100
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Image(systemName: icon)
-                        .font(.system(.subheadline, weight: .semibold))
-                        .foregroundStyle(tint)
-                        .frame(width: iconDiscSize, height: iconDiscSize)
-                        .background(tint.opacity(0.16), in: Circle())
-                        .overlay(Circle().stroke(tint.opacity(0.22), lineWidth: 0.5))
-                        .accessibilityHidden(true)
+                    if #available(iOS 26, *) {
+                        Image(systemName: icon)
+                            .font(.system(.subheadline, weight: .semibold))
+                            .foregroundStyle(.white) // White for high contrast
+                            .frame(width: iconDiscSize, height: iconDiscSize)
+                            .glassEffect(.regular.tint(tint), in: Circle())
+                            .overlay(Circle().stroke(tint.opacity(0.3), lineWidth: 0.5))
+                            .accessibilityHidden(true)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(.subheadline, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: iconDiscSize, height: iconDiscSize)
+                            .background(tint, in: Circle())
+                            .accessibilityHidden(true)
+                    }
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.caption2.weight(.bold))
+                        .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.tertiary)
                         .accessibilityHidden(true)
                 }
+
+                Spacer(minLength: 0)
 
                 Text(value)
                     .font(.system(.title2, design: .rounded).weight(.bold))
@@ -595,24 +609,17 @@ struct DashboardGlassTile: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: minTileHeight, alignment: .leading)
-            .padding(12)
-            .dashboardCardBackground(cornerRadius: 18)
+            .padding(14)
+            .dashboardCardBackground(cornerRadius: 20)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(value)")
-        .accessibilityHint(subtitle)
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -631,10 +638,12 @@ struct DashboardTile: View {
                 HStack {
                     Image(systemName: icon)
                         .font(.title3)
+                        .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(color)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption.bold())
+                        .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(.tertiary)
                 }
 
@@ -704,16 +713,22 @@ struct DashboardMiniMetric: View {
 }
 
 extension View {
+    @ViewBuilder
     func dashboardCardBackground(cornerRadius: CGFloat) -> some View {
-        background {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        if #available(iOS 26, *) {
+            self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .shadow(color: .black.opacity(0.1), radius: 14, x: 0, y: 4)
+        } else {
+            self.background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
     }
 }
 
@@ -780,6 +795,7 @@ struct StatCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: icon)
                 .font(.title2)
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(color)
             Text(value)
                 .font(.title.bold())

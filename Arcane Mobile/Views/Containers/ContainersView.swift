@@ -430,11 +430,19 @@ struct ContainerRow: View {
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
                 CachedAsyncImage(url: container.iconUrl, size: 36) {
-                    Image(systemName: "cube.box.fill")
-                        .font(.title3)
-                        .foregroundStyle(Color.accentColor)
-                        .frame(width: 36, height: 36)
-                        .glassEffect(.regular, in: .circle)
+                    if #available(iOS 26, *) {
+                        Image(systemName: "cube.box.fill")
+                            .font(.title3)
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .glassEffect(.regular.tint(Color.accentColor), in: .circle)
+                    } else {
+                        Image(systemName: "cube.box.fill")
+                            .font(.title3)
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.accentColor, in: .circle)
+                    }
                 }
                 Circle()
                     .fill(container.isRunning ? Color.green : Color.secondary.opacity(0.5))
@@ -455,10 +463,6 @@ struct ContainerRow: View {
                             .accessibilityHidden(true)
                     }
                 }
-                Text(container.image)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
 
             Spacer()

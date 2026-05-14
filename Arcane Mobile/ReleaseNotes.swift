@@ -53,6 +53,9 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.1.1",
+            changed: [
+                .init("Overall Design fixes between iOS 18 and iOS 26"),
+            ],
             fixed: [
                 .init("Fixed a security issue where crafted icon URLs could leak authentication headers to external servers."),
             ]
