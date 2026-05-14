@@ -52,6 +52,12 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.1.1",
+            fixed: [
+                .init("Fixed a security issue where crafted icon URLs could leak authentication headers to external servers."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.0",
             new: [
                 .init("Initial Arcane Mobile Beta release"),

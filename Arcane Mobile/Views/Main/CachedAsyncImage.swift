@@ -231,11 +231,14 @@ struct CachedAsyncImage<Fallback: View>: View {
 
     private func resolvedURL() -> String? {
         guard let urlString = url, !urlString.isEmpty else { return nil }
-        var resolved = urlString
+        let resolved: String
         if urlString.hasPrefix("/") {
-            let base = manager.serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            guard !base.isEmpty else { return nil }
-            resolved = base + urlString
+            guard let base = manager.parsedServerURL,
+                  let combined = URL(string: urlString, relativeTo: base)?.absoluteURL
+            else { return nil }
+            resolved = combined.absoluteString
+        } else {
+            resolved = urlString
         }
         return Self.preferPNG(resolved)
     }

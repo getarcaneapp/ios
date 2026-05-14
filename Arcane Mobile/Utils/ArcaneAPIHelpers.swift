@@ -17,6 +17,31 @@ enum ArcaneAPIHelpers {
         return path + (components.percentEncodedQuery.map { "?\($0)" } ?? "")
     }
 
+    static func isSameOrigin(_ a: URL, _ b: URL) -> Bool {
+        guard let aC = URLComponents(url: a, resolvingAgainstBaseURL: false),
+              let bC = URLComponents(url: b, resolvingAgainstBaseURL: false),
+              let aScheme = aC.scheme?.lowercased(),
+              let bScheme = bC.scheme?.lowercased(),
+              var aHost = aC.host?.lowercased(),
+              var bHost = bC.host?.lowercased(),
+              aScheme == bScheme
+        else { return false }
+        if aHost.hasSuffix(".") { aHost.removeLast() }
+        if bHost.hasSuffix(".") { bHost.removeLast() }
+        guard aHost == bHost else { return false }
+        let aPort = aC.port ?? Self.defaultPort(for: aScheme)
+        let bPort = bC.port ?? Self.defaultPort(for: bScheme)
+        return aPort == bPort
+    }
+
+    private static func defaultPort(for scheme: String) -> Int? {
+        switch scheme {
+        case "https": return 443
+        case "http": return 80
+        default: return nil
+        }
+    }
+
     static func loadList(client: ArcaneClient, path: String) async throws -> [DynamicResource] {
         let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
         return try JSONDecoder().decode(DynamicListEnvelope.self, from: raw).items

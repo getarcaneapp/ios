@@ -24,6 +24,7 @@ final class ArcaneClientManager {
     var serverURL: String {
         didSet { UserDefaults.standard.set(serverURL, forKey: "arcane.serverURL") }
     }
+    private(set) var parsedServerURL: URL?
 
     // MARK: - Auth state
     var authState: AppAuthState = .setup
@@ -70,6 +71,7 @@ final class ArcaneClientManager {
         let saved = UserDefaults.standard.string(forKey: "arcane.serverURL") ?? ""
         serverURL = saved
         if !saved.isEmpty, let url = URL(string: saved) {
+            parsedServerURL = url
             let c = Self.makeClient(url: url)
             client = c
             authState = .authenticating
@@ -92,6 +94,7 @@ final class ArcaneClientManager {
             return
         }
         serverURL = trimmed
+        parsedServerURL = parsed
         client = Self.makeClient(url: parsed)
         authState = .login
         oidcInfo = nil
@@ -325,9 +328,8 @@ final class ArcaneClientManager {
     func fetchImageData(urlString: String) async -> Data? {
         guard let client, let url = URL(string: urlString) else { return nil }
         var request = URLRequest(url: url)
-        // Add auth headers for requests to our own server
-        let serverBase = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if !serverBase.isEmpty && urlString.hasPrefix(serverBase),
+        if let serverURL = parsedServerURL,
+           ArcaneAPIHelpers.isSameOrigin(url, serverURL),
            let headers = try? await client.authManager.authenticationHeaders() {
             for (key, value) in headers {
                 request.setValue(value, forHTTPHeaderField: key)
