@@ -1,0 +1,257 @@
+import SwiftUI
+import Arcane
+
+struct EnvironmentDashboardCard: View {
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    let environment: ServerEnvironment
+    var cachedCard: DashboardGlobalEnvironmentCard?
+    
+    @State private var dockerInfo: DockerInfo?
+    @State private var latestStats: SystemStatsFrame?
+    @State private var statsStreamTask: Task<Void, Never>?
+    @State private var dockerError: String?
+    @State private var showSystemDetails = false
+
+    var envID: EnvironmentID {
+        EnvironmentID(rawValue: environment.id)
+    }
+
+    private var isActiveEnvironment: Bool {
+        manager.activeEnvironmentID.rawValue == environment.id
+    }
+
+    var body: some View {
+        Button {
+            showSystemDetails = true
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: isActiveEnvironment ? "checkmark.circle.fill" : "server.rack")
+                            .font(.caption.weight(.semibold))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.primary)
+                            .accessibilityHidden(true)
+                        Text(environment.name ?? environment.id)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    if let version = dockerInfo?.serverVersion {
+                        Text("Docker " + version)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+
+                // Stats Rings
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    StatRing(
+                        value: clampedPercent(latestStats?.cpuPercent) / 100,
+                        valueText: percentShort(latestStats?.cpuPercent),
+                        label: "CPU",
+                        tint: .blue,
+                        size: 62,
+                        lineWidth: 7
+                    )
+                    Spacer(minLength: 0)
+                    StatRing(
+                        value: clampedPercent(memoryPercent) / 100,
+                        valueText: percentShort(memoryPercent),
+                        label: "Memory",
+                        tint: .purple,
+                        size: 62,
+                        lineWidth: 7
+                    )
+                    Spacer(minLength: 0)
+                    StatRing(
+                        value: clampedPercent(diskPercent) / 100,
+                        valueText: percentShort(diskPercent),
+                        label: "Disk",
+                        tint: .teal,
+                        size: 62,
+                        lineWidth: 7
+                    )
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity)
+
+                Divider()
+
+                // Mini Metrics
+                let hasCachedCounts = cachedCard?.snapshotState == "ready"
+                let running = cachedCard?.containers?.runningContainers ?? Int(dockerInfo?.containersRunning ?? 0)
+                let stopped = cachedCard?.containers?.stoppedContainers ?? Int(dockerInfo?.containersStopped ?? 0)
+                let images = cachedCard?.imageUsageCounts?.totalImages ?? Int(dockerInfo?.images ?? 0)
+                let hasAnyData = hasCachedCounts || dockerInfo != nil
+                HStack(spacing: 12) {
+                    DashboardMiniMetric(title: "Running", value: hasAnyData ? "\(running)" : "--", color: .green)
+                    DashboardMiniMetric(title: "Stopped", value: hasAnyData ? "\(stopped)" : "--", color: .secondary)
+                    DashboardMiniMetric(title: "Images", value: hasAnyData ? "\(images)" : "--", color: .purple)
+                }
+                .frame(maxWidth: .infinity)
+
+                if let banner = errorBanner {
+                    Text(banner)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dashboardCardBackground(cornerRadius: 20)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(isActiveEnvironment ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            if !isActiveEnvironment {
+                Button {
+                    manager.setActiveEnvironment(id: envID, name: environment.name ?? environment.id)
+                } label: {
+                    Label("Use Environment", systemImage: "checkmark.circle")
+                }
+            }
+            Button {
+                showSystemDetails = true
+            } label: {
+                Label("View System Details", systemImage: "info.circle")
+            }
+        }
+        .sensoryFeedback(.selection, trigger: showSystemDetails) { _, new in new }
+        .navigationDestination(isPresented: $showSystemDetails) {
+            SystemInfoDetailView(
+                environmentID: envID,
+                environmentName: environment.name ?? environment.id
+            )
+        }
+        .task { await loadDockerInfo() }
+        .task { startStatsStream() }
+        .onDisappear {
+            statsStreamTask?.cancel()
+            statsStreamTask = nil
+        }
+    }
+
+    private var errorBanner: String? {
+        switch cachedCard?.snapshotState {
+        case "ready":
+            return nil
+        case "error":
+            return cachedCard?.snapshotError ?? "Snapshot unavailable"
+        case "skipped":
+            return dockerInfo == nil ? "Environment offline" : nil
+        default:
+            return dockerError
+        }
+    }
+
+    private func percentShort(_ v: Double?) -> String {
+        guard let v else { return "—" }
+        return String(format: "%.0f%%", min(max(v, 0), 100))
+    }
+
+    private func clampedPercent(_ v: Double?) -> Double {
+        guard let v else { return 0 }
+        return min(max(v, 0), 100)
+    }
+
+    private var memoryPercent: Double? {
+        if let p = latestStats?.memoryPercent { return p }
+        if let used = latestStats?.memoryUsageBytes,
+           let total = memoryTotalBytes, total > 0 {
+            return (Double(used) / Double(total)) * 100.0
+        }
+        return nil
+    }
+
+    private var memoryTotalBytes: Int64? {
+        latestStats?.memoryTotalBytes ?? dockerInfo?.memTotal
+    }
+
+    private var diskPercent: Double? {
+        guard let used = latestStats?.diskUsageBytes,
+              let total = latestStats?.diskTotalBytes,
+              total > 0 else { return nil }
+        return (Double(used) / Double(total)) * 100.0
+    }
+
+    private func metricValue(_ value: (any BinaryInteger)?) -> String {
+        guard dockerInfo != nil, let value else { return "--" }
+        return "\(value)"
+    }
+
+    private func loadDockerInfo() async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        let path = client.rest.environmentPath(envID, "system/docker/info")
+        let fetcher: @Sendable () async throws -> DockerInfo = {
+            let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
+            return try JSONDecoder().decode(DockerInfo.self, from: rawData)
+        }
+        do {
+            let info = try await cached.getCustom(
+                path: path, as: DockerInfo.self, policy: .dockerInfo,
+                envID: envID, refresh: false,
+                onFresh: { fresh in
+                    dockerInfo = fresh
+                    dockerError = nil
+                },
+                fetcher: fetcher
+            )
+            await MainActor.run { 
+                dockerInfo = info
+                dockerError = nil 
+            }
+        } catch let error as ArcaneError {
+            if !isCancellation(error) {
+                await MainActor.run { dockerError = arcaneMessage(error) }
+            }
+        } catch {
+            if !(error is CancellationError) {
+                await MainActor.run { dockerError = "Docker info unavailable" }
+            }
+        }
+    }
+
+    private func isCancellation(_ error: ArcaneError) -> Bool {
+        if case .transport(let msg) = error {
+            return msg.lowercased().contains("cancel")
+        }
+        return false
+    }
+
+    private func arcaneMessage(_ error: ArcaneError) -> String {
+        switch error {
+        case .rateLimited: return "Rate limited"
+        case .notFound: return "Not available"
+        case .unauthorized, .forbidden: return "Not authorized"
+        case .server(_, let msg): return msg
+        case .transport(let msg): return "Connection error: \(msg)"
+        case .decoding(let msg): return "Response error: \(msg)"
+        default: return "Unavailable"
+        }
+    }
+
+    private func startStatsStream() {
+        guard statsStreamTask == nil, let client = manager.client else { return }
+        let stream = client.system.stats(envID: envID, interval: 2)
+        statsStreamTask = Task { @concurrent in
+            do {
+                for try await frame in stream {
+                    if Task.isCancelled { break }
+                    await MainActor.run {
+                        latestStats = frame
+                    }
+                }
+            } catch is CancellationError {
+            } catch {
+            }
+        }
+    }
+}

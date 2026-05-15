@@ -2,40 +2,89 @@ import SwiftUI
 import UIKit
 import Arcane
 
+nonisolated struct DashboardGlobalOverview: Decodable, Sendable {
+    let summary: DashboardEnvironmentsSummary
+    let environments: [DashboardGlobalEnvironmentCard]?
+}
+
+nonisolated private struct DashboardOverviewEnvelope: Decodable, Sendable {
+    let success: Bool?
+    let data: DashboardGlobalOverview?
+}
+
+struct DashboardGlobalEnvironmentCard: Decodable, Sendable, Identifiable {
+    var id: String { environment.id }
+    let environment: DashboardGlobalEnvironmentBase
+    let containers: DashboardEnvironmentsSummary.DashboardContainerCounts?
+    let imageUsageCounts: DashboardEnvironmentsSummary.DashboardImageCounts?
+    let versionInfo: DashboardGlobalVersionInfo?
+    let snapshotState: String?
+    let snapshotError: String?
+
+    struct DashboardGlobalVersionInfo: Decodable, Sendable {
+        let currentVersion: String?
+    }
+
+    struct DashboardGlobalEnvironmentBase: Decodable, Sendable {
+        let id: String
+        let name: String?
+    }
+}
+
+struct DashboardEnvironmentsSummary: Decodable, Sendable {
+    let totalEnvironments: Int?
+    let onlineEnvironments: Int?
+    let containers: DashboardContainerCounts?
+    let imageUsageCounts: DashboardImageCounts?
+    
+    struct DashboardContainerCounts: Decodable, Sendable {
+        let totalContainers: Int?
+        let runningContainers: Int?
+        let stoppedContainers: Int?
+    }
+    struct DashboardImageCounts: Decodable, Sendable {
+        let totalImages: Int?
+    }
+}
+
 struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @Binding var selectedTab: String
-    @State private var dockerInfo: DockerInfo?
+    
     @State private var environments: [ServerEnvironment] = []
-    @State private var projectCount: Int?
-    @State private var volumeCount: Int?
-    @State private var volumeTotalBytes: Int64?
+    @State private var overview: DashboardGlobalOverview?
+    @State private var volumesTotal: Int?
+
     @State private var isLoading = false
     @State private var hasLoadedOnce = false
-    @State private var dockerError: String?
     @State private var showPruneSheet = false
     @State private var showVolumes = false
-    @State private var latestStats: SystemStatsFrame?
-    @State private var statsStreamTask: Task<Void, Never>?
-    @State private var isStreaming = false
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 16) {
                     dashboardHeader
                     if !hasLoadedOnce && isLoading {
-                        ProgressView("Loading...")
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 60)
+                        skeletonView
                     } else {
-                        heroServerCard
-                        if let error = dockerError {
-                            dockerErrorBanner(error)
-                        }
                         overviewGrid
+                        
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Environments")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
+                            
+                            ForEach(environments) { env in
+                                let cardData = overview?.environments?.first(where: { $0.id == env.id })
+                                EnvironmentDashboardCard(environment: env, cachedCard: cardData)
+                                    .padding(.bottom, 4)
+                            }
+                        }
+                        .padding(.top, 8)
                     }
                 }
                 .padding(.horizontal)
@@ -45,10 +94,6 @@ struct DashboardView: View {
             .navigationTitle("")
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    environmentMenu
-                        .accessibilityLabel("Switch Environment")
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showPruneSheet = true } label: {
                         Image(systemName: "trash")
@@ -68,13 +113,6 @@ struct DashboardView: View {
                 }
             }
             .task { await loadData() }
-            .task { startStatsStream() }
-            .onDisappear {
-                statsStreamTask?.cancel()
-                statsStreamTask = nil
-                isStreaming = false
-            }
-            .onChange(of: envID) { _, _ in restartStatsStream() }
             .refreshable { await loadData(refresh: true) }
         }
     }
@@ -93,193 +131,149 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var heroServerCard: some View {
-        NavigationLink {
-            SystemInfoDetailView(
-                environmentID: envID,
-                environmentName: manager.activeEnvironmentName
-            )
-        } label: {
+    private var skeletonView: some View {
+        VStack(spacing: 16) {
+            Grid(horizontalSpacing: 10, verticalSpacing: 10) {
+                GridRow {
+                    skeletonTile
+                    skeletonTile
+                }
+                GridRow {
+                    skeletonTile
+                    skeletonTile
+                }
+            }
+
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "server.rack")
-                                .font(.caption.weight(.semibold))
-                                .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(.primary)
-                                .accessibilityHidden(true)
-                            Text(manager.activeEnvironmentName)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                        }
-                        if let version = dockerInfo?.serverVersion {
-                            Text("Docker \(version)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    liveIndicator
-                }
-                .accessibilityElement(children: .combine)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.secondary.opacity(0.18))
+                    .frame(width: 110, height: 14)
+                    .padding(.horizontal, 4)
 
-                HStack(spacing: 10) {
-                    StatRing(
-                        value: clampedPercent(latestStats?.cpuPercent) / 100,
-                        valueText: percentShort(latestStats?.cpuPercent),
-                        label: "CPU",
-                        tint: .blue,
-                        size: 62,
-                        lineWidth: 7
-                    )
-                    StatRing(
-                        value: clampedPercent(memoryPercent) / 100,
-                        valueText: percentShort(memoryPercent),
-                        label: "Memory",
-                        tint: .purple,
-                        size: 62,
-                        lineWidth: 7
-                    )
-                    StatRing(
-                        value: clampedPercent(diskPercent) / 100,
-                        valueText: percentShort(diskPercent),
-                        label: "Disk",
-                        tint: .teal,
-                        size: 62,
-                        lineWidth: 7
-                    )
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider()
-
-                HStack(spacing: 12) {
-                    DashboardMiniMetric(title: "Running", value: metricValue(dockerInfo?.containersRunning), color: .green)
-                    DashboardMiniMetric(title: "Stopped", value: metricValue(dockerInfo?.containersStopped), color: .secondary)
-                    DashboardMiniMetric(title: "Images", value: metricValue(dockerInfo?.images), color: .purple)
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .dashboardCardBackground(cornerRadius: 20)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var liveIndicator: some View {
-        let active = isStreaming
-        let color = active ? Color.green : Color.secondary
-        let content = HStack(spacing: 5) {
-            Circle()
-                .fill(color)
-                .frame(width: 6, height: 6)
-                .accessibilityHidden(true)
-            Text(active ? "LIVE" : "IDLE")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(color)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(active ? "Live stats streaming" : "Stats stream idle")
-
-        if #available(iOS 26, *) {
-            return AnyView(content.glassEffect(.regular.tint(color), in: Capsule()))
-        } else {
-            return AnyView(content.background(color.opacity(0.14), in: Capsule()))
-        }
-    }
-
-    private func percentShort(_ v: Double?) -> String {
-        guard let v else { return "—" }
-        return String(format: "%.0f%%", min(max(v, 0), 100))
-    }
-
-    private var environmentMenu: some View {
-        Menu {
-            if environments.isEmpty {
-                Text("No Environments")
-            } else {
-                ForEach(environments) { env in
-                    let isOnline = env.isOnline ?? false
-                    let isActive = env.id == manager.activeEnvironmentID.rawValue
-                    Button {
-                        manager.setActiveEnvironment(
-                            id: EnvironmentID(rawValue: env.id),
-                            name: env.name ?? env.id
-                        )
-                        Task { await loadDockerInfo() }
-                    } label: {
-                        Label(
-                            env.name ?? env.id,
-                            systemImage: isActive ? "checkmark.circle.fill" : "server.rack"
-                        )
-                    }
-                    .disabled(!isOnline && !isActive)
+                ForEach(0..<2, id: \.self) { _ in
+                    skeletonEnvironmentCard
+                        .padding(.bottom, 4)
                 }
             }
-        } label: {
-            Image(systemName: "server.rack")
+            .padding(.top, 8)
         }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+    }
+
+    private var skeletonTile: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Circle()
+                    .fill(Color.secondary.opacity(0.18))
+                    .frame(width: 32, height: 32)
+                Spacer()
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.secondary.opacity(0.18))
+                    .frame(width: 64, height: 18)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.secondary.opacity(0.18))
+                    .frame(width: 80, height: 10)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardCardBackground(cornerRadius: 16)
+    }
+
+    private var skeletonEnvironmentCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.secondary.opacity(0.18))
+                        .frame(width: 130, height: 14)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.secondary.opacity(0.18))
+                        .frame(width: 80, height: 10)
+                }
+                Spacer()
+                Capsule()
+                    .fill(Color.secondary.opacity(0.18))
+                    .frame(width: 56, height: 20)
+            }
+
+            HStack(spacing: 0) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Spacer(minLength: 0)
+                    VStack(spacing: 8) {
+                        Circle()
+                            .fill(Color.secondary.opacity(0.15))
+                            .frame(width: 62, height: 62)
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.secondary.opacity(0.18))
+                            .frame(width: 36, height: 10)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+
+            Divider()
+
+            HStack(spacing: 12) {
+                ForEach(0..<3, id: \.self) { _ in
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.secondary.opacity(0.18))
+                            .frame(width: 30, height: 14)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.secondary.opacity(0.18))
+                            .frame(width: 50, height: 10)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardCardBackground(cornerRadius: 20)
     }
 
     private var overviewGrid: some View {
-        let running = dockerInfo?.containersRunning ?? 0
-        let total = dockerInfo?.containers ?? 0
-        let stopped = dockerInfo?.containersStopped ?? 0
-        let images = dockerInfo?.images ?? 0
+        let running = overview?.summary.containers?.runningContainers ?? 0
+        let total = overview?.summary.containers?.totalContainers ?? 0
+        let images = overview?.summary.imageUsageCounts?.totalImages ?? 0
+        let envs = overview?.summary.totalEnvironments ?? environments.count
+        let online = overview?.summary.onlineEnvironments ?? environments.filter { $0.isOnline ?? false }.count
 
         return Grid(horizontalSpacing: 10, verticalSpacing: 10) {
             GridRow {
                 DashboardGlassTile(
-                    title: "Containers",
-                    value: dockerInfo != nil ? "\(total)" : "—",
-                    icon: "cube.box.fill",
+                    title: "Environments",
+                    value: envs > 0 ? "\(online) / \(envs)" : "—",
+                    icon: "server.rack",
                     tint: .blue
-                ) { selectedTab = AppTab.containers.id }
+                ) {} // No navigation required here, can just jump down
 
                 DashboardGlassTile(
-                    title: "Images",
-                    value: dockerInfo != nil ? "\(images)" : "—",
-                    icon: "photo.stack.fill",
-                    tint: .purple
-                ) { selectedTab = AppTab.images.id }
+                    title: "Containers",
+                    value: total > 0 ? "\(running) / \(total)" : "—",
+                    icon: "cube.box.fill",
+                    tint: .orange
+                ) { selectedTab = AppTab.containers.id }
             }
             GridRow {
                 DashboardGlassTile(
-                    title: "Projects",
-                    value: projectCount.map(String.init) ?? "—",
-                    icon: "square.stack.3d.up.fill",
-                    tint: .orange
-                ) { selectedTab = AppTab.projects.id }
+                    title: "Images",
+                    value: images > 0 ? "\(images)" : "—",
+                    icon: "photo.stack.fill",
+                    tint: .purple
+                ) { selectedTab = AppTab.images.id }
 
                 DashboardGlassTile(
                     title: "Volumes",
-                    value: volumeTotalBytes.map { $0.byteString } ?? "—",
+                    value: volumesTotal.map { "\($0)" } ?? "—",
                     icon: "externaldrive.fill",
                     tint: .teal
                 ) { showVolumes = true }
             }
-        }
-    }
-
-private func dockerErrorBanner(_ error: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(error)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(.orange.opacity(0.18), lineWidth: 1)
         }
     }
 
@@ -294,18 +288,47 @@ private func dockerErrorBanner(_ error: String) -> some View {
         }
 
         async let envTask: [ServerEnvironment] = loadEnvironmentsCached(refresh: refresh)
-        async let dockerTask: DockerInfo? = loadDockerInfoSilent(client: client, refresh: refresh)
-        async let projectCountTask: Int? = loadProjectsCountCached(client: client, refresh: refresh)
-        async let volumeSizesTask: [VolumeSizeInfo]? = loadVolumeSizesCached(client: client, refresh: refresh)
+        let path = "dashboard/environments"
+        async let rawReq = client.transport.rawRequest(path, body: Optional<String>.none)
 
-        let (envs, info, projectTotal, volumeSizes) = await (envTask, dockerTask, projectCountTask, volumeSizesTask)
+        let envs = await envTask
+        let reqData = try? await rawReq
+
         if Task.isCancelled { return }
         environments = envs
-        dockerInfo = info
-        projectCount = projectTotal
-        if let volumeSizes {
-            volumeCount = volumeSizes.count
-            volumeTotalBytes = volumeSizes.reduce(Int64(0)) { $0 + $1.size }
+        if let reqData {
+            overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
+                ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
+        }
+
+        let volumes = await loadVolumesTotal(envs: envs)
+        if !Task.isCancelled {
+            volumesTotal = volumes
+        }
+    }
+
+    private func loadVolumesTotal(envs: [ServerEnvironment]) async -> Int {
+        guard let client = manager.client else { return 0 }
+        let online = envs.filter { $0.isOnline ?? false }
+        guard !online.isEmpty else { return 0 }
+
+        return await withTaskGroup(of: Int64.self) { group in
+            for env in online {
+                let envID = EnvironmentID(rawValue: env.id)
+                group.addTask {
+                    do {
+                        let page = try await client.listVolumesPage(envID: envID, start: 0, limit: 1)
+                        return page.pagination.totalItems
+                    } catch {
+                        return 0
+                    }
+                }
+            }
+            var total: Int64 = 0
+            for await result in group {
+                total += result
+            }
+            return Int(total)
         }
     }
 
@@ -316,203 +339,6 @@ private func dockerErrorBanner(_ error: String) -> some View {
             policy: .environments, refresh: refresh,
             onFresh: { fresh in environments = fresh }
         )) ?? []
-    }
-
-    private func loadProjectsCountCached(client: ArcaneClient, refresh: Bool) async -> Int? {
-        guard let cached = manager.cached else { return nil }
-        let path = client.rest.environmentPath(envID, "projects/counts")
-        let counts = try? await cached.get(
-            path, as: ProjectStatusCounts.self, policy: .dashboardCounts,
-            envID: envID, refresh: refresh,
-            onFresh: { fresh in projectCount = Int(fresh.totalProjects) }
-        )
-        return counts.map { Int($0.totalProjects) }
-    }
-
-    private func loadVolumeSizesCached(client: ArcaneClient, refresh: Bool) async -> [VolumeSizeInfo]? {
-        guard let cached = manager.cached else { return nil }
-        let path = client.rest.environmentPath(envID, "volumes/sizes")
-        return try? await cached.get(
-            path, as: [VolumeSizeInfo].self, policy: .volumes,
-            envID: envID, refresh: refresh,
-            onFresh: { fresh in
-                volumeCount = fresh.count
-                volumeTotalBytes = fresh.reduce(Int64(0)) { $0 + $1.size }
-            }
-        )
-    }
-
-    private func loadDockerInfo() async {
-        guard let client = manager.client else { return }
-        dockerError = nil
-        if let info = await loadDockerInfoSilent(client: client, refresh: true) {
-            dockerInfo = info
-        }
-    }
-
-    private func loadDockerInfoSilent(client: ArcaneClient, refresh: Bool = false) async -> DockerInfo? {
-        let path = client.rest.environmentPath(envID, "system/docker/info")
-        guard let cached = manager.cached else { return nil }
-        let fetcher: @Sendable () async throws -> DockerInfo = {
-            let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            return try JSONDecoder().decode(DockerInfo.self, from: rawData)
-        }
-        do {
-            let info = try await cached.getCustom(
-                path: path, as: DockerInfo.self, policy: .dockerInfo,
-                envID: envID, refresh: refresh,
-                onFresh: { fresh in
-                    dockerInfo = fresh
-                    dockerError = nil
-                },
-                fetcher: fetcher
-            )
-            await MainActor.run { dockerError = nil }
-            return info
-        } catch let error as ArcaneError {
-            if Task.isCancelled || isCancellation(error) { return nil }
-            await MainActor.run { dockerError = arcaneMessage(error) }
-            return nil
-        } catch {
-            if Task.isCancelled || error is CancellationError { return nil }
-            await MainActor.run { dockerError = "Docker info unavailable" }
-            return nil
-        }
-    }
-
-    private func isCancellation(_ error: ArcaneError) -> Bool {
-        if case .transport(let msg) = error {
-            return msg.lowercased().contains("cancel")
-        }
-        return false
-    }
-
-    private func arcaneMessage(_ error: ArcaneError) -> String {
-        switch error {
-        case .rateLimited: return "Docker info rate limited — try again shortly"
-        case .notFound: return "Docker info not available for this environment"
-        case .unauthorized, .forbidden: return "Not authorized to access Docker info"
-        case .server(_, let msg): return msg
-        case .transport(let msg): return "Connection error: \(msg)"
-        case .decoding(let msg): return "Response error: \(msg)"
-        default: return "Docker info unavailable"
-        }
-    }
-
-    private func metricValue(_ value: (any BinaryInteger)?) -> String {
-        guard dockerInfo != nil, let value else { return "--" }
-        return "\(value)"
-    }
-
-    // MARK: - Stats streaming
-
-    private func startStatsStream() {
-        guard statsStreamTask == nil, let client = manager.client else { return }
-        let stream = client.system.stats(envID: envID, interval: 2)
-        isStreaming = true
-        statsStreamTask = Task { @concurrent in
-            do {
-                for try await frame in stream {
-                    if Task.isCancelled { break }
-                    await MainActor.run {
-                        latestStats = frame
-                    }
-                }
-            } catch is CancellationError {
-            } catch {
-            }
-            await MainActor.run {
-                isStreaming = false
-            }
-        }
-    }
-
-    private func restartStatsStream() {
-        statsStreamTask?.cancel()
-        statsStreamTask = nil
-        latestStats = nil
-        startStatsStream()
-    }
-
-    private var memoryPercent: Double? {
-        if let p = latestStats?.memoryPercent { return p }
-        if let used = latestStats?.memoryUsageBytes,
-           let total = memoryTotalBytes, total > 0 {
-            return (Double(used) / Double(total)) * 100.0
-        }
-        return nil
-    }
-
-    private var memoryTotalBytes: Int64? {
-        latestStats?.memoryTotalBytes ?? dockerInfo?.memTotal
-    }
-
-    private var diskPercent: Double? {
-        guard let used = latestStats?.diskUsageBytes,
-              let total = latestStats?.diskTotalBytes,
-              total > 0 else { return nil }
-        return (Double(used) / Double(total)) * 100.0
-    }
-
-    private func percentString(_ v: Double?) -> String {
-        guard let v else { return "—" }
-        return String(format: "%.1f%%", v)
-    }
-
-    private func clampedPercent(_ v: Double?) -> Double {
-        guard let v else { return 0 }
-        return min(max(v, 0), 100)
-    }
-
-    private func barTint(_ v: Double?) -> Color {
-        guard let v else { return .secondary }
-        if v >= 90 { return .red }
-        if v >= 75 { return .orange }
-        return Color.accentColor
-    }
-}
-
-// MARK: - Environment dashboard card
-
-struct EnvironmentDashboardCard: View {
-    let environment: ServerEnvironment
-    var isActive: Bool = false
-    var onSetActive: (() -> Void)? = nil
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "server.rack")
-                .font(.title3)
-                .foregroundStyle(environment.isOnline ?? false ? .green : .secondary)
-                .frame(width: 40, height: 40)
-                .background(Color(uiColor: .tertiarySystemFill), in: Circle())
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(environment.name ?? environment.id)
-                    .font(.headline)
-                if let url = environment.url {
-                    Text(url)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer()
-
-            if isActive {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(Color.accentColor)
-            } else if let onSetActive {
-                Button("Use", action: onSetActive)
-                    .font(.caption.bold())
-                    .buttonStyle(.glass)
-            }
-
-            StatusBadge(status: environment.status)
-        }
-        .padding(14)
-        .dashboardCardBackground(cornerRadius: 16)
     }
 }
 
@@ -528,167 +354,98 @@ struct StatRing: View {
     var size: CGFloat = 78
     var lineWidth: CGFloat = 9
 
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric private var scaledSize: CGFloat = 1
-    @ScaledMetric private var scaledLineWidth: CGFloat = 1
-
-    private var effectiveSize: CGFloat { size * min(scaledSize, 1.6) }
-    private var effectiveLineWidth: CGFloat { lineWidth * min(scaledLineWidth, 1.6) }
+    @State private var animatedValue: Double = 0.0
 
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
                 Circle()
-                    .stroke(tint.opacity(0.18), lineWidth: effectiveLineWidth)
-                Circle()
-                    .trim(from: 0, to: max(0.001, min(value, 1.0)))
-                    .stroke(tint, style: StrokeStyle(lineWidth: effectiveLineWidth, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(reduceMotion ? nil : .smooth(duration: 1.2), value: value)
+                    .stroke(.secondary.opacity(0.15), lineWidth: lineWidth)
+                    .frame(width: size, height: size)
+                SmoothProgressBar(progress: value, tint: tint, lineWidth: lineWidth)
+                    .frame(width: size, height: size)
                 Text(valueText)
-                    .font(.system(.subheadline, design: .rounded).weight(.bold))
-                    .monospacedDigit()
+                    .font(.footnote.bold())
                     .foregroundStyle(.primary)
-                    .minimumScaleFactor(0.6)
+                    .monospacedDigit()
             }
-            .frame(width: effectiveSize, height: effectiveSize)
             Text(label)
-                .font(.caption.weight(.semibold))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label) usage")
-        .accessibilityValue(valueText)
+        .accessibilityLabel("\(label): \(valueText)")
+        .accessibilityValue("\(Int(value * 100)) percent")
     }
 }
 
 struct DashboardGlassTile: View {
     let title: String
     let value: String
-    let icon: String // Subtitle removed
+    let icon: String
     let tint: Color
     let action: () -> Void
-
-    @ScaledMetric private var iconDiscSize: CGFloat = 36
-    @ScaledMetric private var minTileHeight: CGFloat = 100
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    if #available(iOS 26, *) {
+                    ZStack {
+                        Circle()
+                            .fill(tint)
+                            .frame(width: 32, height: 32)
                         Image(systemName: icon)
-                            .font(.system(.subheadline, weight: .semibold))
-                            .foregroundStyle(.white) // White for high contrast
-                            .frame(width: iconDiscSize, height: iconDiscSize)
-                            .glassEffect(.regular.tint(tint), in: Circle())
-                            .overlay(Circle().stroke(tint.opacity(0.3), lineWidth: 0.5))
-                            .accessibilityHidden(true)
-                    } else {
-                        Image(systemName: icon)
-                            .font(.system(.subheadline, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
-                            .frame(width: iconDiscSize, height: iconDiscSize)
-                            .background(tint, in: Circle())
-                            .accessibilityHidden(true)
                     }
                     Spacer()
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption2.weight(.bold))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary.opacity(0.5))
                 }
-
-                Spacer(minLength: 0)
-
-                Text(value)
-                    .font(.system(.title2, design: .rounded).weight(.bold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-
-                Text(title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(value)
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .minimumScaleFactor(0.8)
+                        .lineLimit(1)
+                    Text(title)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
-            .frame(maxWidth: .infinity, minHeight: minTileHeight, alignment: .leading)
-            .padding(14)
-            .dashboardCardBackground(cornerRadius: 20)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dashboardCardBackground(cornerRadius: 16)
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title), \(value)")
-        .accessibilityAddTraits(.isButton)
     }
 }
 
 struct DashboardTile: View {
     let title: String
     let value: String
-    let subtitle: String
     let icon: String
     let color: Color
     let action: () -> Void
-
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: icon)
-                        .font(.title3)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(color)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.tertiary)
-                }
-
-                Text(value)
-                    .font(.title.bold())
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.bold())
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
-            .padding(16)
-            .dashboardCardBackground(cornerRadius: 18)
-        }
-        .buttonStyle(.plain)
+        DashboardGlassTile(title: title, value: value, icon: icon, tint: color, action: action)
     }
 }
 
 struct SmoothProgressBar: View {
-    var value: Double
+    var progress: Double
     var tint: Color
-
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var lineWidth: CGFloat
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(tint.opacity(0.18))
-                Capsule()
-                    .fill(tint)
-                    .frame(width: max(0, geo.size.width * min(max(value, 0), 1)))
-            }
-        }
-        .animation(reduceMotion ? nil : .smooth(duration: 1.2), value: value)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.6), value: tint)
-        .accessibilityHidden(true)
+        Circle()
+            .trim(from: 0.0, to: CGFloat(min(progress, 1.0)))
+            .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            .rotationEffect(Angle(degrees: -90))
+            .animation(.spring(response: 0.8, dampingFraction: 0.7), value: progress)
     }
 }
 
@@ -700,59 +457,26 @@ struct DashboardMiniMetric: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.headline.bold())
+                .font(.subheadline.bold())
                 .foregroundStyle(color)
             Text(title)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title): \(value)")
-    }
-}
-
-extension View {
-    @ViewBuilder
-    func dashboardCardBackground(cornerRadius: CGFloat) -> some View {
-        if #available(iOS 26, *) {
-            self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .shadow(color: .black.opacity(0.1), radius: 14, x: 0, y: 4)
-        } else {
-            self.background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 0.5)
-            }
-            .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 4)
-        }
+        .padding(.vertical, 8)
+        .background(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
 struct DashboardInfoGroup<Content: View>: View {
     let title: String
     @ViewBuilder let content: Content
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 4)
-
-            VStack(spacing: 0) {
-                content
-            }
-            .padding(.horizontal, 12)
-            .background(Color(uiColor: .tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .stroke(Color(uiColor: .separator).opacity(0.14), lineWidth: 0.5)
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline).padding(.leading, 4)
+            VStack(spacing: 0) { content }
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 }
@@ -760,28 +484,16 @@ struct DashboardInfoGroup<Content: View>: View {
 struct DashboardInfoRow: View {
     let label: String
     let value: String
-
+    var isLast = false
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+        HStack {
+            Text(label).foregroundStyle(.secondary)
             Spacer()
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(.trailing)
-                .lineLimit(2)
-                .minimumScaleFactor(0.82)
-                .textSelection(.enabled)
+            Text(value).monospacedDigit()
         }
-        .padding(.vertical, 9)
-        .overlay(alignment: .bottom) {
-            Divider()
-                .padding(.leading, 96)
-                .opacity(0.55)
-        }
+        .font(.subheadline)
+        .padding(12)
+        if !isLast { Divider().padding(.leading, 12) }
     }
 }
 
@@ -790,89 +502,93 @@ struct StatCard: View {
     let value: String
     let icon: String
     let color: Color
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: icon)
-                .font(.title2)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(color)
-            Text(value)
-                .font(.title.bold())
-                .foregroundStyle(.primary)
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .dashboardCardBackground(cornerRadius: 18)
+        DashboardTile(title: title, value: value, icon: icon, color: color, action: {})
     }
 }
 
 struct StatusBadge: View {
-    let status: String
-
-    private var color: Color {
-        switch status.lowercased() {
-        case "online", "running", "up": return .green
-        case "offline", "stopped", "down", "error": return .red
-        case "partial", "partially running", "loading": return .orange
-        default: return .secondary
-        }
-    }
-
+    let status: String?
     var body: some View {
-        HStack(spacing: 4) {
-            Circle().fill(color).frame(width: 7, height: 7)
-            Text(status.capitalized)
-                .font(.caption.bold())
-                .foregroundStyle(color)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(color.opacity(0.12), in: Capsule())
+        Text(status ?? "UNKNOWN")
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(color.opacity(0.15), in: Capsule())
+            .foregroundStyle(color)
+    }
+    private var color: Color {
+        let s = status?.lowercased() ?? ""
+        if s == "running" || s == "online" { return .green }
+        if s == "stopped" || s == "offline" { return .red }
+        return .secondary
     }
 }
 
 struct SectionHeader: View {
     let title: String
-    let icon: String
-
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon).foregroundStyle(.secondary)
-            Text(title).font(.headline)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
+        Text(title).font(.title2.bold()).padding(.top, 10).padding(.bottom, 2)
     }
 }
 
-// MARK: - System Prune Sheet
+// MARK: - View Modifiers
+
+extension View {
+    func dashboardCardBackground(cornerRadius: CGFloat = 12) -> some View {
+        self.modifier(DashboardCardBackgroundModifier(cornerRadius: cornerRadius))
+    }
+}
+
+struct DashboardCardBackgroundModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                )
+        } else {
+            content
+                .background(
+                    Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                )
+                .shadow(color: .black.opacity(0.04), radius: 3, y: 1)
+        }
+    }
+}
+
+// MARK: - Prune View
 
 struct SystemPruneView: View {
-    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+
     let environmentID: EnvironmentID
 
-    // 0=none for all; each resource has its own levels
-    @State private var containerMode = 0    // 0=none, 1=stopped, 2=olderThan
+    @State private var containerMode = 0
     @State private var containerAge = "24h"
-    @State private var imageMode = 0        // 0=none, 1=danglingOnly, 2=allUnused, 3=olderThan
+    @State private var imageMode = 0
     @State private var imageAge = "24h"
-    @State private var networkMode = 0      // 0=none, 1=unused, 2=olderThan
+    @State private var volumeMode = 0
+    @State private var networkMode = 0
     @State private var networkAge = "24h"
-    @State private var volumeMode = 0       // 0=none, 1=anonymousOnly, 2=allUnused
-    @State private var buildCacheMode = 0   // 0=none, 1=unusedOnly, 2=allCache, 3=olderThan
+    @State private var buildCacheMode = 0
     @State private var buildCacheAge = "24h"
+
     @State private var isPruning = false
-    @State private var resultMessage: String?
     @State private var errorMessage: String?
+    @State private var resultMessage: String?
 
     private var selectedCount: Int {
-        [containerMode, imageMode, networkMode, volumeMode, buildCacheMode]
-            .filter { $0 > 0 }.count
+        var count = 0
+        if containerMode > 0 { count += 1 }
+        if imageMode > 0 { count += 1 }
+        if volumeMode > 0 { count += 1 }
+        if networkMode > 0 { count += 1 }
+        if buildCacheMode > 0 { count += 1 }
+        return count
     }
 
     var body: some View {
@@ -881,55 +597,46 @@ struct SystemPruneView: View {
                 Section("Containers") {
                     Picker("Containers", selection: $containerMode) {
                         Text("None").tag(0)
-                        Text("Stopped Containers").tag(1)
-                        Text("Older Than...").tag(2)
+                        Text("Stopped").tag(1)
+                        Text("Older than...").tag(2)
                     }
-                    .pickerStyle(.menu)
                     if containerMode == 2 { ageRow($containerAge) }
                 }
 
                 Section("Images") {
                     Picker("Images", selection: $imageMode) {
                         Text("None").tag(0)
-                        Text("Dangling Only").tag(1)
+                        Text("Dangling (Unused)").tag(1)
                         Text("All Unused").tag(2)
-                        Text("Older Than...").tag(3)
+                        Text("Older than...").tag(3)
                     }
-                    .pickerStyle(.menu)
                     if imageMode == 3 { ageRow($imageAge) }
+                }
+
+                Section("Volumes") {
+                    Picker("Volumes", selection: $volumeMode) {
+                        Text("None").tag(0)
+                        Text("Anonymous Unused").tag(1)
+                        Text("All Unused").tag(2)
+                    }
                 }
 
                 Section("Networks") {
                     Picker("Networks", selection: $networkMode) {
                         Text("None").tag(0)
-                        Text("Unused Networks").tag(1)
-                        Text("Older Than...").tag(2)
+                        Text("Unused").tag(1)
+                        Text("Older than...").tag(2)
                     }
-                    .pickerStyle(.menu)
                     if networkMode == 2 { ageRow($networkAge) }
-                }
-
-                Section {
-                    Picker("Volumes", selection: $volumeMode) {
-                        Text("None").tag(0)
-                        Text("Anonymous Only").tag(1)
-                        Text("All Unused").tag(2)
-                    }
-                    .pickerStyle(.menu)
-                } header: {
-                    Text("Volumes")
-                } footer: {
-                    Text("Only enable if you are certain no important data resides in unused volumes.")
                 }
 
                 Section("Build Cache") {
                     Picker("Build Cache", selection: $buildCacheMode) {
                         Text("None").tag(0)
-                        Text("Unused Only").tag(1)
-                        Text("All Cache").tag(2)
-                        Text("Older Than...").tag(3)
+                        Text("Unused").tag(1)
+                        Text("All").tag(2)
+                        Text("Older than...").tag(3)
                     }
-                    .pickerStyle(.menu)
                     if buildCacheMode == 3 { ageRow($buildCacheAge) }
                 }
             }
@@ -1016,6 +723,10 @@ struct SystemPruneView: View {
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func friendlyErrorMessage(_ error: Error) -> String {
+        return (error as? ArcaneError)?.localizedDescription ?? error.localizedDescription
     }
 
     private func formatPruneResult(_ result: PruneAllResult) -> String {

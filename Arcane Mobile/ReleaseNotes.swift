@@ -53,6 +53,12 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.1.1",
+            new: [
+                .init("Redesigned dashboard with per-environment summary cards showing live CPU, memory, disk, and container/image counts"),
+                .init("Long-press an environment card to set it as the active context or jump into system details"),
+                .init("Volume totals now aggregate across all environments on the dashboard"),
+                .init("Skeleton loading state on first dashboard load"),
+            ],
             changed: [
                 .init("Overall Design fixes between iOS 18 and iOS 26"),
             ],
