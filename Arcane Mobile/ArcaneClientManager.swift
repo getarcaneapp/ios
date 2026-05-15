@@ -116,7 +116,7 @@ final class ArcaneClientManager {
                 authorized: false
             )
             let settings = try JSONDecoder().decode([PublicSetting].self, from: data)
-            let dict = Dictionary(uniqueKeysWithValues: settings.map { ($0.key, $0.value) })
+            let dict = Dictionary(settings.map { ($0.key, $0.value) }, uniquingKeysWith: { _, new in new })
             oidcInfo = OIDCDisplayInfo(
                 enabled: dict["oidcEnabled"]?.lowercased() == "true",
                 providerName: dict["oidcProviderName"] ?? "",

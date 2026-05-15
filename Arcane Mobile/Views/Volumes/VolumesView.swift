@@ -342,10 +342,10 @@ struct VolumesView: View {
                 path, as: [VolumeSizeInfo].self, policy: .volumes,
                 envID: environmentID, refresh: refresh,
                 onFresh: { fresh in
-                    sizes = Dictionary(uniqueKeysWithValues: fresh.map { ($0.name, $0.size) })
+                    sizes = Dictionary(fresh.map { ($0.name, $0.size) }, uniquingKeysWith: { _, new in new })
                 }
             ) {
-                sizes = Dictionary(uniqueKeysWithValues: entries.map { ($0.name, $0.size) })
+                sizes = Dictionary(entries.map { ($0.name, $0.size) }, uniquingKeysWith: { _, new in new })
             }
         } catch {
             // Slow / unsupported on some hosts — leave sizes blank silently.

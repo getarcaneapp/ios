@@ -5,6 +5,8 @@
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
 			<key>CFBundleURLName</key>
 			<string>com.getarcaneapp.ios.mobile</string>
 			<key>CFBundleURLSchemes</key>
@@ -16,28 +18,28 @@
 	<key>UIApplicationShortcutItems</key>
 	<array>
 		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>arcane.shortcut.dashboard</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Dashboard</string>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
 			<string>chart.bar.fill</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Dashboard</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>arcane.shortcut.dashboard</string>
 		</dict>
 		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>arcane.shortcut.containers</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Containers</string>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
 			<string>cube.box.fill</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Containers</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>arcane.shortcut.containers</string>
 		</dict>
 		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>arcane.shortcut.projects</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Projects</string>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
 			<string>square.stack.3d.up.fill</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Projects</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>arcane.shortcut.projects</string>
 		</dict>
 	</array>
 </dict>

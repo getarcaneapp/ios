@@ -100,7 +100,7 @@ struct BuildSettingsView: View {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
             let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
             let dtos = try JSONDecoder().decode([PublicSetting].self, from: rawData)
-            let dict = Dictionary(uniqueKeysWithValues: dtos.map { ($0.key, $0.value) })
+            let dict = Dictionary(dtos.map { ($0.key, $0.value) }, uniquingKeysWith: { _, new in new })
             buildProvider = dict["buildProvider"] ?? "local"
             buildTimeout = dict["buildTimeout"] ?? "1800"
             buildsDirectory = dict["buildsDirectory"] ?? ""

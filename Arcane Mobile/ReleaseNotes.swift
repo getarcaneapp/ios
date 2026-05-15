@@ -65,6 +65,7 @@ enum ReleaseNotes {
                 .init("Error banners wrap to multiple lines so long messages are fully readable"),
                 .init("Validation errors point to the specific field that needs attention"),
                 .init("Fixed a security issue where a malicious or compromised server could degrade or crash the app by returning an excessive number of environments."),
+                .init("Fixed a security issue where a malicious or compromised server could crash the app at launch by returning duplicate keys in the public OIDC settings response."),
             ]
         ),
         ReleaseNote(

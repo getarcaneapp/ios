@@ -153,7 +153,7 @@ struct AuthenticationSettingsView: View {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
             let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
             let dtos = try JSONDecoder().decode([PublicSetting].self, from: rawData)
-            let dict = Dictionary(uniqueKeysWithValues: dtos.map { ($0.key, $0.value) })
+            let dict = Dictionary(dtos.map { ($0.key, $0.value) }, uniquingKeysWith: { _, new in new })
             authLocalEnabled = dict["authLocalEnabled"]?.lowercased() == "true"
             authSessionTimeout = dict["authSessionTimeout"] ?? "1440"
             authPasswordPolicy = dict["authPasswordPolicy"] ?? "strong"
