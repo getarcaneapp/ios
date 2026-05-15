@@ -47,6 +47,11 @@ struct DashboardEnvironmentsSummary: Decodable, Sendable {
     }
 }
 
+struct EnvironmentDetailRoute: Hashable {
+    let id: String
+    let name: String
+}
+
 struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @Binding var selectedTab: String
@@ -54,11 +59,17 @@ struct DashboardView: View {
     @State private var environments: [ServerEnvironment] = []
     @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
+    @State private var imageUpdatesTotal: Int?
+    @State private var rawEnvironmentCount: Int = 0
+    @State private var detailRoute: EnvironmentDetailRoute?
 
     @State private var isLoading = false
     @State private var hasLoadedOnce = false
     @State private var showPruneSheet = false
     @State private var showVolumes = false
+
+    private static let maxEnvironments = 50
+    private static let maxConcurrentPerEnvFetches = 4
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
 
@@ -72,19 +83,8 @@ struct DashboardView: View {
                     } else {
                         overviewGrid
                         
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Environments")
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 4)
-                            
-                            ForEach(environments) { env in
-                                let cardData = overview?.environments?.first(where: { $0.id == env.id })
-                                EnvironmentDashboardCard(environment: env, cachedCard: cardData)
-                                    .padding(.bottom, 4)
-                            }
-                        }
-                        .padding(.top, 8)
+                        environmentsSection
+                            .padding(.top, 8)
                     }
                 }
                 .padding(.horizontal)
@@ -112,12 +112,57 @@ struct DashboardView: View {
                     )
                 }
             }
+            .navigationDestination(item: $detailRoute) { route in
+                SystemInfoDetailView(
+                    environmentID: EnvironmentID(rawValue: route.id),
+                    environmentName: route.name
+                )
+            }
             .task { await loadData() }
             .refreshable { await loadData(refresh: true) }
         }
     }
 
     // MARK: - Subviews
+
+    private var environmentsSection: some View {
+        LazyVStack(alignment: .leading, spacing: 12) {
+            Text("Environments")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+
+            ForEach(environments) { env in
+                let cardData = overview?.environments?.first(where: { $0.id == env.id })
+                EnvironmentDashboardCard(
+                    environment: env,
+                    cachedCard: cardData,
+                    onSelect: {
+                        detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
+                    }
+                )
+                .padding(.bottom, 4)
+            }
+
+            if rawEnvironmentCount > Self.maxEnvironments {
+                truncationFooter
+            }
+        }
+    }
+
+    private var truncationFooter: some View {
+        NavigationLink {
+            EnvironmentsView()
+        } label: {
+            Text("Showing \(Self.maxEnvironments) of \(rawEnvironmentCount) environments. Tap to see all.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+                .padding(.top, 4)
+        }
+        .buttonStyle(.plain)
+    }
 
     private var dashboardHeader: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -240,17 +285,15 @@ struct DashboardView: View {
         let running = overview?.summary.containers?.runningContainers ?? 0
         let total = overview?.summary.containers?.totalContainers ?? 0
         let images = overview?.summary.imageUsageCounts?.totalImages ?? 0
-        let envs = overview?.summary.totalEnvironments ?? environments.count
-        let online = overview?.summary.onlineEnvironments ?? environments.filter { $0.isOnline ?? false }.count
 
         return Grid(horizontalSpacing: 10, verticalSpacing: 10) {
             GridRow {
                 DashboardGlassTile(
-                    title: "Environments",
-                    value: envs > 0 ? "\(online) / \(envs)" : "—",
-                    icon: "server.rack",
-                    tint: .blue
-                ) {} // No navigation required here, can just jump down
+                    title: "Updates",
+                    value: imageUpdatesTotal.map { "\($0)" } ?? "—",
+                    icon: "arrow.triangle.2.circlepath",
+                    tint: .green
+                ) { selectedTab = AppTab.updates.id }
 
                 DashboardGlassTile(
                     title: "Containers",
@@ -295,15 +338,21 @@ struct DashboardView: View {
         let reqData = try? await rawReq
 
         if Task.isCancelled { return }
-        environments = envs
+        rawEnvironmentCount = envs.count
+        let bounded = Array(envs.prefix(Self.maxEnvironments))
+        environments = bounded
         if let reqData {
             overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
                 ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
         }
 
-        let volumes = await loadVolumesTotal(envs: envs)
+        async let volumesResult = loadVolumesTotal(envs: bounded)
+        async let updatesResult = loadImageUpdatesTotal(envs: bounded)
+        let volumes = await volumesResult
+        let updates = await updatesResult
         if !Task.isCancelled {
             volumesTotal = volumes
+            imageUpdatesTotal = updates
         }
     }
 
@@ -313,22 +362,59 @@ struct DashboardView: View {
         guard !online.isEmpty else { return 0 }
 
         return await withTaskGroup(of: Int64.self) { group in
-            for env in online {
+            var iterator = online.makeIterator()
+            let initialBatch = min(Self.maxConcurrentPerEnvFetches, online.count)
+            for _ in 0..<initialBatch {
+                guard let env = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
-                    do {
-                        let page = try await client.listVolumesPage(envID: envID, start: 0, limit: 1)
-                        return page.pagination.totalItems
-                    } catch {
-                        return 0
-                    }
+                    (try? await client.listVolumesPage(envID: envID, start: 0, limit: 1).pagination.totalItems) ?? 0
                 }
             }
             var total: Int64 = 0
             for await result in group {
                 total += result
+                if let env = iterator.next() {
+                    let envID = EnvironmentID(rawValue: env.id)
+                    group.addTask {
+                        (try? await client.listVolumesPage(envID: envID, start: 0, limit: 1).pagination.totalItems) ?? 0
+                    }
+                }
             }
             return Int(total)
+        }
+    }
+
+    private func loadImageUpdatesTotal(envs: [ServerEnvironment]) async -> Int {
+        guard let client = manager.client else { return 0 }
+        let online = envs.filter { $0.isOnline ?? false }
+        guard !online.isEmpty else { return 0 }
+
+        return await withTaskGroup(of: Int.self) { group in
+            var iterator = online.makeIterator()
+            let initialBatch = min(Self.maxConcurrentPerEnvFetches, online.count)
+            for _ in 0..<initialBatch {
+                guard let env = iterator.next() else { break }
+                let envID = EnvironmentID(rawValue: env.id)
+                group.addTask {
+                    let path = client.rest.environmentPath(envID, "image-updates/summary")
+                    let summary: ImageUpdateSummary? = try? await client.rest.get(path)
+                    return summary?.imagesWithUpdates ?? 0
+                }
+            }
+            var total = 0
+            for await result in group {
+                total += result
+                if let env = iterator.next() {
+                    let envID = EnvironmentID(rawValue: env.id)
+                    group.addTask {
+                        let path = client.rest.environmentPath(envID, "image-updates/summary")
+                        let summary: ImageUpdateSummary? = try? await client.rest.get(path)
+                        return summary?.imagesWithUpdates ?? 0
+                    }
+                }
+            }
+            return total
         }
     }
 
@@ -337,7 +423,10 @@ struct DashboardView: View {
         return (try? await cached.getListGlobal(
             "environments", elementType: ServerEnvironment.self,
             policy: .environments, refresh: refresh,
-            onFresh: { fresh in environments = fresh }
+            onFresh: { fresh in
+                rawEnvironmentCount = fresh.count
+                environments = Array(fresh.prefix(Self.maxEnvironments))
+            }
         )) ?? []
     }
 }

@@ -5,12 +5,12 @@ struct EnvironmentDashboardCard: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environment: ServerEnvironment
     var cachedCard: DashboardGlobalEnvironmentCard?
-    
+    var onSelect: () -> Void = {}
+
     @State private var dockerInfo: DockerInfo?
     @State private var latestStats: SystemStatsFrame?
-    @State private var statsStreamTask: Task<Void, Never>?
     @State private var dockerError: String?
-    @State private var showSystemDetails = false
+    @State private var selectionPulse = false
 
     var envID: EnvironmentID {
         EnvironmentID(rawValue: environment.id)
@@ -22,7 +22,8 @@ struct EnvironmentDashboardCard: View {
 
     var body: some View {
         Button {
-            showSystemDetails = true
+            selectionPulse.toggle()
+            onSelect()
         } label: {
             VStack(alignment: .leading, spacing: 12) {
                 // Header
@@ -121,23 +122,25 @@ struct EnvironmentDashboardCard: View {
                 }
             }
             Button {
-                showSystemDetails = true
+                selectionPulse.toggle()
+                onSelect()
             } label: {
                 Label("View System Details", systemImage: "info.circle")
             }
         }
-        .sensoryFeedback(.selection, trigger: showSystemDetails) { _, new in new }
-        .navigationDestination(isPresented: $showSystemDetails) {
-            SystemInfoDetailView(
-                environmentID: envID,
-                environmentName: environment.name ?? environment.id
-            )
-        }
+        .sensoryFeedback(.selection, trigger: selectionPulse)
         .task { await loadDockerInfo() }
-        .task { startStatsStream() }
-        .onDisappear {
-            statsStreamTask?.cancel()
-            statsStreamTask = nil
+        .task {
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled, let client = manager.client else { return }
+            let stream = client.system.stats(envID: envID, interval: 2)
+            do {
+                for try await frame in stream {
+                    latestStats = frame
+                }
+            } catch is CancellationError {
+            } catch {
+            }
         }
     }
 
@@ -240,20 +243,4 @@ struct EnvironmentDashboardCard: View {
         }
     }
 
-    private func startStatsStream() {
-        guard statsStreamTask == nil, let client = manager.client else { return }
-        let stream = client.system.stats(envID: envID, interval: 2)
-        statsStreamTask = Task { @concurrent in
-            do {
-                for try await frame in stream {
-                    if Task.isCancelled { break }
-                    await MainActor.run {
-                        latestStats = frame
-                    }
-                }
-            } catch is CancellationError {
-            } catch {
-            }
-        }
-    }
 }

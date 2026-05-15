@@ -53,10 +53,18 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.1.2",
+            new: [
+                .init("Dashboard now shows an Updates tile with the total count of pending image updates across all environments. Tap to jump into the Updates tab."),
+            ],
+            changed: [
+                .init("Dashboard now loads environment cards lazily as you scroll and shows at most 50 environments at a time, with a link to view the full list."),
+                .init("Replaced the Environments overview tile with the new Updates tile — the per-environment cards below already convey online/total counts."),
+            ],
             fixed: [
                 .init("Error messages now show human-readable text instead of raw API responses or schema URLs"),
                 .init("Error banners wrap to multiple lines so long messages are fully readable"),
                 .init("Validation errors point to the specific field that needs attention"),
+                .init("Fixed a security issue where a malicious or compromised server could degrade or crash the app by returning an excessive number of environments."),
             ]
         ),
         ReleaseNote(
