@@ -55,10 +55,12 @@ enum ReleaseNotes {
             version: "0.1.2",
             new: [
                 .init("Dashboard now shows an Updates tile with the total count of pending image updates across all environments. Tap to jump into the Updates tab."),
+                .init("New floating Liquid Glass action bar on Project, Container, Environment, and Updates detail screens — primary actions (Stop, Restart, Redeploy, etc.) live in circular glass buttons above the tab bar."),
             ],
             changed: [
                 .init("Dashboard now loads environment cards lazily as you scroll and shows at most 50 environments at a time, with a link to view the full list."),
                 .init("Replaced the Environments overview tile with the new Updates tile — the per-environment cards below already convey online/total counts."),
+                .init("Container detail tabs are now Overview, Stats, and Logs (replacing the Inspect tab). Inspect moved to a toolbar button; Terminal also lives in the toolbar when the container is running."),
             ],
             fixed: [
                 .init("Error messages now show human-readable text instead of raw API responses or schema URLs"),

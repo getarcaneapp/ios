@@ -7,6 +7,7 @@ struct EnvironmentDetailView: View {
 
     @State private var dockerInfo: DockerInfo?
     @State private var isLoading = false
+    @State private var isTestingConnection = false
 
     private var envID: EnvironmentID { EnvironmentID(rawValue: environment.id) }
 
@@ -66,17 +67,22 @@ struct EnvironmentDetailView: View {
                 }
             }
 
-            // System actions
-            Section("Actions") {
-                Button(role: .destructive) {
-                    Task { await testConnection() }
-                } label: {
-                    Label("Test Connection", systemImage: "network")
-                        .foregroundStyle(.primary)
-                }
-            }
         }
         .listStyle(.insetGrouped)
+        .actionToolbar(
+            items: [
+                ActionButtonItem(
+                    id: "test",
+                    title: "Test Connection",
+                    systemImage: "network",
+                    tint: .accentColor
+                ) {
+                    Task { await testConnection() }
+                }
+            ],
+            runningItemID: isTestingConnection ? "test" : nil,
+            isDisabled: isTestingConnection
+        )
         .navigationTitle(environment.name ?? environment.id)
         .navigationBarTitleDisplayMode(.large)
         .task { await loadDockerInfo() }
@@ -139,6 +145,8 @@ struct EnvironmentDetailView: View {
 
     private func testConnection() async {
         guard let client = manager.client else { return }
+        isTestingConnection = true
+        defer { isTestingConnection = false }
         do {
             let path = client.rest.environmentPath(envID, "test")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)

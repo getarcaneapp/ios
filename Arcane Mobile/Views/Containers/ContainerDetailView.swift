@@ -12,21 +12,21 @@ struct ContainerDetailView: View {
     @State private var isLoading = false
     @State private var isActioning = false
     @State private var errorMessage: String?
-    @State private var showLogs = false
     @State private var showTerminal = false
     @State private var showRename = false
     @State private var showDeleteConfirm = false
-    @State private var showKillConfirm = false
+    @State private var showInspect = false
+    @State private var runningActionID: String?
     @State private var selectedTab: DetailTab = .overview
 
     private enum DetailTab: String, CaseIterable, Identifiable {
-        case overview, stats, inspect
+        case overview, stats, logs
         var id: String { rawValue }
         var title: String {
             switch self {
             case .overview: return "Overview"
             case .stats: return "Stats"
-            case .inspect: return "Inspect"
+            case .logs: return "Logs"
             }
         }
     }
@@ -69,13 +69,35 @@ struct ContainerDetailView: View {
                 overviewTab
             case .stats:
                 ContainerStatsView(container: container, environmentID: environmentID)
-            case .inspect:
-                ContainerInspectView(container: container, environmentID: environmentID)
+            case .logs:
+                LogsView(
+                    title: displayedName,
+                    logStream: manager.client?.containers.logs(envID: environmentID, id: container.id),
+                    embedded: true
+                )
             }
         }
         .navigationTitle(displayedName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showInspect = true
+                } label: {
+                    Image(systemName: "doc.text.magnifyingglass")
+                }
+                .disabled(isActioning)
+            }
+            if isRunning && !isPaused {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showTerminal = true
+                    } label: {
+                        Image(systemName: "terminal.fill")
+                    }
+                    .disabled(isActioning)
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button {
@@ -97,11 +119,17 @@ struct ContainerDetailView: View {
         }
         .task { await loadDetails() }
         .refreshable { await loadDetails() }
-        .sheet(isPresented: $showLogs) {
-            LogsView(
-                title: displayedName,
-                logStream: manager.client?.containers.logs(envID: environmentID, id: container.id)
-            )
+        .sheet(isPresented: $showInspect) {
+            NavigationStack {
+                ContainerInspectView(container: container, environmentID: environmentID)
+                    .navigationTitle("Inspect")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Done") { showInspect = false }
+                        }
+                    }
+            }
         }
         .fullScreenCover(isPresented: $showTerminal) {
             ContainerTerminalView(container: container, environmentID: environmentID)
@@ -117,13 +145,6 @@ struct ContainerDetailView: View {
             }
         } message: {
             Text("This will permanently delete the container and cannot be undone.")
-        }
-        .confirmationDialog("Kill Container", isPresented: $showKillConfirm, titleVisibility: .visible) {
-            Button("Kill (SIGKILL)", role: .destructive) {
-                Task { await performAction(.kill) }
-            }
-        } message: {
-            Text("Sends SIGKILL — the container is terminated immediately without graceful shutdown. Use Stop for a graceful shutdown.")
         }
         .alert(
             "Error",
@@ -146,10 +167,6 @@ struct ContainerDetailView: View {
                 statusHeader
             }
 
-            Section("Actions") {
-                actionsSection
-            }
-
             if let details {
                 configSection(details.config)
                 stateSection(details.state)
@@ -167,6 +184,12 @@ struct ContainerDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .actionToolbar(
+            items: actionItems,
+            runningItemID: runningActionID,
+            isDisabled: isActioning,
+            resourceName: displayedName
+        )
     }
 
     private var statusHeader: some View {
@@ -208,87 +231,57 @@ struct ContainerDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var actionsSection: some View {
+    private var actionItems: [ActionButtonItem] {
+        var items: [ActionButtonItem] = []
+
         if isPaused {
-            Button {
-                Task { await performAction(.unpause) }
-            } label: {
-                Label("Unpause", systemImage: "play.circle.fill")
-                    .foregroundStyle(.green)
-            }
-            .disabled(isActioning)
-
-            Button(role: .destructive) {
-                showKillConfirm = true
-            } label: {
-                Label("Kill", systemImage: "bolt.slash.fill")
-                    .foregroundStyle(.red)
-            }
-            .disabled(isActioning)
+            items.append(ActionButtonItem(
+                id: "unpause",
+                title: "Unpause",
+                systemImage: "play.fill",
+                tint: .green
+            ) {
+                Task { await performAction(.unpause, actionID: "unpause") }
+            })
         } else if isRunning {
-            Button {
-                Task { await performAction(.stop) }
-            } label: {
-                Label("Stop", systemImage: "stop.circle.fill")
-                    .foregroundStyle(.red)
-            }
-            .disabled(isActioning)
-
-            Button {
-                Task { await performAction(.restart) }
-            } label: {
-                Label("Restart", systemImage: "arrow.clockwise.circle.fill")
-                    .foregroundStyle(.orange)
-            }
-            .disabled(isActioning)
-
-            Button {
-                Task { await performAction(.pause) }
-            } label: {
-                Label("Pause", systemImage: "pause.circle.fill")
-                    .foregroundStyle(.orange)
-            }
-            .disabled(isActioning)
-
-            Button(role: .destructive) {
-                showKillConfirm = true
-            } label: {
-                Label("Kill", systemImage: "bolt.slash.fill")
-                    .foregroundStyle(.red)
-            }
-            .disabled(isActioning)
+            items.append(ActionButtonItem(
+                id: "stop",
+                title: "Stop",
+                systemImage: "stop.fill",
+                tint: .red,
+                role: .destructive
+            ) {
+                Task { await performAction(.stop, actionID: "stop") }
+            })
+            items.append(ActionButtonItem(
+                id: "restart",
+                title: "Restart",
+                systemImage: "arrow.clockwise",
+                tint: .orange
+            ) {
+                Task { await performAction(.restart, actionID: "restart") }
+            })
         } else {
-            Button {
-                Task { await performAction(.start) }
-            } label: {
-                Label("Start", systemImage: "play.circle.fill")
-                    .foregroundStyle(.green)
-            }
-            .disabled(isActioning)
+            items.append(ActionButtonItem(
+                id: "start",
+                title: "Start",
+                systemImage: "play.fill",
+                tint: .green
+            ) {
+                Task { await performAction(.start, actionID: "start") }
+            })
         }
 
-        Button {
-            Task { await performAction(.redeploy) }
-        } label: {
-            Label("Redeploy", systemImage: "arrow.triangle.2.circlepath.circle.fill")
-                .foregroundStyle(Color.accentColor)
-        }
-        .disabled(isActioning)
+        items.append(ActionButtonItem(
+            id: "redeploy",
+            title: "Redeploy",
+            systemImage: "arrow.triangle.2.circlepath",
+            tint: .accentColor
+        ) {
+            Task { await performAction(.redeploy, actionID: "redeploy") }
+        })
 
-        Button {
-            showLogs = true
-        } label: {
-            Label("View Logs", systemImage: "doc.text.fill")
-        }
-
-        if isRunning && !isPaused {
-            Button {
-                showTerminal = true
-            } label: {
-                Label("Terminal", systemImage: "terminal.fill")
-            }
-        }
+        return items
     }
 
     private func configSection(_ config: ContainerConfig) -> some View {
@@ -376,12 +369,16 @@ struct ContainerDetailView: View {
 
     // MARK: - Actions
 
-    private enum ContainerAction { case start, stop, restart, pause, unpause, kill, redeploy }
+    private enum ContainerAction { case start, stop, restart, pause, unpause, redeploy }
 
-    private func performAction(_ action: ContainerAction) async {
+    private func performAction(_ action: ContainerAction, actionID: String? = nil) async {
         guard let client = manager.client else { return }
         isActioning = true
-        defer { isActioning = false }
+        runningActionID = actionID
+        defer {
+            isActioning = false
+            runningActionID = nil
+        }
         do {
             switch action {
             case .start: try await client.containers.start(envID: environmentID, id: container.id)
@@ -389,7 +386,6 @@ struct ContainerDetailView: View {
             case .restart: try await client.containers.restart(envID: environmentID, id: container.id)
             case .pause: try await client.pauseContainer(envID: environmentID, id: container.id)
             case .unpause: try await client.unpauseContainer(envID: environmentID, id: container.id)
-            case .kill: try await client.killContainer(envID: environmentID, id: container.id)
             case .redeploy:
                 let path = client.rest.environmentPath(environmentID, "containers/\(container.id)/redeploy")
                 let _: ContainerInfo = try await client.rest.post(path, body: String?.none)

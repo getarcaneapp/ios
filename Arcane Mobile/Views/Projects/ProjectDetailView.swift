@@ -17,6 +17,7 @@ struct ProjectDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var streamingAction: StreamingAction?
     @State private var errorMessage: String?
+    @State private var runningActionID: String?
 
     private var currentProject: Project { refreshedProject ?? project }
     private var isRunning: Bool { currentProject.status.lowercased() == "running" }
@@ -34,10 +35,6 @@ struct ProjectDetailView: View {
         List {
             Section {
                 projectHeader
-            }
-
-            Section("Actions") {
-                actionsSection
             }
 
             if let status = actionStatus {
@@ -72,6 +69,12 @@ struct ProjectDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .actionToolbar(
+            items: actionItems,
+            runningItemID: runningActionID,
+            isDisabled: isActioning,
+            resourceName: currentProject.displayName
+        )
         .navigationTitle(currentProject.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -168,59 +171,77 @@ struct ProjectDetailView: View {
         .padding(.vertical, 4)
     }
 
-    @ViewBuilder
-    private var actionsSection: some View {
+    private var actionItems: [ActionButtonItem] {
+        var items: [ActionButtonItem] = []
+
         if isRunning {
-            Button {
-                Task { await performSimpleAction(suffix: "down", label: "Stopping") }
-            } label: {
-                Label("Stop", systemImage: "stop.circle.fill").foregroundStyle(.red)
-            }
-            .disabled(isActioning)
-
-            Button {
-                Task { await performSimpleAction(suffix: "restart", label: "Restarting") }
-            } label: {
-                Label("Restart", systemImage: "arrow.clockwise.circle.fill").foregroundStyle(.orange)
-            }
-            .disabled(isActioning)
+            items.append(ActionButtonItem(
+                id: "stop",
+                title: "Stop",
+                systemImage: "stop.fill",
+                tint: .red,
+                role: .destructive
+            ) {
+                Task { await performSimpleAction(suffix: "down", label: "Stopping", actionID: "stop") }
+            })
+            items.append(ActionButtonItem(
+                id: "restart",
+                title: "Restart",
+                systemImage: "arrow.clockwise",
+                tint: .orange
+            ) {
+                Task { await performSimpleAction(suffix: "restart", label: "Restarting", actionID: "restart") }
+            })
         } else {
-            Button {
+            items.append(ActionButtonItem(
+                id: "start",
+                title: "Deploy",
+                systemImage: "play.fill",
+                tint: .green
+            ) {
                 startStreamingAction(suffix: "up", title: "Deploy \(currentProject.displayName)")
-            } label: {
-                Label("Start / Deploy", systemImage: "play.circle.fill").foregroundStyle(.green)
-            }
-            .disabled(isActioning)
+            })
         }
 
-        Button {
+        items.append(ActionButtonItem(
+            id: "redeploy",
+            title: "Redeploy",
+            systemImage: "arrow.triangle.2.circlepath",
+            tint: .purple
+        ) {
             startStreamingAction(suffix: "redeploy", title: "Redeploy \(currentProject.displayName)")
-        } label: {
-            Label("Redeploy", systemImage: "arrow.triangle.2.circlepath.circle.fill").foregroundStyle(.purple)
-        }
-        .disabled(isActioning)
+        })
 
-        Button {
+        items.append(ActionButtonItem(
+            id: "pull",
+            title: "Pull",
+            systemImage: "arrow.down",
+            tint: .accentColor
+        ) {
             startStreamingAction(suffix: "pull", title: "Pull Images")
-        } label: {
-            Label("Pull Images", systemImage: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
-        }
-        .disabled(isActioning)
+        })
 
         if hasBuild {
-            Button {
+            items.append(ActionButtonItem(
+                id: "build",
+                title: "Build",
+                systemImage: "hammer.fill",
+                tint: .indigo
+            ) {
                 startStreamingAction(suffix: "build", title: "Build Images")
-            } label: {
-                Label("Build Images", systemImage: "hammer.circle.fill").foregroundStyle(.indigo)
-            }
-            .disabled(isActioning)
+            })
         }
 
-        Button {
+        items.append(ActionButtonItem(
+            id: "logs",
+            title: "Logs",
+            systemImage: "doc.text.fill",
+            tint: .secondary
+        ) {
             showLogs = true
-        } label: {
-            Label("View Logs", systemImage: "doc.text.fill")
-        }
+        })
+
+        return items
     }
 
     // MARK: - Actions
@@ -238,12 +259,16 @@ struct ProjectDetailView: View {
         )
     }
 
-    private func performSimpleAction(suffix: String, label: String) async {
+    private func performSimpleAction(suffix: String, label: String, actionID: String? = nil) async {
         guard let client = manager.client else { return }
         isActioning = true
+        runningActionID = actionID
         actionStatus = "\(label)…"
         errorMessage = nil
-        defer { isActioning = false }
+        defer {
+            isActioning = false
+            runningActionID = nil
+        }
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/\(suffix)")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)

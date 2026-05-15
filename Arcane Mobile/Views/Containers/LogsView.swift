@@ -4,6 +4,7 @@ import Arcane
 struct LogsView: View {
     let title: String
     let logStream: LogStream?
+    var embedded: Bool = false
 
     @State private var lines: [IdentifiedLogLine] = []
     @State private var nextLineID: UInt64 = 0
@@ -18,67 +19,75 @@ struct LogsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack(alignment: .bottom) {
-                ScrollViewReader { proxy in
-                    List {
-                        ForEach(filteredLines) { entry in
-                            LogLineView(line: entry.line)
-                                .listRowBackground(Color.clear)
-                                .listRowInsets(.init(top: 1, leading: 12, bottom: 1, trailing: 12))
+        if embedded {
+            content
+                .task { await startStreaming() }
+        } else {
+            NavigationStack {
+                content
+                    .navigationTitle(title)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .searchable(text: $searchText, prompt: "Filter logs")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Done") { dismiss() }
                         }
-                    }
-                    .listStyle(.plain)
-                    .onChange(of: filteredLines.last?.id) { _, lastID in
-                        if autoScroll, let lastID {
-                            withAnimation(.none) {
-                                proxy.scrollTo(lastID, anchor: .bottom)
-                            }
-                        }
-                    }
-                }
-
-                // Auto-scroll toggle
-                HStack {
-                    Spacer()
-                    Button {
-                        withAnimation { autoScroll.toggle() }
-                    } label: {
-                        Label(autoScroll ? "Live" : "Paused", systemImage: autoScroll ? "arrow.down.circle.fill" : "pause.circle.fill")
-                            .font(.caption.bold())
-                    }
-                    .buttonStyle(.glass)
-                    .padding(16)
-                }
-            }
-            .background(Color(.systemBackground))
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, prompt: "Filter logs")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    GlassEffectContainer(spacing: 8) {
-                        HStack(spacing: 8) {
-                            if isStreaming {
-                                ProgressView()
-                                    .scaleEffect(0.8)
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            GlassEffectContainer(spacing: 8) {
+                                HStack(spacing: 8) {
+                                    if isStreaming {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .glassEffect()
+                                    }
+                                    Button {
+                                        lines.removeAll()
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
                                     .glassEffect()
+                                }
                             }
-                            Button {
-                                lines.removeAll()
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .glassEffect()
+                        }
+                    }
+                    .task { await startStreaming() }
+            }
+        }
+    }
+
+    private var content: some View {
+        ZStack(alignment: .bottom) {
+            ScrollViewReader { proxy in
+                List {
+                    ForEach(filteredLines) { entry in
+                        LogLineView(line: entry.line)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 1, leading: 12, bottom: 1, trailing: 12))
+                    }
+                }
+                .listStyle(.plain)
+                .onChange(of: filteredLines.last?.id) { _, lastID in
+                    if autoScroll, let lastID {
+                        withAnimation(.none) {
+                            proxy.scrollTo(lastID, anchor: .bottom)
                         }
                     }
                 }
             }
-            .task { await startStreaming() }
+
+            HStack {
+                Spacer()
+                Button {
+                    withAnimation { autoScroll.toggle() }
+                } label: {
+                    Label(autoScroll ? "Live" : "Paused", systemImage: autoScroll ? "arrow.down.circle.fill" : "pause.circle.fill")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.glass)
+                .padding(16)
+            }
         }
+        .background(Color(.systemBackground))
     }
 
     private func startStreaming() async {
