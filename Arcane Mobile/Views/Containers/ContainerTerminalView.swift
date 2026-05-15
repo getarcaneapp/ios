@@ -23,7 +23,11 @@ struct ContainerTerminalView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 if let connectError {
-                    errorBanner(connectError)
+                    ErrorBanner(message: connectError, severity: .warning) {
+                        Task { await connect() }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
                 }
 
                 ScrollViewReader { proxy in
@@ -141,22 +145,6 @@ struct ContainerTerminalView: View {
         .disabled(!isConnected)
         .buttonStyle(.plain)
         .opacity(isConnected ? 1.0 : 0.5)
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.caption)
-            Spacer()
-            Button("Retry") {
-                Task { await connect() }
-            }
-            .font(.caption)
-        }
-        .padding(10)
-        .background(.regularMaterial)
     }
 
     private func sendInput() {

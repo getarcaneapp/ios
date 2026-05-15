@@ -151,10 +151,8 @@ final class ArcaneClientManager {
                 requiresPasswordChange: response.user.requiresPasswordChange
             )
             authState = .authenticated
-        } catch let error as ArcaneError {
-            errorMessage = arcaneErrorMessage(error)
         } catch {
-            errorMessage = friendlyErrorMessage(error)
+            errorMessage = loginErrorMessage(error)
         }
     }
 
@@ -186,10 +184,8 @@ final class ArcaneClientManager {
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             // User cancelled the system sheet — no error message needed.
             return
-        } catch let error as ArcaneError {
-            errorMessage = arcaneErrorMessage(error)
         } catch {
-            errorMessage = friendlyErrorMessage(error)
+            errorMessage = loginErrorMessage(error)
         }
     }
 
@@ -247,11 +243,8 @@ final class ArcaneClientManager {
                 demoEndsAt = session.endsAt
                 DemoService.shared.startHeartbeat()
                 scheduleDemoExpiry(at: session.endsAt)
-            } catch let error as ArcaneError {
-                errorMessage = arcaneErrorMessage(error)
-                await DemoService.shared.endSession()
             } catch {
-                errorMessage = friendlyErrorMessage(error)
+                errorMessage = loginErrorMessage(error)
                 await DemoService.shared.endSession()
             }
         } catch let error as DemoError {
@@ -349,18 +342,8 @@ final class ArcaneClientManager {
         ))
     }
 
-    private func arcaneErrorMessage(_ error: ArcaneError) -> String {
-        switch error {
-        case .unauthorized: return "Invalid username or password"
-        case .forbidden: return "You don't have permission to do that"
-        case .notFound: return "Resource not found"
-        case .conflict(let msg): return msg ?? "A conflict occurred"
-        case .rateLimited: return "Too many requests — please wait"
-        case .server(_, let msg): return msg
-        case .transport(let msg): return "Connection error: \(msg)"
-        case .decoding(let msg): return "Response error: \(msg)"
-        case .unknown(let code, let body): return "Error \(code): \(body)"
-        default: return "An error occurred"
-        }
+    private func loginErrorMessage(_ error: Error) -> String {
+        if case ArcaneError.unauthorized = error { return "Invalid username or password" }
+        return friendlyErrorMessage(error)
     }
 }

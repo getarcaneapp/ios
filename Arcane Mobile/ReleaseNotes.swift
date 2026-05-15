@@ -52,6 +52,14 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.1.2",
+            fixed: [
+                .init("Error messages now show human-readable text instead of raw API responses or schema URLs"),
+                .init("Error banners wrap to multiple lines so long messages are fully readable"),
+                .init("Validation errors point to the specific field that needs attention"),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.1",
             new: [
                 .init("Redesigned dashboard with per-environment summary cards showing live CPU, memory, disk, and container/image counts"),

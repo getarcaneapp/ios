@@ -19,7 +19,9 @@ struct ContainerStatsView: View {
         ScrollView {
             VStack(spacing: 16) {
                 if let errorMessage {
-                    errorBanner(errorMessage)
+                    ErrorBanner(message: errorMessage, severity: .warning) {
+                        Task { await startStreaming() }
+                    }
                 }
 
                 if frames.isEmpty {
@@ -196,22 +198,6 @@ struct ContainerStatsView: View {
         }
         .padding(12)
         .background(.regularMaterial, in: .rect(cornerRadius: 12))
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.caption)
-            Spacer()
-            Button("Retry") {
-                Task { await startStreaming() }
-            }
-            .font(.caption)
-        }
-        .padding(10)
-        .background(.regularMaterial, in: .rect(cornerRadius: 10))
     }
 
     private func startStreaming() async {

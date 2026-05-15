@@ -180,26 +180,30 @@ func friendlyErrorMessage(_ error: Error) -> String {
         case .unauthorized: return "Not signed in"
         case .forbidden: return "You don't have permission to do that"
         case .notFound: return "Not found"
-        case .conflict(let message): return message ?? "Conflict"
+        case .conflict(let message): return cleanErrorText(message) ?? "Conflict"
         case .validation(let fields):
-            let firstField = fields.sorted(by: { $0.key < $1.key }).first
-            if let (name, messages) = firstField, let first = messages.first {
-                return "\(name): \(first)"
+            let sorted = fields.sorted(by: { $0.key < $1.key })
+            guard let (firstName, messages) = sorted.first, let firstMessage = messages.first else {
+                return "Validation failed"
             }
-            return "Validation failed"
+            let displayName = humanizeFieldName(firstName)
+            if sorted.count <= 1 {
+                return "\(displayName): \(firstMessage)"
+            }
+            return "\(sorted.count) fields need attention — \(displayName): \(firstMessage)"
         case .rateLimited(let retryAfter):
             if let secs = retryAfter {
                 return "Rate limited — retry in \(Int(secs))s"
             }
             return "Rate limited — please wait"
-        case .server(_, let message): return message.isEmpty ? "Server error" : message
+        case .server(_, let message):
+            return cleanErrorText(message) ?? "Server error"
         case .transport(let message):
             if message.lowercased().contains("cancel") { return "Cancelled" }
             return "Connection error: \(message)"
         case .decoding(let message): return "Response error: \(message)"
-        case .unknown(let code, let body):
-            let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "Error \(code)" : "Error \(code): \(trimmed.prefix(200))"
+        case .unknown(let code, _):
+            return "Something went wrong (\(code))"
         }
     }
     if (error as NSError).domain == NSURLErrorDomain,
@@ -208,6 +212,20 @@ func friendlyErrorMessage(_ error: Error) -> String {
         return "Cancelled"
     }
     return error.localizedDescription
+}
+
+private func cleanErrorText(_ message: String?) -> String? {
+    guard let message else { return nil }
+    let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return nil }
+    if trimmed.hasPrefix("{") || trimmed.hasPrefix("[") { return nil }
+    return trimmed
+}
+
+private func humanizeFieldName(_ name: String) -> String {
+    let last = name.split(separator: ".").last.map(String.init) ?? name
+    guard let first = last.first else { return last }
+    return first.uppercased() + last.dropFirst()
 }
 
 // MARK: - Image pull / prune

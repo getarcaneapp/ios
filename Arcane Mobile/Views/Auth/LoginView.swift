@@ -43,7 +43,7 @@ struct LoginView: View {
                 formCard
 
                 if let error = manager.errorMessage {
-                    errorBanner(error)
+                    ErrorBanner(message: error)
                 }
 
                 if let info = manager.demoExpiredMessage {
@@ -179,21 +179,6 @@ struct LoginView: View {
             }
         }
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 14))
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.red)
-                .multilineTextAlignment(.leading)
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .background(.red.opacity(0.12), in: .rect(cornerRadius: 12))
-        .transition(.scale(scale: 0.95).combined(with: .opacity))
     }
 
     private func infoBanner(_ message: String) -> some View {

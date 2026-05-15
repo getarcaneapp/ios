@@ -98,7 +98,9 @@ struct EnvironmentDashboardCard: View {
                     Text(banner)
                         .font(.caption2)
                         .foregroundStyle(.orange)
-                        .lineLimit(1)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .padding(14)

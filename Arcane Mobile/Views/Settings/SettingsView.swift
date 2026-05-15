@@ -1079,7 +1079,11 @@ struct TemplateRegistryRow: View {
                 Text(registry.name).font(.headline)
                 Text(registry.url).font(.caption).foregroundStyle(.secondary)
                 if let error = registry.lastFetchError, !error.isEmpty {
-                    Text(error).font(.caption2).foregroundStyle(.red).lineLimit(1)
+                    Text(error)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer()

@@ -38,7 +38,7 @@ struct SystemInfoDetailView: View {
                     }
                     .transition(.opacity)
                 } else if let staticError {
-                    errorBanner(staticError)
+                    ErrorBanner(message: staticError, severity: .warning)
                 } else {
                     HStack {
                         ProgressView()
@@ -171,19 +171,6 @@ struct SystemInfoDetailView: View {
     }
 
     // MARK: - Helpers
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
 
     private func loadStatic() async {
         guard let client = manager.client else { return }
