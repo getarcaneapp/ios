@@ -130,6 +130,10 @@ struct StreamingActionView: View {
 
     private func displayText(for event: PullProgressEvent) -> String {
         if let error = event.error { return "Error: \(error)" }
+        if let stream = event.stream {
+            let trimmed = stream.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
         var parts: [String] = []
         if let status = event.status, !status.isEmpty { parts.append(status) }
         if let id = event.id, !id.isEmpty, parts.isEmpty {
