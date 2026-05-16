@@ -89,19 +89,19 @@ struct ProjectDetailView: View {
                         Button {
                             Task { await unarchiveProject() }
                         } label: {
-                            Label("Unarchive ProjectDetails", systemImage: "tray.and.arrow.up")
+                            Label("Unarchive Project", systemImage: "tray.and.arrow.up")
                         }
                     } else {
                         Button {
                             Task { await archiveProject() }
                         } label: {
-                            Label("Archive ProjectDetails", systemImage: "archivebox")
+                            Label("Archive Project", systemImage: "archivebox")
                         }
                     }
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
-                        DestructiveLabel(text: "Delete ProjectDetails")
+                        DestructiveLabel(text: "Delete Project")
                     }
                     .tint(.red)
                 } label: {
@@ -139,7 +139,7 @@ struct ProjectDetailView: View {
                 ReviewPrompter.shared.recordSuccess()
             }
         }
-        .alert("Delete ProjectDetails", isPresented: $showDeleteConfirm) {
+        .alert("Delete Project", isPresented: $showDeleteConfirm) {
             Button("Delete", role: .destructive) { Task { await deleteProject(removeFiles: false) } }
             Button("Delete and Remove Files", role: .destructive) {
                 Task { await deleteProject(removeFiles: true) }
@@ -449,7 +449,7 @@ struct ComposeFileView: View {
                     }
                 }
             }
-            .navigationTitle("ProjectDetails Files")
+            .navigationTitle("Project Files")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -577,7 +577,7 @@ struct CreateProjectView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("ProjectDetails Name") {
+                Section("Project Name") {
                     TextField("my-app", text: $name)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -649,7 +649,7 @@ struct CreateProjectView: View {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
             }
-            .navigationTitle("Create ProjectDetails")
+            .navigationTitle("Create Project")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

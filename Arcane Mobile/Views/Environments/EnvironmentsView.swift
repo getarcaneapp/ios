@@ -201,7 +201,7 @@ struct AddEnvironmentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Arcane.Environment Details") {
+                Section("Environment Details") {
                     TextField("Name", text: $name)
                     TextField("URL (e.g. tcp://192.168.1.10:2375)", text: $url)
                         .textInputAutocapitalization(.never)
@@ -214,7 +214,7 @@ struct AddEnvironmentView: View {
                     }
                 }
             }
-            .navigationTitle("Add Arcane.Environment")
+            .navigationTitle("Add Environment")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

@@ -641,9 +641,14 @@ struct PullImageView: View {
             statusLine = status
         }
         // The SDK's `PullProgressEvent` doesn't expose an explicit phase, so
-        // detect the terminal "complete" status string instead.
-        if let status = event.status, status.lowercased().contains("complete") {
-            statusLine = "Pull complete"
+        // detect the terminal status string. "Pull complete" is emitted per-layer;
+        // the overall terminal messages are "Status: Downloaded newer image..." /
+        // "Status: Image is up to date...".
+        if let status = event.status {
+            let lower = status.lowercased()
+            if lower.hasPrefix("status: ") || lower == "pull complete" {
+                statusLine = lower == "pull complete" ? "Pull complete" : status
+            }
         }
     }
 

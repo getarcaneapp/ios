@@ -219,7 +219,7 @@ struct ProjectsView: View {
             Task { await loadProjects(reset: true, refresh: true) }
         }
         .alert(
-            "Delete ProjectDetails",
+            "Delete Project",
             isPresented: deleteAlertPresented,
             presenting: pendingDeleteProject
         ) { project in
@@ -234,7 +234,7 @@ struct ProjectsView: View {
             Text("Remove the project from Arcane, or also remove its files from disk.")
         }
         .alert(
-            "Couldn't Delete ProjectDetails",
+            "Couldn't Delete Project",
             isPresented: actionErrorPresented
         ) {
             Button("OK", role: .cancel) { actionErrorMessage = nil }
