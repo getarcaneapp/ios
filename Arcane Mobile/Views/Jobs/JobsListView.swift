@@ -105,7 +105,7 @@ struct JobsListView: View {
         runningJobs.insert(job.id)
         defer { runningJobs.remove(job.id) }
         do {
-            let result = try await client.jobs.run(envID: environmentID, id: job.id)
+            let result = try await client.jobs.run(jobID: job.id, envID: environmentID)
             actionMessage = result.message.isEmpty ? "\(job.name) started" : result.message
         } catch {
             actionMessage = friendlyErrorMessage(error)

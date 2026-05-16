@@ -42,7 +42,7 @@ struct LiveResourcesCard: View {
                 icon: "cpu",
                 color: Color.accentColor,
                 percent: latestStats?.cpuPercent,
-                detail: latestStats?.cpuCount.map { "\($0) core\($0 == 1 ? "" : "s")" }
+                detail: latestStats.map { "\($0.cpuCount) core\($0.cpuCount == 1 ? "" : "s")" }
             )
             metricRow(
                 label: "Memory",
@@ -136,7 +136,7 @@ struct LiveResourcesCard: View {
     private func startStream() {
         guard streamTask == nil, let client = manager.client else { return }
         streamError = nil
-        let stream = client.system.stats(envID: environmentID, interval: 2)
+        let stream = client.system.statsStream(envID: environmentID)
         isStreaming = true
         streamTask = Task { @concurrent in
             do {

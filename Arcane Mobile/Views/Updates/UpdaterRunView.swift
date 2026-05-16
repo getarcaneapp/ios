@@ -27,18 +27,18 @@ struct UpdaterRunView: View {
                     runningHero
                     if let status = liveStatus {
                         countersCard(containers: Int(status.updatingContainers), projects: Int(status.updatingProjects))
-                        if let ids = status.containerIds, !ids.isEmpty {
-                            idListCard(title: "Containers Updating", icon: "shippingbox.fill", tint: .blue, ids: ids)
+                        if !status.containerIds.isEmpty {
+                            idListCard(title: "Containers Updating", icon: "shippingbox.fill", tint: .blue, ids: status.containerIds)
                         }
-                        if let ids = status.projectIds, !ids.isEmpty {
-                            idListCard(title: "Projects Updating", icon: "folder.fill", tint: .purple, ids: ids)
+                        if !status.projectIds.isEmpty {
+                            idListCard(title: "Projects Updating", icon: "folder.fill", tint: .purple, ids: status.projectIds)
                         }
                     }
                 case .completed(let result):
                     completedHero(result: result)
                     resultCountersCard(result: result)
-                    if let items = result.items, !items.isEmpty {
-                        resultItemsCard(items: items)
+                    if !result.items.isEmpty {
+                        resultItemsCard(items: result.items)
                     }
                 case .failed(let message):
                     ContentUnavailableView(
@@ -425,8 +425,8 @@ private struct UpdaterRunItemRow: View {
     }
 
     private var imageChange: String? {
-        let oldVersions = item.oldImages?.additionalProperties ?? [:]
-        let newVersions = item.newImages?.additionalProperties ?? [:]
+        let oldVersions = item.oldImages ?? [:]
+        let newVersions = item.newImages ?? [:]
         guard let key = newVersions.keys.first ?? oldVersions.keys.first else { return nil }
         let oldTag = oldVersions[key]
         let newTag = newVersions[key]

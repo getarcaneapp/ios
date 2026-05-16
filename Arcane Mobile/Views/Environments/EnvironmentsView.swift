@@ -4,13 +4,13 @@ import Arcane
 struct EnvironmentsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
-    @State private var environments: [ServerEnvironment] = []
+    @State private var environments: [Arcane.Environment] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showAddEnvironment = false
     @State private var sortOrder = ListSortOrder.ascending
 
-    private var sortedEnvironments: [ServerEnvironment] {
+    private var sortedEnvironments: [Arcane.Environment] {
         environments.sorted {
             sortOrder.areInIncreasingOrder($0.name ?? $0.id, $1.name ?? $1.id)
         }
@@ -105,7 +105,7 @@ struct EnvironmentsView: View {
         }
     }
 
-    private func environmentPreview(_ env: ServerEnvironment, isActive: Bool) -> some View {
+    private func environmentPreview(_ env: Arcane.Environment, isActive: Bool) -> some View {
         let online = env.isOnline ?? false
         var badges: [RowPreviewCard.PreviewBadge] = [
             .init(text: env.status.capitalized, color: online ? .green : .secondary)
@@ -114,8 +114,9 @@ struct EnvironmentsView: View {
             badges.insert(.init(text: "Active", color: .accentColor), at: 0)
         }
         var details: [RowPreviewCard.PreviewDetail] = []
-        if let url = env.url, !url.isEmpty {
-            details.append(.init(icon: "link", label: "URL", value: url))
+        let envURL = env.apiUrl
+        if !envURL.isEmpty {
+            details.append(.init(icon: "link", label: "URL", value: envURL))
         }
         details.append(.init(icon: "number", label: "ID", value: env.id))
         return RowPreviewCard(
@@ -133,8 +134,8 @@ struct EnvironmentsView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            if let result: [ServerEnvironment] = try await cached.getListGlobal(
-                "environments", elementType: ServerEnvironment.self, policy: .environments,
+            if let result: [Arcane.Environment] = try await cached.getListGlobal(
+                "environments", elementType: Arcane.Environment.self, policy: .environments,
                 refresh: refresh,
                 onFresh: { fresh in environments = fresh }
             ) {
@@ -147,7 +148,7 @@ struct EnvironmentsView: View {
 }
 
 struct EnvironmentRow: View {
-    let environment: ServerEnvironment
+    let environment: Arcane.Environment
     var isActive: Bool = false
 
     var body: some View {
@@ -171,8 +172,8 @@ struct EnvironmentRow: View {
                             .background(Color.accentColor, in: .capsule)
                     }
                 }
-                if let url = environment.url {
-                    Text(url)
+                if !environment.apiUrl.isEmpty {
+                    Text(environment.apiUrl)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -200,7 +201,7 @@ struct AddEnvironmentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Environment Details") {
+                Section("Arcane.Environment Details") {
                     TextField("Name", text: $name)
                     TextField("URL (e.g. tcp://192.168.1.10:2375)", text: $url)
                         .textInputAutocapitalization(.never)
@@ -213,7 +214,7 @@ struct AddEnvironmentView: View {
                     }
                 }
             }
-            .navigationTitle("Add Environment")
+            .navigationTitle("Add Arcane.Environment")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -231,7 +232,7 @@ struct AddEnvironmentView: View {
         defer { isLoading = false }
         do {
             let body: [String: String] = ["name": name, "url": url]
-            let _: ServerEnvironment = try await client.rest.post("environments", body: body)
+            let _: Arcane.Environment = try await client.rest.post("environments", body: body)
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["environments"])
             }

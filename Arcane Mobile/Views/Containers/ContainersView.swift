@@ -8,7 +8,7 @@ struct ContainersView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
-    @State private var containers: [ContainerInfo] = []
+    @State private var containers: [ContainerSummary] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
@@ -23,10 +23,10 @@ struct ContainersView: View {
 
     private var activeFilterCount: Int { stateFilter != .all ? 1 : 0 }
 
-    private var filtered: [ContainerInfo] {
+    private var filtered: [ContainerSummary] {
         containers.filter { c in
             let matchesSearch = searchText.isEmpty ||
-                (c.names?.contains { $0.localizedCaseInsensitiveContains(searchText) } ?? false) ||
+                c.names.contains(where: { $0.localizedCaseInsensitiveContains(searchText) }) ||
                 c.image.localizedCaseInsensitiveContains(searchText)
             let matchesState = stateFilter == .all
                 || (stateFilter == .running && c.isRunning)
@@ -42,11 +42,11 @@ struct ContainersView: View {
         pinnedStore.pinnedIDs(kind: .container, envID: environmentID)
     }
 
-    private var listSections: [StableListSection<String, ContainerInfo>] {
+    private var listSections: [StableListSection<String, ContainerSummary>] {
         let pinned: Set<String> = pinnedIDs
-        var pinnedItems: [ContainerInfo] = []
-        var running: [ContainerInfo] = []
-        var stopped: [ContainerInfo] = []
+        var pinnedItems: [ContainerSummary] = []
+        var running: [ContainerSummary] = []
+        var stopped: [ContainerSummary] = []
         for container in filtered {
             if pinned.contains(container.id) {
                 pinnedItems.append(container)
@@ -149,7 +149,7 @@ struct ContainersView: View {
         }
     }
 
-    private func containerLink(_ container: ContainerInfo) -> some View {
+    private func containerLink(_ container: ContainerSummary) -> some View {
         let isPinned = pinnedIDs.contains(container.id)
         return NavigationLink(destination: ContainerDetailView(container: container, environmentID: environmentID)) {
             ContainerRow(container: container, isPinned: isPinned)
@@ -179,14 +179,14 @@ struct ContainersView: View {
         }
     }
 
-    private func togglePinAfterSwipe(_ container: ContainerInfo) {
+    private func togglePinAfterSwipe(_ container: ContainerSummary) {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 250_000_000)
             togglePin(container)
         }
     }
 
-    private func togglePin(_ container: ContainerInfo) {
+    private func togglePin(_ container: ContainerSummary) {
         HapticsManager.light()
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -196,7 +196,7 @@ struct ContainersView: View {
     }
 
     @ViewBuilder
-    private func containerMenuActions(for container: ContainerInfo) -> some View {
+    private func containerMenuActions(for container: ContainerSummary) -> some View {
         if container.isRunning {
             Button {
                 Task { await stopContainer(container) }
@@ -223,12 +223,12 @@ struct ContainersView: View {
         }
     }
 
-    private func containerPreview(_ container: ContainerInfo) -> some View {
+    private func containerPreview(_ container: ContainerSummary) -> some View {
         var details: [RowPreviewCard.PreviewDetail] = [
             .init(icon: "photo", label: "Image", value: container.image),
             .init(icon: "info.circle", label: "Status", value: container.status)
         ]
-        if let firstName = container.names?.first {
+        if let firstName = container.names.first {
             let trimmed = firstName.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             if !trimmed.isEmpty {
                 details.append(.init(icon: "tag", label: "Name", value: trimmed))
@@ -247,7 +247,7 @@ struct ContainersView: View {
     }
 
     @ViewBuilder
-    private func containerSwipeActions(for container: ContainerInfo) -> some View {
+    private func containerSwipeActions(for container: ContainerSummary) -> some View {
         if container.isRunning {
             Button(role: .destructive) {
                 Task { await stopContainer(container) }
@@ -270,7 +270,7 @@ struct ContainersView: View {
         }
     }
 
-    private func removeContainer(_ container: ContainerInfo) async {
+    private func removeContainer(_ container: ContainerSummary) async {
         guard let client = manager.client else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "containers/\(container.id)")
@@ -292,8 +292,8 @@ struct ContainersView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "containers")
-            if let result: [ContainerInfo] = try await cached.getList(
-                path, elementType: ContainerInfo.self, policy: .containersList,
+            if let result: [ContainerSummary] = try await cached.getList(
+                path, elementType: ContainerSummary.self, policy: .containersList,
                 envID: environmentID, refresh: refresh,
                 onFresh: { fresh in containers = fresh }
             ) {
@@ -304,7 +304,7 @@ struct ContainersView: View {
         }
     }
 
-    private func startContainer(_ container: ContainerInfo) async {
+    private func startContainer(_ container: ContainerSummary) async {
         guard let client = manager.client else { return }
         do {
             try await client.containers.start(envID: environmentID, id: container.id)
@@ -317,7 +317,7 @@ struct ContainersView: View {
         }
     }
 
-    private func stopContainer(_ container: ContainerInfo) async {
+    private func stopContainer(_ container: ContainerSummary) async {
         guard let client = manager.client else { return }
         do {
             try await client.containers.stop(envID: environmentID, id: container.id)
@@ -344,7 +344,7 @@ struct ContainersView: View {
         }
     }
 
-    private func restartContainer(_ container: ContainerInfo) async {
+    private func restartContainer(_ container: ContainerSummary) async {
         guard let client = manager.client else { return }
         do {
             try await client.containers.restart(envID: environmentID, id: container.id)
@@ -423,7 +423,7 @@ struct ResourceSearchControls: View {
 }
 
 struct ContainerRow: View {
-    let container: ContainerInfo
+    let container: ContainerSummary
     var isPinned: Bool = false
 
     var body: some View {

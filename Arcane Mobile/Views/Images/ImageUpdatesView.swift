@@ -5,7 +5,7 @@ struct ImageUpdatesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
-    let images: [ImageInfo]
+    let images: [ImageSummary]
 
     @State private var summary: ImageUpdateSummary?
     @State private var byRef: [String: ImageUpdateResponse] = [:]
@@ -16,7 +16,7 @@ struct ImageUpdatesView: View {
     @State private var loadingRefs = false
 
     private var taggedRefs: [String] {
-        images.flatMap { $0.repoTags ?? [] }
+        images.flatMap { $0.repoTags }
             .filter { $0 != "<none>:<none>" }
     }
 

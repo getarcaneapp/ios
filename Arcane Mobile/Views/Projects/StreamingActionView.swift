@@ -46,28 +46,23 @@ struct StreamingActionView: View {
             fail(with: "No client available")
             return
         }
-        guard let url = URL(string: manager.serverURL) else {
-            fail(with: "Invalid server URL")
+        // Derive the (envID, projectID, suffix) from the configured path. The path
+        // looks like `<envPath>/projects/<id>/<suffix>`.
+        guard let dispatch = parseProjectAction(path: path) else {
+            fail(with: "Unsupported streaming action")
             return
         }
 
         do {
-            let stream = try await NDJSONStream.stream(
-                StreamingProgressLine.self,
-                client: client,
-                serverURL: url,
-                path: path,
-                method: method,
-                body: bodyData
-            )
-            for try await line in stream {
-                let isError = line.error != nil
-                let display = line.displayText
+            let stream = try makeStream(client: client, action: dispatch)
+            for try await event in stream {
+                let isError = event.error != nil
+                let display = displayText(for: event)
                 if !display.isEmpty {
                     append(text: display, isError: isError)
                 }
                 if !isError {
-                    updatePhase(from: line)
+                    updatePhase(from: event)
                 }
             }
             withAnimation(.smooth(duration: 0.25)) {
@@ -75,10 +70,6 @@ struct StreamingActionView: View {
                 currentPhase = "Complete"
             }
             await onComplete()
-        } catch let error as NDJSONError {
-            let message = error.errorDescription ?? "Stream failed"
-            append(text: message, isError: true)
-            fail(with: message)
         } catch {
             let message = friendlyErrorMessage(error)
             append(text: message, isError: true)
@@ -86,14 +77,76 @@ struct StreamingActionView: View {
         }
     }
 
+    private enum ProjectAction {
+        case deploy(envID: EnvironmentID, projectID: String)
+        case down(envID: EnvironmentID, projectID: String)
+        case redeploy(envID: EnvironmentID, projectID: String)
+        case pull(envID: EnvironmentID, projectID: String)
+        case build(envID: EnvironmentID, projectID: String)
+    }
+
+    private func parseProjectAction(path: String) -> ProjectAction? {
+        // Find ".../projects/{id}/{suffix}" — be lenient about anything before it.
+        let components = path.split(separator: "/").map(String.init)
+        guard let projectsIdx = components.lastIndex(of: "projects"),
+              projectsIdx + 2 < components.count else {
+            return nil
+        }
+        let projectID = components[projectsIdx + 1]
+        let suffix = components[projectsIdx + 2]
+
+        // Extract envID from the path. Default to "0" — the SDK handles `nil`/empty.
+        var envIDString = "0"
+        if let envsIdx = components.lastIndex(of: "environments"),
+           envsIdx + 1 < components.count {
+            envIDString = components[envsIdx + 1]
+        }
+        let envID = EnvironmentID(rawValue: envIDString)
+
+        switch suffix {
+        case "up":       return .deploy(envID: envID, projectID: projectID)
+        case "down":     return .down(envID: envID, projectID: projectID)
+        case "redeploy": return .redeploy(envID: envID, projectID: projectID)
+        case "pull":     return .pull(envID: envID, projectID: projectID)
+        case "build":    return .build(envID: envID, projectID: projectID)
+        default:         return nil
+        }
+    }
+
+    private func makeStream(client: ArcaneClient, action: ProjectAction) throws -> NDJSONStream<PullProgressEvent> {
+        switch action {
+        case let .deploy(envID, projectID):
+            return try client.projects.deployStream(envID: envID, projectID: projectID)
+        case let .down(envID, projectID):
+            return client.projects.downStream(envID: envID, projectID: projectID)
+        case let .redeploy(envID, projectID):
+            return client.projects.redeployStream(envID: envID, projectID: projectID)
+        case let .pull(envID, projectID):
+            return try client.projects.pullImagesStream(envID: envID, projectID: projectID)
+        case let .build(envID, projectID):
+            return try client.projects.buildStream(envID: envID, projectID: projectID)
+        }
+    }
+
+    private func displayText(for event: PullProgressEvent) -> String {
+        if let error = event.error { return "Error: \(error)" }
+        var parts: [String] = []
+        if let status = event.status, !status.isEmpty { parts.append(status) }
+        if let id = event.id, !id.isEmpty, parts.isEmpty {
+            parts.append("layer \(String(id.prefix(12)))")
+        }
+        if let progress = event.progress, !progress.isEmpty { parts.append(progress) }
+        return parts.joined(separator: " ")
+    }
+
     private func append(text: String, isError: Bool) {
         lines.append(InstallStreamLine(text: text, isError: isError))
         if lines.count > 2000 { lines.removeFirst(200) }
     }
 
-    private func updatePhase(from line: StreamingProgressLine) {
-        let raw = (line.phase?.trimmed.nilIfEmpty) ?? (line.status?.trimmed.nilIfEmpty)
-        guard let phase = raw else { return }
+    private func updatePhase(from event: PullProgressEvent) {
+        let raw = event.status?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let phase = raw, !phase.isEmpty else { return }
         if phase == currentPhase { return }
         withAnimation(.smooth(duration: 0.25)) {
             currentPhase = phase
@@ -109,39 +162,5 @@ struct StreamingActionView: View {
             currentPhase = "Failed"
         }
         HapticsManager.warning()
-    }
-}
-
-private extension String {
-    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
-    var nilIfEmpty: String? { isEmpty ? nil : self }
-}
-
-nonisolated struct StreamingProgressLine: Decodable, Sendable {
-    let type: String?
-    let phase: String?
-    let status: String?
-    let service: String?
-    let message: String?
-    let error: String?
-    let progress: String?
-    let id: String?
-    let stream: String?
-
-    var displayText: String {
-        if let error { return "Error: \(error)" }
-        if let stream {
-            return stream.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        var parts: [String] = []
-        if let service { parts.append("[\(service)]") }
-        if let phase, let type { parts.append("\(type) \(phase)") }
-        else if let phase { parts.append(phase) }
-        else if let type { parts.append(type) }
-        if let status { parts.append(status) }
-        if let progress { parts.append(progress) }
-        if let message { parts.append(message) }
-        if parts.isEmpty, let id { parts.append("layer \(String(id.prefix(12)))") }
-        return parts.joined(separator: " ")
     }
 }

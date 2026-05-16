@@ -28,7 +28,7 @@ struct EventsView: View {
             event.title.localizedCaseInsensitiveContains(trimmed) ||
             (event.description ?? "").localizedCaseInsensitiveContains(trimmed) ||
             (event.resourceName ?? "").localizedCaseInsensitiveContains(trimmed) ||
-            event._type.localizedCaseInsensitiveContains(trimmed)
+            event.type.localizedCaseInsensitiveContains(trimmed)
         }
     }
 
@@ -108,9 +108,9 @@ struct EventsView: View {
         }
         defer { isLoading = false }
         do {
-            let fetched = try await client.events.list(limit: limit)
-            events = fetched.sorted { $0.timestamp > $1.timestamp }
-            hasMore = fetched.count >= limit
+            let response = try await client.events.listPaginated(start: 0, limit: limit)
+            events = response.data.sorted { $0.timestamp > $1.timestamp }
+            hasMore = response.data.count >= limit
             errorMessage = nil
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -123,10 +123,10 @@ struct EventsView: View {
         defer { isLoadingMore = false }
         let newLimit = limit + Self.pageSize
         do {
-            let fetched = try await client.events.list(limit: newLimit)
-            events = fetched.sorted { $0.timestamp > $1.timestamp }
+            let response = try await client.events.listPaginated(start: 0, limit: newLimit)
+            events = response.data.sorted { $0.timestamp > $1.timestamp }
             limit = newLimit
-            hasMore = fetched.count >= newLimit
+            hasMore = response.data.count >= newLimit
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -188,11 +188,11 @@ private struct EventRow: View {
                     Text(event.timestamp, format: .relative(presentation: .named))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
-                    if !event._type.isEmpty {
+                    if !event.type.isEmpty {
                         Text("•")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-                        Text(event._type)
+                        Text(event.type)
                             .font(.caption2.monospaced())
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
@@ -256,7 +256,7 @@ private struct EventDetailView: View {
             }
 
             Section("Event") {
-                LabeledContent("Type", value: event._type)
+                LabeledContent("Type", value: event.type)
                 LabeledContent("Occurred", value: event.timestamp.formatted(date: .abbreviated, time: .standard))
                 if event.createdAt != event.timestamp {
                     LabeledContent("Recorded", value: event.createdAt.formatted(date: .abbreviated, time: .standard))

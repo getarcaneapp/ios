@@ -249,7 +249,7 @@ struct SystemUpgradeView: View {
         }
         phase = .checking
         do {
-            let result = try await client.system.upgradeCheck(envID: manager.activeEnvironmentID)
+            let result = try await client.system.checkUpgrade(envID: manager.activeEnvironmentID)
             phase = .ready(result)
         } catch {
             phase = .checkFailed(friendlyErrorMessage(error))
@@ -263,9 +263,11 @@ struct SystemUpgradeView: View {
         }
         phase = .triggering
         do {
-            let response = try await client.system.triggerUpgrade(envID: manager.activeEnvironmentID)
-            let message = response.message.isEmpty ? "Upgrade initiated. Arcane will restart shortly." : response.message
-            phase = .triggered(message)
+            // SDK returns Void here — the server may return 202 because it's
+            // mid-replacement. Show a static success message; the app will
+            // reconnect once the new container is up.
+            try await client.system.triggerUpgrade(envID: manager.activeEnvironmentID)
+            phase = .triggered("Upgrade initiated. Arcane will restart shortly.")
         } catch {
             phase = .triggerFailed(friendlyErrorMessage(error))
         }

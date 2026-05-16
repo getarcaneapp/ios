@@ -118,13 +118,12 @@ struct BuildSettingsView: View {
         savedMessage = nil
         defer { isSaving = false }
         do {
-            let body = SettingsUpdate(
-                buildProvider: buildProvider,
-                buildTimeout: buildTimeout,
-                buildsDirectory: buildsDirectory.isEmpty ? nil : buildsDirectory,
-                depotProjectId: buildProvider == "depot" ? (depotProjectId.isEmpty ? nil : depotProjectId) : nil,
-                depotToken: buildProvider == "depot" ? (depotToken.isEmpty ? nil : depotToken) : nil
-            )
+            var body = UpdateSettings()
+            body.buildProvider = buildProvider
+            body.buildsDirectory = buildsDirectory.isEmpty ? nil : buildsDirectory
+            body.buildTimeout = buildTimeout
+            body.depotProjectId = buildProvider == "depot" ? (depotProjectId.isEmpty ? nil : depotProjectId) : nil
+            body.depotToken = buildProvider == "depot" ? (depotToken.isEmpty ? nil : depotToken) : nil
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
             let _: [PublicSetting] = try await client.rest.put(path, body: body)
             savedMessage = "Build settings saved"

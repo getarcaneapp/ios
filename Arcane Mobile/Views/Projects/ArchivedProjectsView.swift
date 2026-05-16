@@ -8,7 +8,7 @@ struct ArchivedProjectsView: View {
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
 
-    @State private var projects: [Project] = []
+    @State private var projects: [ProjectDetails] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var unarchivingID: String?
@@ -16,7 +16,7 @@ struct ArchivedProjectsView: View {
     @State private var hasMore = false
     @State private var loadGeneration = 0
 
-    private var sortedProjects: [Project] {
+    private var sortedProjects: [ProjectDetails] {
         projects.sorted { lhs, rhs in
             (lhs.archivedAt ?? .distantPast) > (rhs.archivedAt ?? .distantPast)
         }
@@ -97,48 +97,14 @@ struct ArchivedProjectsView: View {
             }
         }
         do {
-            let response: ProjectListPage?
-            if reset, let cached = manager.cached {
-                let path = client.rest.environmentPath(environmentID, "projects")
-                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)&archived=true"
-                let captured = client
-                let fetcher: @Sendable () async throws -> ProjectListPage = {
-                    try await captured.listProjectsPage(
-                        envID: environmentID,
-                        start: 0,
-                        limit: Self.pageSize,
-                        archivedOnly: true
-                    )
-                }
-                response = try await cached.getCustom(
-                    path: cachePath,
-                    as: ProjectListPage.self,
-                    policy: .projects,
-                    envID: environmentID,
-                    refresh: refresh,
-                    onFresh: { fresh in
-                        applyProjectsPage(fresh, reset: true, generation: generation)
-                    },
-                    fetcher: fetcher
-                )
-            } else {
-                response = try await client.listProjectsPage(
-                    envID: environmentID,
-                    start: start,
-                    limit: Self.pageSize,
-                    archivedOnly: true
-                )
-            }
-
-            guard let response else {
-                guard loadGeneration == generation else { return }
-                if reset {
-                    projects = []
-                    currentPage = 1
-                    hasMore = false
-                }
-                return
-            }
+            // `PaginatedResponse<ProjectDetails>` is Decodable-only, so we can't
+            // route it through the cache layer (which requires Codable).
+            let query = SearchPaginationSort(start: start, limit: Self.pageSize)
+            let response = try await client.projects.list(
+                envID: environmentID,
+                query: query,
+                archived: "true"
+            )
             applyProjectsPage(response, reset: reset, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
@@ -146,7 +112,7 @@ struct ArchivedProjectsView: View {
         }
     }
 
-    private func applyProjectsPage(_ response: ProjectListPage, reset: Bool, generation: Int) {
+    private func applyProjectsPage(_ response: PaginatedResponse<ProjectDetails>, reset: Bool, generation: Int) {
         guard loadGeneration == generation else { return }
         if reset {
             projects = response.data
@@ -163,7 +129,7 @@ struct ArchivedProjectsView: View {
         await load(reset: false)
     }
 
-    private func unarchive(_ project: Project) async {
+    private func unarchive(_ project: ProjectDetails) async {
         guard let client = manager.client else { return }
         unarchivingID = project.id
         defer { unarchivingID = nil }
@@ -188,7 +154,7 @@ struct ArchivedProjectsView: View {
 }
 
 private struct ArchivedProjectRow: View {
-    let project: Project
+    let project: ProjectDetails
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()

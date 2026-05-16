@@ -9,7 +9,7 @@ struct NetworksView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
-    @State private var networks: [NetworkInfo] = []
+    @State private var networks: [NetworkSummary] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
@@ -35,11 +35,11 @@ struct NetworksView: View {
 
     private static let systemNetworkNames: Set<String> = ["host", "bridge", "none"]
 
-    private static func isSystem(_ network: NetworkInfo) -> Bool {
+    private static func isSystem(_ network: NetworkSummary) -> Bool {
         systemNetworkNames.contains(network.name.lowercased())
     }
 
-    private var filtered: [NetworkInfo] {
+    private var filtered: [NetworkSummary] {
         networks.filter { network in
             let matchesSearch = searchText.isEmpty ||
                 network.name.localizedCaseInsensitiveContains(searchText) ||
@@ -54,11 +54,11 @@ struct NetworksView: View {
         }
     }
 
-    private var systemNetworks: [NetworkInfo] {
+    private var systemNetworks: [NetworkSummary] {
         filtered.filter { Self.isSystem($0) }
     }
 
-    private var userNetworks: [NetworkInfo] {
+    private var userNetworks: [NetworkSummary] {
         filtered.filter { !Self.isSystem($0) }
     }
 
@@ -210,7 +210,7 @@ struct NetworksView: View {
         }
     }
 
-    private func networkPreview(_ network: NetworkInfo) -> some View {
+    private func networkPreview(_ network: NetworkSummary) -> some View {
         var badges: [RowPreviewCard.PreviewBadge] = [
             .init(text: network.driver.capitalized, color: .teal)
         ]
@@ -251,42 +251,12 @@ struct NetworksView: View {
             }
         }
         do {
-            let response: NetworkListPage?
-            if reset, let cached = manager.cached {
-                let path = client.rest.environmentPath(environmentID, "networks")
-                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)"
-                let fetcher: @Sendable () async throws -> NetworkListPage = {
-                    try await client.listNetworksPage(
-                        envID: environmentID,
-                        start: 0,
-                        limit: Self.pageSize
-                    )
-                }
-                response = try await cached.getCustom(
-                    path: cachePath,
-                    as: NetworkListPage.self,
-                    policy: .networks,
-                    envID: environmentID,
-                    refresh: refresh,
-                    onFresh: { fresh in applyNetworksPage(fresh, reset: true, generation: generation) },
-                    fetcher: fetcher
-                )
-            } else {
-                response = try await client.listNetworksPage(
-                    envID: environmentID,
-                    start: start,
-                    limit: Self.pageSize
-                )
-            }
-            guard let response else {
-                guard loadGeneration == generation else { return }
-                if reset {
-                    networks = []
-                    currentPage = 1
-                    hasMore = false
-                }
-                return
-            }
+            // `PaginatedResponse<NetworkSummary>` is Decodable-only and can't
+            // pass through the cache (Codable). Fetch directly.
+            let response = try await client.networks.list(
+                envID: environmentID,
+                query: .init(start: start, limit: Self.pageSize)
+            )
             applyNetworksPage(response, reset: reset, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
@@ -294,7 +264,7 @@ struct NetworksView: View {
         }
     }
 
-    private func applyNetworksPage(_ response: NetworkListPage, reset: Bool, generation: Int) {
+    private func applyNetworksPage(_ response: PaginatedResponse<NetworkSummary>, reset: Bool, generation: Int) {
         guard loadGeneration == generation else { return }
         if reset {
             networks = response.data
@@ -311,7 +281,7 @@ struct NetworksView: View {
         await loadNetworks(reset: false)
     }
 
-    private func deleteNetwork(_ network: NetworkInfo) async {
+    private func deleteNetwork(_ network: NetworkSummary) async {
         guard let client = manager.client else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "networks/\(network.id)")
@@ -348,7 +318,7 @@ struct NetworksView: View {
 }
 
 struct NetworkRow: View {
-    let network: NetworkInfo
+    let network: NetworkSummary
 
     var body: some View {
         HStack(spacing: 12) {
@@ -391,7 +361,7 @@ struct NetworkDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let network: NetworkInfo
+    let network: NetworkSummary
     let environmentID: EnvironmentID
 
     @State private var inspect: NetworkInspect?
@@ -426,7 +396,7 @@ struct NetworkDetailView: View {
                 LabeledContent("Driver", value: network.driver)
                 LabeledContent("Scope", value: network.scope.capitalized)
                 if let inspect {
-                    if inspect._internal { LabeledContent("Internal", value: "Yes") }
+                    if inspect.`internal` { LabeledContent("Internal", value: "Yes") }
                     LabeledContent("Attachable", value: inspect.attachable ? "Yes" : "No")
                     LabeledContent("IPv4", value: inspect.enableIPv4 ? "Enabled" : "Disabled")
                     LabeledContent("IPv6", value: inspect.enableIPv6 ? "Enabled" : "Disabled")
@@ -525,16 +495,19 @@ struct NetworkDetailView: View {
                     NetworkContainerRow(endpoint: endpoint)
                 }
             }
-        } else if let containers = inspect?.containers.additionalProperties, !containers.isEmpty {
+        } else if let containers = inspect?.containers, !containers.isEmpty {
+            // Raw fallback: the SDK exposes the legacy `containers` map as
+            // `[String: JSONValue]`. Render each endpoint by decoding the
+            // fields we need from the underlying JSON object.
             let sortedKeys = Array(containers.keys.sorted())
             Section("Connected Containers (\(sortedKeys.count))") {
                 ForEach(sortedKeys, id: \.self) { key in
-                    if let endpoint = containers[key] {
+                    if case let .object(obj) = containers[key] {
                         NetworkContainerRow(
                             id: key,
-                            name: endpoint.name,
-                            ipv4: endpoint.iPv4Address,
-                            ipv6: endpoint.iPv6Address
+                            name: obj["Name"]?.stringValue ?? "",
+                            ipv4: obj["IPv4Address"]?.stringValue ?? "",
+                            ipv6: obj["IPv6Address"]?.stringValue ?? ""
                         )
                     }
                 }
@@ -631,7 +604,7 @@ struct CreateNetworkView: View {
                 "internal": AnyCodable(isInternal)
             ]
             let path = client.rest.environmentPath(environmentID, "networks")
-            let _: NetworkInfo = try await client.rest.post(path, body: body)
+            let _: NetworkSummary = try await client.rest.post(path, body: body)
             if let cached = manager.cached {
                 await cached.invalidate(envID: environmentID, paths: [
                     client.rest.environmentPath(environmentID, "networks"),

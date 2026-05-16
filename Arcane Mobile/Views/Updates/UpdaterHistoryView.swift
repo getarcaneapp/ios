@@ -21,7 +21,7 @@ struct UpdaterHistoryView: View {
         return records.filter { record in
             record.resourceName.localizedCaseInsensitiveContains(trimmed) ||
             record.resourceType.localizedCaseInsensitiveContains(trimmed) ||
-            record.status.localizedCaseInsensitiveContains(trimmed)
+            record.status.rawValue.localizedCaseInsensitiveContains(trimmed)
         }
     }
 
@@ -89,7 +89,7 @@ struct UpdaterHistoryView: View {
         }
         defer { isLoading = false }
         do {
-            let fetched = try await client.updater.history(envID: environmentID, limit: limit)
+            let fetched = try await client.updater.history(limit: limit, envID: environmentID)
             records = fetched
             hasMore = fetched.count >= limit
             errorMessage = nil
@@ -104,7 +104,7 @@ struct UpdaterHistoryView: View {
         defer { isLoadingMore = false }
         let newLimit = limit + Self.pageSize
         do {
-            let fetched = try await client.updater.history(envID: environmentID, limit: newLimit)
+            let fetched = try await client.updater.history(limit: newLimit, envID: environmentID)
             records = fetched
             limit = newLimit
             hasMore = fetched.count >= newLimit
@@ -179,14 +179,14 @@ private struct UpdaterHistoryRow: View {
         if let error = record.error, !error.isEmpty { return "Failed" }
         if record.updateApplied { return "Updated" }
         if record.updateAvailable { return "Available" }
-        return record.status.capitalized
+        return record.status.rawValue.capitalized
     }
 
     private var statusTint: Color {
         if record.error?.isEmpty == false { return .red }
         if record.updateApplied { return .green }
         if record.updateAvailable { return .orange }
-        switch record.status.lowercased() {
+        switch record.status.rawValue.lowercased() {
         case "skipped", "ignored": return .gray
         case "failed", "error": return .red
         case "updated", "success": return .green
@@ -300,7 +300,7 @@ private struct UpdaterHistoryDetailView: View {
         if let error = record.error, !error.isEmpty { return "Failed" }
         if record.updateApplied { return "Updated" }
         if record.updateAvailable { return "Available" }
-        return record.status.capitalized
+        return record.status.rawValue.capitalized
     }
 
     private var badgeTint: Color {

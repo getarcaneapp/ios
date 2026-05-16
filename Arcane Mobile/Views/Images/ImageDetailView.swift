@@ -5,10 +5,10 @@ struct ImageDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let image: ImageInfo
+    let image: ImageSummary
     let environmentID: EnvironmentID
 
-    @State private var details: ImageDetails?
+    @State private var details: ImageDetailSummary?
     @State private var isLoading = false
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
@@ -35,7 +35,8 @@ struct ImageDetailView: View {
                     }
                 }
 
-                if let tags = details.repoTags, !tags.isEmpty {
+                if !details.repoTags.isEmpty {
+                    let tags = details.repoTags
                     Section("Tags") {
                         ForEach(tags, id: \.self) { tag in
                             Text(tag).font(.caption.monospaced())
@@ -44,7 +45,8 @@ struct ImageDetailView: View {
                     }
                 }
 
-                if let digests = details.repoDigests, !digests.isEmpty {
+                if !details.repoDigests.isEmpty {
+                    let digests = details.repoDigests
                     Section("Digests") {
                         ForEach(digests, id: \.self) { digest in
                             Text(digest)
@@ -55,9 +57,7 @@ struct ImageDetailView: View {
                     }
                 }
 
-                if let config = details.config {
-                    imageConfigSection(config)
-                }
+                imageConfigSection(details.config)
 
                 vulnerabilitiesSection
             }
@@ -120,7 +120,7 @@ struct ImageDetailView: View {
         .padding(.vertical, 4)
     }
 
-    private func imageConfigSection(_ config: ImageConfig) -> some View {
+    private func imageConfigSection(_ config: ImageDetailConfig) -> some View {
         Section("Image Config") {
             if let cmd = config.cmd, !cmd.isEmpty {
                 LabeledContent("CMD", value: cmd.joined(separator: " "))
@@ -223,8 +223,8 @@ struct ImageDetailView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
-            if let result: ImageDetails = try await cached.get(
-                path, as: ImageDetails.self, policy: .imageDetail,
+            if let result: ImageDetailSummary = try await cached.get(
+                path, as: ImageDetailSummary.self, policy: .imageDetail,
                 envID: environmentID, refresh: refresh,
                 onFresh: { fresh in details = fresh }
             ) {

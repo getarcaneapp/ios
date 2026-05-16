@@ -17,6 +17,12 @@ nonisolated struct ContainerStatsFrame: Identifiable, Hashable, Sendable {
     let blockReadPerSec: Double
     let blockWritePerSec: Double
 
+    /// Overload that accepts the SDK's `ContainerStatsPayload` (which exposes
+    /// the Docker stats blob as a `[String: JSONValue]` map under `raw`).
+    static func from(json: ContainerStatsPayload, previous: ContainerStatsFrame?, now: Date = Date()) -> ContainerStatsFrame? {
+        from(json: .object(json.raw), previous: previous, now: now)
+    }
+
     static func from(json: JSONValue, previous: ContainerStatsFrame?, now: Date = Date()) -> ContainerStatsFrame? {
         guard let root = json.asObject else { return nil }
 

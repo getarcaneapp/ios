@@ -21,7 +21,7 @@ struct ContainerPortsSection: View {
     private var sortedPorts: [ContainerPort] {
         ports.sorted { lhs, rhs in
             if lhs.privatePort != rhs.privatePort { return lhs.privatePort < rhs.privatePort }
-            return lhs._type < rhs._type
+            return lhs.type < rhs.type
         }
     }
 
@@ -36,7 +36,7 @@ struct ContainerPortsSection: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                Text("\(port.privatePort)/\(port._type)")
+                Text("\(port.privatePort)/\(port.type)")
                     .font(.system(.body, design: .monospaced))
                 Spacer()
                 if port.publicPort == nil {

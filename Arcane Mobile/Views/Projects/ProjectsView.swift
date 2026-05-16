@@ -10,14 +10,14 @@ struct ProjectsView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
-    @State private var projects: [Project] = []
+    @State private var projects: [ProjectDetails] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
     @State private var searchText = ""
     @State private var showCreateSheet = false
     @State private var showFilterSheet = false
-    @State private var pendingDeleteProject: Project?
+    @State private var pendingDeleteProject: ProjectDetails?
     @State private var loadGeneration = 0
     @State private var currentPage = 1
     @State private var hasMore = false
@@ -30,7 +30,7 @@ struct ProjectsView: View {
 
     private var activeFilterCount: Int { statusFilter != .all ? 1 : 0 }
 
-    private var filtered: [Project] {
+    private var filtered: [ProjectDetails] {
         projects.filter { project in
             let matchesSearch = searchText.isEmpty ||
                 project.displayName.localizedCaseInsensitiveContains(searchText)
@@ -50,11 +50,11 @@ struct ProjectsView: View {
         pinnedStore.pinnedIDs(kind: .project, envID: environmentID)
     }
 
-    private var listSections: [StableListSection<String, Project>] {
+    private var listSections: [StableListSection<String, ProjectDetails>] {
         let pinned: Set<String> = pinnedIDs
-        var pinnedItems: [Project] = []
-        var active: [Project] = []
-        var stopped: [Project] = []
+        var pinnedItems: [ProjectDetails] = []
+        var active: [ProjectDetails] = []
+        var stopped: [ProjectDetails] = []
         for project in filtered {
             if pinned.contains(project.id) {
                 pinnedItems.append(project)
@@ -219,7 +219,7 @@ struct ProjectsView: View {
             Task { await loadProjects(reset: true, refresh: true) }
         }
         .alert(
-            "Delete Project",
+            "Delete ProjectDetails",
             isPresented: deleteAlertPresented,
             presenting: pendingDeleteProject
         ) { project in
@@ -234,7 +234,7 @@ struct ProjectsView: View {
             Text("Remove the project from Arcane, or also remove its files from disk.")
         }
         .alert(
-            "Couldn't Delete Project",
+            "Couldn't Delete ProjectDetails",
             isPresented: actionErrorPresented
         ) {
             Button("OK", role: .cancel) { actionErrorMessage = nil }
@@ -257,46 +257,11 @@ struct ProjectsView: View {
             }
         }
         do {
-            let response: ProjectListPage?
-            if reset, let cached = manager.cached {
-                let path = client.rest.environmentPath(environmentID, "projects")
-                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)"
-                let captured = client
-                let fetcher: @Sendable () async throws -> ProjectListPage = {
-                    try await captured.listProjectsPage(
-                        envID: environmentID,
-                        start: 0,
-                        limit: Self.pageSize
-                    )
-                }
-                response = try await cached.getCustom(
-                    path: cachePath,
-                    as: ProjectListPage.self,
-                    policy: .projects,
-                    envID: environmentID,
-                    refresh: refresh,
-                    onFresh: { fresh in
-                        applyProjectsPage(fresh, reset: true, generation: generation)
-                    },
-                    fetcher: fetcher
-                )
-            } else {
-                response = try await client.listProjectsPage(
-                    envID: environmentID,
-                    start: start,
-                    limit: Self.pageSize
-                )
-            }
-
-            guard let response else {
-                guard loadGeneration == generation else { return }
-                if reset {
-                    projects = []
-                    currentPage = 1
-                    hasMore = false
-                }
-                return
-            }
+            // `PaginatedResponse<ProjectDetails>` is Decodable-only, so we can't
+            // route it through the cache layer (which requires Codable). The
+            // service call is fast enough that this is fine.
+            let query = SearchPaginationSort(start: start, limit: Self.pageSize)
+            let response = try await client.projects.list(envID: environmentID, query: query)
             applyProjectsPage(response, reset: reset, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
@@ -304,7 +269,7 @@ struct ProjectsView: View {
         }
     }
 
-    private func applyProjectsPage(_ response: ProjectListPage, reset: Bool, generation: Int) {
+    private func applyProjectsPage(_ response: PaginatedResponse<ProjectDetails>, reset: Bool, generation: Int) {
         guard loadGeneration == generation else { return }
         if reset {
             projects = response.data
@@ -321,7 +286,7 @@ struct ProjectsView: View {
         await loadProjects(reset: false)
     }
 
-    private func projectLink(_ project: Project) -> some View {
+    private func projectLink(_ project: ProjectDetails) -> some View {
         let isPinned = pinnedIDs.contains(project.id)
         return NavigationLink(destination: ProjectDetailView(project: project, environmentID: environmentID)) {
             ProjectRow(project: project, isPinned: isPinned)
@@ -360,14 +325,14 @@ struct ProjectsView: View {
         }
     }
 
-    private func togglePinAfterSwipe(_ project: Project) {
+    private func togglePinAfterSwipe(_ project: ProjectDetails) {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 250_000_000)
             togglePin(project)
         }
     }
 
-    private func togglePin(_ project: Project) {
+    private func togglePin(_ project: ProjectDetails) {
         HapticsManager.light()
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -376,7 +341,7 @@ struct ProjectsView: View {
         }
     }
 
-    private func projectPreview(_ project: Project) -> some View {
+    private func projectPreview(_ project: ProjectDetails) -> some View {
         let status = project.status.lowercased()
         let color: Color
         switch status {
@@ -404,7 +369,7 @@ struct ProjectsView: View {
         )
     }
 
-    private func deleteProject(_ project: Project, removeFiles: Bool) async {
+    private func deleteProject(_ project: ProjectDetails, removeFiles: Bool) async {
         guard let client = manager.client else { return }
         pendingDeleteProject = nil
         do {
@@ -429,14 +394,14 @@ struct ProjectsView: View {
         ])
     }
 
-    private func isStopped(_ project: Project) -> Bool {
+    private func isStopped(_ project: ProjectDetails) -> Bool {
         let status = project.status.lowercased()
         return status == "stopped" || status == "exited"
     }
 }
 
 struct ProjectRow: View {
-    let project: Project
+    let project: ProjectDetails
     var isPinned: Bool = false
 
     private var statusColor: Color {

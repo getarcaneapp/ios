@@ -180,7 +180,7 @@ struct AuthenticationSettingsView: View {
         guard let client = manager.client else { return }
         do {
             let rawData = try await client.transport.rawRequest("oidc/status", body: Optional<String>.none, authorized: false)
-            let status = try JSONDecoder().decode(OidcStatusInfo.self, from: rawData)
+            let status = try JSONDecoder().decode(OIDCStatusInfo.self, from: rawData)
             oidcEnvForced = status.envForced
             oidcEnvConfigured = status.envConfigured
         } catch {
@@ -195,23 +195,22 @@ struct AuthenticationSettingsView: View {
         savedMessage = nil
         defer { isSaving = false }
         do {
-            let body = SettingsUpdate(
-                authLocalEnabled: String(authLocalEnabled),
-                authPasswordPolicy: authPasswordPolicy,
-                authSessionTimeout: authSessionTimeout,
-                oidcAdminClaim: oidcAdminClaim.isEmpty ? nil : oidcAdminClaim,
-                oidcAdminValue: oidcAdminValue.isEmpty ? nil : oidcAdminValue,
-                oidcAutoRedirectToProvider: String(oidcAutoRedirectToProvider),
-                oidcClientId: oidcClientId.isEmpty ? nil : oidcClientId,
-                oidcClientSecret: oidcClientSecret.isEmpty ? nil : oidcClientSecret,
-                oidcEnabled: String(oidcEnabled),
-                oidcIssuerUrl: oidcIssuerUrl.isEmpty ? nil : oidcIssuerUrl,
-                oidcMergeAccounts: String(oidcMergeAccounts),
-                oidcProviderLogoUrl: oidcProviderLogoUrl.isEmpty ? nil : oidcProviderLogoUrl,
-                oidcProviderName: oidcProviderName.isEmpty ? nil : oidcProviderName,
-                oidcScopes: oidcScopes.isEmpty ? nil : oidcScopes,
-                oidcSkipTlsVerify: String(oidcSkipTlsVerify)
-            )
+            var body = UpdateSettings()
+            body.authLocalEnabled = String(authLocalEnabled)
+            body.authPasswordPolicy = authPasswordPolicy
+            body.authSessionTimeout = authSessionTimeout
+            body.oidcEnabled = String(oidcEnabled)
+            body.oidcMergeAccounts = String(oidcMergeAccounts)
+            body.oidcSkipTlsVerify = String(oidcSkipTlsVerify)
+            body.oidcAutoRedirectToProvider = String(oidcAutoRedirectToProvider)
+            body.oidcClientId = oidcClientId.isEmpty ? nil : oidcClientId
+            body.oidcClientSecret = oidcClientSecret.isEmpty ? nil : oidcClientSecret
+            body.oidcIssuerUrl = oidcIssuerUrl.isEmpty ? nil : oidcIssuerUrl
+            body.oidcScopes = oidcScopes.isEmpty ? nil : oidcScopes
+            body.oidcAdminClaim = oidcAdminClaim.isEmpty ? nil : oidcAdminClaim
+            body.oidcAdminValue = oidcAdminValue.isEmpty ? nil : oidcAdminValue
+            body.oidcProviderName = oidcProviderName.isEmpty ? nil : oidcProviderName
+            body.oidcProviderLogoUrl = oidcProviderLogoUrl.isEmpty ? nil : oidcProviderLogoUrl
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
             let _: [PublicSetting] = try await client.rest.put(path, body: body)
             if let cached = manager.cached {

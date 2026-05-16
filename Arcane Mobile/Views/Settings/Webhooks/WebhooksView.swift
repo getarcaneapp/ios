@@ -3,7 +3,7 @@ import Arcane
 
 struct WebhooksView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @State private var webhooks: [WebhookSummary] = []
+    @State private var webhooks: [Webhook] = []
     @State private var isLoading = false
     @State private var showCreateSheet = false
     @State private var createdWebhook: CreatedWebhookWrapper?
@@ -98,8 +98,8 @@ struct WebhooksView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks")
-            if let result: [WebhookSummary] = try await cached.getList(
-                path, elementType: WebhookSummary.self, policy: .webhooks,
+            if let result: [Webhook] = try await cached.getList(
+                path, elementType: Webhook.self, policy: .webhooks,
                 envID: manager.activeEnvironmentID, refresh: refresh,
                 onFresh: { fresh in webhooks = fresh }
             ) {
@@ -110,7 +110,7 @@ struct WebhooksView: View {
         }
     }
 
-    private func deleteWebhook(_ webhook: WebhookSummary) async {
+    private func deleteWebhook(_ webhook: Webhook) async {
         guard let client = manager.client else { return }
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks/\(webhook.id)")
@@ -122,12 +122,12 @@ struct WebhooksView: View {
         }
     }
 
-    private func toggleWebhook(_ webhook: WebhookSummary) async {
+    private func toggleWebhook(_ webhook: Webhook) async {
         guard let client = manager.client else { return }
         do {
-            let body = WebhookUpdateInput(enabled: !webhook.enabled)
+            let body = UpdateWebhook(enabled: !webhook.enabled)
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks/\(webhook.id)")
-            let _: WebhookSummary = try await client.rest.put(path, body: body)
+            let _: Webhook = try await client.rest.put(path, body: body)
             await invalidateWebhookCaches()
             await loadWebhooks(refresh: true)
         } catch {
@@ -142,7 +142,7 @@ struct WebhooksView: View {
         ])
     }
 
-    private func webhookPreview(_ webhook: WebhookSummary) -> some View {
+    private func webhookPreview(_ webhook: Webhook) -> some View {
         var details: [RowPreviewCard.PreviewDetail] = [
             .init(icon: "arrow.right.circle", label: "Action", value: webhook.actionType.capitalized),
             .init(icon: "key", label: "Token", value: webhook.tokenPrefix + "…")
@@ -185,7 +185,7 @@ private struct CreatedWebhookWrapper: Identifiable {
 // MARK: - Webhook Row
 
 struct WebhookRow: View {
-    let webhook: WebhookSummary
+    let webhook: Webhook
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -307,18 +307,18 @@ struct CreateWebhookView: View {
     let onCreated: (WebhookCreated) -> Void
 
     @State private var name = ""
-    @State private var targetType: WebhookCreateInput.TargetTypePayload = .container
-    @State private var actionType: WebhookCreateInput.ActionTypePayload = .update
+    @State private var targetType: CreateWebhook.TargetTypePayload = .container
+    @State private var actionType: CreateWebhook.ActionTypePayload = .update
     @State private var targetId = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
 
     // For target pickers
-    @State private var containers: [ContainerInfo] = []
+    @State private var containers: [ContainerSummary] = []
     @State private var projects: [Project] = []
     @State private var loadingTargets = false
 
-    private var actionsForTarget: [WebhookCreateInput.ActionTypePayload] {
+    private var actionsForTarget: [CreateWebhook.ActionTypePayload] {
         switch targetType {
         case .container: return [.update, .start, .stop, .restart, .redeploy]
         case .project: return [.update, .up, .down, .restart, .redeploy]
@@ -340,10 +340,10 @@ struct CreateWebhookView: View {
 
                 Section("Target") {
                     Picker("Target Type", selection: $targetType) {
-                        Text("Container").tag(WebhookCreateInput.TargetTypePayload.container)
-                        Text("Project").tag(WebhookCreateInput.TargetTypePayload.project)
-                        Text("Updater").tag(WebhookCreateInput.TargetTypePayload.updater)
-                        Text("GitOps").tag(WebhookCreateInput.TargetTypePayload.gitops)
+                        Text("Container").tag(CreateWebhook.TargetTypePayload.container)
+                        Text("Project").tag(CreateWebhook.TargetTypePayload.project)
+                        Text("Updater").tag(CreateWebhook.TargetTypePayload.updater)
+                        Text("GitOps").tag(CreateWebhook.TargetTypePayload.gitops)
                     }
 
                     Picker("Action", selection: $actionType) {
@@ -418,13 +418,14 @@ struct CreateWebhookView: View {
         guard let client = manager.client else { return }
         loadingTargets = true
         defer { loadingTargets = false }
-        do {
-            let containerPath = client.rest.environmentPath(manager.activeEnvironmentID, "containers")
-            async let c: [ContainerInfo] = client.rest.get(containerPath)
-            async let p: [Project] = client.listAllProjects(envID: manager.activeEnvironmentID)
-            containers = (try? await c) ?? []
-            projects = (try? await p) ?? []
-        }
+        let envID = manager.activeEnvironmentID
+        // Pull a generous page each — the webhook target pickers don't paginate.
+        let containerQuery = SearchPaginationSort(start: 0, limit: 500)
+        let projectQuery = SearchPaginationSort(start: 0, limit: 500)
+        async let containersResult = client.containers.list(envID: envID, query: containerQuery)
+        async let projectsResult = client.projects.list(envID: envID, query: projectQuery)
+        containers = (try? await containersResult.data) ?? []
+        projects = (try? await projectsResult.data) ?? []
     }
 
     private func createWebhook() async {
@@ -433,7 +434,7 @@ struct CreateWebhookView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let body = WebhookCreateInput(
+            let body = CreateWebhook(
                 actionType: actionType,
                 name: name,
                 targetId: needsTargetId ? targetId : "",

@@ -4,7 +4,7 @@ import Arcane
 
 struct ContainerStatsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    let container: ContainerInfo
+    let container: ContainerSummary
     let environmentID: EnvironmentID
 
     @State private var frames: [ContainerStatsFrame] = []

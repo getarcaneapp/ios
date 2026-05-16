@@ -5,10 +5,10 @@ struct ProjectDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let project: Project
+    let project: ProjectDetails
     let environmentID: EnvironmentID
 
-    @State private var refreshedProject: Project?
+    @State private var refreshedProject: ProjectDetails?
     @State private var isLoading = false
     @State private var isActioning = false
     @State private var actionStatus: String?
@@ -19,7 +19,7 @@ struct ProjectDetailView: View {
     @State private var errorMessage: String?
     @State private var runningActionID: String?
 
-    private var currentProject: Project { refreshedProject ?? project }
+    private var currentProject: ProjectDetails { refreshedProject ?? project }
     private var isRunning: Bool { currentProject.status.lowercased() == "running" }
     private var hasBuild: Bool { currentProject.hasBuildDirective == true }
 
@@ -89,19 +89,19 @@ struct ProjectDetailView: View {
                         Button {
                             Task { await unarchiveProject() }
                         } label: {
-                            Label("Unarchive Project", systemImage: "tray.and.arrow.up")
+                            Label("Unarchive ProjectDetails", systemImage: "tray.and.arrow.up")
                         }
                     } else {
                         Button {
                             Task { await archiveProject() }
                         } label: {
-                            Label("Archive Project", systemImage: "archivebox")
+                            Label("Archive ProjectDetails", systemImage: "archivebox")
                         }
                     }
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
-                        DestructiveLabel(text: "Delete Project")
+                        DestructiveLabel(text: "Delete ProjectDetails")
                     }
                     .tint(.red)
                 } label: {
@@ -115,7 +115,7 @@ struct ProjectDetailView: View {
         .sheet(isPresented: $showLogs) {
             LogsView(
                 title: currentProject.displayName,
-                logStream: manager.client?.projects.logs(envID: environmentID, id: project.id)
+                logStream: manager.client?.projects.logs(envID: environmentID, projectID: project.id)
             )
         }
         .sheet(isPresented: $showCompose) {
@@ -139,7 +139,7 @@ struct ProjectDetailView: View {
                 ReviewPrompter.shared.recordSuccess()
             }
         }
-        .alert("Delete Project", isPresented: $showDeleteConfirm) {
+        .alert("Delete ProjectDetails", isPresented: $showDeleteConfirm) {
             Button("Delete", role: .destructive) { Task { await deleteProject(removeFiles: false) } }
             Button("Delete and Remove Files", role: .destructive) {
                 Task { await deleteProject(removeFiles: true) }
@@ -346,8 +346,8 @@ struct ProjectDetailView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)")
-            if let result: Project = try await cached.get(
-                path, as: Project.self, policy: .projects,
+            if let result: ProjectDetails = try await cached.get(
+                path, as: ProjectDetails.self, policy: .projects,
                 envID: environmentID, refresh: refresh,
                 onFresh: { fresh in refreshedProject = fresh }
             ) {
@@ -449,7 +449,7 @@ struct ComposeFileView: View {
                     }
                 }
             }
-            .navigationTitle("Project Files")
+            .navigationTitle("ProjectDetails Files")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -542,7 +542,7 @@ struct CreateProjectView: View {
     @State private var name: String
     @State private var composeContent: String
     @State private var envContent: String
-    @State private var templates: [ComposeTemplate] = []
+    @State private var templates: [Template] = []
     @State private var selectedTemplateID = ""
     @State private var isLoadingTemplates = false
     @State private var isLoading = false
@@ -570,14 +570,14 @@ struct CreateProjectView: View {
 
     private var isPrefilled: Bool { prefilledCompose != nil }
 
-    private var selectedTemplate: ComposeTemplate? {
+    private var selectedTemplate: Template? {
         templates.first { $0.id == selectedTemplateID }
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Project Name") {
+                Section("ProjectDetails Name") {
                     TextField("my-app", text: $name)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -649,7 +649,7 @@ struct CreateProjectView: View {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
             }
-            .navigationTitle("Create Project")
+            .navigationTitle("Create ProjectDetails")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -691,7 +691,7 @@ struct CreateProjectView: View {
     private func applyTemplate(id: String) async {
         guard !id.isEmpty, let client = manager.client else { return }
         do {
-            let content: ComposeTemplateContent = try await client.rest.get("templates/\(id)/content")
+            let content: TemplateContent = try await client.rest.get("templates/\(id)/content")
             composeContent = content.content
             envContent = content.envContent
             if name.isEmpty {
@@ -713,7 +713,7 @@ struct CreateProjectView: View {
                 "envContent": AnyCodable(envContent)
             ]
             let path = client.rest.environmentPath(environmentID, "projects")
-            let _: Project = try await client.rest.post(path, body: body)
+            let _: ProjectDetails = try await client.rest.post(path, body: body)
             if let cached = manager.cached {
                 await cached.invalidate(envID: environmentID, paths: [
                     client.rest.environmentPath(environmentID, "projects") + "*",

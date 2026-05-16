@@ -28,7 +28,7 @@ final class ArcaneClientManager {
 
     // MARK: - Auth state
     var authState: AppAuthState = .setup
-    var currentUser: ArcaneUser?
+    var currentUser: User?
     var isLoading: Bool = false
     var errorMessage: String?
 
@@ -142,7 +142,7 @@ final class ArcaneClientManager {
         defer { isLoading = false }
         do {
             let response = try await client.auth.login(username: username, password: password)
-            currentUser = ArcaneUser(
+            currentUser = User(
                 id: response.user.id,
                 username: response.user.username,
                 email: response.user.email,
@@ -172,7 +172,7 @@ final class ArcaneClientManager {
                 redirectURI: ArcaneMobileOIDC.redirectURI,
                 presenting: anchor
             )
-            currentUser = ArcaneUser(
+            currentUser = User(
                 id: result.user.id,
                 username: result.user.username,
                 email: result.user.email,
@@ -230,7 +230,7 @@ final class ArcaneClientManager {
 
             do {
                 let response = try await client.auth.login(username: session.username, password: session.password)
-                currentUser = ArcaneUser(
+                currentUser = User(
                     id: response.user.id,
                     username: response.user.username,
                     email: response.user.email,
@@ -301,7 +301,7 @@ final class ArcaneClientManager {
                 return
             }
             let user = try await client.auth.me()
-            currentUser = ArcaneUser(
+            currentUser = User(
                 id: user.id,
                 username: user.username,
                 email: user.email,

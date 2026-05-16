@@ -56,7 +56,7 @@ struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @Binding var selectedTab: String
     
-    @State private var environments: [ServerEnvironment] = []
+    @State private var environments: [Arcane.Environment] = []
     @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
     @State private var imageUpdatesTotal: Int?
@@ -330,7 +330,7 @@ struct DashboardView: View {
             hasLoadedOnce = true
         }
 
-        async let envTask: [ServerEnvironment] = loadEnvironmentsCached(refresh: refresh)
+        async let envTask: [Arcane.Environment] = loadEnvironmentsCached(refresh: refresh)
         let path = "dashboard/environments"
         async let rawReq = client.transport.rawRequest(path, body: Optional<String>.none)
 
@@ -356,7 +356,7 @@ struct DashboardView: View {
         }
     }
 
-    private func loadVolumesTotal(envs: [ServerEnvironment]) async -> Int {
+    private func loadVolumesTotal(envs: [Arcane.Environment]) async -> Int {
         guard let client = manager.client else { return 0 }
         let online = envs.filter { $0.isOnline ?? false }
         guard !online.isEmpty else { return 0 }
@@ -368,7 +368,7 @@ struct DashboardView: View {
                 guard let env = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
-                    (try? await client.listVolumesPage(envID: envID, start: 0, limit: 1).pagination.totalItems) ?? 0
+                    (try? await client.volumes.list(envID: envID, query: SearchPaginationSort(start: 0, limit: 1)).pagination.totalItems) ?? 0
                 }
             }
             var total: Int64 = 0
@@ -377,7 +377,7 @@ struct DashboardView: View {
                 if let env = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
                     group.addTask {
-                        (try? await client.listVolumesPage(envID: envID, start: 0, limit: 1).pagination.totalItems) ?? 0
+                        (try? await client.volumes.list(envID: envID, query: SearchPaginationSort(start: 0, limit: 1)).pagination.totalItems) ?? 0
                     }
                 }
             }
@@ -385,7 +385,7 @@ struct DashboardView: View {
         }
     }
 
-    private func loadImageUpdatesTotal(envs: [ServerEnvironment]) async -> Int {
+    private func loadImageUpdatesTotal(envs: [Arcane.Environment]) async -> Int {
         guard let client = manager.client else { return 0 }
         let online = envs.filter { $0.isOnline ?? false }
         guard !online.isEmpty else { return 0 }
@@ -418,10 +418,10 @@ struct DashboardView: View {
         }
     }
 
-    private func loadEnvironmentsCached(refresh: Bool) async -> [ServerEnvironment] {
+    private func loadEnvironmentsCached(refresh: Bool) async -> [Arcane.Environment] {
         guard let cached = manager.cached else { return [] }
         return (try? await cached.getListGlobal(
-            "environments", elementType: ServerEnvironment.self,
+            "environments", elementType: Arcane.Environment.self,
             policy: .environments, refresh: refresh,
             onFresh: { fresh in
                 rawEnvironmentCount = fresh.count
@@ -574,6 +574,20 @@ struct DashboardInfoRow: View {
     let label: String
     let value: String
     var isLast = false
+
+    init(label: String, value: String, isLast: Bool = false) {
+        self.label = label
+        self.value = value
+        self.isLast = isLast
+    }
+
+    /// Convenience initializer for optional values. Nil/empty renders as "—".
+    init(label: String, value: String?, isLast: Bool = false) {
+        self.label = label
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.value = trimmed.isEmpty ? "—" : trimmed
+        self.isLast = isLast
+    }
     var body: some View {
         HStack {
             Text(label).foregroundStyle(.secondary)
