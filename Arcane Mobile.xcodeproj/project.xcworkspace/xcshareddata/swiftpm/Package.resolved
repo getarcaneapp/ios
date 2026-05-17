@@ -1,6 +1,15 @@
 {
-  "originHash" : "1bdb64fbace557f890cccc8007879ebf8b8e2c7ed3e7fb27112e252a93722826",
+  "originHash" : "9db0ebaa4667f240d7a31009d005edf9aa84c5fb63205e278b7adba45025af17",
   "pins" : [
+    {
+      "identity" : "libarcane-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/getarcaneapp/libarcane-swift.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "b08b65b70296d756c6fc006c07175e4685501c5b"
+      }
+    },
     {
       "identity" : "swift-http-types",
       "kind" : "remoteSourceControl",

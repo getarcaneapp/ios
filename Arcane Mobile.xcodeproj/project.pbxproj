@@ -117,7 +117,7 @@
 			mainGroup = FD6FF5D02FAC434D0016681B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				FD6FF5E92FAC44530016681B /* XCLocalSwiftPackageReference "../libarcane-swift" */,
+				FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FD6FF5DA2FAC434D0016681B /* Products */;
@@ -386,22 +386,26 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		FD6FF5E92FAC44530016681B /* XCLocalSwiftPackageReference "../libarcane-swift" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "../libarcane-swift";
+/* Begin XCRemoteSwiftPackageReference section */
+		FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getarcaneapp/libarcane-swift.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
 		};
-/* End XCLocalSwiftPackageReference section */
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		FD6FF5EA2FAC44530016681B /* Arcane */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = FD6FF5E92FAC44530016681B /* XCLocalSwiftPackageReference "../libarcane-swift" */;
+			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
 			productName = Arcane;
 		};
 		FD6FF5EE2FAC44530016681B /* ArcaneOIDC */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = FD6FF5E92FAC44530016681B /* XCLocalSwiftPackageReference "../libarcane-swift" */;
+			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
 			productName = ArcaneOIDC;
 		};
 /* End XCSwiftPackageProductDependency section */

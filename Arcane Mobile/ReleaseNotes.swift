@@ -52,6 +52,12 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.1.3",
+            changed: [
+                .init("Refactored the app to use the shared Arcane Swift SDK directly for API models and services, improving consistency with the backend."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.2",
             new: [
                 .init("Dashboard now shows an Updates tile with the total count of pending image updates across all environments. Tap to jump into the Updates tab."),

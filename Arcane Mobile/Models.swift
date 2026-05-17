@@ -111,27 +111,6 @@ nonisolated struct VolumeSizeInfo: Codable, Sendable {
     let refCount: Int64?
 }
 
-// Tolerant volume model — the OpenAPI-generated `Volume` type marks `labels`
-// and `options` as required, but the Docker daemon sends them as `null` when
-// empty, which the SDK can't decode. We fetch raw bytes on the volumes endpoint
-// and decode this struct instead.
-nonisolated struct VolumeInfo: Codable, Sendable, Identifiable {
-    let id: String
-    let name: String
-    let driver: String
-    let mountpoint: String
-    let scope: String
-    let createdAt: String
-    let inUse: Bool?
-    let size: Int64?
-    let labels: [String: String]?
-    let options: [String: String]?
-    let containers: [String]?
-
-    var labelsDictionary: [String: String] { labels ?? [:] }
-    var optionsDictionary: [String: String] { options ?? [:] }
-}
-
 // Tolerant project-files model — the OpenAPI-generated `ProjectDetails` type
 // requires Int64 fields (mem_limit, cpu_quota, shm_size, stop_grace_period,
 // etc.) on parsed compose services, but the backend can pass those through
