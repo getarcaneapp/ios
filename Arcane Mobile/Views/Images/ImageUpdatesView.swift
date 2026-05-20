@@ -27,7 +27,7 @@ struct ImageUpdatesView: View {
     var body: some View {
         List {
             Section {
-                summaryRow
+                ImageUpdateSummaryStrip(summary: summary, isLoading: loadingSummary)
             } header: {
                 Text("Summary")
             }
@@ -77,35 +77,6 @@ struct ImageUpdatesView: View {
         .refreshable {
             await loadSummary()
             await loadByRefs()
-        }
-    }
-
-    @ViewBuilder
-    private var summaryRow: some View {
-        if let summary {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    metric("Total", value: "\(summary.totalImages)", color: .secondary)
-                    Spacer()
-                    metric("With updates", value: "\(summary.imagesWithUpdates)", color: summary.imagesWithUpdates > 0 ? .orange : .secondary)
-                    Spacer()
-                    metric("Digest", value: "\(summary.digestUpdates)", color: Color.accentColor)
-                    Spacer()
-                    metric("Errors", value: "\(summary.errorsCount)", color: summary.errorsCount > 0 ? .red : .secondary)
-                }
-            }
-            .padding(.vertical, 4)
-        } else if loadingSummary {
-            HStack { ProgressView().scaleEffect(0.8); Text("Loading summary…").foregroundStyle(.secondary) }
-        } else {
-            Text("No summary available").foregroundStyle(.secondary)
-        }
-    }
-
-    private func metric(_ label: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.title3.bold()).foregroundStyle(color)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
         }
     }
 
@@ -165,7 +136,51 @@ struct ImageUpdatesView: View {
     }
 }
 
-private struct UpdateRow: View {
+struct ImageUpdateSummaryStrip: View {
+    let summary: ImageUpdateSummary?
+    let isLoading: Bool
+
+    var body: some View {
+        if let summary {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    metric("Total", value: "\(summary.totalImages)", color: .secondary)
+                    Spacer()
+                    metric(
+                        "With updates",
+                        value: "\(summary.imagesWithUpdates)",
+                        color: summary.imagesWithUpdates > 0 ? .orange : .secondary
+                    )
+                    Spacer()
+                    metric("Digest", value: "\(summary.digestUpdates)", color: Color.accentColor)
+                    Spacer()
+                    metric(
+                        "Errors",
+                        value: "\(summary.errorsCount)",
+                        color: summary.errorsCount > 0 ? .red : .secondary
+                    )
+                }
+            }
+            .padding(.vertical, 4)
+        } else if isLoading {
+            HStack {
+                ProgressView().scaleEffect(0.8)
+                Text("Loading summary…").foregroundStyle(.secondary)
+            }
+        } else {
+            Text("No summary available").foregroundStyle(.secondary)
+        }
+    }
+
+    private func metric(_ label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(.title3.bold()).foregroundStyle(color)
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct UpdateRow: View {
     let ref: String
     let info: ImageUpdateResponse?
     let isChecking: Bool

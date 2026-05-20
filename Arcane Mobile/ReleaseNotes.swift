@@ -53,6 +53,9 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.1.3",
+            new: [
+                .init("New cross-environment Updates screen: per-environment summary cards with totals, per-image update rows, and a 'Recheck all images' action for each environment."),
+            ],
             changed: [
                 .init("Refactored the app to use the shared Arcane Swift SDK directly for API models and services, improving consistency with the backend."),
             ]

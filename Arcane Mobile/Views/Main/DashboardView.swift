@@ -67,6 +67,7 @@ struct DashboardView: View {
     @State private var hasLoadedOnce = false
     @State private var showPruneSheet = false
     @State private var showVolumes = false
+    @State private var showImageUpdates = false
 
     private static let maxEnvironments = 50
     private static let maxConcurrentPerEnvFetches = 4
@@ -110,6 +111,11 @@ struct DashboardView: View {
                         environmentID: envID,
                         environmentName: manager.activeEnvironmentName
                     )
+                }
+            }
+            .sheet(isPresented: $showImageUpdates) {
+                NavigationStack {
+                    AllEnvironmentsImageUpdatesView()
                 }
             }
             .navigationDestination(item: $detailRoute) { route in
@@ -293,7 +299,7 @@ struct DashboardView: View {
                     value: imageUpdatesTotal.map { "\($0)" } ?? "—",
                     icon: "arrow.triangle.2.circlepath",
                     tint: .green
-                ) { selectedTab = AppTab.updates.id }
+                ) { showImageUpdates = true }
 
                 DashboardGlassTile(
                     title: "Containers",
