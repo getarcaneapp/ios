@@ -10,7 +10,7 @@ struct VolumesView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
-    @State private var volumes: [VolumeInfo] = []
+    @State private var volumes: [Volume] = []
     @State private var sizes: [String: Int64] = [:]
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -31,7 +31,7 @@ struct VolumesView: View {
 
     private var activeFilterCount: Int { scopeFilter != .all ? 1 : 0 }
 
-    private var filtered: [VolumeInfo] {
+    private var filtered: [Volume] {
         volumes.filter { volume in
             let matchesSearch = searchText.isEmpty ||
                 volume.name.localizedCaseInsensitiveContains(searchText) ||
@@ -50,11 +50,11 @@ struct VolumesView: View {
         pinnedStore.pinnedIDs(kind: .volume, envID: environmentID)
     }
 
-    private var listSections: [StableListSection<String, VolumeInfo>] {
+    private var listSections: [StableListSection<String, Volume>] {
         let pinned: Set<String> = pinnedIDs
-        var pinnedItems: [VolumeInfo] = []
-        var used: [VolumeInfo] = []
-        var unused: [VolumeInfo] = []
+        var pinnedItems: [Volume] = []
+        var used: [Volume] = []
+        var unused: [Volume] = []
         for volume in filtered {
             if pinned.contains(volume.id) {
                 pinnedItems.append(volume)
@@ -183,7 +183,7 @@ struct VolumesView: View {
         }
     }
 
-    private func volumeLink(_ volume: VolumeInfo) -> some View {
+    private func volumeLink(_ volume: Volume) -> some View {
         let isPinned = pinnedIDs.contains(volume.id)
         return NavigationLink(destination: VolumeDetailView(volume: volume, environmentID: environmentID)) {
             VolumeRow(volume: volume, size: sizes[volume.name], isPinned: isPinned)
@@ -222,14 +222,14 @@ struct VolumesView: View {
         }
     }
 
-    private func togglePinAfterSwipe(_ volume: VolumeInfo) {
+    private func togglePinAfterSwipe(_ volume: Volume) {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 250_000_000)
             togglePin(volume)
         }
     }
 
-    private func togglePin(_ volume: VolumeInfo) {
+    private func togglePin(_ volume: Volume) {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -237,12 +237,10 @@ struct VolumesView: View {
         }
     }
 
-    private func volumePreview(_ volume: VolumeInfo) -> some View {
+    private func volumePreview(_ volume: Volume) -> some View {
         var badges: [RowPreviewCard.PreviewBadge] = []
-        if let inUse = volume.inUse {
-            badges.append(.init(text: inUse ? "In Use" : "Unused",
-                                color: inUse ? .green : .secondary))
-        }
+        badges.append(.init(text: volume.inUse ? "In Use" : "Unused",
+                            color: volume.inUse ? .green : .secondary))
         var details: [RowPreviewCard.PreviewDetail] = [
             .init(icon: "gearshape", label: "Driver", value: volume.driver),
             .init(icon: "globe", label: "Scope", value: volume.scope.capitalized)
@@ -276,42 +274,13 @@ struct VolumesView: View {
             }
         }
         do {
-            let response: VolumeListPage?
-            if reset, let cached = manager.cached {
-                let path = client.rest.environmentPath(environmentID, "volumes")
-                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)"
-                let fetcher: @Sendable () async throws -> VolumeListPage = {
-                    try await client.listVolumesPage(
-                        envID: environmentID,
-                        start: 0,
-                        limit: Self.pageSize
-                    )
-                }
-                response = try await cached.getCustom(
-                    path: cachePath,
-                    as: VolumeListPage.self,
-                    policy: .volumes,
-                    envID: environmentID,
-                    refresh: refresh,
-                    onFresh: { fresh in applyVolumesPage(fresh, reset: true, generation: generation) },
-                    fetcher: fetcher
-                )
-            } else {
-                response = try await client.listVolumesPage(
-                    envID: environmentID,
-                    start: start,
-                    limit: Self.pageSize
-                )
-            }
-            guard let response else {
-                guard loadGeneration == generation else { return }
-                if reset {
-                    volumes = []
-                    currentPage = 1
-                    hasMore = false
-                }
-                return
-            }
+            // `PaginatedResponse<Volume>` is Decodable-only, so we can't route
+            // it through the cache layer (which requires Codable). Fetch
+            // directly through the SDK.
+            let response = try await client.volumes.list(
+                envID: environmentID,
+                query: .init(start: start, limit: Self.pageSize)
+            )
             applyVolumesPage(response, reset: reset, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
@@ -322,7 +291,7 @@ struct VolumesView: View {
         }
     }
 
-    private func applyVolumesPage(_ response: VolumeListPage, reset: Bool, generation: Int) {
+    private func applyVolumesPage(_ response: PaginatedResponse<Volume>, reset: Bool, generation: Int) {
         guard loadGeneration == generation else { return }
         if reset {
             volumes = response.data
@@ -358,7 +327,7 @@ struct VolumesView: View {
     }
 
 
-    private func deleteVolume(_ volume: VolumeInfo) async {
+    private func deleteVolume(_ volume: Volume) async {
         guard let client = manager.client else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "volumes/\(volume.name)")
@@ -410,7 +379,7 @@ struct UsageBadge: View {
 }
 
 struct VolumeRow: View {
-    let volume: VolumeInfo
+    let volume: Volume
     var size: Int64? = nil
     var isPinned: Bool = false
 
@@ -481,7 +450,7 @@ struct VolumeDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let volume: VolumeInfo
+    let volume: Volume
     let environmentID: EnvironmentID
 
     @State private var showDeleteConfirm = false
@@ -530,7 +499,7 @@ struct VolumeDetailView: View {
                 }
             }
 
-            let labels = volume.labelsDictionary
+            let labels = volume.labels
             if !labels.isEmpty {
                 Section("Labels") {
                     ForEach(Array(labels.keys.sorted()), id: \.self) { key in
@@ -539,7 +508,7 @@ struct VolumeDetailView: View {
                 }
             }
 
-            let options = volume.optionsDictionary
+            let options = volume.options
             if !options.isEmpty {
                 Section("Options") {
                     ForEach(Array(options.keys.sorted()), id: \.self) { key in

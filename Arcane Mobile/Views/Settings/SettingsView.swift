@@ -295,7 +295,7 @@ struct SettingsNavigationRow: View {
 
 struct UsersView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @State private var users: [ArcaneUser] = []
+    @State private var users: [User] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
@@ -360,8 +360,8 @@ struct UsersView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            if let result: [ArcaneUser] = try await cached.getListGlobal(
-                "users", elementType: ArcaneUser.self, policy: .users,
+            if let result: [User] = try await cached.getListGlobal(
+                "users", elementType: User.self, policy: .users,
                 refresh: refresh,
                 onFresh: { fresh in users = fresh }
             ) {
@@ -370,7 +370,7 @@ struct UsersView: View {
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
-    private func deleteUser(_ user: ArcaneUser) async {
+    private func deleteUser(_ user: User) async {
         guard let client = manager.client else { return }
         do {
             let _: DataResponse<String> = try await client.rest.delete("users/\(user.id)")
@@ -387,7 +387,7 @@ struct UsersView: View {
 }
 
 struct UserRow: View {
-    let user: ArcaneUser
+    let user: User
 
     var body: some View {
         HStack(spacing: 12) {
@@ -421,7 +421,7 @@ struct UserRow: View {
 struct UserDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let user: ArcaneUser
+    let user: User
     let onUpdate: () async -> Void
 
     @State private var email: String
@@ -430,7 +430,7 @@ struct UserDetailView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    init(user: ArcaneUser, onUpdate: @escaping () async -> Void) {
+    init(user: User, onUpdate: @escaping () async -> Void) {
         self.user = user
         self.onUpdate = onUpdate
         _email = State(initialValue: user.email ?? "")
@@ -480,7 +480,7 @@ struct UserDetailView: View {
                 email: email.isEmpty ? nil : email,
                 roles: isAdmin ? ["admin"] : []
             )
-            let _: ArcaneUser = try await client.rest.put("users/\(user.id)", body: body)
+            let _: User = try await client.rest.put("users/\(user.id)", body: body)
             await onUpdate()
             dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
@@ -538,13 +538,13 @@ struct CreateUserView: View {
         defer { isLoading = false }
         do {
             let body = CreateUserRequest(
+                username: username,
+                password: password,
                 displayName: nil,
                 email: email.isEmpty ? nil : email,
-                password: password,
-                roles: isAdmin ? ["admin"] : ["user"],
-                username: username
+                roles: isAdmin ? ["admin"] : ["user"]
             )
-            let _: ArcaneUser = try await client.rest.post("users", body: body)
+            let _: User = try await client.rest.post("users", body: body)
             await onSuccess(); dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
@@ -767,7 +767,7 @@ struct CreateAPIKeyView: View {
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do {
-            let body = CreateAPIKeyRequest(description: description.isEmpty ? nil : description, name: name)
+            let body = CreateAPIKeyRequest(name: name, description: description.isEmpty ? nil : description)
             let created: APIKeyCreated = try await client.rest.post("api-keys", body: body)
             onCreated(created.key)
             dismiss()
@@ -1266,30 +1266,30 @@ struct RegistryFormView: View {
         do {
             if let registry {
                 let body = UpdateContainerRegistryRequest(
-                    awsAccessKeyId: awsAccessKeyId.nilIfEmpty,
-                    awsRegion: awsRegion.nilIfEmpty,
-                    awsSecretAccessKey: awsSecretAccessKey.nilIfEmpty,
-                    description: description.nilIfEmpty,
-                    enabled: enabled,
-                    insecure: insecure,
-                    registryType: registryType.nilIfEmpty,
-                    token: token.nilIfEmpty,
                     url: url,
-                    username: username.nilIfEmpty
+                    username: username.nilIfEmpty,
+                    token: token.nilIfEmpty,
+                    description: description.nilIfEmpty,
+                    insecure: insecure,
+                    enabled: enabled,
+                    registryType: registryType.nilIfEmpty,
+                    awsAccessKeyId: awsAccessKeyId.nilIfEmpty,
+                    awsSecretAccessKey: awsSecretAccessKey.nilIfEmpty,
+                    awsRegion: awsRegion.nilIfEmpty
                 )
                 let _: ContainerRegistry = try await client.rest.put("container-registries/\(registry.id)", body: body)
             } else {
                 let body = CreateContainerRegistryRequest(
-                    awsAccessKeyId: awsAccessKeyId,
-                    awsRegion: awsRegion,
-                    awsSecretAccessKey: awsSecretAccessKey,
-                    description: description.nilIfEmpty,
-                    enabled: enabled,
-                    insecure: insecure,
-                    registryType: registryType.isEmpty ? "custom" : registryType,
-                    token: token,
                     url: url,
-                    username: username
+                    username: username,
+                    token: token,
+                    description: description.nilIfEmpty,
+                    insecure: insecure,
+                    enabled: enabled,
+                    registryType: registryType.isEmpty ? "custom" : registryType,
+                    awsAccessKeyId: awsAccessKeyId,
+                    awsSecretAccessKey: awsSecretAccessKey,
+                    awsRegion: awsRegion
                 )
                 let _: ContainerRegistry = try await client.rest.post("container-registries", body: body)
             }
@@ -1365,18 +1365,18 @@ struct TemplateRegistryFormView: View {
         do {
             if let registry {
                 let body = UpdateTemplateRegistryRequest(
-                    description: description,
-                    enabled: enabled,
                     name: name,
-                    url: url
+                    url: url,
+                    description: description,
+                    enabled: enabled
                 )
                 let _: TemplateRegistry = try await client.rest.put("templates/registries/\(registry.id)", body: body)
             } else {
                 let body = CreateTemplateRegistryRequest(
-                    description: description,
-                    enabled: enabled,
                     name: name,
-                    url: url
+                    url: url,
+                    description: description,
+                    enabled: enabled
                 )
                 let _: TemplateRegistry = try await client.rest.post("templates/registries", body: body)
             }
@@ -1388,11 +1388,11 @@ struct TemplateRegistryFormView: View {
 struct TemplateBrowserView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    @State private var templates: [ComposeTemplate] = []
+    @State private var templates: [Template] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    private var groupedTemplates: [(String, [ComposeTemplate])] {
+    private var groupedTemplates: [(String, [Template])] {
         let groups = Dictionary(grouping: templates) { template in
             template.registry?.name ?? (template.isRemote ? "Remote" : "Local")
         }
@@ -1460,7 +1460,7 @@ struct TemplateBrowserView: View {
 }
 
 struct TemplateRow: View {
-    let template: ComposeTemplate
+    let template: Template
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1488,9 +1488,9 @@ struct TemplateRow: View {
 struct TemplatePreviewView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let template: ComposeTemplate
+    let template: Template
 
-    @State private var content: ComposeTemplateContent?
+    @State private var content: TemplateContent?
     @State private var composeContent = ""
     @State private var envContent = ""
     @State private var selectedTab = 0
@@ -1566,7 +1566,7 @@ struct TemplatePreviewView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let loaded: ComposeTemplateContent = try await client.rest.get("templates/\(template.id)/content")
+            let loaded: TemplateContent = try await client.rest.get("templates/\(template.id)/content")
             content = loaded
             composeContent = loaded.content
             envContent = loaded.envContent

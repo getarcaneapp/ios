@@ -33,33 +33,32 @@ enum ListSortOrder: String, CaseIterable, Identifiable {
 
 // MARK: - App compatibility names backed by libarcane-swift exports
 //
-// Display models (`Project`, `ContainerInfo`, `ImageInfo`, `ImageDetails`,
-// `NetworkInfo`, `ServerEnvironment`, `ArcaneUser`, `APIKey`,
-// `ContainerRegistry`, `TemplateRegistry`, `ComposeTemplate`,
-// `ComposeTemplateContent`, `WebhookSummary`) live in `ResilientModels.swift`
+// Display models (`Project`, `ContainerSummary`, `ImageSummary`, `ImageDetailSummary`,
+// `NetworkSummary`, `Environment`, `User`, `APIKey`,
+// `ContainerRegistry`, `TemplateRegistry`, `Template`,
+// `TemplateContent`, `Webhook`) live in `ResilientModels.swift`
 // as hand-written, schema-tolerant structs that decode every field with
 // `decodeIfPresent`. Only request/sub-type aliases that flow *into* the SDK
 // stay here.
 
 typealias CreateUserRequest = CreateUser
 typealias UpdateUserRequest = UpdateUser
-typealias CreateAPIKeyRequest = CreateApiKey
-typealias APIKeyCreated = ApiKeyCreatedDto
-typealias CreateContainerRegistryRequest = Components.Schemas.CreateContainerRegistryRequest
-typealias UpdateContainerRegistryRequest = Components.Schemas.UpdateContainerRegistryRequest
-typealias CreateTemplateRegistryRequest = Components.Schemas.TemplateCreateRegistryRequest
-typealias UpdateTemplateRegistryRequest = Components.Schemas.TemplateUpdateRegistryRequest
+typealias CreateAPIKeyRequest = CreateAPIKey
+typealias CreateContainerRegistryRequest = CreateContainerRegistry
+typealias UpdateContainerRegistryRequest = UpdateContainerRegistry
+typealias CreateTemplateRegistryRequest = CreateTemplateRegistry
+typealias UpdateTemplateRegistryRequest = UpdateTemplateRegistry
 typealias AnyCodable = JSONValue
 
 // MARK: - Notification type aliases
-typealias NotificationSettingsResponse = NotificationResponse
-typealias NotificationSettingsUpdate = NotificationUpdate
+typealias NotificationSettingsResponse = NotificationSettings
+typealias NotificationSettingsUpdate = UpdateNotificationSettings
 
 // MARK: - Webhook type aliases
-typealias WebhookCreateModel = WebhookCreateInput
+typealias WebhookCreateModel = CreateWebhook
 typealias WebhookCreatedModel = WebhookCreated
-typealias WebhookSummaryModel = WebhookSummary
-typealias WebhookUpdateModel = WebhookUpdateInput
+typealias WebhookSummaryModel = Webhook
+typealias WebhookUpdateModel = UpdateWebhook
 
 struct DataResponse<T: Codable & Sendable>: Codable, Sendable {
     var data: T?
@@ -93,7 +92,7 @@ struct DataResponse<T: Codable & Sendable>: Codable, Sendable {
 
 // MARK: - Display helpers
 
-// `ImageInfo`, `ContainerInfo`, `ServerEnvironment`, `Project` and their
+// `ImageSummary`, `ContainerSummary`, `Environment`, `Project` and their
 // computed properties (displayName, isRunning, statusColor, isOnline, etc.)
 // now live as concrete types in `ResilientModels.swift`.
 
@@ -112,27 +111,6 @@ nonisolated struct VolumeSizeInfo: Codable, Sendable {
     let refCount: Int64?
 }
 
-// Tolerant volume model — the OpenAPI-generated `Volume` type marks `labels`
-// and `options` as required, but the Docker daemon sends them as `null` when
-// empty, which the SDK can't decode. We fetch raw bytes on the volumes endpoint
-// and decode this struct instead.
-nonisolated struct VolumeInfo: Codable, Sendable, Identifiable {
-    let id: String
-    let name: String
-    let driver: String
-    let mountpoint: String
-    let scope: String
-    let createdAt: String
-    let inUse: Bool?
-    let size: Int64?
-    let labels: [String: String]?
-    let options: [String: String]?
-    let containers: [String]?
-
-    var labelsDictionary: [String: String] { labels ?? [:] }
-    var optionsDictionary: [String: String] { options ?? [:] }
-}
-
 // Tolerant project-files model — the OpenAPI-generated `ProjectDetails` type
 // requires Int64 fields (mem_limit, cpu_quota, shm_size, stop_grace_period,
 // etc.) on parsed compose services, but the backend can pass those through
@@ -144,15 +122,267 @@ nonisolated struct ProjectFiles: Codable, Sendable {
     let envContent: String?
 }
 
-extension NotificationResponse: @retroactive Identifiable {}
+// `NotificationSettings: Identifiable` is now stated in the SDK itself.
 
-extension SettingDto: @retroactive Identifiable {
-    public var id: String { key }
+extension ContainerRegistry {
+    /// Best-effort display name. The SDK type carries a `description` field;
+    /// fall back to the URL host when description is empty.
+    var name: String? {
+        if let desc = description, !desc.isEmpty { return desc }
+        return URL(string: url)?.host ?? url
+    }
 }
 
-extension PublicSetting: @retroactive Identifiable {
-    public var id: String { key }
+extension Template {
+    /// Convenience accessor that surfaces the icon URL from metadata, since
+    /// the SDK keeps it inside the `metadata` blob.
+    var iconUrl: String? { metadata?.iconUrl }
 }
+
+extension APIKey {
+    /// Compat alias for the renamed `isStatic` field — these flags conveyed
+    /// the same "can't be deleted via UI" semantic.
+    var isProtected: Bool { isStatic }
+}
+
+extension User {
+    var isAdmin: Bool { roles.contains("admin") }
+    /// Prefer the human-friendly `displayName` when set, fall back to `username`.
+    var displayUsername: String {
+        if let name = displayName, !name.isEmpty { return name }
+        return username
+    }
+}
+
+extension ContainerSummary {
+    var displayName: String {
+        let first = names.first?.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
+        return first.isEmpty ? String(id.prefix(12)) : first
+    }
+    var isRunning: Bool { state.lowercased() == "running" }
+    var iconUrl: String? { labels["com.getarcaneapp.arcane.icon"] }
+}
+
+extension ImageSummary {
+    var displayName: String {
+        if let tag = repoTags.first(where: { $0 != "<none>:<none>" }) { return tag }
+        return String(id.prefix(12))
+    }
+}
+
+extension ProjectDetails {
+    var displayName: String { name }
+    var composeVersion: String? { nil }
+    var statusColor: String {
+        switch status.lowercased() {
+        case "running": return "green"
+        case "stopped", "exited": return "red"
+        case "partial", "partially running": return "orange"
+        default: return "gray"
+        }
+    }
+}
+
+extension Arcane.Environment {
+    var displayName: String { name?.isEmpty == false ? (name ?? "") : "Environment \(id)" }
+    var isOnline: Bool? {
+        let lower = status.lowercased()
+        return lower == "online" || lower == "up"
+    }
+    /// Backwards-compat alias for the renamed `apiUrl` property.
+    var url: String { apiUrl }
+}
+
+typealias SettingsUpdate = UpdateSettings
+typealias UpgradeCheckResultData = UpgradeCheckResult
+typealias Project = ProjectDetails
+
+// MARK: - NetworkSummary compatibility
+//
+// The SDK's `NetworkSummary` no longer carries `isInternal` or
+// `containerCount` — those come from the full inspect payload. The list views
+// previously read them; expose stub defaults so the UI compiles. They'll just
+// render the "not internal" / "no containers" path until we're ready to
+// upgrade those views to read `NetworkInspect`.
+extension NetworkSummary {
+    /// Always false for now — the summary endpoint doesn't carry this flag.
+    var isInternal: Bool { false }
+    /// Always zero for now — the summary endpoint doesn't carry connection counts.
+    var containerCount: Int { 0 }
+}
+
+// MARK: - DockerInfo convenience accessors
+//
+// The SDK exposes the embedded Docker `system.Info` blob as a raw map under
+// `info`. The dashboard views still want strongly-typed properties for the
+// most commonly-rendered fields. Surface them as computed properties.
+extension DockerInfo {
+    // Counts
+    var containers: Int64 { info?["Containers"]?.int64Value ?? 0 }
+    var containersRunning: Int64 { info?["ContainersRunning"]?.int64Value ?? 0 }
+    var containersPaused: Int64 { info?["ContainersPaused"]?.int64Value ?? 0 }
+    var containersStopped: Int64 { info?["ContainersStopped"]?.int64Value ?? 0 }
+    var images: Int64 { info?["Images"]?.int64Value ?? 0 }
+
+    // Identity / host
+    var id: String { info?["ID"]?.stringValue ?? "" }
+    var kernelVersion: String { info?["KernelVersion"]?.stringValue ?? "" }
+    var architecture: String { info?["Architecture"]?.stringValue ?? "" }
+    var osType: String { info?["OSType"]?.stringValue ?? "" }
+
+    // Runtime
+    var driver: String { info?["Driver"]?.stringValue ?? "" }
+    var loggingDriver: String { info?["LoggingDriver"]?.stringValue ?? "" }
+    var cgroupDriver: String { info?["CgroupDriver"]?.stringValue ?? "" }
+    var cgroupVersion: String? { info?["CgroupVersion"]?.stringValue }
+    var defaultRuntime: String { info?["DefaultRuntime"]?.stringValue ?? "" }
+    var dockerRootDir: String { info?["DockerRootDir"]?.stringValue ?? "" }
+
+    // Features
+    var liveRestoreEnabled: Bool { info?["LiveRestoreEnabled"]?.boolValue ?? false }
+    var experimentalBuild: Bool { info?["ExperimentalBuild"]?.boolValue ?? false }
+    var debug: Bool { info?["Debug"]?.boolValue ?? false }
+    var iPv4Forwarding: Bool { info?["IPv4Forwarding"]?.boolValue ?? false }
+    var memoryLimit: Bool { info?["MemoryLimit"]?.boolValue ?? false }
+    var swapLimit: Bool { info?["SwapLimit"]?.boolValue ?? false }
+
+    var warnings: [String]? {
+        guard case let .array(values) = info?["Warnings"] else { return nil }
+        return values.compactMap { $0.stringValue }
+    }
+
+    /// Mirrors Docker's `Info.Runtimes` map. Surfaces a `keys` view that the
+    /// dashboard uses to display the available runtime names.
+    var runtimes: RuntimesView {
+        if case let .object(map) = info?["Runtimes"] {
+            return RuntimesView(additionalProperties: map)
+        }
+        return RuntimesView(additionalProperties: [:])
+    }
+
+    struct RuntimesView {
+        let additionalProperties: [String: JSONValue]
+    }
+}
+
+// MARK: - Webhook payload helpers
+//
+// The SDK models `CreateWebhook.targetType` / `actionType` as raw strings to
+// match the wire format. The iOS views express them as typed enums, so we
+// expose those as nested types here. They're string-backed; convert to/from
+// raw strings at the SDK boundary.
+extension CreateWebhook {
+    enum TargetTypePayload: String, CaseIterable, Sendable {
+        case container
+        case project
+        case updater
+        case gitops
+    }
+
+    enum ActionTypePayload: String, CaseIterable, Sendable {
+        case update, start, stop, restart, redeploy, up, down, run, sync
+    }
+
+    /// View-facing initializer that takes the typed enums and stores their
+    /// raw string values, which is what the SDK + backend expect.
+    init(name: String,
+         targetType: TargetTypePayload,
+         actionType: ActionTypePayload,
+         targetId: String) {
+        self.init(
+            name: name,
+            targetType: targetType.rawValue,
+            actionType: actionType.rawValue,
+            targetId: targetId
+        )
+    }
+
+    init(actionType: ActionTypePayload,
+         name: String,
+         targetId: String,
+         targetType: TargetTypePayload) {
+        self.init(
+            name: name,
+            targetType: targetType.rawValue,
+            actionType: actionType.rawValue,
+            targetId: targetId
+        )
+    }
+}
+
+// MARK: - SystemStats compatibility
+//
+// Views were written against an iOS-side `SystemStatsFrame` with explicit
+// `*Bytes` and `*Percent` accessors. The SDK's canonical `SystemStats` keeps
+// the wire field names (`memoryUsage`, `memoryTotal`, `diskUsage`, etc.) — we
+// bridge them here so existing call sites keep working.
+typealias SystemStatsFrame = SystemStats
+
+extension SystemStats {
+    /// CPU usage as a percentage in the 0–100 range.
+    var cpuPercent: Double { cpuUsage }
+    /// Memory used in bytes.
+    var memoryUsageBytes: Int64 { Int64(memoryUsage) }
+    /// Total memory in bytes.
+    var memoryTotalBytes: Int64 { Int64(memoryTotal) }
+    /// Disk used in bytes, if reported.
+    var diskUsageBytes: Int64? { diskUsage.map(Int64.init) }
+    /// Total disk in bytes, if reported.
+    var diskTotalBytes: Int64? { diskTotal.map(Int64.init) }
+    /// Memory used as a percentage, derived from used/total bytes.
+    var memoryPercent: Double? {
+        guard memoryTotal > 0 else { return nil }
+        return (Double(memoryUsage) / Double(memoryTotal)) * 100.0
+    }
+}
+
+// MARK: - Updater convenience accessors
+//
+// libarcane-swift exposes `oldImageVersions` / `newImageVersions` as
+// `[String: JSONValue]?` to tolerate the server's varying value shapes.
+// These computed accessors extract the string projection.
+
+extension AutoUpdateRecord {
+    var oldImageVersionsMap: [String: String] { Self.flatten(oldImageVersions) }
+    var newImageVersionsMap: [String: String] { Self.flatten(newImageVersions) }
+
+    private static func flatten(_ values: [String: JSONValue]?) -> [String: String] {
+        guard let values else { return [:] }
+        var out: [String: String] = [:]
+        for (key, value) in values {
+            if case let .string(text) = value { out[key] = text }
+        }
+        return out
+    }
+}
+
+extension Event {
+    /// Flattens the JSON metadata payload to `[String: String]`. Non-string
+    /// values are rendered as their JSON representation so the metadata is
+    /// still inspectable.
+    var metadataMap: [String: String] {
+        guard let metadata else { return [:] }
+        var out: [String: String] = [:]
+        for (key, value) in metadata {
+            switch value {
+            case let .string(s): out[key] = s
+            case let .number(n):
+                if n.rounded() == n { out[key] = "\(Int64(n))" }
+                else { out[key] = "\(n)" }
+            case let .bool(b): out[key] = b ? "true" : "false"
+            case .null: out[key] = "null"
+            case .array, .object:
+                if let data = try? JSONEncoder().encode(value),
+                   let text = String(data: data, encoding: .utf8) {
+                    out[key] = text
+                }
+            }
+        }
+        return out
+    }
+}
+
+// `SettingDto` and `PublicSetting` already conform to `Identifiable` in the SDK.
 
 extension JSONValue {
     init(_ value: String) { self = .string(value) }
@@ -162,6 +392,15 @@ extension JSONValue {
     init(_ value: Double) { self = .number(value) }
     init(_ value: [String: JSONValue]) { self = .object(value) }
     init(_ value: [JSONValue]) { self = .array(value) }
+
+    var objectValue: [String: JSONValue]? {
+        if case let .object(map) = self { return map }
+        return nil
+    }
+    var arrayValue: [JSONValue]? {
+        if case let .array(values) = self { return values }
+        return nil
+    }
 }
 
 extension Int64 {
@@ -235,48 +474,16 @@ nonisolated struct PullImageRequest: Encodable, Sendable {
     let tag: String?
 }
 
-nonisolated struct ProjectListPage: Codable, Sendable {
-    let success: Bool
-    let data: [Project]
-    let pagination: PaginationResponse
-}
-
-nonisolated struct ImageListPage: Codable, Sendable {
-    let success: Bool
-    let data: [ImageInfo]
-    let pagination: PaginationResponse
-}
-
-nonisolated struct NetworkListPage: Codable, Sendable {
-    let success: Bool
-    let data: [NetworkInfo]
-    let pagination: PaginationResponse
-}
-
-nonisolated struct VolumeListPage: Codable, Sendable {
-    let success: Bool
-    let data: [VolumeInfo]
-    let pagination: PaginationResponse
-}
+// Use `PaginatedResponse<T>` from libarcane-swift via `client.<service>.list(...)`.
 
 nonisolated struct DestroyProjectRequest: Encodable, Sendable {
     let removeFiles: Bool
     let removeVolumes: Bool
 }
 
-nonisolated struct PullProgressEvent: Decodable, Sendable {
-    let type: String?
-    let phase: String?
-    let status: String?
-    let id: String?
-    let progressDetail: ProgressDetail?
-    let error: String?
-
-    nonisolated struct ProgressDetail: Decodable, Sendable {
-        let current: Int64?
-        let total: Int64?
-    }
-
+// `PullProgressEvent` is provided by the SDK. We extend it locally with the
+// `isLayerEvent` helper the views previously relied on.
+extension PullProgressEvent {
     var isLayerEvent: Bool { id?.isEmpty == false }
 }
 

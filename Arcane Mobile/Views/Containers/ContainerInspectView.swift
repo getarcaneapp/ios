@@ -4,7 +4,7 @@ import Arcane
 
 struct ContainerInspectView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    let container: ContainerInfo
+    let container: ContainerSummary
     let environmentID: EnvironmentID
 
     @State private var rawJSON: String = ""
@@ -87,10 +87,10 @@ struct ContainerInspectView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let raw: JSONValue = try await client.containers.inspect(envID: environmentID, id: container.id)
+            let details = try await client.containers.inspect(envID: environmentID, id: container.id)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            let data = try encoder.encode(raw)
+            let data = try encoder.encode(details)
             rawJSON = String(decoding: data, as: UTF8.self)
             errorMessage = nil
         } catch {

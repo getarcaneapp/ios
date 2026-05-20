@@ -4,7 +4,7 @@ import Arcane
 struct ContainerTerminalView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let container: ContainerInfo
+    let container: ContainerSummary
     let environmentID: EnvironmentID
 
     @State private var output: String = ""
@@ -166,7 +166,7 @@ struct ContainerTerminalView: View {
         isConnecting = true
         connectError = nil
         do {
-            let s = try await client.containers.terminal(envID: environmentID, id: container.id, shell: shell)
+            let s = try await client.containers.exec(envID: environmentID, id: container.id, shell: shell)
             session = s
             isConnected = true
             isConnecting = false

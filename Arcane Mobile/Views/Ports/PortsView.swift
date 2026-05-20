@@ -15,8 +15,8 @@ struct PortsView: View {
         let groups = Dictionary(grouping: filtered) { $0.containerName }
         return groups
             .map { (container: $0.key, ports: $0.value.sorted { lhs, rhs in
-                let lhsHost = lhs.hostPort ?? Int64.max
-                let rhsHost = rhs.hostPort ?? Int64.max
+                let lhsHost = lhs.hostPort ?? Int.max
+                let rhsHost = rhs.hostPort ?? Int.max
                 if lhsHost != rhsHost { return lhsHost < rhsHost }
                 return lhs.containerPort < rhs.containerPort
             }) }
@@ -28,7 +28,7 @@ struct PortsView: View {
         guard !trimmed.isEmpty else { return ports }
         return ports.filter { port in
             port.containerName.localizedCaseInsensitiveContains(trimmed) ||
-            port._protocol.localizedCaseInsensitiveContains(trimmed) ||
+            port.protocolName.localizedCaseInsensitiveContains(trimmed) ||
             portString(port.containerPort).contains(trimmed) ||
             (port.hostPort.map(portString) ?? "").contains(trimmed) ||
             (port.hostIp ?? "").localizedCaseInsensitiveContains(trimmed)
@@ -93,7 +93,12 @@ struct PortsView: View {
         if refresh { errorMessage = nil }
         defer { isLoading = false }
         do {
-            ports = try await client.ports.list(envID: environmentID)
+            // The list endpoint paginates; surface the full set in one shot.
+            let response = try await client.ports.list(
+                envID: environmentID,
+                query: .init(start: 0, limit: 500)
+            )
+            ports = response.data
             errorMessage = nil
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -131,7 +136,7 @@ private struct PortMappingRow: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
-                Text(port._protocol.uppercased())
+                Text(port.protocolName.uppercased())
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(protocolTint)
             }
@@ -157,7 +162,7 @@ private struct PortMappingRow: View {
     }
 
     private var protocolTint: Color {
-        switch port._protocol.lowercased() {
+        switch port.protocolName.lowercased() {
         case "tcp": return .blue
         case "udp": return .purple
         case "sctp": return .pink
@@ -183,7 +188,7 @@ private struct PortMappingDetailView: View {
                     LabeledContent("Exposure", value: "Internal only")
                 }
                 LabeledContent("Container Port", value: portString(port.containerPort))
-                LabeledContent("Protocol", value: port._protocol.uppercased())
+                LabeledContent("Protocol", value: port.protocolName.uppercased())
                 LabeledContent("Published", value: port.isPublished ? "Yes" : "No")
             }
 

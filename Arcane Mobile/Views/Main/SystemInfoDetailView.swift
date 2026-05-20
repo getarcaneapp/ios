@@ -149,8 +149,8 @@ struct SystemInfoDetailView: View {
             }
 
             DashboardInfoGroup(title: "Capacity") {
-                DashboardInfoRow(label: "CPUs", value: "\(info.ncpu)")
-                DashboardInfoRow(label: "Memory", value: info.memTotal.byteString)
+                DashboardInfoRow(label: "CPUs", value: info.ncpu.map { "\($0)" })
+                DashboardInfoRow(label: "Memory", value: info.memTotal?.byteString)
             }
 
             if let v = versionInfo {
@@ -187,7 +187,7 @@ struct SystemInfoDetailView: View {
         }()
 
         async let versionTask: VersionInfo? = {
-            try? await client.system.appVersion()
+            try? await client.version.appVersion()
         }()
 
         let (info, version) = await (infoTask, versionTask)

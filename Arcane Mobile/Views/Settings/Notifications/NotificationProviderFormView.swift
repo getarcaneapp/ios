@@ -1,13 +1,12 @@
 import SwiftUI
 import Arcane
-import OpenAPIRuntime
 
 struct NotificationProviderFormView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     let provider: NotificationProvider
-    let existing: NotificationResponse?
+    let existing: NotificationSettings?
     let onSaved: () async -> Void
 
     @State private var formValues: [String: String] = [:]
@@ -166,26 +165,8 @@ struct NotificationProviderFormView: View {
 
     private func eventBinding(for key: String) -> Binding<Bool> {
         Binding(
-            get: {
-                switch key {
-                case "eventImageUpdate": return events.imageUpdate
-                case "eventContainerUpdate": return events.containerUpdate
-                case "eventVulnerabilityFound": return events.vulnerabilityFound
-                case "eventPruneReport": return events.pruneReport
-                case "eventAutoHeal": return events.autoHeal
-                default: return false
-                }
-            },
-            set: { newValue in
-                switch key {
-                case "eventImageUpdate": events.imageUpdate = newValue
-                case "eventContainerUpdate": events.containerUpdate = newValue
-                case "eventVulnerabilityFound": events.vulnerabilityFound = newValue
-                case "eventPruneReport": events.pruneReport = newValue
-                case "eventAutoHeal": events.autoHeal = newValue
-                default: break
-                }
-            }
+            get: { events[key] },
+            set: { events[key] = $0 }
         )
     }
 
@@ -235,10 +216,10 @@ struct NotificationProviderFormView: View {
         defer { isSaving = false }
 
         let config = buildConfigPayload(formValues, provider: provider, events: events)
-        let body = NotificationUpdate(
-            config: config,
+        let body = UpdateNotificationSettings(
+            provider: provider,
             enabled: enabled,
-            provider: provider.rawValue
+            config: config
         )
 
         do {

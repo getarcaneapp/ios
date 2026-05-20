@@ -5,7 +5,7 @@ struct ContainerDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let container: ContainerInfo
+    let container: ContainerSummary
     let environmentID: EnvironmentID
 
     @State private var details: ContainerDetails?
@@ -171,13 +171,13 @@ struct ContainerDetailView: View {
                 configSection(details.config)
                 stateSection(details.state)
                 hostConfigSection(details.hostConfig)
-                if let ports = details.ports, !ports.isEmpty {
-                    ContainerPortsSection(ports: ports)
+                if !details.ports.isEmpty {
+                    ContainerPortsSection(ports: details.ports)
                 }
                 if let health = details.state.health {
                     ContainerHealthSection(health: health)
                 }
-                let networks = details.networkSettings.networks.additionalProperties
+                let networks = details.networkSettings.networks
                 if !networks.isEmpty {
                     networkSection(networks)
                 }
@@ -384,11 +384,11 @@ struct ContainerDetailView: View {
             case .start: try await client.containers.start(envID: environmentID, id: container.id)
             case .stop: try await client.containers.stop(envID: environmentID, id: container.id)
             case .restart: try await client.containers.restart(envID: environmentID, id: container.id)
-            case .pause: try await client.pauseContainer(envID: environmentID, id: container.id)
-            case .unpause: try await client.unpauseContainer(envID: environmentID, id: container.id)
+            case .pause: try await client.containers.pause(envID: environmentID, id: container.id)
+            case .unpause: try await client.containers.unpause(envID: environmentID, id: container.id)
             case .redeploy:
                 let path = client.rest.environmentPath(environmentID, "containers/\(container.id)/redeploy")
-                let _: ContainerInfo = try await client.rest.post(path, body: String?.none)
+                let _: ContainerSummary = try await client.rest.post(path, body: String?.none)
             }
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
@@ -404,7 +404,7 @@ struct ContainerDetailView: View {
         defer { isActioning = false }
         do {
             let path = client.rest.environmentPath(environmentID, "containers/\(container.id)")
-            let _: DataResponse<String> = try await client.rest.delete(path)
+            try await client.rest.deleteVoid(path)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
             dismiss()
@@ -418,7 +418,7 @@ struct ContainerDetailView: View {
             return .failure(ArcaneError.transport("No client"))
         }
         do {
-            try await client.renameContainer(envID: environmentID, id: container.id, newName: newName)
+            try await client.containers.rename(envID: environmentID, id: container.id, newName: newName)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
             await loadDetails()

@@ -407,8 +407,7 @@ struct SettingsCategoryView: View {
 
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: changedPairs)
-            var update = try JSONDecoder().decode(SettingsUpdate.self, from: jsonData)
-            update._dollar_schema = nil
+            let update = try JSONDecoder().decode(UpdateSettings.self, from: jsonData)
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
             let _: [PublicSetting] = try await client.rest.put(path, body: update)
             for (key, value) in changedPairs {

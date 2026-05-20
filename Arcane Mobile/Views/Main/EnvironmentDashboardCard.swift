@@ -3,7 +3,7 @@ import Arcane
 
 struct EnvironmentDashboardCard: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    let environment: ServerEnvironment
+    let environment: Arcane.Environment
     var cachedCard: DashboardGlobalEnvironmentCard?
     var onSelect: () -> Void = {}
 
@@ -133,7 +133,7 @@ struct EnvironmentDashboardCard: View {
         .task {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled, let client = manager.client else { return }
-            let stream = client.system.stats(envID: envID, interval: 2)
+            let stream = client.system.statsStream(envID: envID)
             do {
                 for try await frame in stream {
                     latestStats = frame

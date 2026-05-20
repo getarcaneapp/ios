@@ -9,7 +9,7 @@ struct ImagesView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
-    @State private var images: [ImageInfo] = []
+    @State private var images: [ImageSummary] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
@@ -32,12 +32,12 @@ struct ImagesView: View {
 
     private var activeFilterCount: Int { tagsFilter != .all ? 1 : 0 }
 
-    private var filtered: [ImageInfo] {
+    private var filtered: [ImageSummary] {
         images.filter { image in
             let matchesSearch = searchText.isEmpty ||
                 image.displayName.localizedCaseInsensitiveContains(searchText) ||
                 image.id.localizedCaseInsensitiveContains(searchText)
-            let isTagged = image.repoTags?.contains(where: { $0 != "<none>:<none>" }) ?? false
+            let isTagged = image.repoTags.contains(where: { $0 != "<none>:<none>" })
             let matchesTags = tagsFilter == .all
                 || (tagsFilter == .tagged && isTagged)
                 || (tagsFilter == .untagged && !isTagged)
@@ -48,15 +48,15 @@ struct ImagesView: View {
         }
     }
 
-    private var usedImages: [ImageInfo] {
+    private var usedImages: [ImageSummary] {
         filtered.filter(\.inUse)
     }
 
-    private var unusedImages: [ImageInfo] {
+    private var unusedImages: [ImageSummary] {
         filtered.filter { !$0.inUse }
     }
 
-    private var listSections: [StableListSection<String, ImageInfo>] {
+    private var listSections: [StableListSection<String, ImageSummary>] {
         [
             .init(id: "used", title: "Used", items: usedImages),
             .init(id: "unused", title: "Unused", items: unusedImages)
@@ -227,7 +227,7 @@ struct ImagesView: View {
         }
     }
 
-    private func imageLink(_ image: ImageInfo) -> some View {
+    private func imageLink(_ image: ImageSummary) -> some View {
         let state = updateState(for: image)
         return NavigationLink(destination: ImageDetailView(image: image, environmentID: environmentID)) {
             ImageRow(image: image, updateState: state)
@@ -251,7 +251,7 @@ struct ImagesView: View {
         }
     }
 
-    private func imagePreview(_ image: ImageInfo, state: ImageUpdateState) -> some View {
+    private func imagePreview(_ image: ImageSummary, state: ImageUpdateState) -> some View {
         var badges: [RowPreviewCard.PreviewBadge] = [
             .init(text: image.inUse ? "In Use" : "Unused",
                   color: image.inUse ? .green : .secondary)
@@ -292,46 +292,12 @@ struct ImagesView: View {
             }
         }
         do {
-            let response: ImageListPage?
-            if reset, let cached = manager.cached {
-                let path = client.rest.environmentPath(environmentID, "images")
-                let cachePath = "\(path)?start=0&limit=\(Self.pageSize)"
-                let fetcher: @Sendable () async throws -> ImageListPage = {
-                    try await client.listImagesPage(
-                        envID: environmentID,
-                        start: 0,
-                        limit: Self.pageSize
-                    )
-                }
-                response = try await cached.getCustom(
-                    path: cachePath,
-                    as: ImageListPage.self,
-                    policy: .imagesList,
-                    envID: environmentID,
-                    refresh: refresh,
-                    onFresh: { fresh in
-                        applyImagesPage(fresh, reset: true, generation: generation)
-                        Task { await loadUpdateInfo(for: fresh.data) }
-                    },
-                    fetcher: fetcher
-                )
-            } else {
-                response = try await client.listImagesPage(
-                    envID: environmentID,
-                    start: start,
-                    limit: Self.pageSize
-                )
-            }
-
-            guard let response else {
-                guard loadGeneration == generation else { return }
-                if reset {
-                    images = []
-                    currentPage = 1
-                    hasMore = false
-                }
-                return
-            }
+            // `ImageListResponse` is Decodable-only, so we can't drive it through
+            // the cache layer (which requires Codable). Fetch directly through
+            // the SDK service — pull-to-refresh and pagination keep the data
+            // current.
+            let query = SearchPaginationSort(start: start, limit: Self.pageSize)
+            let response = try await client.images.list(envID: environmentID, query: query)
             applyImagesPage(response, reset: reset, generation: generation)
             await loadUpdateInfo(for: response.data)
         } catch {
@@ -340,7 +306,7 @@ struct ImagesView: View {
         }
     }
 
-    private func applyImagesPage(_ response: ImageListPage, reset: Bool, generation: Int) {
+    private func applyImagesPage(_ response: ImageListResponse, reset: Bool, generation: Int) {
         guard loadGeneration == generation else { return }
         if reset {
             images = response.data
@@ -361,10 +327,10 @@ struct ImagesView: View {
         ])
     }
 
-    private func loadUpdateInfo(for newImages: [ImageInfo]) async {
+    private func loadUpdateInfo(for newImages: [ImageSummary]) async {
         guard let client = manager.client else { return }
         let refs = newImages
-            .flatMap { $0.repoTags ?? [] }
+            .flatMap { $0.repoTags }
             .filter { $0 != "<none>:<none>" }
         guard !refs.isEmpty else { return }
         do {
@@ -377,8 +343,8 @@ struct ImagesView: View {
         }
     }
 
-    private func updateState(for image: ImageInfo) -> ImageUpdateState {
-        guard let tags = image.repoTags else { return .unknown }
+    private func updateState(for image: ImageSummary) -> ImageUpdateState {
+        let tags = image.repoTags
         for tag in tags where tag != "<none>:<none>" {
             if let info = updateInfo[tag] {
                 if let err = info.error, !err.isEmpty { return .error(err) }
@@ -405,7 +371,7 @@ struct ImagesView: View {
         } catch {}
     }
 
-    private func removeImage(_ image: ImageInfo) async {
+    private func removeImage(_ image: ImageSummary) async {
         guard let client = manager.client else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
@@ -429,7 +395,7 @@ enum ImageUpdateState: Equatable {
 }
 
 struct ImageRow: View {
-    let image: ImageInfo
+    let image: ImageSummary
     var updateState: ImageUpdateState = .unknown
 
     var body: some View {
@@ -624,12 +590,8 @@ struct PullImageView: View {
 
     private func pullImage() {
         guard let client = manager.client else { return }
-        guard let serverURL = URL(string: manager.serverURL) else {
-            errorMessage = "Invalid server URL"
-            return
-        }
         let (image, tag) = parseImageNameAndTag(imageName)
-        let request = PullImageRequest(imageName: image, tag: tag)
+        let options = ImagePullOptions(imageName: image, tag: tag)
 
         isPulling = true
         didComplete = false
@@ -641,16 +603,7 @@ struct PullImageView: View {
         pullTask = Task {
             defer { isPulling = false; pullTask = nil }
             do {
-                let body = try JSONEncoder().encode(request)
-                let path = client.rest.environmentPath(environmentID, "images/pull")
-                let stream = try await NDJSONStream.stream(
-                    PullProgressEvent.self,
-                    client: client,
-                    serverURL: serverURL,
-                    path: path,
-                    method: "POST",
-                    body: body
-                )
+                let stream = try client.images.pullStream(envID: environmentID, options: options)
                 for try await event in stream {
                     if Task.isCancelled { break }
                     apply(event)
@@ -687,8 +640,15 @@ struct PullImageView: View {
         } else if let status = event.status, !status.isEmpty {
             statusLine = status
         }
-        if event.phase?.lowercased() == "complete" {
-            statusLine = "Pull complete"
+        // The SDK's `PullProgressEvent` doesn't expose an explicit phase, so
+        // detect the terminal status string. "Pull complete" is emitted per-layer;
+        // the overall terminal messages are "Status: Downloaded newer image..." /
+        // "Status: Image is up to date...".
+        if let status = event.status {
+            let lower = status.lowercased()
+            if lower.hasPrefix("status: ") || lower == "pull complete" {
+                statusLine = lower == "pull complete" ? "Pull complete" : status
+            }
         }
     }
 

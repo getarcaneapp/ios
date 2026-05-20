@@ -1,11 +1,8 @@
 import SwiftUI
 import Arcane
-import OpenAPIRuntime
 
-enum NotificationProvider: String, CaseIterable, Identifiable {
-    case discord, email, telegram, signal, slack, ntfy, pushover, gotify, matrix, generic
-
-    var id: String { rawValue }
+extension NotificationProvider: @retroactive Identifiable {
+    public var id: String { rawValue }
 
     var displayName: String {
         switch self {
@@ -92,190 +89,169 @@ struct ProviderFieldDescriptor: Identifiable {
     }
 }
 
-// MARK: - Event Subscriptions
-
 struct EventSubscriptions: Equatable {
     var imageUpdate: Bool = true
     var containerUpdate: Bool = true
     var vulnerabilityFound: Bool = true
-    var pruneReport: Bool = true
-    var autoHeal: Bool = true
+    var pruneReport: Bool = false
+    var autoHeal: Bool = false
 
-    static let keys: [(key: String, label: String)] = [
-        ("eventImageUpdate", "Image Updates"),
-        ("eventContainerUpdate", "Container Updates"),
-        ("eventVulnerabilityFound", "Vulnerability Found"),
-        ("eventPruneReport", "Prune Reports"),
-        ("eventAutoHeal", "Auto-Heal"),
+    struct Key: Identifiable {
+        let key: String
+        let label: String
+        var id: String { key }
+    }
+
+    static let keys: [Key] = [
+        .init(key: "imageUpdate", label: "Image Updates"),
+        .init(key: "containerUpdate", label: "Container Updates"),
+        .init(key: "vulnerabilityFound", label: "Vulnerabilities"),
+        .init(key: "pruneReport", label: "Prune Reports"),
+        .init(key: "autoHeal", label: "Auto-Heal"),
     ]
 
-    func toDict() -> [String: String] {
-        [
-            "eventImageUpdate": String(imageUpdate),
-            "eventContainerUpdate": String(containerUpdate),
-            "eventVulnerabilityFound": String(vulnerabilityFound),
-            "eventPruneReport": String(pruneReport),
-            "eventAutoHeal": String(autoHeal),
-        ]
-    }
-
-    static func from(_ dict: [String: String]) -> EventSubscriptions {
+    /// Build an EventSubscriptions from a flat string map (the form's values).
+    static func from(_ values: [String: String]) -> EventSubscriptions {
         EventSubscriptions(
-            imageUpdate: dict["eventImageUpdate"] == "true",
-            containerUpdate: dict["eventContainerUpdate"] == "true",
-            vulnerabilityFound: dict["eventVulnerabilityFound"] == "true",
-            pruneReport: dict["eventPruneReport"] == "true",
-            autoHeal: dict["eventAutoHeal"] == "true"
+            imageUpdate: values["imageUpdate"].map { $0 == "true" } ?? true,
+            containerUpdate: values["containerUpdate"].map { $0 == "true" } ?? true,
+            vulnerabilityFound: values["vulnerabilityFound"].map { $0 == "true" } ?? true,
+            pruneReport: values["pruneReport"].map { $0 == "true" } ?? false,
+            autoHeal: values["autoHeal"].map { $0 == "true" } ?? false
         )
     }
-}
 
-// MARK: - Provider Field Schemas
+    /// Read/write subscript by key string. Used by event toggle bindings.
+    subscript(key: String) -> Bool {
+        get {
+            switch key {
+            case "imageUpdate": return imageUpdate
+            case "containerUpdate": return containerUpdate
+            case "vulnerabilityFound": return vulnerabilityFound
+            case "pruneReport": return pruneReport
+            case "autoHeal": return autoHeal
+            default: return false
+            }
+        }
+        set {
+            switch key {
+            case "imageUpdate": imageUpdate = newValue
+            case "containerUpdate": containerUpdate = newValue
+            case "vulnerabilityFound": vulnerabilityFound = newValue
+            case "pruneReport": pruneReport = newValue
+            case "autoHeal": autoHeal = newValue
+            default: break
+            }
+        }
+    }
+}
 
 func fieldsForProvider(_ provider: NotificationProvider) -> [ProviderFieldDescriptor] {
     switch provider {
     case .discord:
         return [
-            .init(key: "webhookId", label: "Webhook ID", placeholder: "Discord webhook ID", required: true),
-            .init(key: "token", label: "Token", placeholder: "Discord webhook token", kind: .password, required: true),
-            .init(key: "username", label: "Username", placeholder: "Bot username"),
-            .init(key: "avatarUrl", label: "Avatar URL", placeholder: "https://example.com/avatar.png", kind: .url),
+            .init(key: "webhookUrl", label: "Webhook URL", placeholder: "https://discord.com/api/webhooks/...", kind: .url, required: true),
+            .init(key: "username", label: "Username", placeholder: "Arcane Bot"),
+            .init(key: "avatarUrl", label: "Avatar URL", placeholder: "https://...", kind: .url),
         ]
     case .email:
         return [
             .init(key: "smtpHost", label: "SMTP Host", placeholder: "smtp.example.com", required: true),
             .init(key: "smtpPort", label: "SMTP Port", placeholder: "587", kind: .number, required: true, defaultValue: "587"),
-            .init(key: "smtpUsername", label: "Username", placeholder: "user@example.com"),
+            .init(key: "smtpUser", label: "Username", placeholder: "user@example.com", kind: .email),
             .init(key: "smtpPassword", label: "Password", kind: .password),
-            .init(key: "fromAddress", label: "From Address", placeholder: "noreply@example.com", kind: .email, required: true),
-            .init(key: "toAddresses", label: "To Addresses", placeholder: "user@example.com, admin@example.com", kind: .textarea, required: true),
-            .init(key: "tlsMode", label: "TLS Mode", kind: .picker([
-                .init(label: "None", value: "none"),
-                .init(label: "STARTTLS", value: "starttls"),
-                .init(label: "SSL", value: "ssl"),
-            ]), required: true, defaultValue: "starttls"),
+            .init(key: "from", label: "From Address", placeholder: "arcane@example.com", kind: .email, required: true),
+            .init(key: "to", label: "To Address(es)", placeholder: "alerts@example.com (comma-separated for multiple)", required: true),
+            .init(key: "tls", label: "Use TLS", kind: .toggle, defaultValue: "true"),
         ]
     case .telegram:
         return [
-            .init(key: "botToken", label: "Bot Token", kind: .password, required: true),
-            .init(key: "chatIds", label: "Chat IDs", placeholder: "123456789, -100123456", kind: .textarea, required: true),
-            .init(key: "title", label: "Title", placeholder: "Arcane"),
-            .init(key: "preview", label: "Link Preview", kind: .toggle, defaultValue: "true"),
-            .init(key: "notification", label: "Send Notification Sound", kind: .toggle, defaultValue: "true"),
+            .init(key: "botToken", label: "Bot Token", placeholder: "123456:ABC...", kind: .password, required: true),
+            .init(key: "chatId", label: "Chat ID", placeholder: "-1001234567890", required: true),
         ]
     case .signal:
         return [
-            .init(key: "host", label: "Host", placeholder: "localhost", required: true, defaultValue: "localhost"),
-            .init(key: "port", label: "Port", placeholder: "8080", kind: .number, required: true, defaultValue: "8080"),
-            .init(key: "user", label: "Username"),
-            .init(key: "password", label: "Password", kind: .password),
-            .init(key: "token", label: "Token", placeholder: "Auth token (alternative to user/pass)", kind: .password),
-            .init(key: "source", label: "Source Number", placeholder: "+1234567890", required: true),
-            .init(key: "recipients", label: "Recipients", placeholder: "+1234567890, +0987654321", kind: .textarea, required: true),
-            .init(key: "disableTls", label: "Disable TLS", kind: .toggle, defaultValue: "false"),
+            .init(key: "apiUrl", label: "Signal API URL", placeholder: "https://signal.example.com", kind: .url, required: true),
+            .init(key: "number", label: "Signal Number", placeholder: "+1234567890", required: true),
+            .init(key: "recipients", label: "Recipients", placeholder: "+1987654321 (comma-separated)", required: true),
         ]
     case .slack:
         return [
-            .init(key: "token", label: "Token", kind: .password, required: true),
-            .init(key: "botName", label: "Bot Name", placeholder: "Arcane", defaultValue: "Arcane"),
-            .init(key: "icon", label: "Icon", placeholder: ":robot_face:"),
-            .init(key: "color", label: "Color", placeholder: "#36a64f"),
-            .init(key: "title", label: "Title"),
-            .init(key: "channel", label: "Channel", placeholder: "#general"),
-            .init(key: "threadTs", label: "Thread Timestamp"),
+            .init(key: "webhookUrl", label: "Webhook URL", placeholder: "https://hooks.slack.com/services/...", kind: .url, required: true),
+            .init(key: "channel", label: "Channel Override", placeholder: "#alerts"),
+            .init(key: "username", label: "Username Override", placeholder: "Arcane"),
         ]
     case .ntfy:
         return [
-            .init(key: "host", label: "Host", placeholder: "ntfy.sh", required: true, defaultValue: "ntfy.sh"),
-            .init(key: "port", label: "Port", placeholder: "0", kind: .number, defaultValue: "0"),
-            .init(key: "topic", label: "Topic", placeholder: "arcane-notifications", required: true),
-            .init(key: "username", label: "Username"),
-            .init(key: "password", label: "Password", kind: .password),
-            .init(key: "title", label: "Title"),
-            .init(key: "priority", label: "Priority", kind: .picker([
-                .init(label: "Min", value: "min"),
-                .init(label: "Low", value: "low"),
-                .init(label: "Default", value: "default"),
-                .init(label: "High", value: "high"),
-                .init(label: "Max", value: "max"),
-            ]), defaultValue: "default"),
-            .init(key: "tags", label: "Tags", placeholder: "tag1, tag2", kind: .textarea),
-            .init(key: "icon", label: "Icon URL", placeholder: "https://example.com/icon.png"),
-            .init(key: "cache", label: "Cache Messages", kind: .toggle, defaultValue: "true"),
-            .init(key: "firebase", label: "Firebase Delivery", kind: .toggle, defaultValue: "true"),
-            .init(key: "disableTlsVerification", label: "Disable TLS Verification", kind: .toggle, defaultValue: "false"),
+            .init(key: "serverUrl", label: "Server URL", placeholder: "https://ntfy.sh", kind: .url, required: true, defaultValue: "https://ntfy.sh"),
+            .init(key: "topic", label: "Topic", placeholder: "arcane-alerts", required: true),
+            .init(key: "username", label: "Username (optional)"),
+            .init(key: "password", label: "Password (optional)", kind: .password),
         ]
     case .pushover:
         return [
-            .init(key: "token", label: "API Token", kind: .password, required: true),
-            .init(key: "user", label: "User Key", required: true),
-            .init(key: "devices", label: "Devices", placeholder: "device1, device2", kind: .textarea),
+            .init(key: "userKey", label: "User Key", required: true),
+            .init(key: "apiToken", label: "API Token", kind: .password, required: true),
             .init(key: "priority", label: "Priority", kind: .picker([
-                .init(label: "Lowest (-2)", value: "-2"),
-                .init(label: "Low (-1)", value: "-1"),
-                .init(label: "Normal (0)", value: "0"),
-                .init(label: "High (1)", value: "1"),
-                .init(label: "Emergency (2)", value: "2"),
+                .init(label: "Lowest", value: "-2"),
+                .init(label: "Low", value: "-1"),
+                .init(label: "Normal", value: "0"),
+                .init(label: "High", value: "1"),
+                .init(label: "Emergency", value: "2"),
             ]), defaultValue: "0"),
-            .init(key: "title", label: "Title"),
         ]
     case .gotify:
         return [
-            .init(key: "host", label: "Host", placeholder: "gotify.example.com", required: true),
-            .init(key: "port", label: "Port", kind: .number),
+            .init(key: "serverUrl", label: "Server URL", placeholder: "https://gotify.example.com", kind: .url, required: true),
             .init(key: "token", label: "App Token", kind: .password, required: true),
-            .init(key: "path", label: "Path"),
-            .init(key: "priority", label: "Priority", kind: .picker(
-                (0...10).map { .init(label: "\($0)", value: "\($0)") }
-            ), defaultValue: "0"),
-            .init(key: "title", label: "Title"),
-            .init(key: "disableTls", label: "Disable TLS", kind: .toggle, defaultValue: "false"),
+            .init(key: "priority", label: "Priority", kind: .number, defaultValue: "5"),
         ]
     case .matrix:
         return [
-            .init(key: "host", label: "Homeserver", placeholder: "matrix.org", required: true),
-            .init(key: "port", label: "Port", kind: .number),
-            .init(key: "rooms", label: "Rooms", placeholder: "!room:matrix.org"),
-            .init(key: "username", label: "Username"),
-            .init(key: "password", label: "Password", kind: .password),
-            .init(key: "disableTlsVerification", label: "Disable TLS Verification", kind: .toggle, defaultValue: "false"),
+            .init(key: "homeserverUrl", label: "Homeserver URL", placeholder: "https://matrix.org", kind: .url, required: true),
+            .init(key: "accessToken", label: "Access Token", kind: .password, required: true),
+            .init(key: "roomId", label: "Room ID", placeholder: "!roomId:matrix.org", required: true),
         ]
     case .generic:
         return [
-            .init(key: "webhookUrl", label: "Webhook URL", placeholder: "https://example.com/webhook", kind: .url, required: true),
-            .init(key: "method", label: "HTTP Method", defaultValue: "POST"),
-            .init(key: "contentType", label: "Content Type", defaultValue: "application/json"),
-            .init(key: "titleKey", label: "Title Key", defaultValue: "title"),
-            .init(key: "messageKey", label: "Message Key", defaultValue: "message"),
+            .init(key: "url", label: "Webhook URL", kind: .url, required: true),
+            .init(key: "method", label: "HTTP Method", kind: .picker([
+                .init(label: "POST", value: "POST"),
+                .init(label: "PUT", value: "PUT"),
+                .init(label: "PATCH", value: "PATCH"),
+            ]), defaultValue: "POST"),
             .init(key: "customHeaders", label: "Custom Headers", placeholder: "key1:value1, key2:value2", kind: .textarea),
         ]
     }
 }
 
-// MARK: - OpenAPIValueContainer Conversion Helpers
+// MARK: - Config Payload helpers
 
-func extractConfigValues(_ config: Components.Schemas.NotificationResponse.ConfigPayload) -> [String: String] {
+/// Extract a flat `[String: String]` from the SDK's tolerant `[String: JSONValue]`
+/// notification config payload. Used by the UI form to populate fields.
+func extractConfigValues(_ config: [String: JSONValue]) -> [String: String] {
     var result: [String: String] = [:]
-    for (key, container) in config.additionalProperties {
-        if let str = container.value as? String {
-            result[key] = str
-        } else if let bool = container.value as? Bool {
-            result[key] = String(bool)
-        } else if let num = container.value as? Int {
-            result[key] = String(num)
-        } else if let num = container.value as? Double {
-            if num.truncatingRemainder(dividingBy: 1) == 0 {
-                result[key] = String(Int(num))
+    for (key, value) in config {
+        switch value {
+        case let .string(s): result[key] = s
+        case let .bool(b): result[key] = String(b)
+        case let .number(n):
+            if n.truncatingRemainder(dividingBy: 1) == 0 {
+                result[key] = String(Int(n))
             } else {
-                result[key] = String(num)
+                result[key] = String(n)
             }
+        default:
+            continue
         }
     }
     return result
 }
 
-func buildConfigPayload(_ values: [String: String], provider: NotificationProvider, events: EventSubscriptions) -> Components.Schemas.NotificationUpdate.ConfigPayload {
-    var props: [String: OpenAPIValueContainer] = [:]
+/// Build a SDK-shaped notification config payload (`[String: JSONValue]`) from
+/// the form's `[String: String]` field map. Coerces toggle/number kinds.
+func buildConfigPayload(_ values: [String: String], provider: NotificationProvider, events: EventSubscriptions) -> [String: JSONValue] {
+    var props: [String: JSONValue] = [:]
     let fields = fieldsForProvider(provider)
 
     for (key, value) in values {
@@ -283,22 +259,26 @@ func buildConfigPayload(_ values: [String: String], provider: NotificationProvid
         let field = fields.first { $0.key == key }
         switch field?.kind {
         case .toggle:
-            props[key] = try! OpenAPIValueContainer(unvalidatedValue: value == "true")
+            props[key] = .bool(value == "true")
         case .number:
             if let intVal = Int(value) {
-                props[key] = try! OpenAPIValueContainer(unvalidatedValue: intVal)
+                props[key] = .number(Double(intVal))
+            } else if let dblVal = Double(value) {
+                props[key] = .number(dblVal)
             } else {
-                props[key] = try! OpenAPIValueContainer(unvalidatedValue: value)
+                props[key] = .string(value)
             }
         default:
-            props[key] = try! OpenAPIValueContainer(unvalidatedValue: value)
+            props[key] = .string(value)
         }
     }
 
-    let eventDict = events.toDict()
-    for (key, value) in eventDict {
-        props[key] = try! OpenAPIValueContainer(unvalidatedValue: value == "true")
-    }
+    // Event subscription flags
+    props["imageUpdate"] = .bool(events.imageUpdate)
+    props["containerUpdate"] = .bool(events.containerUpdate)
+    props["vulnerabilityFound"] = .bool(events.vulnerabilityFound)
+    props["pruneReport"] = .bool(events.pruneReport)
+    props["autoHeal"] = .bool(events.autoHeal)
 
-    return .init(additionalProperties: props)
+    return props
 }

@@ -126,9 +126,9 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     var isEnvironmentScoped: Bool {
         switch self {
         case .dashboard, .containers, .images, .projects, .volumes, .networks,
-             .ports, .updates, .gitOps, .swarm, .jobs:
+             .ports, .gitOps, .swarm, .jobs:
             return true
-        case .events, .gitRepositories, .users, .apiKeys,
+        case .updates, .events, .gitRepositories, .users, .apiKeys,
              .containerRegistries, .templateRegistries,
              .notifications, .webhooks, .systemSettings, .authentication, .builds:
             return false
@@ -179,7 +179,7 @@ func appTabDestination(
     case .ports:
         PortsView(environmentID: manager.activeEnvironmentID)
     case .updates:
-        UpdatesView(environmentID: manager.activeEnvironmentID)
+        UpdatesView()
     case .events:
         EventsView()
     case .gitRepositories:

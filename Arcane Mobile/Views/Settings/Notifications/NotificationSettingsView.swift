@@ -3,7 +3,7 @@ import Arcane
 
 struct NotificationSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @State private var configuredProviders: [NotificationResponse] = []
+    @State private var configuredProviders: [NotificationSettings] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
 
@@ -17,8 +17,8 @@ struct NotificationSettingsView: View {
     @State private var appriseTesting = false
     @State private var appriseTestResult: String?
 
-    private func configuredResponse(for provider: NotificationProvider) -> NotificationResponse? {
-        configuredProviders.first { $0.provider == provider.rawValue }
+    private func configuredResponse(for provider: NotificationProvider) -> NotificationSettings? {
+        configuredProviders.first { $0.provider == provider }
     }
 
     var body: some View {
@@ -159,7 +159,7 @@ struct NotificationSettingsView: View {
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/settings")
             let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            configuredProviders = try JSONDecoder().decode([NotificationResponse].self, from: rawData)
+            configuredProviders = try JSONDecoder().decode([NotificationSettings].self, from: rawData)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -169,8 +169,8 @@ struct NotificationSettingsView: View {
         guard let client = manager.client else { return }
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/settings/\(provider.rawValue)")
-            let _: DataResponse<String> = try await client.rest.delete(path)
-            configuredProviders.removeAll { $0.provider == provider.rawValue }
+            try await client.rest.deleteVoid(path)
+            configuredProviders.removeAll { $0.provider == provider }
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -181,7 +181,7 @@ struct NotificationSettingsView: View {
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/apprise")
             let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            let response = try JSONDecoder().decode(AppriseResponse.self, from: rawData)
+            let response = try JSONDecoder().decode(AppriseSettings.self, from: rawData)
             appriseApiUrl = response.apiUrl
             appriseEnabled = response.enabled
             appriseImageUpdateTag = response.imageUpdateTag
@@ -195,15 +195,15 @@ struct NotificationSettingsView: View {
         appriseSaving = true
         defer { appriseSaving = false }
         do {
-            let body = AppriseUpdate(
+            let body = UpdateAppriseSettings(
                 apiUrl: appriseApiUrl,
-                containerUpdateTag: appriseContainerUpdateTag,
                 enabled: appriseEnabled,
-                imageUpdateTag: appriseImageUpdateTag
+                imageUpdateTag: appriseImageUpdateTag,
+                containerUpdateTag: appriseContainerUpdateTag
             )
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/apprise")
             let rawData = try await client.transport.rawRequest(path, method: "POST", body: body)
-            let _ = try JSONDecoder().decode(AppriseResponse.self, from: rawData)
+            let _ = try JSONDecoder().decode(AppriseSettings.self, from: rawData)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

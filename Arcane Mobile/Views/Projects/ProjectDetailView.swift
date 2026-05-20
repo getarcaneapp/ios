@@ -5,10 +5,10 @@ struct ProjectDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    let project: Project
+    let project: ProjectDetails
     let environmentID: EnvironmentID
 
-    @State private var refreshedProject: Project?
+    @State private var refreshedProject: ProjectDetails?
     @State private var isLoading = false
     @State private var isActioning = false
     @State private var actionStatus: String?
@@ -19,7 +19,7 @@ struct ProjectDetailView: View {
     @State private var errorMessage: String?
     @State private var runningActionID: String?
 
-    private var currentProject: Project { refreshedProject ?? project }
+    private var currentProject: ProjectDetails { refreshedProject ?? project }
     private var isRunning: Bool { currentProject.status.lowercased() == "running" }
     private var hasBuild: Bool { currentProject.hasBuildDirective == true }
 
@@ -115,7 +115,7 @@ struct ProjectDetailView: View {
         .sheet(isPresented: $showLogs) {
             LogsView(
                 title: currentProject.displayName,
-                logStream: manager.client?.projects.logs(envID: environmentID, id: project.id)
+                logStream: manager.client?.projects.logs(envID: environmentID, projectID: project.id)
             )
         }
         .sheet(isPresented: $showCompose) {
@@ -346,8 +346,8 @@ struct ProjectDetailView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)")
-            if let result: Project = try await cached.get(
-                path, as: Project.self, policy: .projects,
+            if let result: ProjectDetails = try await cached.get(
+                path, as: ProjectDetails.self, policy: .projects,
                 envID: environmentID, refresh: refresh,
                 onFresh: { fresh in refreshedProject = fresh }
             ) {
@@ -542,7 +542,7 @@ struct CreateProjectView: View {
     @State private var name: String
     @State private var composeContent: String
     @State private var envContent: String
-    @State private var templates: [ComposeTemplate] = []
+    @State private var templates: [Template] = []
     @State private var selectedTemplateID = ""
     @State private var isLoadingTemplates = false
     @State private var isLoading = false
@@ -570,7 +570,7 @@ struct CreateProjectView: View {
 
     private var isPrefilled: Bool { prefilledCompose != nil }
 
-    private var selectedTemplate: ComposeTemplate? {
+    private var selectedTemplate: Template? {
         templates.first { $0.id == selectedTemplateID }
     }
 
@@ -691,7 +691,7 @@ struct CreateProjectView: View {
     private func applyTemplate(id: String) async {
         guard !id.isEmpty, let client = manager.client else { return }
         do {
-            let content: ComposeTemplateContent = try await client.rest.get("templates/\(id)/content")
+            let content: TemplateContent = try await client.rest.get("templates/\(id)/content")
             composeContent = content.content
             envContent = content.envContent
             if name.isEmpty {
@@ -713,7 +713,7 @@ struct CreateProjectView: View {
                 "envContent": AnyCodable(envContent)
             ]
             let path = client.rest.environmentPath(environmentID, "projects")
-            let _: Project = try await client.rest.post(path, body: body)
+            let _: ProjectDetails = try await client.rest.post(path, body: body)
             if let cached = manager.cached {
                 await cached.invalidate(envID: environmentID, paths: [
                     client.rest.environmentPath(environmentID, "projects") + "*",

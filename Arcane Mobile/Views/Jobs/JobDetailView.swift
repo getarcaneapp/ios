@@ -57,7 +57,8 @@ struct JobDetailView: View {
                 LabeledContent("Runnable Manually", value: job.canRunManually ? "Yes" : "No")
             }
 
-            if let prerequisites = job.prerequisites, !prerequisites.isEmpty {
+            if !job.prerequisites.isEmpty {
+                let prerequisites = job.prerequisites
                 Section("Prerequisites") {
                     ForEach(Array(prerequisites.enumerated()), id: \.offset) { _, prerequisite in
                         HStack(spacing: 10) {

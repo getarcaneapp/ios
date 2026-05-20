@@ -3,7 +3,7 @@ import Arcane
 
 struct EnvironmentDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    let environment: ServerEnvironment
+    let environment: Arcane.Environment
 
     @State private var dockerInfo: DockerInfo?
     @State private var isLoading = false
@@ -13,7 +13,7 @@ struct EnvironmentDetailView: View {
 
     var body: some View {
         List {
-            // Environment info header
+            // Arcane.Environment info header
             Section {
                 infoCard
             }
@@ -55,14 +55,14 @@ struct EnvironmentDetailView: View {
             // System info
             if let info = dockerInfo {
                 Section("Docker Info") {
-                    LabeledContent("Docker Version", value: info.serverVersion)
-                    LabeledContent("OS", value: info.operatingSystem)
+                    LabeledContent("Docker Version", value: info.serverVersion ?? "—")
+                    LabeledContent("OS", value: info.operatingSystem ?? "—")
                     LabeledContent("Architecture", value: info.architecture)
-                    LabeledContent("CPUs", value: "\(info.ncpu)")
-                    LabeledContent("Memory", value: info.memTotal.byteString)
-                    if info.swarm.localNodeState != "inactive" {
-                        let state = info.swarm.localNodeState
-                        LabeledContent("Swarm", value: state.capitalized)
+                    LabeledContent("CPUs", value: info.ncpu.map { "\($0)" } ?? "—")
+                    LabeledContent("Memory", value: info.memTotal?.byteString ?? "—")
+                    if let swarmState = info.info?["Swarm"]?.objectValue?["LocalNodeState"]?.stringValue,
+                       swarmState != "inactive" {
+                        LabeledContent("Swarm", value: swarmState.capitalized)
                     }
                 }
             }
@@ -100,8 +100,8 @@ struct EnvironmentDetailView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(environment.name ?? environment.id)
                     .font(.title3.bold())
-                if let url = environment.url {
-                    Text(url)
+                if !environment.apiUrl.isEmpty {
+                    Text(environment.apiUrl)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
