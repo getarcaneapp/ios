@@ -45,12 +45,20 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
 }
 
 struct AppearanceSettingsView: View {
-    @AppStorage("accentColorOption") private var selectedOption = "blue"
     @AppStorage("accentColorHex") private var accentColorHex = ""
     @State private var customColor: Color = .blue
-    @State private var showColorPicker = false
 
-    private let columns = Array(repeating: GridItem(.adaptive(minimum: 48), spacing: 12), count: 1)
+    // Derive the selected swatch from the stored hex so the two can never
+    // drift apart. An empty hex means "use the system default" which we
+    // visually represent as the blue swatch.
+    private var selectedOption: AccentColorOption {
+        if accentColorHex.isEmpty { return .blue }
+        let normalized = accentColorHex.lowercased()
+        for option in AccentColorOption.allCases where option != .custom {
+            if option.hex?.lowercased() == normalized { return option }
+        }
+        return .custom
+    }
 
     var body: some View {
         Form {
@@ -58,7 +66,6 @@ struct AppearanceSettingsView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 48), spacing: 12)], spacing: 12) {
                     ForEach(AccentColorOption.allCases.filter { $0 != .custom }) { option in
                         Button {
-                            selectedOption = option.rawValue
                             if let hex = option.hex {
                                 accentColorHex = hex
                             }
@@ -67,7 +74,7 @@ struct AppearanceSettingsView: View {
                                 .fill(option.color)
                                 .frame(width: 48, height: 48)
                                 .overlay {
-                                    if selectedOption == option.rawValue {
+                                    if selectedOption == option {
                                         Image(systemName: "checkmark")
                                             .font(.headline.bold())
                                             .foregroundStyle(.white)
@@ -76,7 +83,7 @@ struct AppearanceSettingsView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(Text(option.rawValue.capitalized))
-                        .accessibilityAddTraits(selectedOption == option.rawValue ? .isSelected : [])
+                        .accessibilityAddTraits(selectedOption == option ? .isSelected : [])
                     }
                 }
                 .padding(.vertical, 8)
@@ -92,7 +99,7 @@ struct AppearanceSettingsView: View {
                         .fill(customColor)
                         .frame(width: 32, height: 32)
                         .overlay {
-                            if selectedOption == "custom" {
+                            if selectedOption == .custom {
                                 Image(systemName: "checkmark")
                                     .font(.caption.bold())
                                     .foregroundStyle(.white)
@@ -102,13 +109,12 @@ struct AppearanceSettingsView: View {
                     ColorPicker("Custom Color", selection: $customColor, supportsOpacity: false)
                 }
                 .onChange(of: customColor) { _, newColor in
-                    selectedOption = "custom"
                     if let hex = newColor.hexString {
                         accentColorHex = hex
                     }
                 }
 
-                if selectedOption == "custom" {
+                if selectedOption == .custom {
                     Button("Apply Custom Color") {
                         if let hex = customColor.hexString {
                             accentColorHex = hex
@@ -144,7 +150,6 @@ struct AppearanceSettingsView: View {
 
             Section {
                 Button("Reset to Default") {
-                    selectedOption = "blue"
                     accentColorHex = ""
                 }
                 .foregroundStyle(.red)
@@ -153,7 +158,7 @@ struct AppearanceSettingsView: View {
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            if selectedOption == "custom", let color = Color(hex: accentColorHex) {
+            if selectedOption == .custom, let color = Color(hex: accentColorHex) {
                 customColor = color
             }
         }

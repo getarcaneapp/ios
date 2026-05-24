@@ -9,13 +9,14 @@ enum LoginMode {
 
 struct LoginView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @AppStorage("accentColorHex") private var accentColorHex: String = ""
     var mode: LoginMode
 
     @State private var serverURL: String = ""
     @State private var username: String = ""
     @State private var password: String = ""
     @State private var showSetup: Bool = false
-    
+
     @State private var showsPasswordForm: Bool = false
     @FocusState private var focusedField: Field?
 
@@ -24,7 +25,6 @@ struct LoginView: View {
     }
 
     private var isSetupMode: Bool { mode == .setup || showSetup }
-    private var canEditServer: Bool { mode == .login }
 
     // When OIDC is enabled, the password form is hidden behind a disclosure
     // so the provider button is the primary action. The user can still reveal
@@ -33,24 +33,39 @@ struct LoginView: View {
         !manager.isOIDCAvailable || showsPasswordForm
     }
 
+    // The user's chosen accent color from Settings, falling back to the
+    // system accent so unconfigured users still get a reasonable tint.
+    private var brandColor: Color {
+        if let custom = Color(hex: accentColorHex) {
+            return custom
+        }
+        return .accentColor
+    }
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 28) {
+            VStack(spacing: 24) {
                 Spacer(minLength: 0)
 
                 headerSection
 
-                formCard
+                if !manager.isStartingDemo {
+                    formCard
+                        .transition(.opacity.combined(with: .move(edge: .top)))
 
-                if let error = manager.errorMessage {
-                    ErrorBanner(message: error)
+                    if let error = manager.errorMessage {
+                        ErrorBanner(message: error)
+                    }
+
+                    if let info = manager.demoExpiredMessage {
+                        infoBanner(info)
+                    }
+
+                    actions
+                        .transition(.opacity)
                 }
 
-                if let info = manager.demoExpiredMessage {
-                    infoBanner(info)
-                }
-
-                actions
+                demoCard
 
                 Spacer(minLength: 0)
             }
@@ -62,47 +77,75 @@ struct LoginView: View {
         .scrollBounceBehavior(.basedOnSize)
         .scrollDismissesKeyboard(.interactively)
         .background(
-            LinearGradient(
-                colors: [Color(.systemBackground), Color.accentColor.opacity(0.08)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            ZStack {
+                LinearGradient(
+                    colors: [Color(.systemBackground), brandColor.opacity(0.06)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                RadialGradient(
+                    colors: [brandColor.opacity(0.10), .clear],
+                    center: .init(x: 0.5, y: 0.20),
+                    startRadius: 0,
+                    endRadius: 220
+                )
+                .allowsHitTesting(false)
+            }
             .ignoresSafeArea()
         )
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: isSetupMode)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: manager.errorMessage)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: manager.isStartingDemo)
         .animation(.spring(response: 0.3), value: manager.isLoading)
         .onAppear {
             serverURL = manager.serverURL
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                focusedField = isSetupMode ? .serverURL : .username
+                if !manager.isStartingDemo {
+                    focusedField = isSetupMode ? .serverURL : .username
+                }
             }
+        }
+        .onChange(of: manager.isStartingDemo) { _, isStarting in
+            if isStarting { focusedField = nil }
         }
     }
 
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             Image("ArcaneLogo")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 72, height: 72)
                 .padding(20)
-                .background(.ultraThinMaterial, in: .circle)
-                .overlay(Circle().stroke(.white.opacity(0.12), lineWidth: 1))
-                .shadow(color: .black.opacity(0.1), radius: 12, y: 4)
+                .glassEffect(.regular, in: .rect(cornerRadius: 24))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24)
+                        .stroke(.white.opacity(0.12), lineWidth: 1)
+                )
+                .shadow(color: brandColor.opacity(0.12), radius: 28, y: 10)
+                .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
 
             VStack(spacing: 4) {
                 Text("Arcane")
-                    .font(.largeTitle.bold())
+                    .font(.title.bold())
 
-                Text(isSetupMode ? "Connect to your server" : "Sign in to continue")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.opacity)
+                if let subtitle = headerSubtitle {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.opacity)
+                }
             }
         }
+    }
+
+    private var headerSubtitle: String? {
+        if manager.isStartingDemo {
+            return "Setting things up for you…"
+        }
+        return isSetupMode ? "Connect to your Arcane server" : nil
     }
 
     // MARK: - Form
@@ -129,16 +172,20 @@ struct LoginView: View {
     private var serverURLForm: some View {
         VStack(spacing: 0) {
             FieldRow(icon: "server.rack", label: "Server URL") {
-                TextField("https://arcane.example.com", text: $serverURL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .focused($focusedField, equals: .serverURL)
-                    .submitLabel(.go)
-                    .onSubmit { connectToServer() }
+                TextField(
+                    "",
+                    text: $serverURL,
+                    prompt: Text("https://arcane.example.com").foregroundStyle(.secondary)
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .focused($focusedField, equals: .serverURL)
+                .submitLabel(.go)
+                .onSubmit { connectToServer() }
             }
         }
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: 14))
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
 
     private var credentialsForm: some View {
@@ -151,34 +198,43 @@ struct LoginView: View {
                     .font(.subheadline)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                    .foregroundStyle(shouldShowPasswordFields ? .primary : .secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, shouldShowPasswordFields ? 12 : 10)
 
             if shouldShowPasswordFields {
                 Divider().padding(.leading, 16)
 
                 FieldRow(icon: "person", label: "Username") {
-                    TextField("Username", text: $username)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($focusedField, equals: .username)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .password }
+                    TextField(
+                        "",
+                        text: $username,
+                        prompt: Text("Username").foregroundStyle(.secondary)
+                    )
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($focusedField, equals: .username)
+                    .submitLabel(.next)
+                    .onSubmit { focusedField = .password }
                 }
 
                 Divider().padding(.leading, 16)
 
                 FieldRow(icon: "lock", label: "Password") {
-                    SecureField("Password", text: $password)
-                        .focused($focusedField, equals: .password)
-                        .submitLabel(.go)
-                        .onSubmit { signIn() }
+                    SecureField(
+                        "",
+                        text: $password,
+                        prompt: Text("Password").foregroundStyle(.secondary)
+                    )
+                    .focused($focusedField, equals: .password)
+                    .submitLabel(.go)
+                    .onSubmit { signIn() }
                 }
             }
         }
-        .background(.ultraThinMaterial, in: .rect(cornerRadius: 14))
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
 
     private func infoBanner(_ message: String) -> some View {
@@ -208,7 +264,7 @@ struct LoginView: View {
 
     @ViewBuilder
     private var actions: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             if isSetupMode {
                 Button(action: connectToServer) {
                     ZStack {
@@ -224,18 +280,6 @@ struct LoginView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.extraLarge)
                 .disabled(serverURL.isEmpty || manager.isLoading)
-
-                demoSection
-
-                if canEditServer {
-                    Button("Cancel") {
-                        focusedField = nil
-                        withAnimation(.spring(response: 0.4)) { showSetup = false }
-                    }
-                    .buttonStyle(.borderless)
-                    .controlSize(.large)
-                    .tint(.secondary)
-                }
             } else {
                 if manager.isOIDCAvailable {
                     if !showsPasswordForm {
@@ -297,84 +341,79 @@ struct LoginView: View {
 
     @ViewBuilder
     private var passwordDisclosure: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                VStack { Divider() }
-                Text("OR")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                VStack { Divider() }
+        Button {
+            focusedField = nil
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                showsPasswordForm.toggle()
             }
-            .padding(.vertical, 4)
-
-            Button {
-                focusedField = nil
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    showsPasswordForm.toggle()
+            if showsPasswordForm {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    focusedField = .username
                 }
-                if showsPasswordForm {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        focusedField = .username
-                    }
-                }
-            } label: {
-                Label(
-                    showsPasswordForm ? "Hide password sign in" : "Sign in with username and password",
-                    systemImage: showsPasswordForm ? "chevron.up" : "chevron.down"
-                )
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .tint(.secondary)
-            .disabled(manager.isLoading || manager.isOIDCSigningIn)
+        } label: {
+            Label(
+                showsPasswordForm ? "Hide password sign in" : "Sign in with username and password",
+                systemImage: showsPasswordForm ? "chevron.up" : "chevron.down"
+            )
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity)
         }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .tint(.secondary)
+        .disabled(manager.isLoading || manager.isOIDCSigningIn)
     }
 
-    @ViewBuilder
-    private var demoSection: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                VStack { Divider() }
-                Text("OR")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                VStack { Divider() }
-            }
-            .padding(.vertical, 4)
-
-            Button {
-                Task { await manager.startDemo() }
-            } label: {
+    private var demoCard: some View {
+        Button {
+            Task { await manager.startDemo() }
+        } label: {
+            HStack(spacing: 14) {
                 ZStack {
-                    Label("Try the demo", systemImage: "sparkles")
-                        .opacity(manager.isStartingDemo ? 0 : 1)
-                    if manager.isStartingDemo {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text("Spinning up your demo…")
-                                .font(.subheadline)
-                        }
-                    }
+                    Circle()
+                        .fill(brandColor.opacity(0.18))
+                    Image(systemName: "sparkles")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(brandColor)
                 }
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .tint(.accentColor)
-            .disabled(manager.isLoading)
+                .frame(width: 40, height: 40)
 
-            Text(manager.isStartingDemo
-                 ? "This usually takes about 30 seconds."
-                 : "Spins up a temporary instance for ~10 minutes. No account needed.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(manager.isStartingDemo ? "Starting demo…" : "Try the demo")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(manager.isStartingDemo
+                         ? "This usually takes about 30 seconds."
+                         : "Temporary instance for ~10 minutes. No account needed.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if manager.isStartingDemo {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.right")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(brandColor)
+                }
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .contentShape(.rect)
         }
-        .padding(.top, 4)
+        .buttonStyle(.plain)
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(brandColor.opacity(0.22), lineWidth: 1)
+        )
+        .disabled(manager.isLoading)
+        .opacity(manager.isLoading && !manager.isStartingDemo ? 0.5 : 1)
+        .animation(.spring(response: 0.3), value: manager.isStartingDemo)
     }
 
     // MARK: - Intent

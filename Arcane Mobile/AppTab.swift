@@ -44,6 +44,20 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Shorter label used in the bottom tab bar where horizontal space is
+    /// tight — multi-word titles get truncated or wrap awkwardly. Falls back
+    /// to `title` for tabs whose name already fits.
+    var tabBarTitle: String {
+        switch self {
+        case .containerRegistries: return "Registries"
+        case .templateRegistries: return "Templates"
+        case .gitRepositories: return "Git Repos"
+        case .systemSettings: return "System"
+        case .authentication: return "Auth"
+        default: return title
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .dashboard: return "chart.bar.fill"

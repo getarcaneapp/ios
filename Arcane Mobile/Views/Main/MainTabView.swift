@@ -21,7 +21,7 @@ struct MainTabView: View {
     private var coreTabView: some View {
         TabView(selection: $selectedTab) {
             ForEach(visibleTabs) { tab in
-                Tab(tab.title, systemImage: tab.systemImage, value: tab.id) {
+                Tab(tab.tabBarTitle, systemImage: tab.systemImage, value: tab.id) {
                     NavigationStack {
                         appTabDestination(tab, manager: manager, selectedTab: $selectedTab)
                     }

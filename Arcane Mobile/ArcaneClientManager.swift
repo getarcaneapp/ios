@@ -258,20 +258,23 @@ final class ArcaneClientManager {
         demoExpiryTask?.cancel()
         demoExpiryTask = nil
 
-        await DemoService.shared.endSession()
-
-        try? await client?.auth.logout()
+        // Update UI state synchronously first so the user is sent back to
+        // the login screen immediately — don't make them wait on network
+        // cleanup of the demo session and client logout.
+        let endingClient = client
         currentUser = nil
         isDemoActive = false
         demoEndsAt = nil
         serverURL = ""
         client = nil
         authState = .setup
-        await ResponseCache.shared.invalidateAll()
-
         if reason == .expired {
             demoExpiredMessage = "Your demo ended. Start a new one or connect to your own server."
         }
+
+        await DemoService.shared.endSession()
+        try? await endingClient?.auth.logout()
+        await ResponseCache.shared.invalidateAll()
     }
 
     private func scheduleDemoExpiry(at date: Date) {

@@ -2,6 +2,14 @@ import SwiftUI
 
 struct DemoBanner: View {
     @Environment(ArcaneClientManager.self) private var manager
+    @AppStorage("accentColorHex") private var accentColorHex: String = ""
+
+    private var brandColor: Color {
+        if let custom = Color(hex: accentColorHex) {
+            return custom
+        }
+        return .accentColor
+    }
 
     var body: some View {
         if manager.isDemoActive, let endsAt = manager.demoEndsAt {
@@ -12,9 +20,9 @@ struct DemoBanner: View {
                 HStack(spacing: 12) {
                     Image(systemName: "sparkles")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(brandColor)
                         .frame(width: 28, height: 28)
-                        .background(.tint.opacity(0.12), in: .circle)
+                        .background(brandColor.opacity(0.12), in: .circle)
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Demo Mode")
@@ -35,10 +43,10 @@ struct DemoBanner: View {
                             .font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 7)
-                            .foregroundStyle(.tint)
+                            .foregroundStyle(brandColor)
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.tint(.accentColor.opacity(0.18)), in: .capsule)
+                    .glassEffect(.regular.tint(brandColor.opacity(0.18)), in: .capsule)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)

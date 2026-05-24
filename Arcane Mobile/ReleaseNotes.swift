@@ -52,6 +52,25 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.1.5",
+            new: [
+                .init("Redesigned login screen with a refined hero, glass-effect form card, and a persistent 'Try the demo' card that's always available — no need to wipe your server config to spin up a demo."),
+            ],
+            changed: [
+                .init("Login screen and demo banner now use your selected accent color from Settings."),
+                .init("Starting a demo now hides the rest of the login form so the spinner is the focus."),
+                .init("Removed the redundant Cancel button from the Change Server flow."),
+                .init("Removed the 'Welcome back' subtitle on the login screen for a cleaner hero."),
+            ],
+            fixed: [
+                .init("'End' button in the demo banner now sends you back to the login screen immediately instead of waiting on background cleanup."),
+                .init("Server URL, Username, and Password placeholders no longer pick up URL-style link coloring."),
+                .init("'End' button color now matches your selected accent color instead of the system default."),
+                .init("Appearance settings swatch selection is now derived from the stored accent color, so the checkmark always matches the actual color the app is using."),
+                .init("Tab bar labels for long titles (Container Registries, Template Registries, Git Repositories, System Settings, Authentication) now use compact names so they no longer wrap or clip."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.4",
             fixed: [
                 .init("Fix an issue where the ImageList logic was not parsed correctly"),
