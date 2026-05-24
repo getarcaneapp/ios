@@ -13,6 +13,8 @@ private struct AppIconOption: Identifiable, Hashable {
 struct AppIconPickerView: View {
     @State private var currentIconName: String? = UIApplication.shared.alternateIconName
     @State private var errorMessage: String?
+    @Namespace private var selectionNamespace
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Read alternates declared in Info.plist's `CFBundleAlternateIcons`.
     /// Returns an array starting with the primary icon, followed by each alternate.
@@ -57,6 +59,7 @@ struct AppIconPickerView: View {
                                 Image(systemName: "checkmark")
                                     .font(.headline.bold())
                                     .foregroundStyle(Color.accentColor)
+                                    .matchedGeometryEffect(id: "selection", in: selectionNamespace)
                             }
                         }
                     }
@@ -108,7 +111,10 @@ struct AppIconPickerView: View {
                 if let error {
                     errorMessage = error.localizedDescription
                 } else {
-                    currentIconName = option.alternateName
+                    let animation: Animation? = reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.75)
+                    withAnimation(animation) {
+                        currentIconName = option.alternateName
+                    }
                     HapticsManager.success()
                 }
             }

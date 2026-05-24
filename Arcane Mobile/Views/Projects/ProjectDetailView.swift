@@ -69,6 +69,7 @@ struct ProjectDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .actionToolbar(
             items: actionItems,
             runningItemID: runningActionID,

@@ -7,16 +7,6 @@ struct NotificationSettingsView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    // Apprise state
-    @State private var appriseApiUrl = ""
-    @State private var appriseEnabled = false
-    @State private var appriseImageUpdateTag = ""
-    @State private var appriseContainerUpdateTag = ""
-    @State private var appriseLoaded = false
-    @State private var appriseSaving = false
-    @State private var appriseTesting = false
-    @State private var appriseTestResult: String?
-
     private func configuredResponse(for provider: NotificationProvider) -> NotificationSettings? {
         configuredProviders.first { $0.provider == provider }
     }
@@ -28,7 +18,6 @@ struct NotificationSettingsView: View {
             } else {
                 List {
                     providersSection
-                    appriseSection
                 }
                 .listStyle(.insetGrouped)
             }
@@ -36,11 +25,9 @@ struct NotificationSettingsView: View {
         .navigationTitle("Notifications")
         .task {
             await loadProviders()
-            await loadApprise()
         }
         .refreshable {
             await loadProviders()
-            await loadApprise()
         }
         .alert(
             "Error",
@@ -103,53 +90,6 @@ struct NotificationSettingsView: View {
         }
     }
 
-    // MARK: - Apprise Section
-
-    @ViewBuilder
-    private var appriseSection: some View {
-        Section {
-            Toggle("Enabled", isOn: $appriseEnabled)
-            TextField("API URL", text: $appriseApiUrl)
-                .keyboardType(.URL)
-                .textContentType(.URL)
-                .autocapitalization(.none)
-            TextField("Image Update Tag", text: $appriseImageUpdateTag)
-                .autocapitalization(.none)
-            TextField("Container Update Tag", text: $appriseContainerUpdateTag)
-                .autocapitalization(.none)
-
-            HStack {
-                Button {
-                    Task { await saveApprise() }
-                } label: {
-                    if appriseSaving {
-                        ProgressView().scaleEffect(0.8)
-                    } else {
-                        Text("Save")
-                    }
-                }
-                .disabled(appriseSaving || appriseApiUrl.isEmpty)
-
-                Spacer()
-
-                Button("Test") {
-                    Task { await testApprise() }
-                }
-                .disabled(appriseTesting || !appriseEnabled || appriseApiUrl.isEmpty)
-            }
-
-            if let result = appriseTestResult {
-                Label(result, systemImage: result.contains("Success") ? "checkmark.circle" : "exclamationmark.triangle")
-                    .foregroundStyle(result.contains("Success") ? .green : .red)
-                    .font(.caption)
-            }
-        } header: {
-            Text("Apprise")
-        } footer: {
-            Text("Connect to an Apprise API instance for additional notification providers.")
-        }
-    }
-
     // MARK: - API
 
     private func loadProviders() async {
@@ -173,53 +113,6 @@ struct NotificationSettingsView: View {
             configuredProviders.removeAll { $0.provider == provider }
         } catch {
             errorMessage = friendlyErrorMessage(error)
-        }
-    }
-
-    private func loadApprise() async {
-        guard let client = manager.client, !appriseLoaded else { return }
-        do {
-            let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/apprise")
-            let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            let response = try JSONDecoder().decode(AppriseSettings.self, from: rawData)
-            appriseApiUrl = response.apiUrl
-            appriseEnabled = response.enabled
-            appriseImageUpdateTag = response.imageUpdateTag
-            appriseContainerUpdateTag = response.containerUpdateTag
-            appriseLoaded = true
-        } catch {}
-    }
-
-    private func saveApprise() async {
-        guard let client = manager.client else { return }
-        appriseSaving = true
-        defer { appriseSaving = false }
-        do {
-            let body = UpdateAppriseSettings(
-                apiUrl: appriseApiUrl,
-                enabled: appriseEnabled,
-                imageUpdateTag: appriseImageUpdateTag,
-                containerUpdateTag: appriseContainerUpdateTag
-            )
-            let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/apprise")
-            let rawData = try await client.transport.rawRequest(path, method: "POST", body: body)
-            let _ = try JSONDecoder().decode(AppriseSettings.self, from: rawData)
-        } catch {
-            errorMessage = friendlyErrorMessage(error)
-        }
-    }
-
-    private func testApprise() async {
-        guard let client = manager.client else { return }
-        appriseTesting = true
-        appriseTestResult = nil
-        defer { appriseTesting = false }
-        do {
-            let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/apprise/test")
-            let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
-            appriseTestResult = "Success — test notification sent"
-        } catch {
-            appriseTestResult = friendlyErrorMessage(error)
         }
     }
 }

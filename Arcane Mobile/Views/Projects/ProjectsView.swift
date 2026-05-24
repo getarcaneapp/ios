@@ -10,17 +10,21 @@ struct ProjectsView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
+    @Namespace private var heroTransition
+
     @State private var projects: [ProjectDetails] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
     @State private var showCreateSheet = false
     @State private var showFilterSheet = false
     @State private var pendingDeleteProject: ProjectDetails?
     @State private var loadGeneration = 0
     @State private var currentPage = 1
     @State private var hasMore = false
+    @State private var isLoadingMore = false
     @State private var statusFilter = ProjectStatusFilter.all
     @State private var sortOrder = ListSortOrder.ascending
 
@@ -31,9 +35,10 @@ struct ProjectsView: View {
     private var activeFilterCount: Int { statusFilter != .all ? 1 : 0 }
 
     private var filtered: [ProjectDetails] {
-        projects.filter { project in
-            let matchesSearch = searchText.isEmpty ||
-                project.displayName.localizedCaseInsensitiveContains(searchText)
+        let query = debouncedSearchText
+        return projects.filter { project in
+            let matchesSearch = query.isEmpty ||
+                project.displayName.localizedCaseInsensitiveContains(query)
             let status = project.status.lowercased()
             let matchesStatus = statusFilter == .all
                 || (statusFilter == .running && status == "running")
@@ -96,8 +101,7 @@ struct ProjectsView: View {
     @ViewBuilder
     private var content: some View {
         if isLoading && projects.isEmpty {
-            ProgressView("Loading projects...")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            SkeletonListLoadingView()
         } else if let error = errorMessage, projects.isEmpty {
             ContentUnavailableView(
                 "Error",
@@ -105,11 +109,14 @@ struct ProjectsView: View {
                 description: Text(error)
             )
         } else if projects.isEmpty {
-            ContentUnavailableView(
-                "No Projects",
-                systemImage: "square.stack.3d.up",
-                description: Text("No Compose projects found")
-            )
+            ContentUnavailableView {
+                Label("No Projects", systemImage: "square.stack.3d.up")
+            } description: {
+                Text("No Compose projects found in this environment.")
+            } actions: {
+                Button("Create Project") { showCreateSheet = true }
+                    .buttonStyle(.borderedProminent)
+            }
         } else {
             projectsList
         }
@@ -122,13 +129,16 @@ struct ProjectsView: View {
             }
 
             if hasMore {
-                Button("Load More") {
-                    Task { await loadMore() }
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
+                SkeletonListRow()
+                    .redacted(reason: .placeholder)
+                    .shimmering()
+                    .onAppear {
+                        Task { await loadMore() }
+                    }
             }
         }
         .listStyle(.insetGrouped)
+        .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
     }
 
     @ToolbarContentBuilder
@@ -211,6 +221,11 @@ struct ProjectsView: View {
         }
         .task { await loadProjects(reset: true) }
         .refreshable { await loadProjects(reset: true, refresh: true) }
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .navigationDestination(for: ProjectDetails.self) { project in
+            ProjectDetailView(project: project, environmentID: environmentID)
+                .navigationTransition(.zoom(sourceID: project.id, in: heroTransition))
+        }
         .sheet(isPresented: $showCreateSheet) {
             CreateProjectView(environmentID: environmentID) {}
         }
@@ -282,15 +297,18 @@ struct ProjectsView: View {
     }
 
     private func loadMore() async {
-        guard hasMore else { return }
+        guard hasMore, !isLoadingMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
         await loadProjects(reset: false)
     }
 
     private func projectLink(_ project: ProjectDetails) -> some View {
         let isPinned = pinnedIDs.contains(project.id)
-        return NavigationLink(destination: ProjectDetailView(project: project, environmentID: environmentID)) {
+        return NavigationLink(value: project) {
             ProjectRow(project: project, isPinned: isPinned)
         }
+        .matchedTransitionSource(id: project.id, in: heroTransition)
         .contextMenu {
             Button {
                 togglePin(project)

@@ -10,12 +10,15 @@ struct VolumesView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
+    @Namespace private var heroTransition
+
     @State private var volumes: [Volume] = []
     @State private var sizes: [String: Int64] = [:]
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
     @State private var showCreateSheet = false
     @State private var showPruneConfirm = false
     @State private var showFilterSheet = false
@@ -23,6 +26,7 @@ struct VolumesView: View {
     @State private var sortOrder = ListSortOrder.ascending
     @State private var currentPage = 1
     @State private var hasMore = false
+    @State private var isLoadingMore = false
     @State private var loadGeneration = 0
 
     private enum VolumeScopeFilter: String, CaseIterable {
@@ -32,10 +36,11 @@ struct VolumesView: View {
     private var activeFilterCount: Int { scopeFilter != .all ? 1 : 0 }
 
     private var filtered: [Volume] {
-        volumes.filter { volume in
-            let matchesSearch = searchText.isEmpty ||
-                volume.name.localizedCaseInsensitiveContains(searchText) ||
-                volume.driver.localizedCaseInsensitiveContains(searchText)
+        let query = debouncedSearchText
+        return volumes.filter { volume in
+            let matchesSearch = query.isEmpty ||
+                volume.name.localizedCaseInsensitiveContains(query) ||
+                volume.driver.localizedCaseInsensitiveContains(query)
             let matchesScope = scopeFilter == .all
                 || (scopeFilter == .local && volume.scope.lowercased() == "local")
                 || (scopeFilter == .global && volume.scope.lowercased() != "local")
@@ -78,11 +83,18 @@ struct VolumesView: View {
     var body: some View {
         Group {
             if isLoading && volumes.isEmpty {
-                ProgressView("Loading volumes...").frame(maxWidth: .infinity, maxHeight: .infinity)
+                SkeletonListLoadingView()
             } else if let error = errorMessage, volumes.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
             } else if volumes.isEmpty {
-                ContentUnavailableView("No Volumes", systemImage: "externaldrive", description: Text("No volumes found"))
+                ContentUnavailableView {
+                    Label("No Volumes", systemImage: "externaldrive")
+                } description: {
+                    Text("No volumes found in this environment.")
+                } actions: {
+                    Button("Create Volume") { showCreateSheet = true }
+                        .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     StableSectionedList(listSections) { volume in
@@ -90,13 +102,16 @@ struct VolumesView: View {
                     }
 
                     if hasMore {
-                        Button("Load More") {
-                            Task { await loadMore() }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        SkeletonListRow()
+                            .redacted(reason: .placeholder)
+                            .shimmering()
+                            .onAppear {
+                                Task { await loadMore() }
+                            }
                     }
                 }
                 .listStyle(.insetGrouped)
+                .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
             }
         }
         .navigationTitle("Volumes")
@@ -135,6 +150,11 @@ struct VolumesView: View {
         }
         .task { await loadVolumes(reset: true) }
         .refreshable { await loadVolumes(reset: true, refresh: true) }
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .navigationDestination(for: Volume.self) { volume in
+            VolumeDetailView(volume: volume, environmentID: environmentID)
+                .navigationTransition(.zoom(sourceID: volume.id, in: heroTransition))
+        }
         .sheet(isPresented: $showCreateSheet) {
             CreateVolumeView(environmentID: environmentID) {}
         }
@@ -185,9 +205,10 @@ struct VolumesView: View {
 
     private func volumeLink(_ volume: Volume) -> some View {
         let isPinned = pinnedIDs.contains(volume.id)
-        return NavigationLink(destination: VolumeDetailView(volume: volume, environmentID: environmentID)) {
+        return NavigationLink(value: volume) {
             VolumeRow(volume: volume, size: sizes[volume.name], isPinned: isPinned)
         }
+        .matchedTransitionSource(id: volume.id, in: heroTransition)
         .contextMenu {
             Button {
                 togglePin(volume)
@@ -322,7 +343,9 @@ struct VolumesView: View {
     }
 
     private func loadMore() async {
-        guard hasMore else { return }
+        guard hasMore, !isLoadingMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
         await loadVolumes(reset: false)
     }
 

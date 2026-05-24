@@ -69,6 +69,7 @@ struct EnvironmentDetailView: View {
 
         }
         .listStyle(.insetGrouped)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .actionToolbar(
             items: [
                 ActionButtonItem(

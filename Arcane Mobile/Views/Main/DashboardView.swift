@@ -55,7 +55,9 @@ struct EnvironmentDetailRoute: Hashable {
 struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @Binding var selectedTab: String
-    
+
+    @Namespace private var heroTransition
+
     @State private var environments: [Arcane.Environment] = []
     @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
@@ -83,7 +85,7 @@ struct DashboardView: View {
                         skeletonView
                     } else {
                         overviewGrid
-                        
+
                         environmentsSection
                             .padding(.top, 8)
                     }
@@ -91,6 +93,7 @@ struct DashboardView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 16)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("")
             .toolbarTitleDisplayMode(.inline)
@@ -123,6 +126,7 @@ struct DashboardView: View {
                     environmentID: EnvironmentID(rawValue: route.id),
                     environmentName: route.name
                 )
+                .navigationTransition(.zoom(sourceID: route.id, in: heroTransition))
             }
             .task { await loadData() }
             .refreshable { await loadData(refresh: true) }
@@ -147,6 +151,7 @@ struct DashboardView: View {
                         detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
                     }
                 )
+                .matchedTransitionSource(id: env.id, in: heroTransition)
                 .padding(.bottom, 4)
             }
 
@@ -210,6 +215,7 @@ struct DashboardView: View {
         }
         .accessibilityHidden(true)
         .allowsHitTesting(false)
+        .shimmering()
     }
 
     private var skeletonTile: some View {
@@ -463,6 +469,8 @@ struct StatRing: View {
                     .font(.footnote.bold())
                     .foregroundStyle(.primary)
                     .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .motionAwareAnimation(.smooth(duration: 0.3), value: valueText)
             }
             Text(label)
                 .font(.caption2)
@@ -498,13 +506,15 @@ struct DashboardGlassTile: View {
                         .font(.caption2.bold())
                         .foregroundStyle(.secondary.opacity(0.5))
                 }
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(value)
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                         .foregroundStyle(.primary)
                         .minimumScaleFactor(0.8)
                         .lineLimit(1)
+                        .contentTransition(.numericText())
+                        .motionAwareAnimation(.smooth(duration: 0.35), value: value)
                     Text(title)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -516,6 +526,10 @@ struct DashboardGlassTile: View {
             .dashboardCardBackground(cornerRadius: 16)
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title): \(value)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens \(title)")
     }
 }
 
@@ -554,6 +568,8 @@ struct DashboardMiniMetric: View {
             Text(value)
                 .font(.subheadline.bold())
                 .foregroundStyle(color)
+                .contentTransition(.numericText())
+                .motionAwareAnimation(.smooth(duration: 0.3), value: value)
             Text(title)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -561,6 +577,8 @@ struct DashboardMiniMetric: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
         .background(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title): \(value)")
     }
 }
 

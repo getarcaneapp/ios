@@ -18,7 +18,9 @@ struct LoginView: View {
     @State private var showSetup: Bool = false
 
     @State private var showsPasswordForm: Bool = false
+    @State private var logoAppeared: Bool = false
     @FocusState private var focusedField: Field?
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Field: Hashable {
         case serverURL, username, password
@@ -126,6 +128,17 @@ struct LoginView: View {
                 )
                 .shadow(color: brandColor.opacity(0.12), radius: 28, y: 10)
                 .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+                .scaleEffect(logoAppeared || reduceMotion ? 1.0 : 0.7)
+                .opacity(logoAppeared || reduceMotion ? 1.0 : 0.0)
+                .onAppear {
+                    guard !reduceMotion else {
+                        logoAppeared = true
+                        return
+                    }
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.62).delay(0.08)) {
+                        logoAppeared = true
+                    }
+                }
 
             VStack(spacing: 4) {
                 Text("Arcane")

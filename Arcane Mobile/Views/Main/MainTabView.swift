@@ -45,7 +45,9 @@ struct MainTabView: View {
                 coreTabView
                     .tabViewBottomAccessory {
                         TabSwapHintBanner {
-                            tabSwapTipDismissed = true
+                            withAnimation(.smooth(duration: 0.3)) {
+                                tabSwapTipDismissed = true
+                            }
                             TabSwapTip.didDiscoverFeature = true
                         }
                     }
@@ -56,7 +58,9 @@ struct MainTabView: View {
                 let tabs = visibleTabs
                 guard idx >= 0, idx < tabs.count else { return }
                 HapticsManager.medium()
-                tabSwapTipDismissed = true
+                withAnimation(.smooth(duration: 0.3)) {
+                    tabSwapTipDismissed = true
+                }
                 TabSwapTip.didDiscoverFeature = true
                 swapTarget = tabs[idx]
             }

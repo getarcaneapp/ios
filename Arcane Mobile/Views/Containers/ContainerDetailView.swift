@@ -5,6 +5,7 @@ struct ContainerDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     let container: ContainerSummary
     let environmentID: EnvironmentID
 
@@ -64,32 +65,37 @@ struct ContainerDetailView: View {
             .padding(.top, 8)
             .padding(.bottom, 4)
 
-            switch selectedTab {
-            case .overview:
-                overviewTab
-            case .stats:
-                ContainerStatsView(container: container, environmentID: environmentID)
-            case .logs:
-                LogsView(
-                    title: displayedName,
-                    logStream: manager.client?.containers.logs(envID: environmentID, id: container.id),
-                    embedded: true
-                )
+            ZStack {
+                switch selectedTab {
+                case .overview:
+                    overviewTab
+                        .transition(.motionAware(edge: .leading, reduceMotion: reduceMotion))
+                case .stats:
+                    ContainerStatsView(container: container, environmentID: environmentID)
+                        .transition(.opacity)
+                case .logs:
+                    LogsView(
+                        title: displayedName,
+                        logStream: manager.client?.containers.logs(envID: environmentID, id: container.id),
+                        embedded: true
+                    )
+                    .transition(.motionAware(edge: .trailing, reduceMotion: reduceMotion))
+                }
             }
+            .motionAwareAnimation(.smooth(duration: 0.25), value: selectedTab)
         }
         .navigationTitle(displayedName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
                 Button {
                     showInspect = true
                 } label: {
                     Image(systemName: "doc.text.magnifyingglass")
                 }
                 .disabled(isActioning)
-            }
-            if isRunning && !isPaused {
-                ToolbarItem(placement: .navigationBarTrailing) {
+
+                if isRunning && !isPaused {
                     Button {
                         showTerminal = true
                     } label: {
@@ -97,8 +103,7 @@ struct ContainerDetailView: View {
                     }
                     .disabled(isActioning)
                 }
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
+
                 Menu {
                     Button {
                         showRename = true
@@ -184,6 +189,7 @@ struct ContainerDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .actionToolbar(
             items: actionItems,
             runningItemID: runningActionID,
@@ -202,9 +208,10 @@ struct ContainerDetailView: View {
                         .frame(width: 56, height: 56)
                         .glassEffect(.regular, in: .circle)
                 }
-                Circle()
-                    .fill(statusIndicatorColor)
-                    .frame(width: 14, height: 14)
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(statusIndicatorColor)
+                    .symbolEffect(.pulse, options: .repeating, isActive: isRunning && !reduceMotion)
                     .offset(x: 2, y: 2)
             }
 

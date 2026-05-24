@@ -393,7 +393,7 @@ struct UserRow: View {
         HStack(spacing: 12) {
             Image(systemName: "person.circle.fill")
                 .font(.title2)
-                .foregroundStyle(user.isAdmin ? .orange : .blue)
+                .foregroundStyle(user.isAdmin ? .indigo : .blue)
                 .frame(width: 40, height: 40)
                 .glassEffect(.regular, in: .circle)
 
@@ -408,10 +408,10 @@ struct UserRow: View {
 
             if user.isAdmin {
                 Text("Admin")
-                    .font(.caption.bold())
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .glassEffect(.regular.tint(.orange), in: .capsule)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(Color.indigo, in: .capsule)
             }
         }
         .padding(.vertical, 2)

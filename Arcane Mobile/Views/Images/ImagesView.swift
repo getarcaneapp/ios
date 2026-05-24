@@ -9,11 +9,14 @@ struct ImagesView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
+    @Namespace private var heroTransition
+
     @State private var images: [ImageSummary] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
     @State private var updateInfo: [String: ImageUpdateResponse] = [:]
     @State private var showPullSheet = false
     @State private var showPruneConfirm = false
@@ -21,6 +24,7 @@ struct ImagesView: View {
     @State private var showUploadSheet = false
     @State private var currentPage = 1
     @State private var hasMore = false
+    @State private var isLoadingMore = false
     @State private var loadGeneration = 0
     @State private var showFilterSheet = false
     @State private var tagsFilter = ImageTagsFilter.all
@@ -33,10 +37,11 @@ struct ImagesView: View {
     private var activeFilterCount: Int { tagsFilter != .all ? 1 : 0 }
 
     private var filtered: [ImageSummary] {
-        images.filter { image in
-            let matchesSearch = searchText.isEmpty ||
-                image.displayName.localizedCaseInsensitiveContains(searchText) ||
-                image.id.localizedCaseInsensitiveContains(searchText)
+        let query = debouncedSearchText
+        return images.filter { image in
+            let matchesSearch = query.isEmpty ||
+                image.displayName.localizedCaseInsensitiveContains(query) ||
+                image.id.localizedCaseInsensitiveContains(query)
             let isTagged = image.repoTags.contains(where: { $0 != "<none>:<none>" })
             let matchesTags = tagsFilter == .all
                 || (tagsFilter == .tagged && isTagged)
@@ -74,7 +79,7 @@ struct ImagesView: View {
     var body: some View {
         Group {
             if isLoading && images.isEmpty {
-                ProgressView("Loading images...").frame(maxWidth: .infinity, maxHeight: .infinity)
+                SkeletonListLoadingView()
             } else if let error = errorMessage, images.isEmpty {
                 ContentUnavailableView {
                     Label("Error", systemImage: "exclamationmark.triangle")
@@ -87,9 +92,10 @@ struct ImagesView: View {
                 ContentUnavailableView {
                     Label("No Images", systemImage: "photo.stack")
                 } description: {
-                    Text("No images found")
+                    Text("No images pulled to this environment yet.")
                 } actions: {
-                    Button("Reload") { Task { await loadImages(reset: true) } }
+                    Button("Pull Image") { showPullSheet = true }
+                        .buttonStyle(.borderedProminent)
                 }
             } else {
                 List {
@@ -98,13 +104,16 @@ struct ImagesView: View {
                     }
 
                     if hasMore {
-                        Button("Load More") {
-                            Task { await loadMore() }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        SkeletonListRow()
+                            .redacted(reason: .placeholder)
+                            .shimmering()
+                            .onAppear {
+                                Task { await loadMore() }
+                            }
                     }
                 }
                 .listStyle(.insetGrouped)
+                .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
             }
         }
         .navigationTitle("Images")
@@ -216,6 +225,11 @@ struct ImagesView: View {
         }
         .task { await loadImages(reset: true) }
         .refreshable { await loadImages(reset: true, refresh: true) }
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .navigationDestination(for: ImageSummary.self) { image in
+            ImageDetailView(image: image, environmentID: environmentID)
+                .navigationTransition(.zoom(sourceID: image.id, in: heroTransition))
+        }
         .sheet(isPresented: $showPullSheet) {
             PullImageView(environmentID: environmentID) {}
         }
@@ -229,9 +243,10 @@ struct ImagesView: View {
 
     private func imageLink(_ image: ImageSummary) -> some View {
         let state = updateState(for: image)
-        return NavigationLink(destination: ImageDetailView(image: image, environmentID: environmentID)) {
+        return NavigationLink(value: image) {
             ImageRow(image: image, updateState: state)
         }
+        .matchedTransitionSource(id: image.id, in: heroTransition)
         .contextMenu {
             Button(role: .destructive) {
                 Task { await removeImage(image) }
@@ -356,7 +371,9 @@ struct ImagesView: View {
     }
 
     private func loadMore() async {
-        guard hasMore else { return }
+        guard hasMore, !isLoadingMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
         await loadImages(reset: false)
     }
 

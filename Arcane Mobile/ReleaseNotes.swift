@@ -52,6 +52,30 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.1.6",
+            changed: [
+                .init("Removed the Apprise section from Notifications. Apprise support has been dropped in Arcane 2.0."),
+                .init("Admin badge in the Users list is now a solid indigo capsule with white text — better contrast and a less alarming color than the previous orange-on-orange."),
+                .init("Tapping a row in any resource list (Containers, Images, Networks, Volumes, Projects) — or an environment card on the Dashboard — now zooms into the detail view instead of pushing flat from the right."),
+                .init("Resource lists now show shimmering skeleton rows on first load instead of a centered 'Loading…' spinner, and the Dashboard's first-load skeleton has the same subtle shimmer."),
+                .init("Paginated lists (Images, Networks, Volumes, Projects) auto-load the next page as you scroll, with a skeleton row in place while the next page fetches, instead of requiring you to tap 'Load More'."),
+                .init("Search results in long lists settle 200 ms after you stop typing instead of re-filtering on every keystroke."),
+                .init("Resource lists animate row reflow when you change the sort order or apply a filter."),
+                .init("Empty states for all five resource lists now offer a primary action — Create for Networks/Volumes/Projects, Pull Image for Images, Refresh for Containers — instead of a dead end."),
+                .init("Container detail tabs (Overview, Stats, Logs) slide between sections instead of snapping."),
+                .init("The status dot on a running container's detail screen pulses subtly so it's clear the container is live."),
+                .init("Start, Stop, Restart, and Redeploy buttons cross-fade smoothly into the in-flight spinner while an action runs."),
+                .init("Dashboard counts and the CPU/Memory/Disk gauges on environment cards now roll between values instead of popping."),
+                .init("Dashboard, Container, Project, and Environment detail screens now use iOS 26's soft scroll-edge effect so the toolbar fades naturally into the scrolling content."),
+                .init("Logs view: the Live/Paused button icon morphs between states, pausing shows a floating 'N new' pill at the bottom that resumes live tailing and jumps to the latest line, and new log lines fade in gently instead of popping."),
+                .init("The Arcane logo on the login screen bounces in with a spring on appear instead of just popping into place."),
+                .init("Tab swap hint banner fades out smoothly when dismissed or when you discover the long-press feature, instead of popping."),
+                .init("Dashboard tiles and mini-metric cards now read out as a single VoiceOver element with the metric name and value combined, instead of as a stack of separate icons and numbers."),
+                .init("Action toolbar button labels now scale with the system Text Size setting."),
+                .init("All new motion respects the system Reduce Motion accessibility setting."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.5",
             new: [
                 .init("Redesigned login screen with a refined hero, glass-effect form card, and a persistent 'Try the demo' card that's always available — no need to wipe your server config to spin up a demo."),

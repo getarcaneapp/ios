@@ -5,6 +5,7 @@ struct ContainersView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @Namespace private var heroTransition
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -12,6 +13,7 @@ struct ContainersView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
     @State private var showPruneConfirm = false
     @State private var showFilterSheet = false
     @State private var stateFilter = ContainerStateFilter.all
@@ -24,10 +26,11 @@ struct ContainersView: View {
     private var activeFilterCount: Int { stateFilter != .all ? 1 : 0 }
 
     private var filtered: [ContainerSummary] {
-        containers.filter { c in
-            let matchesSearch = searchText.isEmpty ||
-                c.names.contains(where: { $0.localizedCaseInsensitiveContains(searchText) }) ||
-                c.image.localizedCaseInsensitiveContains(searchText)
+        let query = debouncedSearchText
+        return containers.filter { c in
+            let matchesSearch = query.isEmpty ||
+                c.names.contains(where: { $0.localizedCaseInsensitiveContains(query) }) ||
+                c.image.localizedCaseInsensitiveContains(query)
             let matchesState = stateFilter == .all
                 || (stateFilter == .running && c.isRunning)
                 || (stateFilter == .stopped && !c.isRunning)
@@ -70,12 +73,20 @@ struct ContainersView: View {
     var body: some View {
         Group {
             if isLoading && containers.isEmpty {
-                ProgressView("Loading containers...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                SkeletonListLoadingView()
             } else if let error = errorMessage, containers.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
             } else if containers.isEmpty {
-                ContentUnavailableView("No Containers", systemImage: "cube.box", description: Text("No containers found"))
+                ContentUnavailableView {
+                    Label("No Containers", systemImage: "cube.box")
+                } description: {
+                    Text("No containers found in this environment.")
+                } actions: {
+                    Button("Refresh") {
+                        Task { await loadContainers(refresh: true) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     StableSectionedList(listSections) { container in
@@ -83,6 +94,8 @@ struct ContainersView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .motionAwareAnimation(.smooth(duration: 0.3), value: stateFilter)
+                .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
             }
         }
         .navigationTitle("Containers")
@@ -144,6 +157,11 @@ struct ContainersView: View {
         }
         .task { await loadContainers() }
         .refreshable { await loadContainers(refresh: true) }
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .navigationDestination(for: ContainerSummary.self) { container in
+            ContainerDetailView(container: container, environmentID: environmentID)
+                .navigationTransition(.zoom(sourceID: container.id, in: heroTransition))
+        }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadContainers(refresh: true) }
         }
@@ -151,9 +169,10 @@ struct ContainersView: View {
 
     private func containerLink(_ container: ContainerSummary) -> some View {
         let isPinned = pinnedIDs.contains(container.id)
-        return NavigationLink(destination: ContainerDetailView(container: container, environmentID: environmentID)) {
+        return NavigationLink(value: container) {
             ContainerRow(container: container, isPinned: isPinned)
         }
+        .matchedTransitionSource(id: container.id, in: heroTransition)
         .contextMenu {
             Button {
                 togglePin(container)

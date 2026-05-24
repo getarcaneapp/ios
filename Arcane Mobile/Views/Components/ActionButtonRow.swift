@@ -107,23 +107,28 @@ private struct ActionToolbarModifier: ViewModifier {
                         ProgressView()
                             .controlSize(.regular)
                             .tint(item.tint)
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
                     } else {
                         Image(systemName: item.systemImage)
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(item.tint)
+                            .contentTransition(.symbolEffect(.replace))
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
                     }
                 }
                 .frame(width: 50, height: 50)
                 .contentShape(Circle())
+                .motionAwareAnimation(.smooth(duration: 0.2), value: isRunning)
             }
             .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: .circle)
             .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
             .disabled(buttonDisabled || isRunning)
             .opacity(buttonDisabled && !isRunning ? 0.45 : 1.0)
+            .motionAwareAnimation(.smooth(duration: 0.2), value: buttonDisabled)
 
             Text(item.title)
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)

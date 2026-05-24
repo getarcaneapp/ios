@@ -10,8 +10,10 @@ struct LogsView: View {
     @State private var nextLineID: UInt64 = 0
     @State private var isStreaming = false
     @State private var autoScroll = true
+    @State private var newLinesWhilePaused = 0
     @State private var searchText = ""
     @SwiftUI.Environment(\.dismiss) private var dismiss
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var filteredLines: [IdentifiedLogLine] {
         guard !searchText.isEmpty else { return lines }
@@ -63,9 +65,11 @@ struct LogsView: View {
                         LogLineView(line: entry.line)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 1, leading: 12, bottom: 1, trailing: 12))
+                            .transition(.opacity)
                     }
                 }
                 .listStyle(.plain)
+                .motionAwareAnimation(.linear(duration: 0.12), value: filteredLines.count)
                 .onChange(of: filteredLines.last?.id) { _, lastID in
                     if autoScroll, let lastID {
                         withAnimation(.none) {
@@ -73,21 +77,66 @@ struct LogsView: View {
                         }
                     }
                 }
+                .overlay(alignment: .bottom) {
+                    if !autoScroll && newLinesWhilePaused > 0 {
+                        newLinesPill {
+                            resumeAndJumpToBottom(proxy: proxy)
+                        }
+                        .padding(.bottom, 64)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .motionAwareAnimation(.smooth(duration: 0.25), value: newLinesWhilePaused > 0)
             }
 
             HStack {
                 Spacer()
                 Button {
-                    withAnimation { autoScroll.toggle() }
+                    withAnimation {
+                        autoScroll.toggle()
+                        if autoScroll { newLinesWhilePaused = 0 }
+                    }
                 } label: {
                     Label(autoScroll ? "Live" : "Paused", systemImage: autoScroll ? "arrow.down.circle.fill" : "pause.circle.fill")
                         .font(.caption.bold())
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.glass)
                 .padding(16)
             }
         }
         .background(Color(.systemBackground))
+    }
+
+    private func newLinesPill(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down")
+                    .font(.caption.bold())
+                Text("\(newLinesWhilePaused) new")
+                    .font(.caption.bold())
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+        .background(Color.accentColor, in: .capsule)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .shadow(color: .black.opacity(0.2), radius: 8, y: 2)
+        .accessibilityLabel("\(newLinesWhilePaused) new log lines. Tap to jump to latest.")
+    }
+
+    private func resumeAndJumpToBottom(proxy: ScrollViewProxy) {
+        withAnimation {
+            autoScroll = true
+            newLinesWhilePaused = 0
+        }
+        if let lastID = filteredLines.last?.id {
+            proxy.scrollTo(lastID, anchor: .bottom)
+        }
     }
 
     private func startStreaming() async {
@@ -98,9 +147,11 @@ struct LogsView: View {
                 await MainActor.run {
                     lines.append(IdentifiedLogLine(id: nextLineID, line: line))
                     nextLineID &+= 1
-                    // Cap at 5000 lines to avoid memory issues
                     if lines.count > 5000 {
                         lines.removeFirst(100)
+                    }
+                    if !autoScroll {
+                        newLinesWhilePaused += 1
                     }
                 }
             }

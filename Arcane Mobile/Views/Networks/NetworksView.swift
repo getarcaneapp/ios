@@ -9,11 +9,14 @@ struct NetworksView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
+    @Namespace private var heroTransition
+
     @State private var networks: [NetworkSummary] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
     @State private var showCreateSheet = false
     @State private var showPruneConfirm = false
     @State private var showFilterSheet = false
@@ -21,6 +24,7 @@ struct NetworksView: View {
     @State private var sortOrder = ListSortOrder.ascending
     @State private var currentPage = 1
     @State private var hasMore = false
+    @State private var isLoadingMore = false
     @State private var loadGeneration = 0
 
     private enum NetworkTypeFilter: String, CaseIterable {
@@ -40,10 +44,11 @@ struct NetworksView: View {
     }
 
     private var filtered: [NetworkSummary] {
-        networks.filter { network in
-            let matchesSearch = searchText.isEmpty ||
-                network.name.localizedCaseInsensitiveContains(searchText) ||
-                network.driver.localizedCaseInsensitiveContains(searchText)
+        let query = debouncedSearchText
+        return networks.filter { network in
+            let matchesSearch = query.isEmpty ||
+                network.name.localizedCaseInsensitiveContains(query) ||
+                network.driver.localizedCaseInsensitiveContains(query)
             let matchesType = typeFilter == .all
                 || (typeFilter == .standard && !network.isInternal)
                 || (typeFilter == .internalOnly && network.isInternal)
@@ -65,19 +70,27 @@ struct NetworksView: View {
     var body: some View {
         Group {
             if isLoading && networks.isEmpty {
-                ProgressView("Loading networks...").frame(maxWidth: .infinity, maxHeight: .infinity)
+                SkeletonListLoadingView()
             } else if let error = errorMessage, networks.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
             } else if networks.isEmpty {
-                ContentUnavailableView("No Networks", systemImage: "network", description: Text("No networks found"))
+                ContentUnavailableView {
+                    Label("No Networks", systemImage: "network")
+                } description: {
+                    Text("No networks found in this environment.")
+                } actions: {
+                    Button("Create Network") { showCreateSheet = true }
+                        .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     if !systemNetworks.isEmpty {
                         Section {
                             ForEach(systemNetworks) { network in
-                                NavigationLink(destination: NetworkDetailView(network: network, environmentID: environmentID)) {
+                                NavigationLink(value: network) {
                                     NetworkRow(network: network)
                                 }
+                                .matchedTransitionSource(id: network.id, in: heroTransition)
                                 .contextMenu {
                                     // No actions — built-in Docker networks cannot be deleted.
                                 } preview: {
@@ -93,9 +106,10 @@ struct NetworksView: View {
                     if !userNetworks.isEmpty {
                         Section(systemNetworks.isEmpty ? "" : "Custom") {
                             ForEach(userNetworks) { network in
-                                NavigationLink(destination: NetworkDetailView(network: network, environmentID: environmentID)) {
+                                NavigationLink(value: network) {
                                     NetworkRow(network: network)
                                 }
+                                .matchedTransitionSource(id: network.id, in: heroTransition)
                                 .contextMenu {
                                     Button(role: .destructive) {
                                         Task { await deleteNetwork(network) }
@@ -117,13 +131,16 @@ struct NetworksView: View {
                         }
                     }
                     if hasMore {
-                        Button("Load More") {
-                            Task { await loadMore() }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        SkeletonListRow()
+                            .redacted(reason: .placeholder)
+                            .shimmering()
+                            .onAppear {
+                                Task { await loadMore() }
+                            }
                     }
                 }
                 .listStyle(.insetGrouped)
+                .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
             }
         }
         .navigationTitle("Networks")
@@ -162,6 +179,11 @@ struct NetworksView: View {
         }
         .task { await loadNetworks(reset: true) }
         .refreshable { await loadNetworks(reset: true, refresh: true) }
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .navigationDestination(for: NetworkSummary.self) { network in
+            NetworkDetailView(network: network, environmentID: environmentID)
+                .navigationTransition(.zoom(sourceID: network.id, in: heroTransition))
+        }
         .sheet(isPresented: $showCreateSheet) {
             CreateNetworkView(environmentID: environmentID) {}
         }
@@ -277,7 +299,9 @@ struct NetworksView: View {
     }
 
     private func loadMore() async {
-        guard hasMore else { return }
+        guard hasMore, !isLoadingMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
         await loadNetworks(reset: false)
     }
 
