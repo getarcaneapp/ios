@@ -179,7 +179,7 @@ struct SystemSettingsView: View {
 
             if isAdmin {
                 Section("Maintenance") {
-                    NavigationLink(destination: SystemUpgradeView()) {
+                    NavigationLink(destination: SystemUpgradeView(environmentID: manager.activeEnvironmentID)) {
                         HStack(spacing: 12) {
                             Image(systemName: "arrow.up.circle.fill")
                                 .foregroundStyle(Color.accentColor)

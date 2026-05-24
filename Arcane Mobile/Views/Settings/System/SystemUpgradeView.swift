@@ -4,6 +4,8 @@ import Arcane
 struct SystemUpgradeView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
+    let environmentID: EnvironmentID
+
     private enum Phase: Equatable {
         case checking
         case ready(UpgradeCheckResultData)
@@ -249,7 +251,7 @@ struct SystemUpgradeView: View {
         }
         phase = .checking
         do {
-            let result = try await client.system.checkUpgrade(envID: manager.activeEnvironmentID)
+            let result = try await client.system.checkUpgrade(envID: environmentID)
             phase = .ready(result)
         } catch {
             phase = .checkFailed(friendlyErrorMessage(error))
@@ -266,7 +268,7 @@ struct SystemUpgradeView: View {
             // SDK returns Void here — the server may return 202 because it's
             // mid-replacement. Show a static success message; the app will
             // reconnect once the new container is up.
-            try await client.system.triggerUpgrade(envID: manager.activeEnvironmentID)
+            try await client.system.triggerUpgrade(envID: environmentID)
             phase = .triggered("Upgrade initiated. Arcane will restart shortly.")
         } catch {
             phase = .triggerFailed(friendlyErrorMessage(error))

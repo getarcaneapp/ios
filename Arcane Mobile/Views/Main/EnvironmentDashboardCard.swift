@@ -11,6 +11,12 @@ struct EnvironmentDashboardCard: View {
     @State private var latestStats: SystemStatsFrame?
     @State private var dockerError: String?
     @State private var selectionPulse = false
+    @State private var showPruneSheet = false
+    @State private var showUpgradeSheet = false
+    @State private var isSyncing = false
+    @State private var syncErrorMessage: String?
+    @State private var syncSuccessPulse = false
+    @State private var canUpgrade = false
 
     var envID: EnvironmentID {
         EnvironmentID(rawValue: environment.id)
@@ -127,9 +133,54 @@ struct EnvironmentDashboardCard: View {
             } label: {
                 Label("View System Details", systemImage: "info.circle")
             }
+            Divider()
+            Button {
+                Task { await runSync() }
+            } label: {
+                Label("Sync", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .disabled(isSyncing)
+            if canUpgrade {
+                Button {
+                    showUpgradeSheet = true
+                } label: {
+                    Label("Upgrade Arcane", systemImage: "arrow.up.circle")
+                }
+            }
+            Button(role: .destructive) {
+                showPruneSheet = true
+            } label: {
+                Label("System Prune", systemImage: "trash")
+            }
+        }
+        .sheet(isPresented: $showPruneSheet) {
+            SystemPruneView(environmentID: envID)
+        }
+        .sheet(isPresented: $showUpgradeSheet) {
+            NavigationStack {
+                SystemUpgradeView(environmentID: envID)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showUpgradeSheet = false }
+                        }
+                    }
+            }
+        }
+        .alert(
+            "Sync failed",
+            isPresented: Binding(
+                get: { syncErrorMessage != nil },
+                set: { if !$0 { syncErrorMessage = nil } }
+            )
+        ) {
+            Button("OK") { syncErrorMessage = nil }
+        } message: {
+            Text(syncErrorMessage ?? "")
         }
         .sensoryFeedback(.selection, trigger: selectionPulse)
+        .sensoryFeedback(.success, trigger: syncSuccessPulse)
         .task { await loadDockerInfo() }
+        .task { await checkUpgradeAvailability() }
         .task {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled, let client = manager.client else { return }
@@ -229,6 +280,36 @@ struct EnvironmentDashboardCard: View {
             return msg.lowercased().contains("cancel")
         }
         return false
+    }
+
+    private func checkUpgradeAvailability() async {
+        guard let client = manager.client,
+              manager.currentUser?.isAdmin == true else {
+            canUpgrade = false
+            return
+        }
+        do {
+            let result = try await client.system.checkUpgrade(envID: envID)
+            canUpgrade = result.canUpgrade
+        } catch {
+            canUpgrade = false
+        }
+    }
+
+    private func runSync() async {
+        guard let client = manager.client else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        do {
+            try await client.environments.sync(id: envID)
+            await ResponseCache.shared.invalidateEnvironment(envID.rawValue)
+            await loadDockerInfo()
+            syncSuccessPulse.toggle()
+        } catch let error as ArcaneError {
+            syncErrorMessage = arcaneMessage(error)
+        } catch {
+            syncErrorMessage = "Sync failed"
+        }
     }
 
     private func arcaneMessage(_ error: ArcaneError) -> String {
