@@ -52,6 +52,12 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.1.4",
+            fixed: [
+                .init("Fix an issue where the ImageList logic was not parsed correctly"),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.3",
             new: [
                 .init("New cross-environment Updates screen: per-environment summary cards with totals, per-image update rows, and a 'Recheck all images' action for each environment."),
