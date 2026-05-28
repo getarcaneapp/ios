@@ -29,6 +29,7 @@ final class ArcaneClientManager {
     // MARK: - Auth state
     var authState: AppAuthState = .setup
     var currentUser: User?
+    var serverCapabilities: ServerCapabilities?
     var isLoading: Bool = false
     var errorMessage: String?
 
@@ -142,14 +143,8 @@ final class ArcaneClientManager {
         defer { isLoading = false }
         do {
             let response = try await client.auth.login(username: username, password: password)
-            currentUser = User(
-                id: response.user.id,
-                username: response.user.username,
-                email: response.user.email,
-                roles: response.user.roles,
-                canDelete: true,
-                requiresPasswordChange: response.user.requiresPasswordChange
-            )
+            currentUser = response.user
+            serverCapabilities = await client.serverCapabilities()
             authState = .authenticated
         } catch {
             errorMessage = loginErrorMessage(error)
@@ -172,14 +167,8 @@ final class ArcaneClientManager {
                 redirectURI: ArcaneMobileOIDC.redirectURI,
                 presenting: anchor
             )
-            currentUser = User(
-                id: result.user.id,
-                username: result.user.username,
-                email: result.user.email,
-                roles: result.user.roles,
-                canDelete: true,
-                requiresPasswordChange: result.user.requiresPasswordChange
-            )
+            currentUser = result.user
+            serverCapabilities = await client.serverCapabilities()
             authState = .authenticated
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             // User cancelled the system sheet — no error message needed.
@@ -199,6 +188,7 @@ final class ArcaneClientManager {
         defer { isLoading = false }
         try? await client.auth.logout()
         currentUser = nil
+        serverCapabilities = nil
         authState = .login
         await ResponseCache.shared.invalidateAll()
     }
@@ -230,14 +220,8 @@ final class ArcaneClientManager {
 
             do {
                 let response = try await client.auth.login(username: session.username, password: session.password)
-                currentUser = User(
-                    id: response.user.id,
-                    username: response.user.username,
-                    email: response.user.email,
-                    roles: response.user.roles,
-                    canDelete: false,
-                    requiresPasswordChange: response.user.requiresPasswordChange
-                )
+                currentUser = response.user
+                serverCapabilities = await client.serverCapabilities()
                 authState = .authenticated
                 isDemoActive = true
                 demoEndsAt = session.endsAt
@@ -263,6 +247,7 @@ final class ArcaneClientManager {
         // cleanup of the demo session and client logout.
         let endingClient = client
         currentUser = nil
+        serverCapabilities = nil
         isDemoActive = false
         demoEndsAt = nil
         serverURL = ""
@@ -304,14 +289,8 @@ final class ArcaneClientManager {
                 return
             }
             let user = try await client.auth.me()
-            currentUser = User(
-                id: user.id,
-                username: user.username,
-                email: user.email,
-                roles: user.roles,
-                canDelete: true,
-                requiresPasswordChange: user.requiresPasswordChange
-            )
+            currentUser = user
+            serverCapabilities = await client.serverCapabilities()
             authState = .authenticated
         } catch {
             authState = .login

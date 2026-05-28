@@ -9,7 +9,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case volumes, networks, ports, updates, events
     case gitRepositories, gitOps, swarm
     case users, apiKeys, containerRegistries, templateRegistries,
-         notifications, webhooks, systemSettings, authentication, builds, jobs
+         notifications, webhooks, systemSettings, authentication, builds, jobs,
+         roles, oidcRoleMappings
 
     enum Section: Hashable {
         case management, resources, swarm, administration
@@ -41,6 +42,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .authentication: return "Authentication"
         case .builds: return "Builds"
         case .jobs: return "Jobs"
+        case .roles: return "Roles"
+        case .oidcRoleMappings: return "OIDC Role Mappings"
         }
     }
 
@@ -54,6 +57,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .gitRepositories: return "Git Repos"
         case .systemSettings: return "System"
         case .authentication: return "Auth"
+        case .oidcRoleMappings: return "OIDC Roles"
         default: return title
         }
     }
@@ -82,6 +86,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .authentication: return "lock.shield.fill"
         case .builds: return "hammer.fill"
         case .jobs: return "calendar.badge.clock"
+        case .roles: return "person.crop.rectangle.stack.fill"
+        case .oidcRoleMappings: return "person.badge.key.fill"
         }
     }
 
@@ -105,6 +111,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .authentication: return .blue
         case .builds: return .orange
         case .jobs: return .pink
+        case .roles: return .purple
+        case .oidcRoleMappings: return .indigo
         }
     }
 
@@ -116,7 +124,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
             return .resources
         case .swarm:
             return .swarm
-        case .events, .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication:
+        case .events, .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication,
+             .roles, .oidcRoleMappings:
             return .administration
         }
     }
@@ -125,10 +134,20 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .containerRegistries, .templateRegistries, .gitRepositories, .gitOps,
              .builds, .jobs, .swarm,
-             .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication:
+             .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication,
+             .roles, .oidcRoleMappings:
             return true
         case .dashboard, .projects, .containers, .images, .updates, .networks, .ports, .volumes, .events:
             return false
+        }
+    }
+
+    /// Whether this tab requires a v2 RBAC server. On v1 servers, tabs with
+    /// `requiresV2 == true` are hidden — the underlying endpoints don't exist.
+    var requiresV2: Bool {
+        switch self {
+        case .roles, .oidcRoleMappings: return true
+        default: return false
         }
     }
 
@@ -144,7 +163,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
             return true
         case .updates, .events, .gitRepositories, .users, .apiKeys,
              .containerRegistries, .templateRegistries,
-             .notifications, .webhooks, .systemSettings, .authentication, .builds:
+             .notifications, .webhooks, .systemSettings, .authentication, .builds,
+             .roles, .oidcRoleMappings:
             return false
         }
     }
@@ -222,5 +242,9 @@ func appTabDestination(
         BuildSettingsView()
     case .jobs:
         JobsView(environmentID: manager.activeEnvironmentID)
+    case .roles:
+        RolesView()
+    case .oidcRoleMappings:
+        OIDCRoleMappingsView()
     }
 }

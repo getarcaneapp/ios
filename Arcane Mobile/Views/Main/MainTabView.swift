@@ -12,9 +12,10 @@ struct MainTabView: View {
     @AppStorage("arcane.tip.tabSwapDismissed") private var tabSwapTipDismissed = false
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
+    private var supportsV2: Bool { manager.serverCapabilities?.supportsRoleManagement == true }
 
     private var visibleTabs: [AppTab] {
-        store.visibleTabs(isAdmin: isAdmin)
+        store.visibleTabs(isAdmin: isAdmin, supportsV2: supportsV2)
     }
 
     @ViewBuilder

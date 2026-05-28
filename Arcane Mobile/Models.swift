@@ -146,7 +146,6 @@ extension APIKey {
 }
 
 extension User {
-    var isAdmin: Bool { roles.contains("admin") }
     /// Prefer the human-friendly `displayName` when set, fall back to `username`.
     var displayUsername: String {
         if let name = displayName, !name.isEmpty { return name }

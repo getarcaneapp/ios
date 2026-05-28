@@ -83,11 +83,16 @@ struct SettingsView: View {
         return Set(NavTabsStore.shared.pinnedTabs)
     }
 
+    private var supportsV2: Bool {
+        manager.serverCapabilities?.supportsRoleManagement == true
+    }
+
     private func visibleTabs(in section: AppTab.Section) -> [AppTab] {
         AppTab.allCases.filter { tab in
             tab.section == section
                 && !pinnedTabs.contains(tab)
                 && (isAdmin || !tab.requiresAdmin)
+                && (supportsV2 || !tab.requiresV2)
         }
     }
 
@@ -444,6 +449,10 @@ struct UserDetailView: View {
             || isAdmin != user.isAdmin
     }
 
+    private var supportsV2: Bool {
+        manager.serverCapabilities?.supportsRoleManagement == true
+    }
+
     var body: some View {
         Form {
             Section("User Info") {
@@ -453,8 +462,19 @@ struct UserDetailView: View {
                     .textInputAutocapitalization(.never)
                 TextField("Display Name", text: $displayName)
             }
-            Section("Roles") {
+            Section {
                 Toggle("Administrator", isOn: $isAdmin)
+                if supportsV2 {
+                    NavigationLink(destination: UserRoleAssignmentsView(user: user)) {
+                        Label("Edit Role Assignments", systemImage: "person.crop.rectangle.stack")
+                    }
+                }
+            } header: {
+                Text("Roles")
+            } footer: {
+                if supportsV2 {
+                    Text("For per-environment roles or custom roles, use Edit Role Assignments.")
+                }
             }
             if let error = errorMessage {
                 Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
@@ -474,13 +494,25 @@ struct UserDetailView: View {
         guard let client = manager.client else { return }
         isSaving = true; errorMessage = nil
         defer { isSaving = false }
+        let v2 = manager.serverCapabilities?.supportsRoleManagement == true
         do {
             let body = UpdateUserRequest(
                 displayName: displayName.isEmpty ? nil : displayName,
                 email: email.isEmpty ? nil : email,
-                roles: isAdmin ? ["admin"] : []
+                roles: v2 ? nil : (isAdmin ? ["admin"] : [])
             )
-            let _: User = try await client.rest.put("users/\(user.id)", body: body)
+            _ = try await client.users.update(id: user.id, body: body)
+            if v2 && isAdmin != user.isAdmin {
+                let assignments: [UserAssignmentInput] = isAdmin
+                    ? [UserAssignmentInput(roleId: Role.BuiltIn.admin)]
+                    : []
+                do {
+                    _ = try await client.users.setRoleAssignments(userId: user.id, assignments: assignments)
+                } catch {
+                    errorMessage = friendlyErrorMessage(error)
+                    return
+                }
+            }
             await onUpdate()
             dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
@@ -536,15 +568,28 @@ struct CreateUserView: View {
         guard let client = manager.client else { return }
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
+        let v2 = manager.serverCapabilities?.supportsRoleManagement == true
         do {
             let body = CreateUserRequest(
                 username: username,
                 password: password,
                 displayName: nil,
                 email: email.isEmpty ? nil : email,
-                roles: isAdmin ? ["admin"] : ["user"]
+                roles: v2 ? nil : (isAdmin ? ["admin"] : ["user"])
             )
-            let _: User = try await client.rest.post("users", body: body)
+            let created = try await client.users.create(body)
+            if v2 && isAdmin {
+                do {
+                    _ = try await client.users.setRoleAssignments(
+                        userId: created.id,
+                        assignments: [UserAssignmentInput(roleId: Role.BuiltIn.admin)]
+                    )
+                } catch {
+                    errorMessage = "User created, but admin role could not be assigned: \(friendlyErrorMessage(error))"
+                    await onSuccess()
+                    return
+                }
+            }
             await onSuccess(); dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }

@@ -52,6 +52,23 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.1.7",
+            new: [
+                .init("New Roles screen for Arcane 2.0 servers: browse built-in roles, create and edit custom roles, and pick permissions from a searchable, grouped picker. Pinnable as a bottom tab or reachable from Settings → Administration."),
+                .init("New OIDC Role Mappings screen for Arcane 2.0 servers: map an SSO claim value to a role and an optional environment scope. Mappings declared via the OIDC_ROLE_MAPPINGS env var are shown read-only with a lock badge."),
+                .init("New Edit Role Assignments screen on every user's detail page (Arcane 2.0 servers): see a user's assignments grouped by scope (Global, then per-environment), add new assignments with a role + scope picker, swipe to remove manual assignments. OIDC-sourced assignments are shown but can't be changed from the app."),
+                .init("Tabs that only make sense on Arcane 2.0 (Roles, OIDC Role Mappings) are automatically hidden when you connect to an older server, and reappear when you connect to a 2.0 one."),
+            ],
+            changed: [
+                .init("Updated to work with Arcane 2.0's new role-based access control while still supporting older servers transparently. Existing admin users keep admin access after the server upgrade (Arcane 2.0 backfills them into the built-in Admin role)."),
+                .init("Creating or editing a user on Arcane 2.0 servers now manages the admin role through the new role-assignment endpoint behind the scenes. The Administrator toggle still works the same way; for finer control, use the new Edit Role Assignments screen on the user's detail page."),
+            ],
+            fixed: [
+                .init("Permission picker now expands one resource group at a time instead of opening every group together."),
+                .init("Permission picker search field is now the standard iOS search bar at the top of the screen instead of a custom field inside the form."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.6",
             changed: [
                 .init("Removed the Apprise section from Notifications. Apprise support has been dropped in Arcane 2.0."),

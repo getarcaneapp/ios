@@ -25,10 +25,13 @@ final class NavTabsStore {
         return resolved.count == Self.slotCount ? resolved : AppTab.mainDefaults
     }
 
-    /// Drops admin-only tabs for non-admins and pads with `mainDefaults` so the
-    /// returned list always has `slotCount` entries.
-    func visibleTabs(isAdmin: Bool) -> [AppTab] {
-        var visible = pinnedTabs.filter { isAdmin || !$0.requiresAdmin }
+    /// Drops admin-only tabs for non-admins and v2-only tabs on v1 servers,
+    /// then pads with `mainDefaults` so the returned list always has
+    /// `slotCount` entries.
+    func visibleTabs(isAdmin: Bool, supportsV2: Bool) -> [AppTab] {
+        var visible = pinnedTabs.filter { tab in
+            (isAdmin || !tab.requiresAdmin) && (supportsV2 || !tab.requiresV2)
+        }
         if visible.count < Self.slotCount {
             for fallback in AppTab.mainDefaults {
                 if visible.count == Self.slotCount { break }
