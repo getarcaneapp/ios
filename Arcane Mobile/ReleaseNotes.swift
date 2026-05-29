@@ -52,6 +52,12 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.1.8",
+            fixed: [
+                .init("Project compose files and env file do not show up when requested."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.7",
             new: [
                 .init("New Roles screen for Arcane 2.0 servers: browse built-in roles, create and edit custom roles, and pick permissions from a searchable, grouped picker. Pinnable as a bottom tab or reachable from Settings → Administration."),

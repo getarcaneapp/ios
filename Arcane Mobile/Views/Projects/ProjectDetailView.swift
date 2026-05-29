@@ -368,10 +368,6 @@ struct ProjectDetailView: View {
     }
 }
 
-private struct ProjectFilesEnvelope: Decodable {
-    let data: ProjectFiles?
-}
-
 struct ComposeFileView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
@@ -485,18 +481,10 @@ struct ComposeFileView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let path = client.rest.environmentPath(environmentID, "projects/\(projectID)")
-            // Bypass the SDK's strict OpenAPI decoder — the parsed `services`
-            // array on ProjectDetails requires Int64 for fields like memLimit
-            // and shmSize, but compose preserves those as strings ("256m").
-            let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            let envelope = try JSONDecoder().decode(ProjectFilesEnvelope.self, from: raw)
-            guard let files = envelope.data else {
-                throw ArcaneError.decoding("Missing project files in response")
-            }
-            name = files.name
-            let loadedCompose = files.composeContent ?? ""
-            let loadedEnv = files.envContent ?? ""
+            let details = try await client.projects.compose(envID: environmentID, projectID: projectID)
+            name = details.name
+            let loadedCompose = details.composeContent ?? ""
+            let loadedEnv = details.envContent ?? ""
             composeContent = loadedCompose
             envContent = loadedEnv
             originalCompose = loadedCompose
@@ -513,15 +501,8 @@ struct ComposeFileView: View {
         defer { isSaving = false }
         do {
             let resolvedName = name.isEmpty ? projectName : name
-            let body: [String: AnyCodable] = [
-                "name": AnyCodable(resolvedName),
-                "composeContent": AnyCodable(composeContent),
-                "envContent": AnyCodable(envContent)
-            ]
-            let path = client.rest.environmentPath(environmentID, "projects/\(projectID)")
-            // PUT also returns ProjectDetails; bypass the strict decoder since
-            // we don't use the response body.
-            _ = try await client.transport.rawRequest(path, method: "PUT", body: body)
+            let request = UpdateProject(name: resolvedName, composeContent: composeContent, envContent: envContent)
+            _ = try await client.projects.update(envID: environmentID, projectID: projectID, request: request)
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
