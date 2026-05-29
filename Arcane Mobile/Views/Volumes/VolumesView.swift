@@ -7,6 +7,7 @@ struct VolumesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -28,6 +29,7 @@ struct VolumesView: View {
     @State private var hasMore = false
     @State private var isLoadingMore = false
     @State private var loadGeneration = 0
+    @State private var sections: [StableListSection<String, Volume>] = []
 
     private enum VolumeScopeFilter: String, CaseIterable {
         case all = "All", local = "Local", global = "Global"
@@ -35,9 +37,15 @@ struct VolumesView: View {
 
     private var activeFilterCount: Int { scopeFilter != .all ? 1 : 0 }
 
-    private var filtered: [Volume] {
+    private var pinnedIDs: Set<String> {
+        pinnedStore.pinnedIDs(kind: .volume, envID: environmentID)
+    }
+
+    /// Filters + sorts once and partitions in a single pass. Pure — reads the
+    /// current inputs and returns the grouped sections without touching state.
+    private func computeSections() -> [StableListSection<String, Volume>] {
         let query = debouncedSearchText
-        return volumes.filter { volume in
+        let filtered = volumes.filter { volume in
             let matchesSearch = query.isEmpty ||
                 volume.name.localizedCaseInsensitiveContains(query) ||
                 volume.driver.localizedCaseInsensitiveContains(query)
@@ -49,13 +57,6 @@ struct VolumesView: View {
         .sorted {
             sortOrder.areInIncreasingOrder($0.name, $1.name)
         }
-    }
-
-    private var pinnedIDs: Set<String> {
-        pinnedStore.pinnedIDs(kind: .volume, envID: environmentID)
-    }
-
-    private var listSections: [StableListSection<String, Volume>] {
         let pinned: Set<String> = pinnedIDs
         var pinnedItems: [Volume] = []
         var used: [Volume] = []
@@ -74,6 +75,19 @@ struct VolumesView: View {
             .init(id: "used", title: "Used", items: used),
             .init(id: "unused", title: "Unused", items: unused)
         ]
+    }
+
+    /// Refresh the cached `sections`. Called only when an input that affects
+    /// grouping actually changes (search settle, sort, filter, pins, or the
+    /// source list) — never on every body evaluation. Volume sizes are read
+    /// per-row and don't affect grouping, so they don't trigger a rebuild.
+    private func rebuildSections(animated: Bool = false) {
+        let new = computeSections()
+        if animated {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { sections = new }
+        } else {
+            sections = new
+        }
     }
 
     private var mutationVersion: Int {
@@ -97,21 +111,19 @@ struct VolumesView: View {
                 }
             } else {
                 List {
-                    StableSectionedList(listSections) { volume in
+                    StableSectionedList(sections) { volume in
                         volumeLink(volume)
                     }
 
                     if hasMore {
                         SkeletonListRow()
-                            .redacted(reason: .placeholder)
-                            .shimmering()
+                            .skeletonShimmer()
                             .onAppear {
                                 Task { await loadMore() }
                             }
                     }
                 }
                 .listStyle(.insetGrouped)
-                .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
             }
         }
         .navigationTitle("Volumes")
@@ -201,6 +213,10 @@ struct VolumesView: View {
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadVolumes(reset: true, refresh: true) }
         }
+        .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: scopeFilter) { rebuildSections() }
+        .onChange(of: sortOrder) { rebuildSections(animated: true) }
+        .onChange(of: pinnedIDs) { rebuildSections() }
     }
 
     private func volumeLink(_ volume: Volume) -> some View {
@@ -245,7 +261,7 @@ struct VolumesView: View {
 
     private func togglePinAfterSwipe(_ volume: Volume) {
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(for: .milliseconds(250))
             togglePin(volume)
         }
     }
@@ -322,6 +338,7 @@ struct VolumesView: View {
         }
         currentPage = max(Int(response.pagination.currentPage), 1)
         hasMore = response.pagination.currentPage < response.pagination.totalPages
+        rebuildSections()
     }
 
     private func loadSizes(refresh: Bool = false) async {
@@ -357,6 +374,7 @@ struct VolumesView: View {
             let _: DataResponse<String> = try await client.rest.delete(path)
             withAnimation {
                 volumes.removeAll { $0.name == volume.name }
+                rebuildSections()
             }
             await invalidateVolumeCaches()
             mutationStore.markChanged(kind: .volumes, envID: environmentID)

@@ -7,6 +7,7 @@ struct ProjectsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -27,6 +28,7 @@ struct ProjectsView: View {
     @State private var isLoadingMore = false
     @State private var statusFilter = ProjectStatusFilter.all
     @State private var sortOrder = ListSortOrder.ascending
+    @State private var sections: [StableListSection<String, ProjectDetails>] = []
 
     private enum ProjectStatusFilter: String, CaseIterable {
         case all = "All", running = "Running", stopped = "Stopped", partial = "Partial"
@@ -34,9 +36,15 @@ struct ProjectsView: View {
 
     private var activeFilterCount: Int { statusFilter != .all ? 1 : 0 }
 
-    private var filtered: [ProjectDetails] {
+    private var pinnedIDs: Set<String> {
+        pinnedStore.pinnedIDs(kind: .project, envID: environmentID)
+    }
+
+    /// Filters + sorts once and partitions in a single pass. Pure — reads the
+    /// current inputs and returns the grouped sections without touching state.
+    private func computeSections() -> [StableListSection<String, ProjectDetails>] {
         let query = debouncedSearchText
-        return projects.filter { project in
+        let filtered = projects.filter { project in
             let matchesSearch = query.isEmpty ||
                 project.displayName.localizedCaseInsensitiveContains(query)
             let status = project.status.lowercased()
@@ -49,13 +57,6 @@ struct ProjectsView: View {
         .sorted {
             sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
         }
-    }
-
-    private var pinnedIDs: Set<String> {
-        pinnedStore.pinnedIDs(kind: .project, envID: environmentID)
-    }
-
-    private var listSections: [StableListSection<String, ProjectDetails>] {
         let pinned: Set<String> = pinnedIDs
         var pinnedItems: [ProjectDetails] = []
         var active: [ProjectDetails] = []
@@ -74,6 +75,18 @@ struct ProjectsView: View {
             .init(id: "active", title: "Active", items: active),
             .init(id: "stopped", title: "Stopped", items: stopped)
         ]
+    }
+
+    /// Refresh the cached `sections`. Called only when an input that affects
+    /// grouping actually changes (search settle, sort, filter, pins, or the
+    /// source list) — never on every body evaluation.
+    private func rebuildSections(animated: Bool = false) {
+        let new = computeSections()
+        if animated {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { sections = new }
+        } else {
+            sections = new
+        }
     }
 
     private var isAdmin: Bool {
@@ -124,21 +137,19 @@ struct ProjectsView: View {
 
     private var projectsList: some View {
         List {
-            StableSectionedList(listSections) { project in
+            StableSectionedList(sections) { project in
                 projectLink(project)
             }
 
             if hasMore {
                 SkeletonListRow()
-                    .redacted(reason: .placeholder)
-                    .shimmering()
+                    .skeletonShimmer()
                     .onAppear {
                         Task { await loadMore() }
                     }
             }
         }
         .listStyle(.insetGrouped)
-        .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
     }
 
     @ToolbarContentBuilder
@@ -233,6 +244,10 @@ struct ProjectsView: View {
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadProjects(reset: true, refresh: true) }
         }
+        .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: statusFilter) { rebuildSections() }
+        .onChange(of: sortOrder) { rebuildSections(animated: true) }
+        .onChange(of: pinnedIDs) { rebuildSections() }
         .alert(
             "Delete Project",
             isPresented: deleteAlertPresented,
@@ -294,6 +309,7 @@ struct ProjectsView: View {
         }
         currentPage = max(Int(response.pagination.currentPage), 1)
         hasMore = response.pagination.currentPage < response.pagination.totalPages
+        rebuildSections()
     }
 
     private func loadMore() async {
@@ -345,7 +361,7 @@ struct ProjectsView: View {
 
     private func togglePinAfterSwipe(_ project: ProjectDetails) {
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(for: .milliseconds(250))
             togglePin(project)
         }
     }
@@ -396,6 +412,7 @@ struct ProjectsView: View {
             let _: DataResponse<String> = try await client.transport.request(path, method: "DELETE", body: request)
             withAnimation {
                 projects.removeAll { $0.id == project.id }
+                rebuildSections()
             }
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)

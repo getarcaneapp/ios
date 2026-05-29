@@ -192,6 +192,14 @@ actor ImageCache {
 
 // MARK: - Async image view with cache + deduplication
 
+/// Identity for `CachedAsyncImage`'s load task. Combines the requested URL with
+/// a reload token so clearing the shared cache forces a reload even when `url`
+/// is unchanged.
+private struct CachedImageLoadID: Hashable {
+    let url: String?
+    let token: Int
+}
+
 struct CachedAsyncImage<Fallback: View>: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let url: String?
@@ -199,8 +207,9 @@ struct CachedAsyncImage<Fallback: View>: View {
     let fallback: Fallback
 
     @State private var image: UIImage? = nil
-    @State private var currentTargetURL: String? = nil
-    @State private var loadGeneration = 0
+    /// Bumped when the shared cache is cleared, to force `.task(id:)` to re-run
+    /// even though `url` hasn't changed.
+    @State private var reloadToken = 0
 
     init(url: String?, size: CGFloat = 36, @ViewBuilder fallback: () -> Fallback) {
         self.url = url
@@ -220,12 +229,11 @@ struct CachedAsyncImage<Fallback: View>: View {
                     .frame(width: size, height: size)
             }
         }
-        .onAppear { load() }
-        .onChange(of: url) { load() }
+        .task(id: CachedImageLoadID(url: url, token: reloadToken)) {
+            await loadImage()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .imageCacheDidClear)) { _ in
-            image = nil
-            currentTargetURL = nil
-            load()
+            reloadToken += 1
         }
     }
 
@@ -267,32 +275,20 @@ struct CachedAsyncImage<Fallback: View>: View {
         return Int((size * effectiveScale).rounded(.up))
     }
 
-    private func load() {
-        let resolved = resolvedURL()
-        guard resolved != currentTargetURL else {
-            if resolved == nil {
-                image = nil
-            }
-            return
-        }
-
-        loadGeneration += 1
-        let generation = loadGeneration
-        currentTargetURL = resolved
+    /// Loads the resolved image into `image`. Runs inside `.task(id:)`, so it is
+    /// cancelled automatically when the row scrolls off-screen or `url` changes.
+    /// The post-await cancellation check guards against a stale write if the URL
+    /// changed while a fetch was in flight.
+    private func loadImage() async {
         image = nil
-
-        guard let resolved else { return }
+        guard let resolved = resolvedURL() else { return }
         let maxPixel = maxPixelSize
         if let cached = ImageCache.shared[resolved, maxPixelSize: maxPixel] {
             image = cached
             return
         }
-
-        Task {
-            if let loaded = await ImageCache.shared.load(resolved, maxPixelSize: maxPixel, using: manager.fetchImageData) {
-                guard loadGeneration == generation, currentTargetURL == resolved else { return }
-                image = loaded
-            }
-        }
+        let loaded = await ImageCache.shared.load(resolved, maxPixelSize: maxPixel, using: manager.fetchImageData)
+        if Task.isCancelled { return }
+        if let loaded { image = loaded }
     }
 }

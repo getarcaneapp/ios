@@ -201,9 +201,7 @@ struct DashboardView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.secondary.opacity(0.18))
-                    .frame(width: 110, height: 14)
+                SkeletonRect(width: 110, height: 14)
                     .padding(.horizontal, 4)
 
                 ForEach(0..<2, id: \.self) { _ in
@@ -215,24 +213,18 @@ struct DashboardView: View {
         }
         .accessibilityHidden(true)
         .allowsHitTesting(false)
-        .shimmering()
+        .skeletonShimmer()
     }
 
     private var skeletonTile: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Circle()
-                    .fill(Color.secondary.opacity(0.18))
-                    .frame(width: 32, height: 32)
+                SkeletonCircle(size: 32)
                 Spacer()
             }
             VStack(alignment: .leading, spacing: 6) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.secondary.opacity(0.18))
-                    .frame(width: 64, height: 18)
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.secondary.opacity(0.18))
-                    .frame(width: 80, height: 10)
+                SkeletonRect(width: 64, height: 18)
+                SkeletonRect(width: 80, height: 10, cornerRadius: 3)
             }
         }
         .padding(12)
@@ -244,16 +236,11 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.secondary.opacity(0.18))
-                        .frame(width: 130, height: 14)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.18))
-                        .frame(width: 80, height: 10)
+                    SkeletonRect(width: 130, height: 14)
+                    SkeletonRect(width: 80, height: 10, cornerRadius: 3)
                 }
                 Spacer()
-                Capsule()
-                    .fill(Color.secondary.opacity(0.18))
+                SkeletonFill(shape: Capsule())
                     .frame(width: 56, height: 20)
             }
 
@@ -261,12 +248,8 @@ struct DashboardView: View {
                 ForEach(0..<3, id: \.self) { _ in
                     Spacer(minLength: 0)
                     VStack(spacing: 8) {
-                        Circle()
-                            .fill(Color.secondary.opacity(0.15))
-                            .frame(width: 62, height: 62)
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.secondary.opacity(0.18))
-                            .frame(width: 36, height: 10)
+                        SkeletonCircle(size: 62)
+                        SkeletonRect(width: 36, height: 10, cornerRadius: 2)
                     }
                     Spacer(minLength: 0)
                 }
@@ -277,12 +260,8 @@ struct DashboardView: View {
             HStack(spacing: 12) {
                 ForEach(0..<3, id: \.self) { _ in
                     VStack(spacing: 4) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.secondary.opacity(0.18))
-                            .frame(width: 30, height: 14)
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.secondary.opacity(0.18))
-                            .frame(width: 50, height: 10)
+                        SkeletonRect(width: 30, height: 14)
+                        SkeletonRect(width: 50, height: 10, cornerRadius: 3)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -357,6 +336,14 @@ struct DashboardView: View {
             overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
                 ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
         }
+
+        // Primary content (environment cards + overview) is ready — dismiss the
+        // skeleton now so the dashboard renders immediately instead of waiting
+        // on the slower cross-environment Volumes/Updates aggregation below.
+        // Those tiles show "—" until their totals arrive a moment later. The
+        // `defer` still clears these on any early return as a safety net.
+        hasLoadedOnce = true
+        isLoading = false
 
         async let volumesResult = loadVolumesTotal(envs: bounded)
         async let updatesResult = loadImageUpdatesTotal(envs: bounded)

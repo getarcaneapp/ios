@@ -320,7 +320,7 @@ struct UpdaterRunView: View {
 
     private func pollLoop(client: ArcaneClient) async {
         // First tick: short delay so we transition to .running quickly.
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(for: .milliseconds(400))
         if Task.isCancelled { return }
         await MainActor.run {
             if case .starting = phase { phase = .running }
@@ -337,7 +337,7 @@ struct UpdaterRunView: View {
             } catch {
                 // Swallow status-poll errors — the run task owns the authoritative outcome.
             }
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            try? await Task.sleep(for: .milliseconds(1500))
         }
     }
 }

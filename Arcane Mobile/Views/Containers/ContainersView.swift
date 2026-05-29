@@ -5,6 +5,7 @@ struct ContainersView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var heroTransition
     let environmentID: EnvironmentID
     let environmentName: String
@@ -18,6 +19,7 @@ struct ContainersView: View {
     @State private var showFilterSheet = false
     @State private var stateFilter = ContainerStateFilter.all
     @State private var sortOrder = ListSortOrder.ascending
+    @State private var sections: [StableListSection<String, ContainerSummary>] = []
 
     private enum ContainerStateFilter: String, CaseIterable {
         case all = "All", running = "Running", stopped = "Stopped"
@@ -25,9 +27,15 @@ struct ContainersView: View {
 
     private var activeFilterCount: Int { stateFilter != .all ? 1 : 0 }
 
-    private var filtered: [ContainerSummary] {
+    private var pinnedIDs: Set<String> {
+        pinnedStore.pinnedIDs(kind: .container, envID: environmentID)
+    }
+
+    /// Filters + sorts once and partitions in a single pass. Pure — reads the
+    /// current inputs and returns the grouped sections without touching state.
+    private func computeSections() -> [StableListSection<String, ContainerSummary>] {
         let query = debouncedSearchText
-        return containers.filter { c in
+        let filtered = containers.filter { c in
             let matchesSearch = query.isEmpty ||
                 c.names.contains(where: { $0.localizedCaseInsensitiveContains(query) }) ||
                 c.image.localizedCaseInsensitiveContains(query)
@@ -39,13 +47,6 @@ struct ContainersView: View {
         .sorted {
             sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
         }
-    }
-
-    private var pinnedIDs: Set<String> {
-        pinnedStore.pinnedIDs(kind: .container, envID: environmentID)
-    }
-
-    private var listSections: [StableListSection<String, ContainerSummary>] {
         let pinned: Set<String> = pinnedIDs
         var pinnedItems: [ContainerSummary] = []
         var running: [ContainerSummary] = []
@@ -64,6 +65,18 @@ struct ContainersView: View {
             .init(id: "running", title: "Running", items: running),
             .init(id: "stopped", title: "Stopped", items: stopped)
         ]
+    }
+
+    /// Refresh the cached `sections`. Called only when an input that affects
+    /// grouping actually changes (search settle, sort, filter, pins, or the
+    /// source list) — never on every body evaluation.
+    private func rebuildSections(animated: Bool = false) {
+        let new = computeSections()
+        if animated {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { sections = new }
+        } else {
+            sections = new
+        }
     }
 
     private var mutationVersion: Int {
@@ -89,13 +102,11 @@ struct ContainersView: View {
                 }
             } else {
                 List {
-                    StableSectionedList(listSections) { container in
+                    StableSectionedList(sections) { container in
                         containerLink(container)
                     }
                 }
                 .listStyle(.insetGrouped)
-                .motionAwareAnimation(.smooth(duration: 0.3), value: stateFilter)
-                .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
             }
         }
         .navigationTitle("Containers")
@@ -165,6 +176,10 @@ struct ContainersView: View {
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadContainers(refresh: true) }
         }
+        .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: stateFilter) { rebuildSections(animated: true) }
+        .onChange(of: sortOrder) { rebuildSections(animated: true) }
+        .onChange(of: pinnedIDs) { rebuildSections() }
     }
 
     private func containerLink(_ container: ContainerSummary) -> some View {
@@ -200,7 +215,7 @@ struct ContainersView: View {
 
     private func togglePinAfterSwipe(_ container: ContainerSummary) {
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(for: .milliseconds(250))
             togglePin(container)
         }
     }
@@ -295,6 +310,7 @@ struct ContainersView: View {
             let path = client.rest.environmentPath(environmentID, "containers/\(container.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
             containers.removeAll { $0.id == container.id }
+            rebuildSections()
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
             HapticsManager.success()
@@ -314,9 +330,10 @@ struct ContainersView: View {
             if let result: [ContainerSummary] = try await cached.getList(
                 path, elementType: ContainerSummary.self, policy: .containersList,
                 envID: environmentID, refresh: refresh,
-                onFresh: { fresh in containers = fresh }
+                onFresh: { fresh in containers = fresh; rebuildSections() }
             ) {
                 containers = result
+                rebuildSections()
             }
         } catch {
             errorMessage = friendlyErrorMessage(error)

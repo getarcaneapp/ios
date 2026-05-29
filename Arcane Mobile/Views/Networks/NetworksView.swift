@@ -6,6 +6,7 @@ struct NetworksView: View {
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -26,6 +27,8 @@ struct NetworksView: View {
     @State private var hasMore = false
     @State private var isLoadingMore = false
     @State private var loadGeneration = 0
+    @State private var systemNetworks: [NetworkSummary] = []
+    @State private var userNetworks: [NetworkSummary] = []
 
     private enum NetworkTypeFilter: String, CaseIterable {
         case all = "All", standard = "Standard", internalOnly = "Internal"
@@ -43,9 +46,11 @@ struct NetworksView: View {
         systemNetworkNames.contains(network.name.lowercased())
     }
 
-    private var filtered: [NetworkSummary] {
+    /// Filters + sorts once and partitions in a single pass into built-in vs
+    /// custom networks. Pure — reads current inputs, returns the two groups.
+    private func computePartition() -> (system: [NetworkSummary], user: [NetworkSummary]) {
         let query = debouncedSearchText
-        return networks.filter { network in
+        let filtered = networks.filter { network in
             let matchesSearch = query.isEmpty ||
                 network.name.localizedCaseInsensitiveContains(query) ||
                 network.driver.localizedCaseInsensitiveContains(query)
@@ -57,14 +62,28 @@ struct NetworksView: View {
         .sorted {
             sortOrder.areInIncreasingOrder($0.name, $1.name)
         }
+        var system: [NetworkSummary] = []
+        var user: [NetworkSummary] = []
+        for network in filtered {
+            if Self.isSystem(network) { system.append(network) } else { user.append(network) }
+        }
+        return (system, user)
     }
 
-    private var systemNetworks: [NetworkSummary] {
-        filtered.filter { Self.isSystem($0) }
-    }
-
-    private var userNetworks: [NetworkSummary] {
-        filtered.filter { !Self.isSystem($0) }
+    /// Refresh the cached partition. Called only when an input that affects
+    /// grouping actually changes (search settle, sort, filter, or the source
+    /// list) — never on every body evaluation.
+    private func rebuildSections(animated: Bool = false) {
+        let (system, user) = computePartition()
+        if animated {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
+                systemNetworks = system
+                userNetworks = user
+            }
+        } else {
+            systemNetworks = system
+            userNetworks = user
+        }
     }
 
     var body: some View {
@@ -132,15 +151,13 @@ struct NetworksView: View {
                     }
                     if hasMore {
                         SkeletonListRow()
-                            .redacted(reason: .placeholder)
-                            .shimmering()
+                            .skeletonShimmer()
                             .onAppear {
                                 Task { await loadMore() }
                             }
                     }
                 }
                 .listStyle(.insetGrouped)
-                .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
             }
         }
         .navigationTitle("Networks")
@@ -230,6 +247,9 @@ struct NetworksView: View {
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadNetworks(reset: true, refresh: true) }
         }
+        .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: typeFilter) { rebuildSections() }
+        .onChange(of: sortOrder) { rebuildSections(animated: true) }
     }
 
     private func networkPreview(_ network: NetworkSummary) -> some View {
@@ -296,6 +316,7 @@ struct NetworksView: View {
         }
         currentPage = max(Int(response.pagination.currentPage), 1)
         hasMore = response.pagination.currentPage < response.pagination.totalPages
+        rebuildSections()
     }
 
     private func loadMore() async {
@@ -312,6 +333,7 @@ struct NetworksView: View {
             let _: DataResponse<String> = try await client.rest.delete(path)
             withAnimation {
                 networks.removeAll { $0.id == network.id }
+                rebuildSections()
             }
             await invalidateNetworkCaches()
             mutationStore.markChanged(kind: .networks, envID: environmentID)

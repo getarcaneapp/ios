@@ -105,7 +105,7 @@ final class DemoService {
         stopHeartbeat()
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
+                try? await Task.sleep(for: .seconds(15))
                 if Task.isCancelled { break }
                 await self?.sendHeartbeat()
             }
@@ -167,7 +167,7 @@ final class DemoService {
                     self.heartbeatTask = Task { [weak self] in
                         await self?.sendHeartbeat()
                         while !Task.isCancelled {
-                            try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
+                            try? await Task.sleep(for: .seconds(15))
                             if Task.isCancelled { break }
                             await self?.sendHeartbeat()
                         }

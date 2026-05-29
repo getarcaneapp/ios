@@ -52,6 +52,16 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.1.9",
+            changed: [
+                .init("Searching and filtering large resource lists (Containers, Images, Networks, Projects, Volumes) is snappier — results are now computed once when you stop typing or change the sort or filter, instead of re-sorting on every keystroke."),
+                .init("The dashboard now appears as soon as your environment cards are ready instead of waiting on the cross-environment Volumes and Updates totals, which fill in their tiles a moment later."),
+                .init("Resource icons stop loading the moment you scroll past them, so fast scrolling through long lists uses less CPU and data."),
+                .init("Loading skeletons now use a single synchronized shimmer that stays contained to each placeholder — no glow bleed onto neighboring content — and honor the system Reduce Motion setting."),
+                .init("Swarm management is temporarily a placeholder while the screen is reworked. The tab stays in the navigation; the cluster, services, and nodes screens will return in a future update."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.8",
             fixed: [
                 .init("Project compose files and env file do not show up when requested."),

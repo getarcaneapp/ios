@@ -6,6 +6,7 @@ struct ImagesView: View {
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -29,6 +30,7 @@ struct ImagesView: View {
     @State private var showFilterSheet = false
     @State private var tagsFilter = ImageTagsFilter.all
     @State private var sortOrder = ListSortOrder.ascending
+    @State private var sections: [StableListSection<String, ImageSummary>] = []
 
     private enum ImageTagsFilter: String, CaseIterable {
         case all = "All", tagged = "Tagged", untagged = "Untagged"
@@ -36,9 +38,11 @@ struct ImagesView: View {
 
     private var activeFilterCount: Int { tagsFilter != .all ? 1 : 0 }
 
-    private var filtered: [ImageSummary] {
+    /// Filters + sorts once and partitions in a single pass. Pure — reads the
+    /// current inputs and returns the grouped sections without touching state.
+    private func computeSections() -> [StableListSection<String, ImageSummary>] {
         let query = debouncedSearchText
-        return images.filter { image in
+        let filtered = images.filter { image in
             let matchesSearch = query.isEmpty ||
                 image.displayName.localizedCaseInsensitiveContains(query) ||
                 image.id.localizedCaseInsensitiveContains(query)
@@ -51,21 +55,27 @@ struct ImagesView: View {
         .sorted {
             sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
         }
-    }
-
-    private var usedImages: [ImageSummary] {
-        filtered.filter(\.inUse)
-    }
-
-    private var unusedImages: [ImageSummary] {
-        filtered.filter { !$0.inUse }
-    }
-
-    private var listSections: [StableListSection<String, ImageSummary>] {
-        [
-            .init(id: "used", title: "Used", items: usedImages),
-            .init(id: "unused", title: "Unused", items: unusedImages)
+        var used: [ImageSummary] = []
+        var unused: [ImageSummary] = []
+        for image in filtered {
+            if image.inUse { used.append(image) } else { unused.append(image) }
+        }
+        return [
+            .init(id: "used", title: "Used", items: used),
+            .init(id: "unused", title: "Unused", items: unused)
         ]
+    }
+
+    /// Refresh the cached `sections`. Called only when an input that affects
+    /// grouping actually changes (search settle, sort, filter, or the source
+    /// list) — never on every body evaluation.
+    private func rebuildSections(animated: Bool = false) {
+        let new = computeSections()
+        if animated {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { sections = new }
+        } else {
+            sections = new
+        }
     }
 
     private var isAdmin: Bool {
@@ -99,21 +109,19 @@ struct ImagesView: View {
                 }
             } else {
                 List {
-                    StableSectionedList(listSections) { image in
+                    StableSectionedList(sections) { image in
                         imageLink(image)
                     }
 
                     if hasMore {
                         SkeletonListRow()
-                            .redacted(reason: .placeholder)
-                            .shimmering()
+                            .skeletonShimmer()
                             .onAppear {
                                 Task { await loadMore() }
                             }
                     }
                 }
                 .listStyle(.insetGrouped)
-                .motionAwareAnimation(.smooth(duration: 0.3), value: sortOrder)
             }
         }
         .navigationTitle("Images")
@@ -239,6 +247,9 @@ struct ImagesView: View {
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadImages(reset: true, refresh: true) }
         }
+        .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: tagsFilter) { rebuildSections() }
+        .onChange(of: sortOrder) { rebuildSections(animated: true) }
     }
 
     private func imageLink(_ image: ImageSummary) -> some View {
@@ -332,6 +343,7 @@ struct ImagesView: View {
         }
         currentPage = max(Int(response.pagination.currentPage), 1)
         hasMore = response.pagination.currentPage < response.pagination.totalPages
+        rebuildSections()
     }
 
     private func invalidateImageCaches() async {
@@ -395,6 +407,7 @@ struct ImagesView: View {
             let _: DataResponse<String> = try await client.rest.delete(path)
             withAnimation {
                 images.removeAll { $0.id == image.id }
+                rebuildSections()
             }
             await invalidateImageCaches()
             mutationStore.markChanged(kind: .images, envID: environmentID)

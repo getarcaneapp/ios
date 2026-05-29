@@ -67,7 +67,7 @@ struct ContainerInspectView: View {
         .onChange(of: copyConfirm) { _, newValue in
             guard newValue else { return }
             Task {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                try? await Task.sleep(for: .milliseconds(1500))
                 copyConfirm = false
             }
         }
