@@ -100,6 +100,9 @@ struct AppSettingsView: View {
             Link(destination: URL(string: "https://github.com/getarcaneapp/ios/issues")!) {
                 SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
             }
+            Link(destination: URL(string: "https://getarcane.app/privacy")!) {
+                SettingsExternalRow(title: "Privacy Policy", systemImage: "hand.raised.fill", color: .gray)
+            }
             Button {
                 showWhatsNew = true
             } label: {

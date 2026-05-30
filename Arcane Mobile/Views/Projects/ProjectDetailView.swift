@@ -354,7 +354,10 @@ struct ProjectDetailView: View {
             ) {
                 refreshedProject = result
             }
-        } catch {}
+            errorMessage = nil
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func invalidateProjectCaches() async {
@@ -667,7 +670,9 @@ struct CreateProjectView: View {
         defer { isLoadingTemplates = false }
         do {
             templates = try await client.rest.get("templates/all")
-        } catch {}
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func applyTemplate(id: String) async {

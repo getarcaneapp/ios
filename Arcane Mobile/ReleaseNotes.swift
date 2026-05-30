@@ -52,6 +52,12 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.2.0",
+            new: [
+                .init("First Public Testflight Release!"),
+            ]
+        ),
+        ReleaseNote(
             version: "0.1.9",
             changed: [
                 .init("Searching and filtering large resource lists (Containers, Images, Networks, Projects, Volumes) is snappier — results are now computed once when you stop typing or change the sort or filter, instead of re-sorting on every keystroke."),

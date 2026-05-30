@@ -46,7 +46,8 @@ actor ResponseCache {
     private let decoder: JSONDecoder
 
     private init() {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         diskDirectory = caches.appendingPathComponent("ResponseCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
         let enc = JSONEncoder()

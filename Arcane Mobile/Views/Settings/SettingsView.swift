@@ -601,6 +601,7 @@ struct APIKeysView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var apiKeys: [APIKey] = []
     @State private var isLoading = false
+    @State private var errorMessage: String?
     @State private var showCreateSheet = false
     @State private var createdKey: String?
     @State private var actionErrorMessage: String?
@@ -609,6 +610,14 @@ struct APIKeysView: View {
         Group {
             if isLoading && apiKeys.isEmpty {
                 ProgressView("Loading API keys...").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage, apiKeys.isEmpty {
+                ContentUnavailableView {
+                    Label("Couldn't Load API Keys", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") { Task { await loadKeys(refresh: true) } }
+                }
             } else if apiKeys.isEmpty {
                 ContentUnavailableView("No API Keys", systemImage: "key.slash", description: nil)
             } else {
@@ -667,6 +676,7 @@ struct APIKeysView: View {
     private func loadKeys(refresh: Bool = false) async {
         guard let cached = manager.cached else { return }
         if apiKeys.isEmpty { isLoading = true }
+        if refresh { errorMessage = nil }
         defer { isLoading = false }
         do {
             if let result: [APIKey] = try await cached.getListGlobal(
@@ -676,7 +686,10 @@ struct APIKeysView: View {
             ) {
                 apiKeys = result
             }
-        } catch {}
+            errorMessage = nil
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func deleteKey(_ key: APIKey) async {
@@ -826,6 +839,7 @@ struct ContainerRegistriesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var registries: [ContainerRegistry] = []
     @State private var isLoading = false
+    @State private var errorMessage: String?
     @State private var showCreateRegistrySheet = false
     @State private var editingRegistry: ContainerRegistry?
     @State private var actionErrorMessage: String?
@@ -836,6 +850,14 @@ struct ContainerRegistriesView: View {
                 ContentUnavailableView("Admin Required", systemImage: "lock.fill", description: Text("Only administrators can manage container registries."))
             } else if isLoading && registries.isEmpty {
                 ProgressView("Loading registries...").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage, registries.isEmpty {
+                ContentUnavailableView {
+                    Label("Couldn't Load Registries", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") { Task { await loadRegistries(refresh: true) } }
+                }
             } else if registries.isEmpty {
                 ContentUnavailableView("No Container Registries", systemImage: "shippingbox.slash", description: nil)
             } else {
@@ -906,6 +928,7 @@ struct ContainerRegistriesView: View {
     private func loadRegistries(refresh: Bool = false) async {
         guard manager.currentUser?.isAdmin == true, let cached = manager.cached else { return }
         if registries.isEmpty { isLoading = true }
+        if refresh { errorMessage = nil }
         defer { isLoading = false }
         do {
             if let result: [ContainerRegistry] = try await cached.getListGlobal(
@@ -915,7 +938,10 @@ struct ContainerRegistriesView: View {
             ) {
                 registries = result
             }
-        } catch {}
+            errorMessage = nil
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func deleteRegistry(_ registry: ContainerRegistry) async {
@@ -938,6 +964,7 @@ struct TemplateRegistriesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var registries: [TemplateRegistry] = []
     @State private var isLoading = false
+    @State private var errorMessage: String?
     @State private var showCreateSheet = false
     @State private var showBrowser = false
     @State private var editingRegistry: TemplateRegistry?
@@ -949,6 +976,14 @@ struct TemplateRegistriesView: View {
                 ContentUnavailableView("Admin Required", systemImage: "lock.fill", description: Text("Only administrators can manage template registries."))
             } else if isLoading && registries.isEmpty {
                 ProgressView("Loading template registries...").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage, registries.isEmpty {
+                ContentUnavailableView {
+                    Label("Couldn't Load Template Registries", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") { Task { await loadRegistries(refresh: true) } }
+                }
             } else if registries.isEmpty {
                 ContentUnavailableView("No Template Registries", systemImage: "doc.text", description: nil)
             } else {
@@ -1025,6 +1060,7 @@ struct TemplateRegistriesView: View {
     private func loadRegistries(refresh: Bool = false) async {
         guard manager.currentUser?.isAdmin == true, let cached = manager.cached else { return }
         if registries.isEmpty { isLoading = true }
+        if refresh { errorMessage = nil }
         defer { isLoading = false }
         do {
             if let result: [TemplateRegistry] = try await cached.getListGlobal(
@@ -1034,7 +1070,10 @@ struct TemplateRegistriesView: View {
             ) {
                 registries = result
             }
-        } catch {}
+            errorMessage = nil
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func deleteTemplateRegistry(_ registry: TemplateRegistry) async {

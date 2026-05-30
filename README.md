@@ -20,12 +20,12 @@ For setup instructions, configuration details, and development guides, visit the
 
 ## Requirements
 
-- iOS 18 or later
+- iOS 26 or later
 - An Arcane server reachable over HTTPS
 
 ## Building
 
-This is a SwiftUI app targeting iOS 18+ in Swift 6 strict-concurrency mode.
+This is a SwiftUI app targeting iOS 26+ in Swift 6 strict-concurrency mode.
 
 ```sh
 open "Arcane Mobile.xcodeproj"

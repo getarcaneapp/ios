@@ -195,7 +195,7 @@ struct ImagesView: View {
             Text("Remove all dangling images. This cannot be undone.")
         }
         .alert(
-            "Couldn't Delete Image",
+            "Something Went Wrong",
             isPresented: Binding(
                 get: { actionErrorMessage != nil },
                 set: { if !$0 { actionErrorMessage = nil } }
@@ -397,7 +397,9 @@ struct ImagesView: View {
             let _: ImagePruneReport = try await client.rest.post(path, body: body)
             await invalidateImageCaches()
             mutationStore.markChanged(kind: .images, envID: environmentID)
-        } catch {}
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
+        }
     }
 
     private func removeImage(_ image: ImageSummary) async {
