@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(find /Users/kmendell/code/getarcaneapp/libarcane-swift -type f -name \"*.swift\" | head -20)",
-      "Bash(find /Users/kmendell/code/getarcaneapp/arcane -type f -name \"*.go\" | grep -E \"\\(route|handler|api|project|compose|env\\)\" | head -30)",
-      "Bash(grep -r \"composeVersion\" /Users/kmendell/code/getarcaneapp --include=\"*.swift\")"
-    ]
-  }
-}
