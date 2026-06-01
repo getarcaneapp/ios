@@ -426,7 +426,24 @@ func friendlyErrorMessage(_ error: Error) -> String {
         case .server(_, let message):
             return cleanErrorText(message) ?? "Server error"
         case .transport(let message):
-            if message.lowercased().contains("cancel") { return "Cancelled" }
+            let lower = message.lowercased()
+            if lower.contains("cancel") { return "Cancelled" }
+            if lower.contains("could not connect to the server") || lower.contains("connection refused") {
+                return "Can't reach the server — check the address and that it's running."
+            }
+            if lower.contains("hostname could not be found")
+                || lower.contains("server with the specified hostname could not be found") {
+                return "Server not found — check the address."
+            }
+            if lower.contains("timed out") {
+                return "Connection timed out — check the address and your network."
+            }
+            if lower.contains("secure connection") || lower.contains("ssl") {
+                return "Secure connection failed — for a local server use http://, or check the server's certificate."
+            }
+            if lower.contains("app transport security") {
+                return "Blocked an insecure connection — check the server URL."
+            }
             return "Connection error: \(message)"
         case .decoding(let message): return "Response error: \(message)"
         case .unknown(let code, _):

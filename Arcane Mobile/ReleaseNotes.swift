@@ -52,6 +52,17 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.2.1",
+            changed: [
+                .init("Server addresses entered without http:// or https:// now default to https://, and the login screen reminds you to include http:// when connecting to a local server."),
+            ],
+            fixed: [
+                .init("You can now sign in to a local, HTTP-only Arcane server on your network — for example http://192.168.1.50:3000. iOS was silently blocking these plain-HTTP connections, so login failed with a generic connection error."),
+                .init("Connection problems on the login screen now explain what actually went wrong — can't reach the server, server not found, timed out, or a secure-connection issue — instead of showing a raw system message."),
+                .init("The Dashboard's Containers and Images tiles showed '—' instead of counts on Arcane 2.0 servers. They now read live per-environment data — the same source the environment cards use — so they populate regardless of server version, and a genuine zero shows as '0' instead of a dash."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.2.0",
             new: [
                 .init("First Public Testflight Release!"),

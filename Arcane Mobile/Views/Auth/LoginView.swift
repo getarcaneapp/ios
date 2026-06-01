@@ -183,22 +183,31 @@ struct LoginView: View {
     }
 
     private var serverURLForm: some View {
-        VStack(spacing: 0) {
-            FieldRow(icon: "server.rack", label: "Server URL") {
-                TextField(
-                    "",
-                    text: $serverURL,
-                    prompt: Text("https://arcane.example.com").foregroundStyle(.secondary)
-                )
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .focused($focusedField, equals: .serverURL)
-                .submitLabel(.go)
-                .onSubmit { connectToServer() }
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 0) {
+                FieldRow(icon: "server.rack", label: "Server URL") {
+                    TextField(
+                        "",
+                        text: $serverURL,
+                        prompt: Text("https://arcane.example.com").foregroundStyle(.secondary)
+                    )
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .focused($focusedField, equals: .serverURL)
+                    .submitLabel(.go)
+                    .onSubmit { connectToServer() }
+                }
             }
+            .glassEffect(.regular, in: .rect(cornerRadius: 18))
+
+            Text("For a local server, include the scheme — e.g. http://192.168.1.50:3000")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 4)
         }
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
 
     private var credentialsForm: some View {

@@ -52,6 +52,15 @@ struct EnvironmentDetailRoute: Hashable {
     let name: String
 }
 
+/// Aggregated container/image counts derived live from per-environment
+/// `system/docker/info`, used as a version-independent source for the dashboard
+/// tiles (v2 removed the cross-environment `/dashboard/environments` summary).
+private struct DashboardLiveCounts: Sendable, Equatable {
+    var running: Int
+    var total: Int
+    var images: Int
+}
+
 struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @Binding var selectedTab: String
@@ -62,6 +71,7 @@ struct DashboardView: View {
     @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
     @State private var imageUpdatesTotal: Int?
+    @State private var liveCounts: DashboardLiveCounts?
     @State private var rawEnvironmentCount: Int = 0
     @State private var detailRoute: EnvironmentDetailRoute?
 
@@ -273,9 +283,15 @@ struct DashboardView: View {
     }
 
     private var overviewGrid: some View {
-        let running = overview?.summary.containers?.runningContainers ?? 0
-        let total = overview?.summary.containers?.totalContainers ?? 0
-        let images = overview?.summary.imageUsageCounts?.totalImages ?? 0
+        // Prefer live per-environment Docker counts (from `system/docker/info`,
+        // present on both v1 and v2 and not gated on reported online status);
+        // fall back to the v1-only `/dashboard/environments` summary when present.
+        // v2 removed that cross-environment endpoint, which is why these tiles
+        // showed "—" against a 2.0 server. A loaded zero now renders as "0 / 0"/"0";
+        // "—" means only "not loaded yet".
+        let running = liveCounts?.running ?? overview?.summary.containers?.runningContainers ?? 0
+        let total: Int? = liveCounts?.total ?? overview?.summary.containers?.totalContainers
+        let images: Int? = liveCounts?.images ?? overview?.summary.imageUsageCounts?.totalImages
 
         return Grid(horizontalSpacing: 10, verticalSpacing: 10) {
             GridRow {
@@ -288,7 +304,7 @@ struct DashboardView: View {
 
                 DashboardGlassTile(
                     title: "Containers",
-                    value: total > 0 ? "\(running) / \(total)" : "—",
+                    value: total.map { "\(running) / \($0)" } ?? "—",
                     icon: "cube.box.fill",
                     tint: .orange
                 ) { selectedTab = AppTab.containers.id }
@@ -296,7 +312,7 @@ struct DashboardView: View {
             GridRow {
                 DashboardGlassTile(
                     title: "Images",
-                    value: images > 0 ? "\(images)" : "—",
+                    value: images.map { "\($0)" } ?? "—",
                     icon: "photo.stack.fill",
                     tint: .purple
                 ) { selectedTab = AppTab.images.id }
@@ -347,11 +363,14 @@ struct DashboardView: View {
 
         async let volumesResult = loadVolumesTotal(envs: bounded)
         async let updatesResult = loadImageUpdatesTotal(envs: bounded)
+        async let countsResult = loadLiveCounts(envs: bounded, refresh: refresh)
         let volumes = await volumesResult
         let updates = await updatesResult
+        let counts = await countsResult
         if !Task.isCancelled {
             volumesTotal = volumes
             imageUpdatesTotal = updates
+            if let counts { liveCounts = counts }
         }
     }
 
@@ -415,6 +434,64 @@ struct DashboardView: View {
             }
             return total
         }
+    }
+
+    /// Aggregates running/total container and image counts across environments
+    /// from each environment's `system/docker/info` — the same cached source the
+    /// environment cards use. Works on both v1 and v2 servers and does not rely
+    /// on the cross-environment `/dashboard/environments` summary that v2 removed.
+    /// Returns nil only when no environment's Docker info could be read, so the
+    /// tiles can tell "not loaded" apart from a genuine zero.
+    private func loadLiveCounts(envs: [Arcane.Environment], refresh: Bool) async -> DashboardLiveCounts? {
+        guard let client = manager.client, let cached = manager.cached, !envs.isEmpty else { return nil }
+
+        let perEnv: [DashboardLiveCounts] = await withTaskGroup(of: DashboardLiveCounts?.self) { group in
+            var iterator = envs.makeIterator()
+            let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
+            for _ in 0..<initialBatch {
+                guard let env = iterator.next() else { break }
+                let envID = EnvironmentID(rawValue: env.id)
+                group.addTask { await Self.dockerCounts(client: client, cached: cached, envID: envID, refresh: refresh) }
+            }
+            var acc: [DashboardLiveCounts] = []
+            for await result in group {
+                if let result { acc.append(result) }
+                if let env = iterator.next() {
+                    let envID = EnvironmentID(rawValue: env.id)
+                    group.addTask { await Self.dockerCounts(client: client, cached: cached, envID: envID, refresh: refresh) }
+                }
+            }
+            return acc
+        }
+
+        guard !perEnv.isEmpty else { return nil }
+        return perEnv.reduce(into: DashboardLiveCounts(running: 0, total: 0, images: 0)) {
+            $0.running += $1.running
+            $0.total += $1.total
+            $0.images += $1.images
+        }
+    }
+
+    private static func dockerCounts(
+        client: ArcaneClient,
+        cached: CachedClient,
+        envID: EnvironmentID,
+        refresh: Bool
+    ) async -> DashboardLiveCounts? {
+        let path = client.rest.environmentPath(envID, "system/docker/info")
+        let fetcher: @Sendable () async throws -> DockerInfo = {
+            let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
+            return try JSONDecoder().decode(DockerInfo.self, from: raw)
+        }
+        guard let info = try? await cached.getCustom(
+            path: path, as: DockerInfo.self, policy: .dockerInfo,
+            envID: envID, refresh: refresh, fetcher: fetcher
+        ) else { return nil }
+        return DashboardLiveCounts(
+            running: Int(info.containersRunning),
+            total: Int(info.containers),
+            images: Int(info.images)
+        )
     }
 
     private func loadEnvironmentsCached(refresh: Bool) async -> [Arcane.Environment] {

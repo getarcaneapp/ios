@@ -90,11 +90,17 @@ final class ArcaneClientManager {
     // MARK: - Server setup
     func configure(serverURL url: String) {
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let parsed = URL(string: trimmed) else {
+        let lowered = trimmed.lowercased()
+        // Default to https:// when the user omits a scheme. Local HTTP servers
+        // must be entered with an explicit http:// prefix (see login help text).
+        let normalized = (lowered.hasPrefix("http://") || lowered.hasPrefix("https://"))
+            ? trimmed
+            : "https://\(trimmed)"
+        guard let parsed = URL(string: normalized), parsed.host != nil else {
             errorMessage = "Invalid server URL"
             return
         }
-        serverURL = trimmed
+        serverURL = normalized
         parsedServerURL = parsed
         client = Self.makeClient(url: parsed)
         authState = .login
