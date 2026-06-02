@@ -18,6 +18,7 @@ struct ContainersView: View {
     @State private var showPruneConfirm = false
     @State private var showFilterSheet = false
     @State private var stateFilter = ContainerStateFilter.all
+    @State private var updateFilter = ResourceUpdateFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ContainerSummary>] = []
 
@@ -25,7 +26,11 @@ struct ContainersView: View {
         case all = "All", running = "Running", stopped = "Stopped"
     }
 
-    private var activeFilterCount: Int { stateFilter != .all ? 1 : 0 }
+    private var activeFilterCount: Int {
+        var count = stateFilter != .all ? 1 : 0
+        if updateFilter != .all { count += 1 }
+        return count
+    }
 
     private var pinnedIDs: Set<String> {
         pinnedStore.pinnedIDs(kind: .container, envID: environmentID)
@@ -42,7 +47,8 @@ struct ContainersView: View {
             let matchesState = stateFilter == .all
                 || (stateFilter == .running && c.isRunning)
                 || (stateFilter == .stopped && !c.isRunning)
-            return matchesSearch && matchesState
+            let matchesUpdate = updateFilter.matches(hasUpdate: c.hasAvailableUpdate)
+            return matchesSearch && matchesState && matchesUpdate
         }
         .sorted {
             sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
@@ -155,6 +161,15 @@ struct ContainersView: View {
                         .pickerStyle(.inline)
                         .labelsHidden()
                     }
+                    Section("Updates") {
+                        Picker("Updates", selection: $updateFilter) {
+                            ForEach(ResourceUpdateFilter.allCases) { filter in
+                                Text(filter.title).tag(filter)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
                 }
                 .navigationTitle("Filter")
                 .navigationBarTitleDisplayMode(.inline)
@@ -178,6 +193,7 @@ struct ContainersView: View {
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: stateFilter) { rebuildSections(animated: true) }
+        .onChange(of: updateFilter) { rebuildSections(animated: true) }
         .onChange(of: sortOrder) { rebuildSections(animated: true) }
         .onChange(of: pinnedIDs) { rebuildSections() }
     }

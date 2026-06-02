@@ -27,6 +27,7 @@ struct ProjectsView: View {
     @State private var hasMore = false
     @State private var isLoadingMore = false
     @State private var statusFilter = ProjectStatusFilter.all
+    @State private var updateFilter = ResourceUpdateFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ProjectDetails>] = []
 
@@ -34,7 +35,11 @@ struct ProjectsView: View {
         case all = "All", running = "Running", stopped = "Stopped", partial = "Partial"
     }
 
-    private var activeFilterCount: Int { statusFilter != .all ? 1 : 0 }
+    private var activeFilterCount: Int {
+        var count = statusFilter != .all ? 1 : 0
+        if updateFilter != .all { count += 1 }
+        return count
+    }
 
     private var pinnedIDs: Set<String> {
         pinnedStore.pinnedIDs(kind: .project, envID: environmentID)
@@ -52,7 +57,8 @@ struct ProjectsView: View {
                 || (statusFilter == .running && status == "running")
                 || (statusFilter == .stopped && (status == "stopped" || status == "exited"))
                 || (statusFilter == .partial && (status == "partial" || status == "partially running"))
-            return matchesSearch && matchesStatus
+            let matchesUpdate = updateFilter.matches(hasUpdate: project.hasAvailableUpdate)
+            return matchesSearch && matchesStatus && matchesUpdate
         }
         .sorted {
             sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
@@ -210,6 +216,15 @@ struct ProjectsView: View {
                     .pickerStyle(.inline)
                     .labelsHidden()
                 }
+                Section("Updates") {
+                    Picker("Updates", selection: $updateFilter) {
+                        ForEach(ResourceUpdateFilter.allCases) { filter in
+                            Text(filter.title).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
             }
             .navigationTitle("Filter")
             .navigationBarTitleDisplayMode(.inline)
@@ -246,6 +261,7 @@ struct ProjectsView: View {
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: statusFilter) { rebuildSections() }
+        .onChange(of: updateFilter) { rebuildSections() }
         .onChange(of: sortOrder) { rebuildSections(animated: true) }
         .onChange(of: pinnedIDs) { rebuildSections() }
         .alert(

@@ -31,6 +31,27 @@ enum ListSortOrder: String, CaseIterable, Identifiable {
     }
 }
 
+enum ResourceUpdateFilter: String, CaseIterable, Identifiable {
+    case all
+    case hasUpdates
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "All"
+        case .hasUpdates: return "Has Updates"
+        }
+    }
+
+    func matches(hasUpdate: Bool) -> Bool {
+        switch self {
+        case .all: return true
+        case .hasUpdates: return hasUpdate
+        }
+    }
+}
+
 // MARK: - App compatibility names backed by libarcane-swift exports
 //
 // Display models (`Project`, `ContainerSummary`, `ImageSummary`, `ImageDetailSummary`,
@@ -149,6 +170,7 @@ extension ContainerSummary {
     }
     var isRunning: Bool { state.lowercased() == "running" }
     var iconUrl: String? { labels["com.getarcaneapp.arcane.icon"] }
+    var hasAvailableUpdate: Bool { updateInfo?.hasUpdate == true }
 }
 
 extension ImageSummary {
@@ -161,6 +183,7 @@ extension ImageSummary {
 extension ProjectDetails {
     var displayName: String { name }
     var composeVersion: String? { nil }
+    var hasAvailableUpdate: Bool { updateInfo?.hasUpdate == true }
     var statusColor: String {
         switch status.lowercased() {
         case "running": return "green"

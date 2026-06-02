@@ -28,6 +28,10 @@ struct LoginView: View {
 
     private var isSetupMode: Bool { mode == .setup || showSetup }
 
+    private var oidcRefreshTaskID: String {
+        "\(isSetupMode)-\(manager.serverURL)"
+    }
+
     // When OIDC is enabled, the password form is hidden behind a disclosure
     // so the provider button is the primary action. The user can still reveal
     // it to sign in locally (e.g. admin fallback).
@@ -109,6 +113,10 @@ struct LoginView: View {
         }
         .onChange(of: manager.isStartingDemo) { _, isStarting in
             if isStarting { focusedField = nil }
+        }
+        .task(id: oidcRefreshTaskID) {
+            guard !isSetupMode, !manager.serverURL.isEmpty else { return }
+            await manager.refreshOIDCStatus()
         }
     }
 
