@@ -66,6 +66,7 @@ final class ArcaneClientManager {
 
     // MARK: - Client
     private(set) var client: ArcaneClient?
+    private var clientSession: URLSession?
 
     // MARK: - Init
     init() {
@@ -73,8 +74,7 @@ final class ArcaneClientManager {
         serverURL = saved
         if !saved.isEmpty, let url = URL(string: saved) {
             parsedServerURL = url
-            let c = Self.makeClient(url: url)
-            client = c
+            configureClient(for: url)
             authState = .authenticating
         }
         if let savedEnvID = UserDefaults.standard.string(forKey: "arcane.activeEnvironmentID") {
@@ -102,7 +102,7 @@ final class ArcaneClientManager {
         }
         serverURL = normalized
         parsedServerURL = parsed
-        client = Self.makeClient(url: parsed)
+        configureClient(for: parsed)
         authState = .login
         oidcInfo = nil
         Task { await ResponseCache.shared.invalidateAll() }
@@ -115,21 +115,17 @@ final class ArcaneClientManager {
             return
         }
         do {
-            // The login page has no auth yet, so use the public settings
-            // endpoint which exposes oidcEnabled + provider display fields.
-            let data = try await client.transport.rawRequest(
-                "environments/0/settings/public",
-                body: Optional<String>.none,
-                authorized: false
-            )
-            let settings = try JSONDecoder().decode([PublicSetting].self, from: data)
-            let dict = Dictionary(settings.map { ($0.key, $0.value) }, uniquingKeysWith: { _, new in new })
-            oidcInfo = OIDCDisplayInfo(
-                enabled: dict["oidcEnabled"]?.lowercased() == "true",
-                providerName: dict["oidcProviderName"] ?? "",
-                providerLogoUrl: dict["oidcProviderLogoUrl"] ?? ""
-            )
+            oidcInfo = try await fetchOIDCDisplayInfo(using: client)
         } catch {
+            if shouldRefreshNetworkSession(after: error), let parsedServerURL {
+                configureClient(for: parsedServerURL)
+                try? await Task.sleep(for: .milliseconds(500))
+                if let refreshedClient = self.client,
+                   let info = try? await fetchOIDCDisplayInfo(using: refreshedClient) {
+                    oidcInfo = info
+                    return
+                }
+            }
             oidcInfo = nil
         }
     }
@@ -311,7 +307,7 @@ final class ArcaneClientManager {
     // MARK: - Image fetching
 
     func fetchImageData(urlString: String) async -> Data? {
-        guard let client, let url = URL(string: urlString) else { return nil }
+        guard let client, let session = clientSession, let url = URL(string: urlString) else { return nil }
         var request = URLRequest(url: url)
         if let serverURL = parsedServerURL,
            ArcaneAPIHelpers.isSameOrigin(url, serverURL),
@@ -320,18 +316,75 @@ final class ArcaneClientManager {
                 request.setValue(value, forHTTPHeaderField: key)
             }
         }
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await session.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return data
     }
 
     // MARK: - Private
-    private static func makeClient(url: URL) -> ArcaneClient {
-        ArcaneClient(configuration: .init(
+    private func configureClient(for url: URL) {
+        clientSession?.finishTasksAndInvalidate()
+        let bundle = Self.makeClient(url: url)
+        client = bundle.client
+        clientSession = bundle.session
+    }
+
+    private func fetchOIDCDisplayInfo(using client: ArcaneClient) async throws -> OIDCDisplayInfo {
+        // The login page has no auth yet, so use the public settings endpoint
+        // which exposes oidcEnabled + provider display fields.
+        let data = try await client.transport.rawRequest(
+            "environments/0/settings/public",
+            body: Optional<String>.none,
+            authorized: false
+        )
+        let settings = try JSONDecoder().decode([PublicSetting].self, from: data)
+        let dict = Dictionary(settings.map { ($0.key, $0.value) }, uniquingKeysWith: { _, new in new })
+        return OIDCDisplayInfo(
+            enabled: dict["oidcEnabled"]?.lowercased() == "true",
+            providerName: dict["oidcProviderName"] ?? "",
+            providerLogoUrl: dict["oidcProviderLogoUrl"] ?? ""
+        )
+    }
+
+    private func shouldRefreshNetworkSession(after error: Error) -> Bool {
+        guard case ArcaneError.transport(let message) = error else { return false }
+        let lower = message.lowercased()
+        return lower.contains("could not connect to the server")
+            || lower.contains("connection refused")
+            || lower.contains("network connection was lost")
+            || lower.contains("timed out")
+    }
+
+    private struct ClientBundle {
+        let client: ArcaneClient
+        let session: URLSession
+    }
+
+    private static func makeClient(url: URL) -> ClientBundle {
+        let session = makeURLSession()
+        let client = ArcaneClient(configuration: .init(
             baseURL: url,
             tokenStore: KeychainTokenStore(service: "com.arcane.mobile.tokens"),
-            defaultEnvironmentID: .localDocker
+            defaultEnvironmentID: .localDocker,
+            urlSession: session,
+            retryPolicy: .init(maxAttempts: 5, baseBackoff: .milliseconds(300), maxBackoff: .seconds(3))
         ))
+        return ClientBundle(client: client, session: session)
+    }
+
+    private static func makeURLSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.waitsForConnectivity = true
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.urlCache = nil
+        configuration.httpCookieStorage = .shared
+        configuration.httpShouldSetCookies = true
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 60
+        if #available(iOS 11.0, *) {
+            configuration.multipathServiceType = .handover
+        }
+        return URLSession(configuration: configuration)
     }
 
     private func loginErrorMessage(_ error: Error) -> String {

@@ -20,6 +20,8 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Arcane needs local network access to connect to self-hosted Arcane servers on your network.</string>
 	<key>UIApplicationShortcutItems</key>
 	<array>
 		<dict>

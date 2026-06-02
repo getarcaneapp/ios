@@ -71,7 +71,8 @@ enum ReleaseNotes {
                 .init("Updated libarcane-swift to decode null JSON object values correctly."),
                 .init("App Settings cache size now reports persistent disk cache only."),
                 .init("Dashboard keeps the selected environment at the top of the Environments list."),
-                .init("Dashboard resource gauges now show live stats connection errors.")
+                .init("Dashboard resource gauges now show live stats connection errors."),
+                .init("Real devices now handle local-network Arcane server connections more reliably.")
             ]
         ),
         ReleaseNote(
