@@ -18,11 +18,11 @@ struct AllEnvironmentsImageUpdatesView: View {
             if !hasLoadedOnce && isLoading {
                 ProgressView("Loading updates…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if hasLoadedOnce && !buckets.contains(where: { $0.env.isOnline ?? false }) {
+            } else if hasLoadedOnce && buckets.isEmpty {
                 ContentUnavailableView(
-                    "No Online Environments",
+                    "No Environments",
                     systemImage: "bolt.slash",
-                    description: Text("Bring at least one environment online to see image updates.")
+                    description: Text("Add an environment to see image updates.")
                 )
             } else {
                 List {
@@ -43,70 +43,24 @@ struct AllEnvironmentsImageUpdatesView: View {
 
     @ViewBuilder
     private func section(for bucket: EnvUpdateBucket) -> some View {
-        let online = bucket.env.isOnline ?? false
         Section {
-            if !online {
-                Text("Environment offline")
+            ImageUpdateSummaryStrip(summary: bucket.summary, isLoading: bucket.loading)
+
+            if let error = bucket.error {
+                Label(error, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ImageUpdateSummaryStrip(summary: bucket.summary, isLoading: bucket.loading)
-
-                if let error = bucket.error {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-
-                let taggedSet = Set(bucket.taggedRefs)
-                let taggedWithUpdates = bucket.taggedRefs.filter { bucket.byRef[$0]?.hasUpdate == true }
-                let untaggedWithUpdates = bucket.byRef
-                    .compactMap { $0.value.hasUpdate && !taggedSet.contains($0.key) ? $0.key : nil }
-                    .sorted()
-                let withUpdates = taggedWithUpdates + untaggedWithUpdates
-
-                if !withUpdates.isEmpty {
-                    ForEach(withUpdates, id: \.self) { ref in
-                        UpdateRow(
-                            ref: ref,
-                            info: bucket.byRef[ref],
-                            isChecking: checkingRef == bucket.bucketKey(for: ref),
-                            recheck: { Task { await recheck(bucket: bucket, ref: ref) } }
-                        )
-                    }
-                } else if let summary = bucket.summary, summary.imagesWithUpdates > 0, !bucket.loading {
-                    Text("Update details unavailable for \(summary.imagesWithUpdates) image\(summary.imagesWithUpdates == 1 ? "" : "s").")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if bucket.summary != nil && !bucket.loading {
-                    Text("All up to date")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
-
-                if bucket.totalImages > bucket.taggedRefs.count && bucket.taggedRefs.count > 0 {
-                    Text("Showing \(bucket.taggedRefs.count) of \(bucket.totalImages) images")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-
-                Button {
-                    Task { await recheckAll(bucket: bucket) }
-                } label: {
-                    HStack {
-                        if rescanningEnvID == bucket.id {
-                            ProgressView().scaleEffect(0.8)
-                            Text("Rechecking…")
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                            Text("Recheck all images")
-                        }
-                        Spacer()
-                    }
-                    .font(.subheadline)
-                }
-                .disabled(rescanningEnvID != nil)
+                    .foregroundStyle(.red)
             }
+
+            let taggedSet = Set(bucket.taggedRefs)
+            let taggedWithUpdates = bucket.taggedRefs.filter { bucket.byRef[$0]?.hasUpdate == true }
+            let untaggedWithUpdates = bucket.byRef
+                .compactMap { $0.value.hasUpdate && !taggedSet.contains($0.key) ? $0.key : nil }
+                .sorted()
+            updateRows(for: bucket, refs: taggedWithUpdates + untaggedWithUpdates)
+
+            imageCountFooter(for: bucket)
+            recheckAllButton(for: bucket)
         } header: {
             HStack {
                 Text(bucket.env.displayName)
@@ -114,6 +68,61 @@ struct AllEnvironmentsImageUpdatesView: View {
                 StatusBadge(status: bucket.env.status)
             }
         }
+    }
+
+    @ViewBuilder
+    private func updateRows(for bucket: EnvUpdateBucket, refs: [String]) -> some View {
+        if !refs.isEmpty {
+            ForEach(refs, id: \.self) { ref in
+                UpdateRow(
+                    ref: ref,
+                    info: bucket.byRef[ref],
+                    isChecking: checkingRef == bucket.bucketKey(for: ref),
+                    recheck: { Task { await recheck(bucket: bucket, ref: ref) } }
+                )
+            }
+        } else if let summary = bucket.summary, summary.imagesWithUpdates > 0, !bucket.loading {
+            Text(
+                """
+                Update details unavailable for \(summary.imagesWithUpdates) \
+                image\(summary.imagesWithUpdates == 1 ? "" : "s").
+                """
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } else if bucket.summary != nil && !bucket.loading {
+            Text("All up to date")
+                .font(.caption)
+                .foregroundStyle(.green)
+        }
+    }
+
+    @ViewBuilder
+    private func imageCountFooter(for bucket: EnvUpdateBucket) -> some View {
+        if bucket.totalImages > bucket.taggedRefs.count && bucket.taggedRefs.count > 0 {
+            Text("Showing \(bucket.taggedRefs.count) of \(bucket.totalImages) images")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func recheckAllButton(for bucket: EnvUpdateBucket) -> some View {
+        Button {
+            Task { await recheckAll(bucket: bucket) }
+        } label: {
+            HStack {
+                if rescanningEnvID == bucket.id {
+                    ProgressView().scaleEffect(0.8)
+                    Text("Rechecking…")
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Recheck all images")
+                }
+                Spacer()
+            }
+            .font(.subheadline)
+        }
+        .disabled(rescanningEnvID != nil || bucket.loading)
     }
 
     // MARK: - Data loading
@@ -134,17 +143,14 @@ struct AllEnvironmentsImageUpdatesView: View {
 
         if Task.isCancelled { return }
 
-        // Seed buckets so offline envs render with a header while online envs load.
-        buckets = envs.map { EnvUpdateBucket(env: $0, loading: $0.isOnline ?? false) }
-
-        let online = envs.enumerated().filter { $0.element.isOnline ?? false }
-        guard !online.isEmpty else { return }
+        buckets = envs.map { EnvUpdateBucket(env: $0, loading: true) }
+        guard !envs.isEmpty else { return }
 
         let pageSize = Self.imagesPageSize
 
         await withTaskGroup(of: EnvLoadResult.self) { group in
-            var iterator = online.makeIterator()
-            let initial = min(Self.maxConcurrentEnvs, online.count)
+            var iterator = envs.enumerated().makeIterator()
+            let initial = min(Self.maxConcurrentEnvs, envs.count)
             for _ in 0..<initial {
                 guard let (index, env) = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
@@ -300,12 +306,12 @@ struct AllEnvironmentsImageUpdatesView: View {
 
 struct EnvUpdateBucket: Identifiable {
     let env: Arcane.Environment
-    var summary: ImageUpdateSummary? = nil
+    var summary: ImageUpdateSummary?
     var byRef: BatchImageUpdateResponse = [:]
     var taggedRefs: [String] = []
     var totalImages: Int = 0
     var loading: Bool = false
-    var error: String? = nil
+    var error: String?
 
     var id: String { env.id }
 

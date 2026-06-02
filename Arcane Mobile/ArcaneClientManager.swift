@@ -138,6 +138,10 @@ final class ArcaneClientManager {
         oidcInfo?.enabled == true
     }
 
+    var supportsActivities: Bool {
+        serverCapabilities?.mode == .rbac
+    }
+
     // MARK: - Auth
     func login(username: String, password: String) async {
         guard let client else {

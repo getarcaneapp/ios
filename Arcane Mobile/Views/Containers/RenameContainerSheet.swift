@@ -30,14 +30,18 @@ struct RenameContainerSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Container name", text: $newName)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.done)
+                    FormTextField(
+                        title: "Container Name",
+                        placeholder: currentName,
+                        text: $newName,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true,
+                        helper: "Must start with a letter or digit, and contain only letters, "
+                            + "digits, underscores, dots, or hyphens."
+                    )
+                    .submitLabel(.done)
                 } header: {
                     Text("New name")
-                } footer: {
-                    Text("Must start with a letter or digit, and contain only letters, digits, underscores, dots, or hyphens.")
                 }
 
                 if let errorMessage {

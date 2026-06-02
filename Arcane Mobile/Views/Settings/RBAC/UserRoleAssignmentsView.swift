@@ -222,7 +222,7 @@ struct AddRoleAssignmentSheet: View {
                         }
                     }
                 }
-                Section("Scope") {
+                Section {
                     Picker("Scope", selection: $scope) {
                         ForEach(Scope.allCases) { scope in
                             Text(scope.rawValue).tag(scope)
@@ -235,6 +235,14 @@ struct AddRoleAssignmentSheet: View {
                                 Text(env.name ?? "Environment \(env.id)").tag(env.id)
                             }
                         }
+                    }
+                } header: {
+                    Text("Scope")
+                } footer: {
+                    if scope == .global {
+                        Text("Global assignments apply across every environment.")
+                    } else {
+                        Text("Environment assignments only apply inside the selected environment.")
                     }
                 }
                 if let error = errorMessage {

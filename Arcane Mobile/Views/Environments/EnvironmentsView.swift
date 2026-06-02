@@ -202,10 +202,22 @@ struct AddEnvironmentView: View {
         NavigationStack {
             Form {
                 Section("Environment Details") {
-                    TextField("Name", text: $name)
-                    TextField("URL (e.g. tcp://192.168.1.10:2375)", text: $url)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    FormTextField(
+                        title: "Name",
+                        placeholder: "Production",
+                        text: $name,
+                        helper: "This is the display name shown throughout Arcane."
+                    )
+                    FormTextField(
+                        title: "Docker Endpoint",
+                        placeholder: "tcp://192.168.1.10:2375",
+                        text: $url,
+                        keyboardType: .URL,
+                        textContentType: .URL,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true,
+                        helper: "Use the Docker API endpoint reachable from the Arcane server."
+                    )
                 }
                 if let error = errorMessage {
                     Section {

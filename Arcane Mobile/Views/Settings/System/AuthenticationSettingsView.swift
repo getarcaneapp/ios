@@ -41,16 +41,18 @@ struct AuthenticationSettingsView: View {
             }
 
             Section {
-                HStack {
-                    Text("Session Timeout (min)")
-                    Spacer()
-                    TextField("1440", text: $authSessionTimeout)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 100)
-                        .foregroundStyle(.secondary)
-                }
-                Picker("Password Policy", selection: $authPasswordPolicy) {
+                FormTextField(
+                    title: "Session Timeout",
+                    placeholder: "1440",
+                    text: $authSessionTimeout,
+                    keyboardType: .numberPad,
+                    helper: "Maximum session length in minutes."
+                )
+                FormPicker(
+                    title: "Password Policy",
+                    selection: $authPasswordPolicy,
+                    helper: "Stronger policies require more complex local passwords."
+                ) {
                     Text("Basic").tag("basic")
                     Text("Standard").tag("standard")
                     Text("Strong").tag("strong")
@@ -78,29 +80,66 @@ struct AuthenticationSettingsView: View {
 
             Section {
                 Toggle("OIDC Enabled", isOn: $oidcEnabled)
-                TextField("Provider Name", text: $oidcProviderName)
-                    .autocapitalization(.none)
-                TextField("Provider Logo URL", text: $oidcProviderLogoUrl)
-                    .keyboardType(.URL)
-                    .autocapitalization(.none)
-                TextField("Issuer URL", text: $oidcIssuerUrl)
-                    .keyboardType(.URL)
-                    .autocapitalization(.none)
-                TextField("Client ID", text: $oidcClientId)
-                    .autocapitalization(.none)
-                SecureField("Client Secret", text: $oidcClientSecret)
-                TextField("Scopes", text: $oidcScopes)
-                    .autocapitalization(.none)
+                FormTextField(
+                    title: "Provider Name",
+                    placeholder: "Okta",
+                    text: $oidcProviderName,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
+                FormTextField(
+                    title: "Provider Logo URL",
+                    placeholder: "https://...",
+                    text: $oidcProviderLogoUrl,
+                    keyboardType: .URL,
+                    textContentType: .URL,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
+                FormTextField(
+                    title: "Issuer URL",
+                    placeholder: "https://issuer.example.com",
+                    text: $oidcIssuerUrl,
+                    keyboardType: .URL,
+                    textContentType: .URL,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
+                FormTextField(
+                    title: "Client ID",
+                    placeholder: "OIDC client ID",
+                    text: $oidcClientId,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
+                FormSecureField(title: "Client Secret", placeholder: "OIDC client secret", text: $oidcClientSecret)
+                FormTextField(
+                    title: "Scopes",
+                    placeholder: "openid email profile",
+                    text: $oidcScopes,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
             } header: {
                 Label("OIDC Provider", systemImage: "lock.shield")
             }
             .disabled(oidcEnvForced)
 
             Section {
-                TextField("Admin Claim", text: $oidcAdminClaim)
-                    .autocapitalization(.none)
-                TextField("Admin Value", text: $oidcAdminValue)
-                    .autocapitalization(.none)
+                FormTextField(
+                    title: "Admin Claim",
+                    placeholder: "groups",
+                    text: $oidcAdminClaim,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
+                FormTextField(
+                    title: "Admin Value",
+                    placeholder: "arcane-admins",
+                    text: $oidcAdminValue,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
                 Toggle("Skip TLS Verify", isOn: $oidcSkipTlsVerify)
                 Toggle("Auto-Redirect to Provider", isOn: $oidcAutoRedirectToProvider)
                 Toggle("Merge Accounts", isOn: $oidcMergeAccounts)

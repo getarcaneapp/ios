@@ -503,9 +503,7 @@ struct ContainerRow: View {
 
             Spacer()
 
-            Text(container.status)
-                .font(.caption)
-                .foregroundStyle(container.isRunning ? .green : .secondary)
+            StatusBadge(status: container.status, isLive: container.isRunning)
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)

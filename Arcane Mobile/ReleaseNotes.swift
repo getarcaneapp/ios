@@ -52,6 +52,29 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.2.2",
+            new: [
+                .init("Activity Center for Arcane 2.0 shows live and recent work across all environments."),
+                .init("Dashboard now has an Activity Center toolbar button and highlights recent failures."),
+                .init("System prune controls now use Arcane's granular prune modes."),
+            ],
+            changed: [
+                .init("Updated Status badge design."),
+                .init("Server switching moved into App Settings."),
+                .init("Application version details moved out of About."),
+                .init("Dashboard totals now include polling and standby environments."),
+                .init("RBAC-capable servers now use role pickers in user forms."),
+                .init("Forms now use clearer labels, examples, helper text, and picker controls."),
+                .init("App Settings now separates About links from support actions.")
+            ],
+            fixed: [
+                .init("Updated libarcane-swift to decode null JSON object values correctly."),
+                .init("App Settings cache size now reports persistent disk cache only."),
+                .init("Dashboard keeps the selected environment at the top of the Environments list."),
+                .init("Dashboard resource gauges now show live stats connection errors.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.2.1",
             changed: [
                 .init("Server addresses entered without http:// or https:// now default to https://, and the login screen reminds you to include http:// when connecting to a local server."),

@@ -37,26 +37,35 @@ struct LiveResourcesCard: View {
                 }
             }
 
+            if let streamError {
+                ErrorBanner(message: streamError, severity: .warning) {
+                    restartStream()
+                }
+            }
+
             metricRow(
                 label: "CPU",
                 icon: "cpu",
                 color: Color.accentColor,
                 percent: latestStats?.cpuPercent,
-                detail: latestStats.map { "\($0.cpuCount) core\($0.cpuCount == 1 ? "" : "s")" }
+                detail: latestStats.map { "\($0.cpuCount) core\($0.cpuCount == 1 ? "" : "s")" },
+                errorMessage: streamError
             )
             metricRow(
                 label: "Memory",
                 icon: "memorychip",
                 color: Color.accentColor,
                 percent: memoryPercent,
-                detail: memoryDetail
+                detail: memoryDetail,
+                errorMessage: streamError
             )
             metricRow(
                 label: "Disk",
                 icon: "externaldrive",
                 color: Color.accentColor,
                 percent: diskPercent,
-                detail: diskDetail
+                detail: diskDetail,
+                errorMessage: streamError
             )
         }
         .padding(16)
@@ -73,24 +82,29 @@ struct LiveResourcesCard: View {
     }
 
     @ViewBuilder
-    private func metricRow(label: String, icon: String, color: Color, percent: Double?, detail: String?) -> some View {
+    private func metricRow(label: String, icon: String, color: Color, percent: Double?, detail: String?, errorMessage: String?) -> some View {
+        let hasError = errorMessage != nil && percent == nil
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(color)
+                    .foregroundStyle(hasError ? .orange : color)
                     .frame(width: 18)
                 Text(label)
                     .font(.subheadline.weight(.medium))
                 Spacer()
-                Text(percentString(percent))
+                Text(percentString(percent, errorMessage: errorMessage))
                     .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(hasError ? .orange : .primary)
             }
             ProgressView(value: clampedPercent(percent), total: 100)
-                .tint(barTint(percent))
+                .tint(barTint(percent, errorMessage: errorMessage))
             if let detail, !detail.isEmpty {
                 Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if hasError {
+                Text("Live stats unavailable")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -134,7 +148,11 @@ struct LiveResourcesCard: View {
     }
 
     private func startStream() {
-        guard streamTask == nil, let client = manager.client else { return }
+        guard streamTask == nil else { return }
+        guard let client = manager.client else {
+            streamError = "Live metrics unavailable: No server configured"
+            return
+        }
         streamError = nil
         let stream = client.system.statsStream(envID: environmentID)
         isStreaming = true
@@ -144,13 +162,15 @@ struct LiveResourcesCard: View {
                     if Task.isCancelled { break }
                     await MainActor.run {
                         latestStats = frame
+                        streamError = nil
                     }
                 }
             } catch is CancellationError {
                 // expected
             } catch {
                 await MainActor.run {
-                    streamError = "Live metrics paused"
+                    latestStats = nil
+                    streamError = "Live metrics unavailable: \(friendlyErrorMessage(error))"
                 }
             }
             await MainActor.run {
@@ -163,10 +183,12 @@ struct LiveResourcesCard: View {
         streamTask?.cancel()
         streamTask = nil
         latestStats = nil
+        streamError = nil
         startStream()
     }
 
-    private func percentString(_ v: Double?) -> String {
+    private func percentString(_ v: Double?, errorMessage: String? = nil) -> String {
+        if errorMessage != nil && v == nil { return "Error" }
         guard let v else { return "—" }
         return String(format: "%.1f%%", v)
     }
@@ -176,7 +198,8 @@ struct LiveResourcesCard: View {
         return min(max(v, 0), 100)
     }
 
-    private func barTint(_ v: Double?) -> Color {
+    private func barTint(_ v: Double?, errorMessage: String? = nil) -> Color {
+        if errorMessage != nil && v == nil { return .orange }
         guard let v else { return .secondary }
         if v >= 90 { return .red }
         if v >= 75 { return .orange }

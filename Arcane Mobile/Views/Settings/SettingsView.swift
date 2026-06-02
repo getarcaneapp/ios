@@ -4,7 +4,6 @@ import Arcane
 struct SettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var showLogoutConfirm = false
-    @State private var showChangeServerConfirm = false
     @State private var volumeSizeBytes: Int64? = nil
     @State private var loadingVolumeSize = false
 
@@ -13,7 +12,6 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
-                serverSection
                 managementSection
                 resourcesSection
                 swarmSection
@@ -84,7 +82,7 @@ struct SettingsView: View {
     }
 
     private var supportsV2: Bool {
-        manager.serverCapabilities?.supportsRoleManagement == true
+        manager.serverCapabilities?.mode == .rbac
     }
 
     private func visibleTabs(in section: AppTab.Section) -> [AppTab] {
@@ -128,58 +126,6 @@ struct SettingsView: View {
                         )
                     }
                 }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var serverSection: some View {
-        Section {
-            NavigationLink(destination: EnvironmentsView()) {
-                SettingsRow(
-                    title: "Active Environment",
-                    subtitle: manager.activeEnvironmentName,
-                    systemImage: "server.rack",
-                    color: .blue
-                )
-            }
-            Button {
-                showChangeServerConfirm = true
-            } label: {
-                HStack {
-                    SettingsRow(
-                        title: "Server",
-                        subtitle: manager.serverURL.isEmpty ? "Not configured" : manager.serverURL,
-                        systemImage: "link",
-                        color: .blue,
-                        titleColor: .primary
-                    )
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .confirmationDialog(
-                "Change Server?",
-                isPresented: $showChangeServerConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Change Server", role: .destructive) {
-                    Task { await manager.logout() }
-                }
-            } message: {
-                Text("You'll be signed out and asked for a new server URL.")
-            }
-        } header: {
-            Text("Server")
-        } footer: {
-            if let user = manager.currentUser {
-                Text("Signed in as \(user.displayUsername). Tap the server row to switch.")
-            } else {
-                Text("Tap the server row to switch.")
             }
         }
     }
@@ -446,7 +392,7 @@ struct UserDetailView: View {
     private var hasChanges: Bool {
         email != (user.email ?? "")
             || displayName != (user.displayName ?? "")
-            || isAdmin != user.isAdmin
+            || (!supportsV2 && isAdmin != user.isAdmin)
     }
 
     private var supportsV2: Bool {
@@ -455,27 +401,24 @@ struct UserDetailView: View {
 
     var body: some View {
         Form {
-            Section("User Info") {
-                LabeledContent("Username", value: user.displayUsername)
-                TextField("Email", text: $email)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                TextField("Display Name", text: $displayName)
+            Section("Identity") {
+                FormValueRow(title: "Username", value: user.username)
+                FormTextField(
+                    title: "Email",
+                    placeholder: "Optional",
+                    text: $email,
+                    keyboardType: .emailAddress,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
+                FormTextField(
+                    title: "Display Name",
+                    placeholder: "Optional",
+                    text: $displayName,
+                    autocapitalization: .words
+                )
             }
-            Section {
-                Toggle("Administrator", isOn: $isAdmin)
-                if supportsV2 {
-                    NavigationLink(destination: UserRoleAssignmentsView(user: user)) {
-                        Label("Edit Role Assignments", systemImage: "person.crop.rectangle.stack")
-                    }
-                }
-            } header: {
-                Text("Roles")
-            } footer: {
-                if supportsV2 {
-                    Text("For per-environment roles or custom roles, use Edit Role Assignments.")
-                }
-            }
+            accessSection
             if let error = errorMessage {
                 Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
             }
@@ -490,29 +433,42 @@ struct UserDetailView: View {
         }
     }
 
+    @ViewBuilder
+    private var accessSection: some View {
+        Section("Access") {
+            if supportsV2 {
+                NavigationLink(destination: UserRoleAssignmentsView(user: user)) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.crop.rectangle.stack")
+                            .foregroundStyle(.indigo)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Role Assignments")
+                            Text("Manage global and per-environment roles")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+            } else {
+                Toggle("Administrator", isOn: $isAdmin)
+            }
+        }
+    }
+
     private func saveUser() async {
         guard let client = manager.client else { return }
         isSaving = true; errorMessage = nil
         defer { isSaving = false }
-        let v2 = manager.serverCapabilities?.supportsRoleManagement == true
+        let supportsRBAC = manager.serverCapabilities?.supportsRoleManagement == true
         do {
             let body = UpdateUserRequest(
                 displayName: displayName.isEmpty ? nil : displayName,
                 email: email.isEmpty ? nil : email,
-                roles: v2 ? nil : (isAdmin ? ["admin"] : [])
+                roles: supportsRBAC ? nil : (isAdmin ? ["admin"] : [])
             )
             _ = try await client.users.update(id: user.id, body: body)
-            if v2 && isAdmin != user.isAdmin {
-                let assignments: [UserAssignmentInput] = isAdmin
-                    ? [UserAssignmentInput(roleId: Role.BuiltIn.admin)]
-                    : []
-                do {
-                    _ = try await client.users.setRoleAssignments(userId: user.id, assignments: assignments)
-                } catch {
-                    errorMessage = friendlyErrorMessage(error)
-                    return
-                }
-            }
             await onUpdate()
             dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
@@ -528,26 +484,47 @@ struct CreateUserView: View {
     @State private var password = ""
     @State private var email = ""
     @State private var isAdmin = false
+    @State private var availableRoles: [Role] = []
+    @State private var selectedRoleId = ""
+    @State private var isLoadingRoles = false
     @State private var isLoading = false
     @State private var errorMessage: String?
+
+    private var supportsRoleManagement: Bool {
+        manager.serverCapabilities?.supportsRoleManagement == true
+    }
+
+    private var canCreate: Bool {
+        !username.isEmpty
+            && !password.isEmpty
+            && !isLoading
+            && (!supportsRoleManagement || !selectedRoleId.isEmpty)
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Credentials") {
-                    TextField("Username", text: $username)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("Password", text: $password)
+                    FormTextField(
+                        title: "Username",
+                        placeholder: "Required",
+                        text: $username,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true
+                    )
+                    FormSecureField(title: "Password", placeholder: "Required", text: $password)
                 }
                 Section("Profile") {
-                    TextField("Email (optional)", text: $email)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
+                    FormTextField(
+                        title: "Email",
+                        placeholder: "Optional",
+                        text: $email,
+                        keyboardType: .emailAddress,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true
+                    )
                 }
-                Section("Roles") {
-                    Toggle("Administrator", isOn: $isAdmin)
-                }
+                rolesSection
                 if let error = errorMessage {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
@@ -558,8 +535,38 @@ struct CreateUserView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") { Task { await createUser() } }
-                        .disabled(username.isEmpty || password.isEmpty || isLoading)
+                        .disabled(!canCreate)
                 }
+            }
+            .task { await loadRolesIfNeeded() }
+        }
+    }
+
+    @ViewBuilder
+    private var rolesSection: some View {
+        Section {
+            if supportsRoleManagement {
+                if isLoadingRoles && availableRoles.isEmpty {
+                    ProgressView("Loading roles…")
+                } else {
+                    Picker("Role", selection: $selectedRoleId) {
+                        Text("Choose…").tag("")
+                        ForEach(availableRoles) { role in
+                            Text(role.displayName).tag(role.id)
+                        }
+                    }
+                }
+            } else {
+                Toggle("Administrator", isOn: $isAdmin)
+            }
+        } header: {
+            Text("Roles")
+        } footer: {
+            if supportsRoleManagement {
+                Text(
+                    "The selected role is assigned globally. "
+                        + "Per-environment assignments can be edited after creation."
+                )
             }
         }
     }
@@ -568,30 +575,47 @@ struct CreateUserView: View {
         guard let client = manager.client else { return }
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
-        let v2 = manager.serverCapabilities?.supportsRoleManagement == true
+        let supportsRBAC = supportsRoleManagement
         do {
             let body = CreateUserRequest(
                 username: username,
                 password: password,
                 displayName: nil,
                 email: email.isEmpty ? nil : email,
-                roles: v2 ? nil : (isAdmin ? ["admin"] : ["user"])
+                roles: supportsRBAC ? nil : (isAdmin ? ["admin"] : ["user"])
             )
             let created = try await client.users.create(body)
-            if v2 && isAdmin {
+            if supportsRBAC {
                 do {
                     _ = try await client.users.setRoleAssignments(
                         userId: created.id,
-                        assignments: [UserAssignmentInput(roleId: Role.BuiltIn.admin)]
+                        assignments: [UserAssignmentInput(roleId: selectedRoleId)]
                     )
                 } catch {
-                    errorMessage = "User created, but admin role could not be assigned: \(friendlyErrorMessage(error))"
+                    errorMessage = "User created, but the role could not be assigned: \(friendlyErrorMessage(error))"
                     await onSuccess()
                     return
                 }
             }
             await onSuccess(); dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
+    }
+
+    private func loadRolesIfNeeded() async {
+        guard supportsRoleManagement, availableRoles.isEmpty, let client = manager.client else { return }
+        isLoadingRoles = true
+        defer { isLoadingRoles = false }
+        do {
+            let page = try await client.roles.listPaginated(limit: 100)
+            availableRoles = page.data
+            if selectedRoleId.isEmpty {
+                selectedRoleId = page.data.first(where: { $0.id == Role.BuiltIn.viewer })?.id
+                    ?? page.data.first?.id
+                    ?? ""
+            }
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
     }
 }
 
@@ -801,8 +825,19 @@ struct CreateAPIKeyView: View {
         NavigationStack {
             Form {
                 Section("Key Details") {
-                    TextField("Name", text: $name)
-                    TextField("Description (optional)", text: $description)
+                    FormTextField(
+                        title: "Name",
+                        placeholder: "CI deploy key",
+                        text: $name,
+                        helper: "Use a name that identifies where this key will be used."
+                    )
+                    FormTextField(
+                        title: "Description",
+                        placeholder: "Optional",
+                        text: $description,
+                        axis: .vertical,
+                        lineLimit: 2...4
+                    )
                 }
                 if let error = errorMessage {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
@@ -1278,11 +1313,27 @@ struct RegistryFormView: View {
         NavigationStack {
             Form {
                 Section("Registry Details") {
-                    TextField("URL (e.g. registry.example.com)", text: $url)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    TextField("Description", text: $description)
-                    Picker("Type", selection: typeBinding) {
+                    FormTextField(
+                        title: "Registry URL",
+                        placeholder: "registry.example.com",
+                        text: $url,
+                        keyboardType: .URL,
+                        textContentType: .URL,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true
+                    )
+                    FormTextField(
+                        title: "Description",
+                        placeholder: "Optional",
+                        text: $description,
+                        axis: .vertical,
+                        lineLimit: 2...4
+                    )
+                    FormPicker(
+                        title: "Type",
+                        selection: typeBinding,
+                        helper: "Choose AWS ECR only for registries that need AWS credentials."
+                    ) {
                         Text("Generic").tag("generic")
                         Text("AWS ECR").tag("ecr")
                     }
@@ -1292,23 +1343,43 @@ struct RegistryFormView: View {
 
                 if !isAWS {
                     Section("Credentials (optional)") {
-                        TextField("Username", text: $username)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        SecureField(isEditing ? "New token or password" : "Token or password", text: $token)
+                        FormTextField(
+                            title: "Username",
+                            placeholder: "Optional",
+                            text: $username,
+                            autocapitalization: .never,
+                            autocorrectionDisabled: true
+                        )
+                        FormSecureField(
+                            title: isEditing ? "New Token or Password" : "Token or Password",
+                            placeholder: isEditing ? "Leave blank to keep current value" : "Optional",
+                            text: $token
+                        )
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 if isAWS {
                     Section("AWS ECR") {
-                        TextField("Access Key ID", text: $awsAccessKeyId)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        SecureField(isEditing ? "New Secret Access Key" : "Secret Access Key", text: $awsSecretAccessKey)
-                        TextField("Region (e.g. us-east-1)", text: $awsRegion)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
+                        FormTextField(
+                            title: "Access Key ID",
+                            placeholder: "AKIA...",
+                            text: $awsAccessKeyId,
+                            autocapitalization: .never,
+                            autocorrectionDisabled: true
+                        )
+                        FormSecureField(
+                            title: isEditing ? "New Secret Access Key" : "Secret Access Key",
+                            placeholder: isEditing ? "Leave blank to keep current value" : "Required",
+                            text: $awsSecretAccessKey
+                        )
+                        FormTextField(
+                            title: "Region",
+                            placeholder: "us-east-1",
+                            text: $awsRegion,
+                            autocapitalization: .never,
+                            autocorrectionDisabled: true
+                        )
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
@@ -1409,11 +1480,27 @@ struct TemplateRegistryFormView: View {
         NavigationStack {
             Form {
                 Section("Template Registry") {
-                    TextField("Name", text: $name)
-                    TextField("URL", text: $url)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    TextField("Description", text: $description)
+                    FormTextField(
+                        title: "Name",
+                        placeholder: "Company templates",
+                        text: $name
+                    )
+                    FormTextField(
+                        title: "URL",
+                        placeholder: "https://example.com/templates.json",
+                        text: $url,
+                        keyboardType: .URL,
+                        textContentType: .URL,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true
+                    )
+                    FormTextField(
+                        title: "Description",
+                        placeholder: "Optional",
+                        text: $description,
+                        axis: .vertical,
+                        lineLimit: 2...4
+                    )
                     Toggle("Enabled", isOn: $enabled)
                 }
 

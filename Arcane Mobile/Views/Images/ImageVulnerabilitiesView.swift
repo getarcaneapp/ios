@@ -436,8 +436,13 @@ private struct IgnoreVulnerabilitySheet: View {
                 }
 
                 Section {
-                    TextField("Reason (optional)", text: $reason, axis: .vertical)
-                        .lineLimit(2...5)
+                    FormTextField(
+                        title: "Reason",
+                        placeholder: "Optional",
+                        text: $reason,
+                        axis: .vertical,
+                        lineLimit: 2...5
+                    )
                 } footer: {
                     Text("Why this CVE is acceptable for this image (e.g. \"not exploitable in our usage\").")
                 }

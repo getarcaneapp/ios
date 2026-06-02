@@ -391,10 +391,8 @@ struct ImagesView: View {
 
     private func pruneImages() async {
         guard let client = manager.client else { return }
-        let body = ImagePruneRequest(mode: "dangling", until: nil, dangling: nil, filters: nil)
         do {
-            let path = client.rest.environmentPath(environmentID, "images/prune")
-            let _: ImagePruneReport = try await client.rest.post(path, body: body)
+            _ = try await client.images.prune(envID: environmentID, mode: "dangling")
             await invalidateImageCaches()
             mutationStore.markChanged(kind: .images, envID: environmentID)
         } catch {
@@ -511,10 +509,15 @@ struct PullImageView: View {
             VStack(spacing: 0) {
                 Form {
                     Section("Pull Image") {
-                        TextField("e.g. nginx:latest", text: $imageName)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .disabled(isPulling || didComplete)
+                        FormTextField(
+                            title: "Image",
+                            placeholder: "nginx:latest",
+                            text: $imageName,
+                            autocapitalization: .never,
+                            autocorrectionDisabled: true,
+                            helper: "Include a tag when you do not want Docker to assume latest.",
+                            disabled: isPulling || didComplete
+                        )
                     }
 
                     if !statusLine.isEmpty {

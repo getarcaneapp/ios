@@ -366,23 +366,38 @@ struct DynamicCreateFormView: View {
                 set: { toggles[field.id] = $0 }
             ))
         case .secure:
-            SecureField(field.placeholder.isEmpty ? field.label : field.placeholder, text: binding(field.id))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            FormSecureField(
+                title: field.label,
+                placeholder: field.placeholder.isEmpty ? "Required" : field.placeholder,
+                text: binding(field.id)
+            )
         case .multiline:
-            TextField(field.placeholder.isEmpty ? field.label : field.placeholder, text: binding(field.id), axis: .vertical)
-                .lineLimit(5...12)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            FormTextField(
+                title: field.label,
+                placeholder: field.placeholder.isEmpty ? "Value" : field.placeholder,
+                text: binding(field.id),
+                autocapitalization: .never,
+                autocorrectionDisabled: true,
+                axis: .vertical,
+                lineLimit: 5...12
+            )
         case .number:
-            TextField(field.placeholder.isEmpty ? field.label : field.placeholder, text: binding(field.id))
-                .keyboardType(.numbersAndPunctuation)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            FormTextField(
+                title: field.label,
+                placeholder: field.placeholder.isEmpty ? "0" : field.placeholder,
+                text: binding(field.id),
+                keyboardType: .numbersAndPunctuation,
+                autocapitalization: .never,
+                autocorrectionDisabled: true
+            )
         case .text:
-            TextField(field.placeholder.isEmpty ? field.label : field.placeholder, text: binding(field.id))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            FormTextField(
+                title: field.label,
+                placeholder: field.placeholder.isEmpty ? "Value" : field.placeholder,
+                text: binding(field.id),
+                autocapitalization: .never,
+                autocorrectionDisabled: true
+            )
         }
     }
 

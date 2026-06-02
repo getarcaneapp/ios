@@ -53,7 +53,6 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
             .init(key: "projectsDirectory", label: "Projects Directory", type: .text),
             .init(key: "swarmStackSourcesDirectory", label: "Swarm Stack Sources", type: .text),
             .init(key: "followProjectSymlinks", label: "Follow Project Symlinks", type: .boolean),
-            .init(key: "dockerPruneMode", label: "Prune Mode", type: .select(["all", "dangling"])),
         ]
     ),
     .init(
@@ -86,20 +85,16 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
         summary: "Automatically clean up unused resources",
         fields: [
             .init(key: "scheduledPruneEnabled", label: "Enabled", type: .boolean),
-            .init(key: "scheduledPruneContainers", label: "Prune Containers", type: .boolean),
-            .init(key: "scheduledPruneImages", label: "Prune Images", type: .boolean),
-            .init(key: "scheduledPruneVolumes", label: "Prune Volumes", type: .boolean),
-            .init(key: "scheduledPruneNetworks", label: "Prune Networks", type: .boolean),
-            .init(key: "scheduledPruneBuildCache", label: "Prune Build Cache", type: .boolean),
-            .init(key: "pruneContainerMode", label: "Container Mode", type: .select(["none", "stopped", "olderThan"])),
-            .init(key: "pruneContainerUntil", label: "Container Until", type: .text),
-            .init(key: "pruneImageMode", label: "Image Mode", type: .select(["none", "dangling", "all", "olderThan"])),
-            .init(key: "pruneImageUntil", label: "Image Until", type: .text),
-            .init(key: "pruneVolumeMode", label: "Volume Mode", type: .select(["none", "anonymous", "all"])),
-            .init(key: "pruneNetworkMode", label: "Network Mode", type: .select(["none", "unused", "olderThan"])),
-            .init(key: "pruneNetworkUntil", label: "Network Until", type: .text),
-            .init(key: "pruneBuildCacheMode", label: "Build Cache Mode", type: .select(["none", "unused", "all", "olderThan"])),
-            .init(key: "pruneBuildCacheUntil", label: "Build Cache Until", type: .text),
+            .init(key: "scheduledPruneInterval", label: "Interval", type: .cron),
+            .init(key: "pruneContainerMode", label: "Prune Containers", type: .select(["none", "stopped", "olderThan"])),
+            .init(key: "pruneContainerUntil", label: "Container Age Filter", type: .text),
+            .init(key: "pruneImageMode", label: "Prune Images", type: .select(["none", "dangling", "all", "olderThan"])),
+            .init(key: "pruneImageUntil", label: "Image Age Filter", type: .text),
+            .init(key: "pruneVolumeMode", label: "Prune Volumes", type: .select(["none", "anonymous", "all"])),
+            .init(key: "pruneNetworkMode", label: "Prune Networks", type: .select(["none", "unused", "olderThan"])),
+            .init(key: "pruneNetworkUntil", label: "Network Age Filter", type: .text),
+            .init(key: "pruneBuildCacheMode", label: "Prune Build Cache", type: .select(["none", "unused", "all", "olderThan"])),
+            .init(key: "pruneBuildCacheUntil", label: "Build Cache Age Filter", type: .text),
         ]
     ),
     .init(
@@ -319,17 +314,14 @@ struct SettingsCategoryView: View {
             case .boolean:
                 Toggle(field.label, isOn: boolBinding)
             case .number:
-                HStack {
-                    Text(field.label)
-                    Spacer()
-                    TextField("", text: binding)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 100)
-                        .foregroundStyle(.secondary)
-                }
+                FormTextField(
+                    title: field.label,
+                    placeholder: "0",
+                    text: binding,
+                    keyboardType: .numberPad
+                )
             case .password:
-                SecureField(field.label, text: binding)
+                FormSecureField(title: field.label, placeholder: "Secret value", text: binding)
             case .select(let options):
                 let pickerBinding = Binding<String>(
                     get: {
@@ -338,26 +330,28 @@ struct SettingsCategoryView: View {
                     },
                     set: { settings[field.key] = $0 }
                 )
-                Picker(field.label, selection: pickerBinding) {
+                FormPicker(title: field.label, selection: pickerBinding) {
                     ForEach(options, id: \.self) { option in
                         Text(option).tag(option)
                     }
                 }
             case .cron:
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(field.label)
-                    TextField("* * * * *", text: binding)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .autocapitalization(.none)
-                }
+                FormTextField(
+                    title: field.label,
+                    placeholder: "* * * * *",
+                    text: binding,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true,
+                    monospaced: true
+                )
             case .text:
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(field.label)
-                    TextField("", text: binding)
-                        .foregroundStyle(.secondary)
-                        .autocapitalization(.none)
-                }
+                FormTextField(
+                    title: field.label,
+                    placeholder: "Value",
+                    text: binding,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
             }
             if let description = field.description {
                 Text(description)

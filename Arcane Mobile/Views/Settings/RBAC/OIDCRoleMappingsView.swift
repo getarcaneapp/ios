@@ -228,9 +228,14 @@ private struct OIDCMappingFormSheet: View {
         NavigationStack {
             Form {
                 Section("Claim Value") {
-                    TextField("e.g. docker-admins", text: $claimValue)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    FormTextField(
+                        title: "Claim Value",
+                        placeholder: "docker-admins",
+                        text: $claimValue,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true,
+                        helper: "Enter the exact value from the configured OIDC claim."
+                    )
                 }
                 Section("Role") {
                     Picker("Role", selection: $roleId) {
@@ -240,7 +245,7 @@ private struct OIDCMappingFormSheet: View {
                         }
                     }
                 }
-                Section("Scope") {
+                Section {
                     Picker("Scope", selection: $scope) {
                         ForEach(Scope.allCases) { Text($0.rawValue).tag($0) }
                     }
@@ -251,6 +256,14 @@ private struct OIDCMappingFormSheet: View {
                                 Text(env.name ?? "Environment \(env.id)").tag(env.id)
                             }
                         }
+                    }
+                } header: {
+                    Text("Scope")
+                } footer: {
+                    if scope == .global {
+                        Text("Global mappings apply across every environment.")
+                    } else {
+                        Text("Environment mappings only apply inside the selected environment.")
                     }
                 }
                 if let error = errorMessage {

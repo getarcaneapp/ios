@@ -1,6 +1,9 @@
 import SwiftUI
+import Arcane
 
 struct AppSettingsView: View {
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @State private var showChangeServerConfirm = false
     @State private var showClearCacheConfirm = false
     @State private var showCacheCleared = false
     @State private var cacheSizeBytes: Int = 0
@@ -18,10 +21,16 @@ struct AppSettingsView: View {
         cacheSizeBytes > 0 ? Int64(cacheSizeBytes).byteString : "Empty"
     }
 
+    private var serverURLText: String {
+        manager.serverURL.isEmpty ? "Not configured" : manager.serverURL
+    }
+
     var body: some View {
         List {
             applicationSection
             aboutSection
+            supportSection
+            versionSection
         }
         .listStyle(.insetGrouped)
         .navigationTitle("App Settings")
@@ -42,6 +51,36 @@ struct AppSettingsView: View {
         Section("Application") {
             NavigationLink(destination: AppearanceSettingsView()) {
                 SettingsRow(title: "Appearance", systemImage: "paintbrush.fill", color: .pink)
+            }
+            Button {
+                showChangeServerConfirm = true
+            } label: {
+                HStack {
+                    SettingsRow(
+                        title: "Server",
+                        subtitle: serverURLText,
+                        systemImage: "link",
+                        color: .blue,
+                        titleColor: .primary
+                    )
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .confirmationDialog(
+                "Change Server?",
+                isPresented: $showChangeServerConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Change Server", role: .destructive) {
+                    Task { await manager.logout() }
+                }
+            } message: {
+                Text("You'll be signed out and asked for a new server URL.")
             }
         }
         Section {
@@ -76,9 +115,14 @@ struct AppSettingsView: View {
                 }
             }
         } message: {
-            Text(cacheSizeBytes > 0
-                 ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images and API data. Everything will be re-fetched as needed."
-                 : "This will clear all cached images and API data.")
+            Text(
+                cacheSizeBytes > 0
+                    ? """
+                    This will remove \(Int64(cacheSizeBytes).byteString) of cached images and API data. \
+                    Everything will be re-fetched as needed.
+                    """
+                    : "This will clear all cached images and API data."
+            )
         }
     }
 
@@ -89,20 +133,41 @@ struct AppSettingsView: View {
                 SettingsExternalRow(title: "Documentation", systemImage: "globe", color: .blue)
             }
             ShareLink(item: URL(string: "https://getarcane.app")!) {
-                SettingsRow(title: "Share Arcane", systemImage: "square.and.arrow.up", color: .blue, titleColor: .primary)
-            }
-            Link(destination: URL(string: "https://discord.gg/WyXYpdyV3Z")!) {
-                SettingsExternalRow(title: "Join the Discord", systemImage: "bubble.left.and.bubble.right.fill", color: .indigo)
-            }
-            Link(destination: URL(string: "https://github.com/getarcaneapp/ios")!) {
-                SettingsExternalRow(title: "Contribute on GitHub", systemImage: "chevron.left.forwardslash.chevron.right", color: .purple)
-            }
-            Link(destination: URL(string: "https://github.com/getarcaneapp/ios/issues")!) {
-                SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
+                SettingsRow(
+                    title: "Share Arcane",
+                    systemImage: "square.and.arrow.up",
+                    color: .blue,
+                    titleColor: .primary
+                )
             }
             Link(destination: URL(string: "https://getarcane.app/privacy")!) {
                 SettingsExternalRow(title: "Privacy Policy", systemImage: "hand.raised.fill", color: .gray)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var supportSection: some View {
+        Section("Support") {
+            Link(destination: URL(string: "https://buymeacoffee.com/kmendell")!) {
+                SettingsExternalRow(title: "Buy Me a Coffee", systemImage: "cup.and.saucer.fill", color: .orange)
+            }
+            Link(destination: URL(string: "https://discord.gg/WyXYpdyV3Z")!) {
+                SettingsExternalRow(
+                    title: "Join the Discord",
+                    systemImage: "bubble.left.and.bubble.right.fill",
+                    color: .indigo
+                )
+            }
+            Link(destination: URL(string: "https://github.com/getarcaneapp/ios/issues")!) {
+                SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var versionSection: some View {
+        Section("Version") {
             Button {
                 showWhatsNew = true
             } label: {
@@ -134,7 +199,7 @@ struct AppSettingsView: View {
     }
 
     private func refreshCacheSize() async {
-        async let images = ImageCache.shared.currentBytes()
+        async let images = ImageCache.shared.diskBytes()
         async let responses = ResponseCache.shared.diskBytes()
         cacheSizeBytes = await images + responses
     }

@@ -12,10 +12,6 @@ actor ImageCache {
     static let shared = ImageCache()
     nonisolated(unsafe) private let cache = NSCache<NSString, UIImage>()
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
-    // Approximate live size, in bytes. NSCache doesn't expose its current cost
-    // and may evict silently, so this can drift slightly upward. We reset to 0
-    // on `clear()` for accuracy after manual flushes.
-    private var approximateBytes: Int = 0
 
     // Disk tier — survives app termination. iOS may evict the Caches directory
     // under storage pressure; that's the intended semantic.
@@ -45,13 +41,12 @@ actor ImageCache {
         maxPixel > 0 ? "\(url)|\(maxPixel)" : url
     }
 
-    func currentBytes() -> Int {
-        approximateBytes + diskBytesOnDisk()
+    func diskBytes() -> Int {
+        diskBytesOnDisk()
     }
 
     func clear() {
         cache.removeAllObjects()
-        approximateBytes = 0
         inFlight.values.forEach { $0.cancel() }
         inFlight.removeAll()
         if let entries = try? FileManager.default.contentsOfDirectory(
@@ -74,7 +69,6 @@ actor ImageCache {
 
         if let (img, cost) = loadFromDisk(urlString, maxPixelSize: maxPixelSize) {
             cache.setObject(img, forKey: memKey, cost: cost)
-            approximateBytes += cost
             return img
         }
 
@@ -84,7 +78,6 @@ actor ImageCache {
             guard let img = Self.decode(data: data, maxPixelSize: maxPixelSize) else { return nil }
             let cost = Self.approximateCost(of: img)
             self.cache.setObject(img, forKey: memKey, cost: cost)
-            self.approximateBytes += cost
             return img
         }
         inFlight[memKey as String] = task
@@ -134,14 +127,8 @@ actor ImageCache {
         return (img, Self.approximateCost(of: img))
     }
 
-    private nonisolated func writeToDisk(_ key: String, data: Data) {
-        let directory = diskDirectory
-        Task.detached(priority: .utility) {
-            let digest = SHA256.hash(data: Data(key.utf8))
-            let name = digest.map { String(format: "%02x", $0) }.joined()
-            let url = directory.appendingPathComponent(name)
-            try? data.write(to: url, options: .atomic)
-        }
+    private func writeToDisk(_ key: String, data: Data) {
+        try? data.write(to: diskURL(for: key), options: .atomic)
     }
 
     private nonisolated func diskBytesOnDisk() -> Int {

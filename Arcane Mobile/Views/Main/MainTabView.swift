@@ -12,7 +12,7 @@ struct MainTabView: View {
     @AppStorage("arcane.tip.tabSwapDismissed") private var tabSwapTipDismissed = false
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
-    private var supportsV2: Bool { manager.serverCapabilities?.supportsRoleManagement == true }
+    private var supportsV2: Bool { manager.serverCapabilities?.mode == .rbac }
 
     private var visibleTabs: [AppTab] {
         store.visibleTabs(isAdmin: isAdmin, supportsV2: supportsV2)
@@ -78,13 +78,25 @@ struct MainTabView: View {
         .onChange(of: router.pendingTabID) { _, newValue in
             guard let target = newValue else { return }
             selectedTab = target
+            ensureSelectedTabVisible()
             router.pendingTabID = nil
+        }
+        .onChange(of: visibleTabs.map(\.id)) { _, _ in
+            ensureSelectedTabVisible()
         }
         .onAppear {
             if let target = router.pendingTabID {
                 selectedTab = target
                 router.pendingTabID = nil
             }
+            ensureSelectedTabVisible()
+        }
+    }
+
+    private func ensureSelectedTabVisible() {
+        let allowed = Set(visibleTabs.map(\.id) + ["settings"])
+        if !allowed.contains(selectedTab) {
+            selectedTab = AppTab.dashboard.id
         }
     }
 }

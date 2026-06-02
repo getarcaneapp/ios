@@ -115,31 +115,51 @@ struct NotificationProviderFormView: View {
 
         switch field.kind {
         case .text:
-            TextField(field.label, text: binding, prompt: Text(field.placeholder))
-                .autocapitalization(.none)
+            FormTextField(
+                title: field.label,
+                placeholder: field.placeholder,
+                text: binding,
+                autocapitalization: .never,
+                autocorrectionDisabled: true
+            )
         case .email:
-            TextField(field.label, text: binding, prompt: Text(field.placeholder))
-                .keyboardType(.emailAddress)
-                .textContentType(.emailAddress)
-                .autocapitalization(.none)
+            FormTextField(
+                title: field.label,
+                placeholder: field.placeholder,
+                text: binding,
+                keyboardType: .emailAddress,
+                textContentType: .emailAddress,
+                autocapitalization: .never,
+                autocorrectionDisabled: true
+            )
         case .password:
-            SecureField(field.label, text: binding, prompt: Text(field.placeholder))
+            FormSecureField(title: field.label, placeholder: field.placeholder, text: binding)
         case .number:
-            TextField(field.label, text: binding, prompt: Text(field.placeholder))
-                .keyboardType(.numberPad)
+            FormTextField(title: field.label, placeholder: field.placeholder, text: binding, keyboardType: .numberPad)
         case .url:
-            TextField(field.label, text: binding, prompt: Text(field.placeholder))
-                .keyboardType(.URL)
-                .textContentType(.URL)
-                .autocapitalization(.none)
+            FormTextField(
+                title: field.label,
+                placeholder: field.placeholder,
+                text: binding,
+                keyboardType: .URL,
+                textContentType: .URL,
+                autocapitalization: .never,
+                autocorrectionDisabled: true
+            )
         case .toggle:
             Toggle(field.label, isOn: boolBinding(for: field.key))
         case .textarea:
-            TextField(field.label, text: binding, prompt: Text(field.placeholder), axis: .vertical)
-                .lineLimit(2...5)
-                .autocapitalization(.none)
+            FormTextField(
+                title: field.label,
+                placeholder: field.placeholder,
+                text: binding,
+                autocapitalization: .never,
+                autocorrectionDisabled: true,
+                axis: .vertical,
+                lineLimit: 2...5
+            )
         case .picker(let options):
-            Picker(field.label, selection: binding) {
+            FormPicker(title: field.label, selection: binding) {
                 ForEach(options) { option in
                     Text(option.label).tag(option.value)
                 }

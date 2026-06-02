@@ -81,13 +81,17 @@ struct RenderComposeView: View {
                                     .lineLimit(1)
                             }
                         }
-                        TextField(defaults[key] ?? "value", text: Binding(
-                            get: { values[key] ?? "" },
-                            set: { values[key] = $0 }
-                        ))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .font(.system(.body, design: .monospaced))
+                        FormTextField(
+                            title: "Value",
+                            placeholder: defaults[key] ?? "value",
+                            text: Binding(
+                                get: { values[key] ?? "" },
+                                set: { values[key] = $0 }
+                            ),
+                            autocapitalization: .never,
+                            autocorrectionDisabled: true,
+                            monospaced: true
+                        )
                     }
                     .padding(.vertical, 2)
                 }

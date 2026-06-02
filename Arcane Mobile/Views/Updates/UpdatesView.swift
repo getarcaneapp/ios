@@ -4,7 +4,7 @@ import Arcane
 struct UpdatesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
-    @State private var onlineEnvs: [Arcane.Environment] = []
+    @State private var environments: [Arcane.Environment] = []
     @State private var pickerMode: PickerMode?
     @State private var navTarget: NavTarget?
 
@@ -20,7 +20,7 @@ struct UpdatesView: View {
             }
             .sheet(item: $pickerMode) { mode in
                 NavigationStack {
-                    EnvironmentPickerSheet(envs: onlineEnvs, mode: mode) { env in
+                    EnvironmentPickerSheet(envs: environments, mode: mode) { env in
                         navTarget = NavTarget(envID: env.id, mode: mode)
                         pickerMode = nil
                     }
@@ -42,28 +42,28 @@ struct UpdatesView: View {
                         tint: .accentColor
                     ) { launch(.history) }
                 ],
-                isDisabled: onlineEnvs.isEmpty
+                isDisabled: environments.isEmpty
             )
-            .task { await loadOnlineEnvs() }
+            .task { await loadEnvironments() }
     }
 
     private func launch(_ mode: PickerMode) {
-        guard !onlineEnvs.isEmpty else { return }
-        if onlineEnvs.count == 1, let only = onlineEnvs.first {
+        guard !environments.isEmpty else { return }
+        if environments.count == 1, let only = environments.first {
             navTarget = NavTarget(envID: only.id, mode: mode)
         } else {
             pickerMode = mode
         }
     }
 
-    private func loadOnlineEnvs() async {
+    private func loadEnvironments() async {
         guard let cached = manager.cached else { return }
         let envs: [Arcane.Environment] = (try? await cached.getListGlobal(
             "environments", elementType: Arcane.Environment.self,
             policy: .environments, refresh: false,
-            onFresh: { fresh in onlineEnvs = fresh.filter { $0.isOnline ?? false } }
+            onFresh: { fresh in environments = fresh }
         )) ?? []
-        onlineEnvs = envs.filter { $0.isOnline ?? false }
+        environments = envs
     }
 }
 

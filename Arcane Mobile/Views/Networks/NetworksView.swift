@@ -611,10 +611,19 @@ struct CreateNetworkView: View {
         NavigationStack {
             Form {
                 Section("Network Details") {
-                    TextField("Name", text: $name)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Picker("Driver", selection: $driver) {
+                    FormTextField(
+                        title: "Name",
+                        placeholder: "frontend",
+                        text: $name,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true,
+                        helper: "Use a short Docker network name with no spaces."
+                    )
+                    FormPicker(
+                        title: "Driver",
+                        selection: $driver,
+                        helper: "Bridge is the standard single-host Docker network driver."
+                    ) {
                         Text("Bridge").tag("bridge")
                         Text("Host").tag("host")
                         Text("Overlay").tag("overlay")
@@ -622,6 +631,9 @@ struct CreateNetworkView: View {
                         Text("None").tag("none")
                     }
                     Toggle("Internal", isOn: $isInternal)
+                }
+                Section {} footer: {
+                    Text(isInternal ? "Internal networks block external connectivity for attached containers." : "Bridge is the standard single-host Docker network driver.")
                 }
                 if let error = errorMessage {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }

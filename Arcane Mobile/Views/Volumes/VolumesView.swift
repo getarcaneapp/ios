@@ -629,6 +629,11 @@ struct VolumeDetailView: View {
 }
 
 struct CreateVolumeView: View {
+    private enum DriverMode: String {
+        case local
+        case custom
+    }
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
@@ -636,20 +641,55 @@ struct CreateVolumeView: View {
     let onSuccess: () async -> Void
 
     @State private var name = ""
-    @State private var driver = "local"
+    @State private var driverMode = DriverMode.local
+    @State private var customDriver = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
+
+    private var driver: String {
+        switch driverMode {
+        case .local:
+            return "local"
+        case .custom:
+            return customDriver.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    private var canCreate: Bool {
+        !name.isEmpty && !isLoading && (driverMode == .local || !driver.isEmpty)
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Volume Details") {
-                    TextField("Name", text: $name)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    TextField("Driver", text: $driver)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    FormTextField(
+                        title: "Name",
+                        placeholder: "app-data",
+                        text: $name,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true,
+                        helper: "Use a stable name so containers can mount this volume later."
+                    )
+                    FormPicker(
+                        title: "Driver",
+                        selection: $driverMode,
+                        helper: driverMode == .local
+                            ? "Use local unless your Docker host has a volume driver plugin."
+                            : "Enter the exact Docker volume driver plugin name."
+                    ) {
+                        Text("Local").tag(DriverMode.local)
+                        Text("Custom driver").tag(DriverMode.custom)
+                    }
+                    if driverMode == .custom {
+                        FormTextField(
+                            title: "Custom Driver",
+                            placeholder: "driver-name",
+                            text: $customDriver,
+                            autocapitalization: .never,
+                            autocorrectionDisabled: true
+                        )
+                    }
                 }
                 if let error = errorMessage {
                     Section {
@@ -663,7 +703,7 @@ struct CreateVolumeView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") { Task { await createVolume() } }
-                        .disabled(name.isEmpty || isLoading)
+                        .disabled(!canCreate)
                 }
             }
         }

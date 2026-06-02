@@ -335,7 +335,12 @@ struct CreateWebhookView: View {
         NavigationStack {
             Form {
                 Section("Webhook Details") {
-                    TextField("Name", text: $name)
+                    FormTextField(
+                        title: "Name",
+                        placeholder: "Restart API container",
+                        text: $name,
+                        helper: "Use a name that explains what this webhook will trigger."
+                    )
                 }
 
                 Section("Target") {
@@ -406,8 +411,13 @@ struct CreateWebhookView: View {
                     }
                 }
             case .gitops:
-                TextField("Stack ID", text: $targetId)
-                    .autocapitalization(.none)
+                FormTextField(
+                    title: "Stack ID",
+                    placeholder: "stack-id",
+                    text: $targetId,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
             default:
                 EmptyView()
             }

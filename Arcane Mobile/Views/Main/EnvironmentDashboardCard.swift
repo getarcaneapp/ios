@@ -10,6 +10,7 @@ struct EnvironmentDashboardCard: View {
     @State private var dockerInfo: DockerInfo?
     @State private var latestStats: SystemStatsFrame?
     @State private var dockerError: String?
+    @State private var statsError: String?
     @State private var selectionPulse = false
     @State private var showPruneSheet = false
     @State private var showUpgradeSheet = false
@@ -62,7 +63,8 @@ struct EnvironmentDashboardCard: View {
                         label: "CPU",
                         tint: .blue,
                         size: 62,
-                        lineWidth: 7
+                        lineWidth: 7,
+                        errorMessage: statsError
                     )
                     Spacer(minLength: 0)
                     StatRing(
@@ -71,7 +73,8 @@ struct EnvironmentDashboardCard: View {
                         label: "Memory",
                         tint: .purple,
                         size: 62,
-                        lineWidth: 7
+                        lineWidth: 7,
+                        errorMessage: statsError
                     )
                     Spacer(minLength: 0)
                     StatRing(
@@ -80,11 +83,21 @@ struct EnvironmentDashboardCard: View {
                         label: "Disk",
                         tint: .teal,
                         size: 62,
-                        lineWidth: 7
+                        lineWidth: 7,
+                        errorMessage: statsError
                     )
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity)
+
+                if let statsError {
+                    Label(statsError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 Divider()
 
@@ -188,9 +201,12 @@ struct EnvironmentDashboardCard: View {
             do {
                 for try await frame in stream {
                     latestStats = frame
+                    statsError = nil
                 }
             } catch is CancellationError {
             } catch {
+                latestStats = nil
+                statsError = "Live stats unavailable: \(friendlyErrorMessage(error))"
             }
         }
     }

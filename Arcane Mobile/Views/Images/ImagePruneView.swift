@@ -33,28 +33,25 @@ struct ImagePruneView: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker("Mode", selection: $mode) {
-                        ForEach(Mode.allCases) { m in Text(m.rawValue).tag(m) }
+                    FormPicker(title: "Prune Mode", selection: $mode) {
+                        ForEach(Mode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                } header: {
-                    Text("Prune Mode")
                 } footer: {
                     Text(modeDescription)
                 }
 
                 if mode == .olderThan {
-                    Section {
-                        HStack {
-                            Text("Older than").foregroundStyle(.secondary)
-                            Spacer()
-                            TextField("e.g. 24h, 7d", text: $until)
-                                .multilineTextAlignment(.trailing)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .frame(width: 120)
-                        }
+                    Section("Age Limit") {
+                        FormTextField(
+                            title: "Older Than",
+                            placeholder: "24h or 7d",
+                            text: $until,
+                            autocapitalization: .never,
+                            autocorrectionDisabled: true,
+                            helper: "Only unused images older than this duration will be pruned."
+                        )
                     }
                 }
             }
@@ -101,15 +98,12 @@ struct ImagePruneView: View {
         guard let client = manager.client else { return }
         isPruning = true
         defer { isPruning = false }
-        let body = ImagePruneRequest(
-            mode: mode.apiValue,
-            until: mode == .olderThan ? until : nil,
-            dangling: nil,
-            filters: nil
-        )
         do {
-            let path = client.rest.environmentPath(environmentID, "images/prune")
-            let report: ImagePruneReport = try await client.rest.post(path, body: body)
+            let report = try await client.images.prune(
+                envID: environmentID,
+                mode: mode.apiValue,
+                until: mode == .olderThan ? until : nil
+            )
             if let cached = manager.cached {
                 await cached.invalidate(envID: environmentID, paths: [
                     client.rest.environmentPath(environmentID, "images") + "*",
@@ -125,9 +119,10 @@ struct ImagePruneView: View {
     }
 
     private func formatResult(_ report: ImagePruneReport) -> String {
-        let count = report.imagesDeleted?.count ?? 0
+        let count = report.imagesDeleted.count
         var msg = count == 0 ? "Nothing to remove." : "Removed \(count) image\(count == 1 ? "" : "s")."
-        if let space = report.spaceReclaimed, space > 0 {
+        if report.spaceReclaimed > 0 {
+            let space = report.spaceReclaimed
             msg += " Freed \(space.byteString)."
         }
         return msg

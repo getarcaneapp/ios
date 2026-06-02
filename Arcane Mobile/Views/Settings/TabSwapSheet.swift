@@ -10,7 +10,7 @@ struct TabSwapSheet: View {
     @State private var showResetConfirm = false
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
-    private var supportsV2: Bool { manager.serverCapabilities?.supportsRoleManagement == true }
+    private var supportsV2: Bool { manager.serverCapabilities?.mode == .rbac }
     private var store: NavTabsStore { .shared }
 
     private var pinnedSet: Set<AppTab> { Set(store.pinnedTabs) }

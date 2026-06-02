@@ -18,7 +18,11 @@ struct BuildSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Build Provider", selection: $buildProvider) {
+                FormPicker(
+                    title: "Build Provider",
+                    selection: $buildProvider,
+                    helper: "Choose where Arcane should run image builds."
+                ) {
                     Text("Local").tag("local")
                     Text("Depot").tag("depot")
                 }
@@ -27,30 +31,37 @@ struct BuildSettingsView: View {
             }
 
             Section("Configuration") {
-                HStack {
-                    Text("Build Timeout (s)")
-                    Spacer()
-                    TextField("1800", text: $buildTimeout)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 100)
-                        .foregroundStyle(.secondary)
-                }
-                HStack {
-                    Text("Builds Directory")
-                    Spacer()
-                    TextField("/path/to/builds", text: $buildsDirectory)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                        .autocapitalization(.none)
-                }
+                FormTextField(
+                    title: "Build Timeout",
+                    placeholder: "1800",
+                    text: $buildTimeout,
+                    keyboardType: .numberPad,
+                    helper: "Maximum build duration in seconds."
+                )
+                FormTextField(
+                    title: "Builds Directory",
+                    placeholder: "/path/to/builds",
+                    text: $buildsDirectory,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true,
+                    monospaced: true
+                )
             }
 
             if buildProvider == "depot" {
                 Section {
-                    TextField("Project ID", text: $depotProjectId)
-                        .autocapitalization(.none)
-                    SecureField("Depot Token", text: $depotToken)
+                    FormTextField(
+                        title: "Project ID",
+                        placeholder: "Depot project ID",
+                        text: $depotProjectId,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true
+                    )
+                    FormSecureField(
+                        title: "Depot Token",
+                        placeholder: "Required for Depot builds",
+                        text: $depotToken
+                    )
                 } header: {
                     Label("Depot Credentials", systemImage: "key")
                 }

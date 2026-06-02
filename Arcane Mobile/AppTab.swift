@@ -6,7 +6,7 @@ import Arcane
 /// to render the destination view for a tab.
 enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case dashboard, containers, images, projects
-    case volumes, networks, ports, updates, events
+    case volumes, networks, ports, updates, activities, events
     case gitRepositories, gitOps, swarm
     case users, apiKeys, containerRegistries, templateRegistries,
          notifications, webhooks, systemSettings, authentication, builds, jobs,
@@ -28,6 +28,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .networks: return "Networks"
         case .ports: return "Ports"
         case .updates: return "Updates"
+        case .activities: return "Activities"
         case .events: return "Events"
         case .gitRepositories: return "Git Repositories"
         case .gitOps: return "GitOps"
@@ -58,6 +59,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .systemSettings: return "System"
         case .authentication: return "Auth"
         case .oidcRoleMappings: return "OIDC Roles"
+        case .activities: return "Activity"
         default: return title
         }
     }
@@ -72,6 +74,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .networks: return "network"
         case .ports: return "point.3.connected.trianglepath.dotted"
         case .updates: return "arrow.triangle.2.circlepath"
+        case .activities: return "clock.arrow.circlepath"
         case .events: return "clock.badge.exclamationmark"
         case .gitRepositories: return "arrow.triangle.branch"
         case .gitOps: return "arrow.triangle.merge"
@@ -98,6 +101,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .networks: return .teal
         case .ports: return .cyan
         case .updates: return .green
+        case .activities: return .orange
         case .events: return .red
         case .gitRepositories, .gitOps: return .indigo
         case .swarm: return .mint
@@ -120,7 +124,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .dashboard, .projects, .containerRegistries, .templateRegistries, .gitRepositories, .gitOps:
             return .management
-        case .containers, .images, .builds, .updates, .networks, .ports, .volumes, .jobs:
+        case .containers, .images, .builds, .updates, .activities, .networks, .ports, .volumes, .jobs:
             return .resources
         case .swarm:
             return .swarm
@@ -137,7 +141,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
              .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication,
              .roles, .oidcRoleMappings:
             return true
-        case .dashboard, .projects, .containers, .images, .updates, .networks, .ports, .volumes, .events:
+        case .dashboard, .projects, .containers, .images, .updates, .activities, .networks, .ports, .volumes, .events:
             return false
         }
     }
@@ -146,7 +150,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     /// `requiresV2 == true` are hidden — the underlying endpoints don't exist.
     var requiresV2: Bool {
         switch self {
-        case .roles, .oidcRoleMappings: return true
+        case .activities, .roles, .oidcRoleMappings: return true
         default: return false
         }
     }
@@ -161,7 +165,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .dashboard, .containers, .images, .projects, .volumes, .networks,
              .ports, .gitOps, .jobs:
             return true
-        case .updates, .events, .gitRepositories, .users, .apiKeys,
+        case .activities, .updates, .events, .gitRepositories, .users, .apiKeys,
              .containerRegistries, .templateRegistries,
              .notifications, .webhooks, .systemSettings, .authentication, .builds,
              .swarm, .roles, .oidcRoleMappings:
@@ -214,6 +218,8 @@ func appTabDestination(
         PortsView(environmentID: manager.activeEnvironmentID)
     case .updates:
         UpdatesView()
+    case .activities:
+        ActivitiesView()
     case .events:
         EventsView()
     case .gitRepositories:

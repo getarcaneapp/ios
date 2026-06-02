@@ -472,7 +472,7 @@ private func humanizeFieldName(_ name: String) -> String {
     return first.uppercased() + last.dropFirst()
 }
 
-// MARK: - Image pull / prune
+// MARK: - Image pull
 
 nonisolated struct PullImageRequest: Encodable, Sendable {
     let imageName: String
@@ -490,66 +490,6 @@ nonisolated struct DestroyProjectRequest: Encodable, Sendable {
 // `isLayerEvent` helper the views previously relied on.
 extension PullProgressEvent {
     var isLayerEvent: Bool { id?.isEmpty == false }
-}
-
-nonisolated struct ImagePruneRequest: Encodable, Sendable {
-    let mode: String?
-    let until: String?
-    let dangling: Bool?
-    let filters: [String: [String]]?
-}
-
-nonisolated struct ImagePruneReport: Codable, Sendable {
-    let imagesDeleted: [String]?
-    let spaceReclaimed: Int64?
-}
-
-// MARK: - System prune (consolidated)
-
-nonisolated struct PruneAllRequest: Encodable, Sendable {
-    let containers: PruneContainersOptions?
-    let images: PruneImagesOptions?
-    let volumes: PruneVolumesOptions?
-    let networks: PruneNetworksOptions?
-    let buildCache: PruneBuildCacheOptions?
-}
-
-nonisolated struct PruneContainersOptions: Encodable, Sendable {
-    let mode: String      // "none" | "stopped" | "olderThan"
-    let until: String?
-}
-
-nonisolated struct PruneImagesOptions: Encodable, Sendable {
-    let mode: String      // "none" | "dangling" | "all" | "olderThan"
-    let until: String?
-}
-
-nonisolated struct PruneVolumesOptions: Encodable, Sendable {
-    let mode: String      // "none" | "anonymous" | "all"
-}
-
-nonisolated struct PruneNetworksOptions: Encodable, Sendable {
-    let mode: String      // "none" | "unused" | "olderThan"
-    let until: String?
-}
-
-nonisolated struct PruneBuildCacheOptions: Encodable, Sendable {
-    let mode: String      // "none" | "unused" | "all" | "olderThan"
-    let until: String?
-}
-
-nonisolated struct PruneAllResult: Codable, Sendable {
-    let containersPruned: [String]?
-    let imagesDeleted: [String]?
-    let volumesDeleted: [String]?
-    let networksDeleted: [String]?
-    let spaceReclaimed: Int64?
-    let containerSpaceReclaimed: Int64?
-    let imageSpaceReclaimed: Int64?
-    let volumeSpaceReclaimed: Int64?
-    let buildCacheSpaceReclaimed: Int64?
-    let success: Bool?
-    let errors: [String]?
 }
 
 // MARK: - Image update checks

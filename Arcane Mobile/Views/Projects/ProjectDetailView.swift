@@ -563,9 +563,14 @@ struct CreateProjectView: View {
         NavigationStack {
             Form {
                 Section("Project Name") {
-                    TextField("my-app", text: $name)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    FormTextField(
+                        title: "Name",
+                        placeholder: "my-app",
+                        text: $name,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true,
+                        helper: "Use a short stack name that is easy to identify in lists and logs."
+                    )
                 }
 
                 if isPrefilled {

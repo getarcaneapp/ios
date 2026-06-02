@@ -127,15 +127,15 @@ struct JobScheduleConfigView: View {
                     .font(.subheadline.weight(.semibold))
                 Spacer()
             }
-            TextField("* * * * *", text: binding)
-                .font(.system(.subheadline, design: .monospaced))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            if let readable = CronExpression.readable(binding.wrappedValue) {
-                Text(readable)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+            FormTextField(
+                title: "Cron Expression",
+                placeholder: "* * * * *",
+                text: binding,
+                autocapitalization: .never,
+                autocorrectionDisabled: true,
+                monospaced: true,
+                helper: CronExpression.readable(binding.wrappedValue)
+            )
         }
         .padding(.vertical, 4)
     }

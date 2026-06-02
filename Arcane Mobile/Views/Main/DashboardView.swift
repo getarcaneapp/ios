@@ -36,7 +36,7 @@ struct DashboardEnvironmentsSummary: Decodable, Sendable {
     let onlineEnvironments: Int?
     let containers: DashboardContainerCounts?
     let imageUsageCounts: DashboardImageCounts?
-    
+
     struct DashboardContainerCounts: Decodable, Sendable {
         let totalContainers: Int?
         let runningContainers: Int?
@@ -67,11 +67,13 @@ struct DashboardView: View {
 
     @Namespace private var heroTransition
 
+    @State private var allEnvironments: [Arcane.Environment] = []
     @State private var environments: [Arcane.Environment] = []
     @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
     @State private var imageUpdatesTotal: Int?
     @State private var liveCounts: DashboardLiveCounts?
+    @State private var failedActivities: [Activity] = []
     @State private var rawEnvironmentCount: Int = 0
     @State private var detailRoute: EnvironmentDetailRoute?
 
@@ -80,6 +82,7 @@ struct DashboardView: View {
     @State private var showPruneSheet = false
     @State private var showVolumes = false
     @State private var showImageUpdates = false
+    @State private var showActivities = false
 
     private static let maxEnvironments = 50
     private static let maxConcurrentPerEnvFetches = 4
@@ -96,6 +99,10 @@ struct DashboardView: View {
                     } else {
                         overviewGrid
 
+                        if manager.supportsActivities && !failedActivities.isEmpty {
+                            DashboardFailedWorkCard(activities: failedActivities)
+                        }
+
                         environmentsSection
                             .padding(.top, 8)
                     }
@@ -108,6 +115,15 @@ struct DashboardView: View {
             .navigationTitle("")
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if manager.supportsActivities {
+                        Button { showActivities = true } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                        }
+                        .accessibilityLabel("Activity Center")
+                    }
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showPruneSheet = true } label: {
                         Image(systemName: "trash")
@@ -131,6 +147,11 @@ struct DashboardView: View {
                     AllEnvironmentsImageUpdatesView()
                 }
             }
+            .sheet(isPresented: $showActivities) {
+                NavigationStack {
+                    ActivitiesView()
+                }
+            }
             .navigationDestination(item: $detailRoute) { route in
                 SystemInfoDetailView(
                     environmentID: EnvironmentID(rawValue: route.id),
@@ -140,6 +161,9 @@ struct DashboardView: View {
             }
             .task { await loadData() }
             .refreshable { await loadData(refresh: true) }
+            .onChange(of: manager.activeEnvironmentID.rawValue) {
+                environments = dashboardEnvironments(from: allEnvironments.isEmpty ? environments : allEnvironments)
+            }
         }
     }
 
@@ -346,7 +370,8 @@ struct DashboardView: View {
 
         if Task.isCancelled { return }
         rawEnvironmentCount = envs.count
-        let bounded = Array(envs.prefix(Self.maxEnvironments))
+        allEnvironments = envs
+        let bounded = dashboardEnvironments(from: envs)
         environments = bounded
         if let reqData {
             overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
@@ -372,21 +397,78 @@ struct DashboardView: View {
             imageUpdatesTotal = updates
             if let counts { liveCounts = counts }
         }
+
+        let activities = await loadFailedWork()
+        if !Task.isCancelled {
+            failedActivities = activities
+        }
+    }
+
+    private func loadFailedWork() async -> [Activity] {
+        guard manager.supportsActivities, let client = manager.client else { return [] }
+
+        let envResponse = try? await client.environments.list(
+            query: SearchPaginationSort(start: 0, limit: 100, sortOrder: .ascending)
+        )
+        let targets: [(id: EnvironmentID, name: String)] = (envResponse?.data ?? []).map { environment in
+            let name = environment.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return (
+                id: EnvironmentID(rawValue: environment.id),
+                name: name.isEmpty ? environment.id : name
+            )
+        }
+        guard !targets.isEmpty else { return [] }
+
+        var merged: [Activity] = []
+        await withTaskGroup(of: [Activity].self) { group in
+            for environment in targets {
+                group.addTask {
+                    let response = try? await client.activities.listPaginated(
+                        envID: environment.id,
+                        order: .descending,
+                        start: 0,
+                        limit: 20
+                    )
+                    return (response?.data ?? []).map { activity in
+                        var normalized = activity
+                        if normalized.sourceEnvironmentID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                            normalized.sourceEnvironmentID = environment.id.rawValue
+                        }
+                        if normalized.sourceEnvironmentName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                            normalized.sourceEnvironmentName = environment.name
+                        }
+                        return normalized
+                    }
+                }
+            }
+            for await activities in group {
+                merged.append(contentsOf: activities)
+            }
+        }
+
+        return merged
+            .filter { activity in
+                activity.status == .failed
+            }
+            .sorted { lhs, rhs in
+                return lhs.sortTime > rhs.sortTime
+            }
+            .prefix(3)
+            .map { $0 }
     }
 
     private func loadVolumesTotal(envs: [Arcane.Environment]) async -> Int {
         guard let client = manager.client else { return 0 }
-        let online = envs.filter { $0.isOnline ?? false }
-        guard !online.isEmpty else { return 0 }
+        guard !envs.isEmpty else { return 0 }
 
         return await withTaskGroup(of: Int64.self) { group in
-            var iterator = online.makeIterator()
-            let initialBatch = min(Self.maxConcurrentPerEnvFetches, online.count)
+            var iterator = envs.makeIterator()
+            let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
             for _ in 0..<initialBatch {
                 guard let env = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
-                    (try? await client.volumes.list(envID: envID, query: SearchPaginationSort(start: 0, limit: 1)).pagination.totalItems) ?? 0
+                    await Self.volumeCount(client: client, envID: envID)
                 }
             }
             var total: Int64 = 0
@@ -395,7 +477,7 @@ struct DashboardView: View {
                 if let env = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
                     group.addTask {
-                        (try? await client.volumes.list(envID: envID, query: SearchPaginationSort(start: 0, limit: 1)).pagination.totalItems) ?? 0
+                        await Self.volumeCount(client: client, envID: envID)
                     }
                 }
             }
@@ -403,14 +485,18 @@ struct DashboardView: View {
         }
     }
 
+    private nonisolated static func volumeCount(client: ArcaneClient, envID: EnvironmentID) async -> Int64 {
+        let query = SearchPaginationSort(start: 0, limit: 1)
+        return (try? await client.volumes.list(envID: envID, query: query).pagination.totalItems) ?? 0
+    }
+
     private func loadImageUpdatesTotal(envs: [Arcane.Environment]) async -> Int {
         guard let client = manager.client else { return 0 }
-        let online = envs.filter { $0.isOnline ?? false }
-        guard !online.isEmpty else { return 0 }
+        guard !envs.isEmpty else { return 0 }
 
         return await withTaskGroup(of: Int.self) { group in
-            var iterator = online.makeIterator()
-            let initialBatch = min(Self.maxConcurrentPerEnvFetches, online.count)
+            var iterator = envs.makeIterator()
+            let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
             for _ in 0..<initialBatch {
                 guard let env = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
@@ -501,9 +587,20 @@ struct DashboardView: View {
             policy: .environments, refresh: refresh,
             onFresh: { fresh in
                 rawEnvironmentCount = fresh.count
-                environments = Array(fresh.prefix(Self.maxEnvironments))
+                allEnvironments = fresh
+                environments = dashboardEnvironments(from: fresh)
             }
         )) ?? []
+    }
+
+    private func dashboardEnvironments(from envs: [Arcane.Environment]) -> [Arcane.Environment] {
+        let activeID = manager.activeEnvironmentID.rawValue
+        var ordered = envs
+        if let activeIndex = ordered.firstIndex(where: { $0.id == activeID }) {
+            let active = ordered.remove(at: activeIndex)
+            ordered.insert(active, at: 0)
+        }
+        return Array(ordered.prefix(Self.maxEnvironments))
     }
 }
 
@@ -518,8 +615,13 @@ struct StatRing: View {
     let tint: Color
     var size: CGFloat = 78
     var lineWidth: CGFloat = 9
+    var errorMessage: String?
 
     @State private var animatedValue: Double = 0.0
+
+    private var hasError: Bool {
+        errorMessage?.isEmpty == false
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -527,22 +629,28 @@ struct StatRing: View {
                 Circle()
                     .stroke(.secondary.opacity(0.15), lineWidth: lineWidth)
                     .frame(width: size, height: size)
-                SmoothProgressBar(progress: value, tint: tint, lineWidth: lineWidth)
+                SmoothProgressBar(progress: hasError ? 0 : value, tint: hasError ? .orange : tint, lineWidth: lineWidth)
                     .frame(width: size, height: size)
-                Text(valueText)
-                    .font(.footnote.bold())
-                    .foregroundStyle(.primary)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .motionAwareAnimation(.smooth(duration: 0.3), value: valueText)
+                if hasError {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(.orange)
+                } else {
+                    Text(valueText)
+                        .font(.footnote.bold())
+                        .foregroundStyle(.primary)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .motionAwareAnimation(.smooth(duration: 0.3), value: valueText)
+                }
             }
             Text(label)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(hasError ? .orange : .secondary)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label): \(valueText)")
-        .accessibilityValue("\(Int(value * 100)) percent")
+        .accessibilityLabel(hasError ? "\(label): unavailable" : "\(label): \(valueText)")
+        .accessibilityValue(hasError ? (errorMessage ?? "Live stats unavailable") : "\(Int(value * 100)) percent")
     }
 }
 
@@ -594,6 +702,96 @@ struct DashboardGlassTile: View {
         .accessibilityLabel("\(title): \(value)")
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens \(title)")
+    }
+}
+
+struct DashboardFailedWorkCard: View {
+    let activities: [Activity]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Failed Work")
+                        .font(.headline)
+                    Text("\(activities.count) failure\(activities.count == 1 ? "" : "s") need attention")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Failed Work, \(activities.count) failures need attention")
+
+            VStack(spacing: 8) {
+                ForEach(activities.prefix(3)) { activity in
+                    NavigationLink {
+                        ActivityDetailView(activity: activity)
+                    } label: {
+                        DashboardFailedWorkRow(activity: activity)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(.rect)
+                    .accessibilityHint("Opens this failed activity")
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardCardBackground(cornerRadius: 16)
+    }
+}
+
+private struct DashboardFailedWorkRow: View {
+    let activity: Activity
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(tint)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(activity.displayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Text(activity.latestMessage.isEmpty ? activity.subtitle : activity.latestMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Text(activity.status.rawValue.capitalized)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(tint)
+
+            Image(systemName: "chevron.right")
+                .font(.caption2.bold())
+                .foregroundStyle(.secondary.opacity(0.5))
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var tint: Color {
+        switch activity.status {
+        case .failed: return .red
+        case .running: return .blue
+        case .queued: return .orange
+        default: return .secondary
+        }
     }
 }
 
@@ -700,18 +898,15 @@ struct StatCard: View {
 
 struct StatusBadge: View {
     let status: String?
-    var body: some View {
-        Text(status ?? "UNKNOWN")
-            .font(.caption2.weight(.bold))
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(color.opacity(0.15), in: Capsule())
-            .foregroundStyle(color)
+    let isLive: Bool?
+
+    init(status: String?, isLive: Bool? = nil) {
+        self.status = status
+        self.isLive = isLive
     }
-    private var color: Color {
-        let s = status?.lowercased() ?? ""
-        if s == "running" || s == "online" { return .green }
-        if s == "stopped" || s == "offline" { return .red }
-        return .secondary
+
+    var body: some View {
+        ResourceStatusBadge(status: status, isLive: isLive)
     }
 }
 
@@ -758,14 +953,14 @@ struct SystemPruneView: View {
 
     let environmentID: EnvironmentID
 
-    @State private var containerMode = 0
+    @State private var containerMode: PruneContainerMode = .none
     @State private var containerAge = "24h"
-    @State private var imageMode = 0
+    @State private var imageMode: PruneImageMode = .none
     @State private var imageAge = "24h"
-    @State private var volumeMode = 0
-    @State private var networkMode = 0
+    @State private var volumeMode: PruneVolumeMode = .none
+    @State private var networkMode: PruneNetworkMode = .none
     @State private var networkAge = "24h"
-    @State private var buildCacheMode = 0
+    @State private var buildCacheMode: PruneBuildCacheMode = .none
     @State private var buildCacheAge = "24h"
 
     @State private var isPruning = false
@@ -774,11 +969,11 @@ struct SystemPruneView: View {
 
     private var selectedCount: Int {
         var count = 0
-        if containerMode > 0 { count += 1 }
-        if imageMode > 0 { count += 1 }
-        if volumeMode > 0 { count += 1 }
-        if networkMode > 0 { count += 1 }
-        if buildCacheMode > 0 { count += 1 }
+        if containerMode != .none { count += 1 }
+        if imageMode != .none { count += 1 }
+        if volumeMode != .none { count += 1 }
+        if networkMode != .none { count += 1 }
+        if buildCacheMode != .none { count += 1 }
         return count
     }
 
@@ -786,49 +981,49 @@ struct SystemPruneView: View {
         NavigationStack {
             Form {
                 Section("Containers") {
-                    Picker("Containers", selection: $containerMode) {
-                        Text("None").tag(0)
-                        Text("Stopped").tag(1)
-                        Text("Older than...").tag(2)
+                    FormPicker(title: "Containers", selection: $containerMode) {
+                        Text("None").tag(PruneContainerMode.none)
+                        Text("Stopped").tag(PruneContainerMode.stopped)
+                        Text("Older than...").tag(PruneContainerMode.olderThan)
                     }
-                    if containerMode == 2 { ageRow($containerAge) }
+                    if containerMode == .olderThan { ageRow($containerAge) }
                 }
 
                 Section("Images") {
-                    Picker("Images", selection: $imageMode) {
-                        Text("None").tag(0)
-                        Text("Dangling (Unused)").tag(1)
-                        Text("All Unused").tag(2)
-                        Text("Older than...").tag(3)
+                    FormPicker(title: "Images", selection: $imageMode) {
+                        Text("None").tag(PruneImageMode.none)
+                        Text("Dangling").tag(PruneImageMode.dangling)
+                        Text("All Unused").tag(PruneImageMode.all)
+                        Text("Older than...").tag(PruneImageMode.olderThan)
                     }
-                    if imageMode == 3 { ageRow($imageAge) }
+                    if imageMode == .olderThan { ageRow($imageAge) }
                 }
 
                 Section("Volumes") {
-                    Picker("Volumes", selection: $volumeMode) {
-                        Text("None").tag(0)
-                        Text("Anonymous Unused").tag(1)
-                        Text("All Unused").tag(2)
+                    FormPicker(title: "Volumes", selection: $volumeMode) {
+                        Text("None").tag(PruneVolumeMode.none)
+                        Text("Anonymous").tag(PruneVolumeMode.anonymous)
+                        Text("All Unused").tag(PruneVolumeMode.all)
                     }
                 }
 
                 Section("Networks") {
-                    Picker("Networks", selection: $networkMode) {
-                        Text("None").tag(0)
-                        Text("Unused").tag(1)
-                        Text("Older than...").tag(2)
+                    FormPicker(title: "Networks", selection: $networkMode) {
+                        Text("None").tag(PruneNetworkMode.none)
+                        Text("Unused").tag(PruneNetworkMode.unused)
+                        Text("Older than...").tag(PruneNetworkMode.olderThan)
                     }
-                    if networkMode == 2 { ageRow($networkAge) }
+                    if networkMode == .olderThan { ageRow($networkAge) }
                 }
 
                 Section("Build Cache") {
-                    Picker("Build Cache", selection: $buildCacheMode) {
-                        Text("None").tag(0)
-                        Text("Unused").tag(1)
-                        Text("All").tag(2)
-                        Text("Older than...").tag(3)
+                    FormPicker(title: "Build Cache", selection: $buildCacheMode) {
+                        Text("None").tag(PruneBuildCacheMode.none)
+                        Text("Unused").tag(PruneBuildCacheMode.unused)
+                        Text("All").tag(PruneBuildCacheMode.all)
+                        Text("Older than...").tag(PruneBuildCacheMode.olderThan)
                     }
-                    if buildCacheMode == 3 { ageRow($buildCacheAge) }
+                    if buildCacheMode == .olderThan { ageRow($buildCacheAge) }
                 }
             }
             .navigationTitle("System Prune")
@@ -867,16 +1062,13 @@ struct SystemPruneView: View {
     }
 
     private func ageRow(_ binding: Binding<String>) -> some View {
-        HStack {
-            Text("Older than")
-                .foregroundStyle(.secondary)
-            Spacer()
-            TextField("e.g. 24h, 7d", text: binding)
-                .multilineTextAlignment(.trailing)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .frame(width: 100)
-        }
+        FormTextField(
+            title: "Older Than",
+            placeholder: "24h or 7d",
+            text: binding,
+            autocapitalization: .never,
+            autocorrectionDisabled: true
+        )
     }
 
     private func runPrune() async {
@@ -885,30 +1077,29 @@ struct SystemPruneView: View {
         defer { isPruning = false }
 
         let request = PruneAllRequest(
-            containers: containerMode > 0 ? PruneContainersOptions(
-                mode: containerMode == 1 ? "stopped" : "olderThan",
-                until: containerMode == 2 ? containerAge : nil
+            containers: containerMode != .none ? PruneContainersOptions(
+                mode: containerMode,
+                until: containerMode == .olderThan ? containerAge : nil
             ) : nil,
-            images: imageMode > 0 ? PruneImagesOptions(
-                mode: imageMode == 1 ? "dangling" : (imageMode == 2 ? "all" : "olderThan"),
-                until: imageMode == 3 ? imageAge : nil
+            images: imageMode != .none ? PruneImagesOptions(
+                mode: imageMode,
+                until: imageMode == .olderThan ? imageAge : nil
             ) : nil,
-            volumes: volumeMode > 0 ? PruneVolumesOptions(
-                mode: volumeMode == 1 ? "anonymous" : "all"
+            volumes: volumeMode != .none ? PruneVolumesOptions(
+                mode: volumeMode
             ) : nil,
-            networks: networkMode > 0 ? PruneNetworksOptions(
-                mode: networkMode == 1 ? "unused" : "olderThan",
-                until: networkMode == 2 ? networkAge : nil
+            networks: networkMode != .none ? PruneNetworksOptions(
+                mode: networkMode,
+                until: networkMode == .olderThan ? networkAge : nil
             ) : nil,
-            buildCache: buildCacheMode > 0 ? PruneBuildCacheOptions(
-                mode: buildCacheMode == 1 ? "unused" : (buildCacheMode == 2 ? "all" : "olderThan"),
-                until: buildCacheMode == 3 ? buildCacheAge : nil
+            buildCache: buildCacheMode != .none ? PruneBuildCacheOptions(
+                mode: buildCacheMode,
+                until: buildCacheMode == .olderThan ? buildCacheAge : nil
             ) : nil
         )
 
         do {
-            let path = client.rest.environmentPath(environmentID, "system/prune")
-            let result: PruneAllResult = try await client.rest.post(path, body: request)
+            let result = try await client.system.prune(request, envID: environmentID)
             resultMessage = formatPruneResult(result)
             await ResponseCache.shared.invalidateEnvironment(environmentID.rawValue)
         } catch {
@@ -927,7 +1118,8 @@ struct SystemPruneView: View {
         if let n = result.volumesDeleted?.count, n > 0 { parts.append("\(n) volume\(n == 1 ? "" : "s")") }
         if let n = result.networksDeleted?.count, n > 0 { parts.append("\(n) network\(n == 1 ? "" : "s")") }
         var summary = parts.isEmpty ? "Nothing to remove." : "Removed " + parts.joined(separator: ", ") + "."
-        if let space = result.spaceReclaimed, space > 0 {
+        if result.spaceReclaimed > 0 {
+            let space = Int64(result.spaceReclaimed)
             summary += " Freed \(space.byteString)."
         }
         if let errors = result.errors, !errors.isEmpty {
