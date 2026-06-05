@@ -290,21 +290,66 @@ final class ArcaneClientManager {
             if authState == .authenticating { authState = .login }
             return
         }
+
+        // A keychain read hiccup (e.g. the device is momentarily locked right at
+        // launch) is treated as "unknown" — never as signed-out. me() below
+        // confirms the real state.
+        let hasCredential: Bool
         do {
-            let hasCredential = try await client.authManager.hasRefreshCredential()
-            guard hasCredential else {
-                authState = .login
-                await refreshOIDCStatus()
-                return
-            }
-            let user = try await client.auth.me()
-            currentUser = user
-            serverCapabilities = await client.serverCapabilities()
-            authState = .authenticated
+            hasCredential = try await client.authManager.hasRefreshCredential()
         } catch {
+            hasCredential = true
+        }
+
+        guard hasCredential else {
+            // No stored credential at all — the user is genuinely signed out.
             authState = .login
             await refreshOIDCStatus()
+            return
         }
+
+        do {
+            currentUser = try await client.auth.me()
+            serverCapabilities = await client.serverCapabilities()
+            authState = .authenticated
+        } catch let error as ArcaneError {
+            switch error {
+            case .unauthorized, .forbidden:
+                // The server explicitly rejected the stored credential
+                // (revoked/expired and not refreshable). This is the ONLY path
+                // that signs the user out without an explicit logout.
+                signOutLocally()
+                await refreshOIDCStatus()
+            default:
+                // Transient failure (offline, timeout, server unreachable, 5xx).
+                // Never bounce the user to login for these — keep them signed in
+                // as long as the stored credential survives. user/capabilities
+                // load on the next successful request.
+                await keepSignedInIfCredentialPresent(client)
+            }
+        } catch {
+            // Non-ArcaneError (URLError, cancellation, etc.) is also transient.
+            await keepSignedInIfCredentialPresent(client)
+        }
+    }
+
+    /// Stay authenticated after a transient failure as long as a refresh
+    /// credential is still in the keychain. If a credential is genuinely gone we
+    /// fall back to login (there's nothing left to retry with) rather than show a
+    /// broken signed-in state.
+    private func keepSignedInIfCredentialPresent(_ client: ArcaneClient) async {
+        if (try? await client.authManager.hasRefreshCredential()) == true {
+            authState = .authenticated
+        } else {
+            signOutLocally()
+            await refreshOIDCStatus()
+        }
+    }
+
+    private func signOutLocally() {
+        authState = .login
+        currentUser = nil
+        serverCapabilities = nil
     }
 
     // MARK: - Image fetching

@@ -57,7 +57,8 @@ enum ReleaseNotes {
                 .init("App Now Supports iOS 18 and up!"),
             ],
             changed: [
-                .init("TBD"),
+                .init("Redesigned List View Rows to better visual appearance."),
+                .init("Remove the Builds tab from resources since builds are not in the application yet."),
             ],
             fixed: [
                 .init("TBD"),

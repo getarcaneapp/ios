@@ -453,10 +453,10 @@ struct VolumeRow: View {
                     .accessibilityHidden(true)
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(volume.name)
-                        .font(.headline)
+                        .font(.subheadline.weight(.medium))
                         .lineLimit(1)
                     if isPinned {
                         Image(systemName: "pin.fill")
@@ -464,10 +464,18 @@ struct VolumeRow: View {
                             .foregroundStyle(.yellow)
                             .accessibilityHidden(true)
                     }
+                }
+                HStack(spacing: 6) {
                     if volume.inUse == true {
                         UsageBadge(text: "In use", color: .green)
                     } else if volume.inUse == false {
                         UsageBadge(text: "Unused", color: .secondary)
+                    }
+                    if !subtitleParts.isEmpty {
+                        Text(subtitleParts.joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
             }

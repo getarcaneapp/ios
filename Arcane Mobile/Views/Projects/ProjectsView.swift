@@ -486,7 +486,7 @@ struct ProjectRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(project.displayName)
-                        .font(.headline)
+                        .font(.subheadline.weight(.medium))
                         .lineLimit(1)
                     if isPinned {
                         Image(systemName: "pin.fill")
@@ -499,7 +499,7 @@ struct ProjectRow: View {
 
             Spacer()
 
-            StatusBadge(status: project.status)
+            StatusIcon(status: project.status)
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)

@@ -506,7 +506,7 @@ struct ContainerRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(container.displayName)
-                        .font(.headline)
+                        .font(.subheadline.weight(.medium))
                         .lineLimit(1)
                     if isPinned {
                         Image(systemName: "pin.fill")
@@ -519,7 +519,7 @@ struct ContainerRow: View {
 
             Spacer()
 
-            StatusBadge(status: container.status, isLive: container.isRunning)
+            StatusIcon(status: container.status, isLive: container.isRunning)
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)

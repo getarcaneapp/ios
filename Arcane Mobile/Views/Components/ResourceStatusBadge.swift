@@ -85,3 +85,44 @@ struct ResourceStatusBadge: View {
         .accessibilityLabel("\(displayText) status")
     }
 }
+
+/// Compact, text-free status indicator for dense list rows:
+/// green ▶ running, red ◼ stopped, yellow ⏸ partial/paused, red ⚠ error.
+struct StatusIcon: View {
+    let status: String?
+    var isLive: Bool? = nil
+
+    private var normalized: String {
+        status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+    }
+
+    private var live: Bool {
+        if let isLive { return isLive }
+        return normalized == "running" || normalized == "online"
+    }
+
+    private var config: (icon: String, color: Color, label: String) {
+        if live { return ("play.circle.fill", .green, "Running") }
+        switch normalized {
+        case "running", "online", "success", "completed", "done":
+            return ("play.circle.fill", .green, "Running")
+        case "partial", "partially running":
+            return ("pause.circle.fill", .yellow, "Partially running")
+        case "paused":
+            return ("pause.circle.fill", .yellow, "Paused")
+        case "stopped", "exited", "offline":
+            return ("stop.circle.fill", .red, "Stopped")
+        case "error", "failed", "unhealthy", "dead":
+            return ("exclamationmark.circle.fill", .red, "Error")
+        default:
+            return ("circle.fill", .secondary, status?.capitalized ?? "Unknown")
+        }
+    }
+
+    var body: some View {
+        Image(systemName: config.icon)
+            .font(.title3)
+            .foregroundStyle(config.color)
+            .accessibilityLabel("\(config.label) status")
+    }
+}

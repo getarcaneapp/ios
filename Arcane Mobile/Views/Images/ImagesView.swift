@@ -452,11 +452,19 @@ struct ImageRow: View {
                     .accessibilityHidden(true)
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(image.displayName)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
                 HStack(spacing: 6) {
-                    Text(image.displayName)
-                        .font(.headline)
-                        .lineLimit(1)
+                    Text(image.size.byteString)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if updateState != .unknown {
+                        Text("•")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     UpdateStateBadge(state: updateState)
                 }
             }
@@ -476,21 +484,26 @@ struct UpdateStateBadge: View {
         case .unknown:
             EmptyView()
         case .upToDate:
-            Image(systemName: "checkmark.seal.fill")
-                .foregroundStyle(.green)
-                .imageScale(.small)
-                .accessibilityLabel("Up to date")
+            badge("Up to date", systemImage: "checkmark.seal.fill", color: .green)
         case .hasUpdate:
-            Image(systemName: "arrow.up.circle.fill")
-                .foregroundStyle(Color.accentColor)
-                .imageScale(.small)
-                .accessibilityLabel("Update available")
+            badge("Update available", systemImage: "arrow.up.circle.fill", color: .accentColor)
         case .error(let message):
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-                .imageScale(.small)
-                .accessibilityLabel("Update check failed: \(message)")
+            badge("Update check failed", systemImage: "exclamationmark.triangle.fill", color: .red,
+                  accessibility: "Update check failed: \(message)")
         }
+    }
+
+    // A `Label` adds a wide icon-to-title gap; a tight HStack keeps the badge compact.
+    private func badge(_ text: String, systemImage: String, color: Color, accessibility: String? = nil) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemImage)
+            Text(text)
+        }
+        .font(.caption)
+        .foregroundStyle(color)
+        .lineLimit(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibility ?? text)
     }
 }
 

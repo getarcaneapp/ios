@@ -374,9 +374,9 @@ struct NetworkRow: View {
                 .frame(width: 36, height: 36)
                 .glassEffectCompat(in: .circle)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(network.name)
-                    .font(.headline)
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                 HStack(spacing: 8) {
                     Text(network.driver)
@@ -385,19 +385,18 @@ struct NetworkRow: View {
                     if network.isInternal {
                         Text("• Internal").font(.caption).foregroundStyle(.orange)
                     }
+                    if network.containerCount > 0 {
+                        HStack(spacing: 3) {
+                            Image(systemName: "cube.box.fill")
+                            Text("\(network.containerCount)")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.teal)
+                    }
                 }
             }
 
-            Spacer()
-
-            if network.containerCount > 0 {
-                Text("\(network.containerCount)")
-                    .font(.caption.bold())
-                    .foregroundStyle(.teal)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .glassEffectCompat(in: .capsule)
-            }
+            Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
     }
