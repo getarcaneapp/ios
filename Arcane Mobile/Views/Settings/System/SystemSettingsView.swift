@@ -168,6 +168,21 @@ struct SystemSettingsView: View {
                         SettingsCategoryRow(category: category)
                     }
                 }
+                NavigationLink(destination: BuildSettingsView()) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "hammer")
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Builds")
+                            Text("Build provider, timeout, and Depot credentials")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
             } footer: {
                 Text("Settings apply to the active environment: \(manager.activeEnvironmentName)")
             }

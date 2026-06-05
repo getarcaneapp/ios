@@ -9,7 +9,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case volumes, networks, ports, updates, activities, events
     case gitRepositories, gitOps, swarm
     case users, apiKeys, containerRegistries, templateRegistries,
-         notifications, webhooks, systemSettings, authentication, builds, jobs,
+         notifications, webhooks, systemSettings, authentication, jobs,
          roles, oidcRoleMappings
 
     enum Section: Hashable {
@@ -41,7 +41,6 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .webhooks: return "Webhooks"
         case .systemSettings: return "System Settings"
         case .authentication: return "Authentication"
-        case .builds: return "Builds"
         case .jobs: return "Jobs"
         case .roles: return "Roles"
         case .oidcRoleMappings: return "OIDC Role Mappings"
@@ -87,7 +86,6 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .webhooks: return "link.badge.plus"
         case .systemSettings: return "slider.horizontal.3"
         case .authentication: return "lock.shield.fill"
-        case .builds: return "hammer.fill"
         case .jobs: return "calendar.badge.clock"
         case .roles: return "person.crop.rectangle.stack.fill"
         case .oidcRoleMappings: return "person.badge.key.fill"
@@ -113,7 +111,6 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .webhooks: return .green
         case .systemSettings: return .gray
         case .authentication: return .blue
-        case .builds: return .orange
         case .jobs: return .pink
         case .roles: return .purple
         case .oidcRoleMappings: return .indigo
@@ -124,7 +121,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .dashboard, .projects, .containerRegistries, .templateRegistries, .gitRepositories, .gitOps:
             return .management
-        case .containers, .images, .builds, .updates, .activities, .networks, .ports, .volumes, .jobs:
+        case .containers, .images, .updates, .activities, .networks, .ports, .volumes, .jobs:
             return .resources
         case .swarm:
             return .swarm
@@ -137,7 +134,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     var requiresAdmin: Bool {
         switch self {
         case .containerRegistries, .templateRegistries, .gitRepositories, .gitOps,
-             .builds, .jobs, .swarm,
+             .jobs, .swarm,
              .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication,
              .roles, .oidcRoleMappings:
             return true
@@ -167,7 +164,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
             return true
         case .activities, .updates, .events, .gitRepositories, .users, .apiKeys,
              .containerRegistries, .templateRegistries,
-             .notifications, .webhooks, .systemSettings, .authentication, .builds,
+             .notifications, .webhooks, .systemSettings, .authentication,
              .swarm, .roles, .oidcRoleMappings:
             return false
         }
@@ -244,8 +241,6 @@ func appTabDestination(
         SystemSettingsView()
     case .authentication:
         AuthenticationSettingsView()
-    case .builds:
-        BuildSettingsView()
     case .jobs:
         JobsView(environmentID: manager.activeEnvironmentID)
     case .roles:

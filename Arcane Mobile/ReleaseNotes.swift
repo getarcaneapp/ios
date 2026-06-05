@@ -61,7 +61,7 @@ enum ReleaseNotes {
                 .init("Remove the Builds tab from resources since builds are not in the application yet."),
             ],
             fixed: [
-                .init("TBD"),
+                .init("Fixed the issue with the iOS Keychain signing users out even when refresh tokens exist."),
             ]
         ),
         ReleaseNote(
