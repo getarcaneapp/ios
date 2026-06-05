@@ -69,7 +69,7 @@ struct EnvironmentDetailView: View {
 
         }
         .listStyle(.insetGrouped)
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .softTopScrollEdgeEffectCompat()
         .actionToolbar(
             items: [
                 ActionButtonItem(
@@ -96,7 +96,7 @@ struct EnvironmentDetailView: View {
                 .font(.title)
                 .foregroundStyle(environment.isOnline ?? false ? .green : .secondary)
                 .frame(width: 56, height: 56)
-                .glassEffect(.regular, in: .circle)
+                .glassEffectCompat(in: .circle)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(environment.name ?? environment.id)

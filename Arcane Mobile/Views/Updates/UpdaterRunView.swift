@@ -73,7 +73,7 @@ struct UpdaterRunView: View {
                 ProgressView()
                     .controlSize(.large)
             }
-            .glassEffect(.regular.tint(Color.blue.opacity(0.25)), in: .circle)
+            .glassEffectCompat(tint: Color.blue.opacity(0.25), in: .circle)
             VStack(spacing: 6) {
                 Text("Starting…")
                     .font(.title2.bold())
@@ -85,7 +85,7 @@ struct UpdaterRunView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: 24))
     }
 
     private var runningHero: some View {
@@ -111,7 +111,7 @@ struct UpdaterRunView: View {
                     .foregroundStyle(Color.blue)
                     .symbolEffect(.rotate, options: .repeating, isActive: true)
             }
-            .glassEffect(.regular.tint(Color.blue.opacity(0.25)), in: .circle)
+            .glassEffectCompat(tint: Color.blue.opacity(0.25), in: .circle)
             VStack(spacing: 6) {
                 Text("Running Updater")
                     .font(.title2.bold())
@@ -124,7 +124,7 @@ struct UpdaterRunView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: 24))
     }
 
     private func completedHero(result: UpdaterResult) -> some View {
@@ -150,7 +150,7 @@ struct UpdaterRunView: View {
                     .font(.system(size: 40, weight: .semibold))
                     .foregroundStyle(tint)
             }
-            .glassEffect(.regular.tint(tint.opacity(0.25)), in: .circle)
+            .glassEffectCompat(tint: tint.opacity(0.25), in: .circle)
             VStack(spacing: 6) {
                 Text(title)
                     .font(.title2.bold())
@@ -163,7 +163,7 @@ struct UpdaterRunView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: 24))
     }
 
     // MARK: - Counter cards
@@ -178,7 +178,7 @@ struct UpdaterRunView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: 20))
     }
 
     private func resultCountersCard(result: UpdaterResult) -> some View {
@@ -195,7 +195,7 @@ struct UpdaterRunView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: 20))
     }
 
     private func counterTile(label: String, value: Int, icon: String, tint: Color) -> some View {
@@ -247,7 +247,7 @@ struct UpdaterRunView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: 20))
     }
 
     // MARK: - Result item list
@@ -267,7 +267,7 @@ struct UpdaterRunView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: 20))
     }
 
     // MARK: - Header

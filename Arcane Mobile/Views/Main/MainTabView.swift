@@ -39,10 +39,12 @@ struct MainTabView: View {
         Group {
             if tabSwapTipDismissed {
                 coreTabView
-            } else {
+            } else if #available(iOS 26, *) {
                 // The accessory modifier reserves a slot above the floating tab
                 // bar. Apply it only while the tip is undismissed so the slot
                 // disappears entirely once the user dismisses or long-presses.
+                // iOS 18 has no floating-glass tab bar / accessory slot, so the
+                // banner simply doesn't appear there (long-press swap still works).
                 coreTabView
                     .tabViewBottomAccessory {
                         TabSwapHintBanner {
@@ -52,6 +54,8 @@ struct MainTabView: View {
                             TabSwapTip.didDiscoverFeature = true
                         }
                     }
+            } else {
+                coreTabView
             }
         }
         .background {

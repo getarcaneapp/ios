@@ -372,7 +372,7 @@ struct NetworkRow: View {
                 .font(.title3)
                 .foregroundStyle(.teal)
                 .frame(width: 36, height: 36)
-                .glassEffect(.regular, in: .circle)
+                .glassEffectCompat(in: .circle)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(network.name)
@@ -396,7 +396,7 @@ struct NetworkRow: View {
                     .foregroundStyle(.teal)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .glassEffect(.regular, in: .capsule)
+                    .glassEffectCompat(in: .capsule)
             }
         }
         .padding(.vertical, 2)
@@ -428,7 +428,7 @@ struct NetworkDetailView: View {
                         .font(.title)
                         .foregroundStyle(.teal)
                         .frame(width: 56, height: 56)
-                        .glassEffect(.regular, in: .circle)
+                        .glassEffectCompat(in: .circle)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(network.name).font(.title3.bold())
                         Text(network.driver).font(.caption).foregroundStyle(.secondary)

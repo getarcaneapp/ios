@@ -101,7 +101,7 @@ struct SystemUpgradeView: View {
         .frame(maxWidth: .infinity, minHeight: 200)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: 24))
     }
 
     private func readyContent(result: UpgradeCheckResultData) -> some View {
@@ -150,7 +150,7 @@ struct SystemUpgradeView: View {
                 ProgressView()
                     .controlSize(.large)
             }
-            .glassEffect(.regular.tint(Color.blue.opacity(0.25)), in: .circle)
+            .glassEffectCompat(tint: Color.blue.opacity(0.25), in: .circle)
             VStack(spacing: 6) {
                 Text("Starting upgrade…")
                     .font(.title2.bold())
@@ -162,7 +162,7 @@ struct SystemUpgradeView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: 24))
     }
 
     private func triggeredCard(message: String) -> some View {
@@ -207,7 +207,7 @@ struct SystemUpgradeView: View {
                     .font(.system(size: 40, weight: .semibold))
                     .foregroundStyle(tint)
             }
-            .glassEffect(.regular.tint(tint.opacity(0.25)), in: .circle)
+            .glassEffectCompat(tint: tint.opacity(0.25), in: .circle)
             VStack(spacing: 6) {
                 Text(title)
                     .font(.title2.bold())
@@ -220,7 +220,7 @@ struct SystemUpgradeView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: 24))
     }
 
     private func infoCard(icon: String, tint: Color, title: String, body: String) -> some View {
@@ -239,7 +239,7 @@ struct SystemUpgradeView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: 20))
     }
 
     // MARK: - Network

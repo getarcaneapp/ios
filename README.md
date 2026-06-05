@@ -20,12 +20,12 @@ For setup instructions, configuration details, and development guides, visit the
 
 ## Requirements
 
-- iOS 26 or later
+- iOS 18 or later (the Liquid Glass interface is used on iOS 26+; iOS 18 falls back to materials)
 - An Arcane server reachable over HTTPS
 
 ## Building
 
-This is a SwiftUI app targeting iOS 26+ in Swift 6 strict-concurrency mode.
+This is a SwiftUI app targeting iOS 18+ in Swift 6 strict-concurrency mode. On iOS 26 and later it adopts Liquid Glass; on iOS 18 those surfaces fall back to materials via the helpers in `Arcane Mobile/Extensions/GlassCompat.swift`.
 
 ```sh
 open "Arcane Mobile.xcodeproj"

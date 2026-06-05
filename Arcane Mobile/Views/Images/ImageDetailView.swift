@@ -100,7 +100,7 @@ struct ImageDetailView: View {
                 .font(.title)
                 .foregroundStyle(.purple)
                 .frame(width: 56, height: 56)
-                .glassEffect(.regular, in: .circle)
+                .glassEffectCompat(in: .circle)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(image.displayName)

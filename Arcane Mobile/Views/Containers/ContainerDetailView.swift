@@ -189,7 +189,7 @@ struct ContainerDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .softTopScrollEdgeEffectCompat()
         .actionToolbar(
             items: actionItems,
             runningItemID: runningActionID,
@@ -206,7 +206,7 @@ struct ContainerDetailView: View {
                         .font(.title)
                         .foregroundStyle(isRunning ? .green : .secondary)
                         .frame(width: 56, height: 56)
-                        .glassEffect(.regular, in: .circle)
+                        .glassEffectCompat(in: .circle)
                 }
                 Image(systemName: "circle.fill")
                     .font(.system(size: 14))

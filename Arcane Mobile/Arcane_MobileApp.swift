@@ -48,6 +48,33 @@ struct Arcane_MobileApp: App {
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        configureLegacyBarAppearance()
+        return true
+    }
+
+    /// On iOS 18 the traditional tab bar flips between its transparent scroll-edge
+    /// appearance and its opaque standard appearance as a tab's content loads
+    /// under it, which reads as a flash when switching tabs. Pin both to the same
+    /// default (blurred) background so there's no flip. iOS 26 uses Liquid Glass
+    /// bars and manages this itself, so skip it there.
+    ///
+    /// We intentionally do NOT pin the navigation bar: several screens (e.g. the
+    /// Dashboard) use an empty inline title with a custom in-content header and
+    /// rely on the nav bar staying transparent at the top, so forcing an opaque
+    /// background there would butt the header against a visible bar.
+    private func configureLegacyBarAppearance() {
+        guard #unavailable(iOS 26) else { return }
+
+        let tab = UITabBarAppearance()
+        tab.configureWithDefaultBackground()
+        UITabBar.appearance().standardAppearance = tab
+        UITabBar.appearance().scrollEdgeAppearance = tab
+    }
+
+    func application(
+        _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
         options: UIScene.ConnectionOptions
     ) -> UISceneConfiguration {

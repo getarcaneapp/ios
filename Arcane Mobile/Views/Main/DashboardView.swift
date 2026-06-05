@@ -110,7 +110,7 @@ struct DashboardView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 16)
             }
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .softTopScrollEdgeEffectCompat()
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("")
             .toolbarTitleDisplayMode(.inline)

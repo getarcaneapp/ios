@@ -253,7 +253,7 @@ struct NewWebhookTokenView: View {
                     .font(.system(size: 48))
                     .foregroundStyle(.green)
                     .padding(24)
-                    .glassEffect(.regular, in: .circle)
+                    .glassEffectCompat(in: .circle)
 
                 Text("Save Your Webhook Token")
                     .font(.title2.bold())
@@ -272,7 +272,7 @@ struct NewWebhookTokenView: View {
                         .textSelection(.enabled)
                 }
                 .padding(16)
-                .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                .glassEffectCompat(in: .rect(cornerRadius: 12))
                 .padding(.horizontal, 24)
 
                 Button {
@@ -282,7 +282,7 @@ struct NewWebhookTokenView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                 }
-                .buttonStyle(.glassProminent)
+                .glassProminentButtonStyleCompat()
                 .padding(.horizontal, 24)
 
                 Spacer()

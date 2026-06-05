@@ -138,7 +138,7 @@ struct RoleRow: View {
                 .font(.title3)
                 .foregroundStyle(role.iconColor)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular, in: .circle)
+                .glassEffectCompat(in: .circle)
             VStack(alignment: .leading, spacing: 3) {
                 Text(role.displayName).font(.headline)
                 if let desc = role.description, !desc.isEmpty {

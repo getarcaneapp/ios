@@ -131,7 +131,13 @@ struct ImagesView: View {
             if isAdmin {
                 ToolbarItem(placement: .navigationBarLeading) {
                     NavigationLink(destination: ContainerRegistriesView()) {
-                        Image(systemName: "key.shield")
+                        // `key.shield` is an SF Symbols 7 (iOS 26) glyph; fall back
+                        // to `lock.shield` (iOS 13+) so iOS 18 doesn't render blank.
+                        if #available(iOS 26, *) {
+                            Image(systemName: "key.shield")
+                        } else {
+                            Image(systemName: "lock.shield")
+                        }
                     }
                 }
             }

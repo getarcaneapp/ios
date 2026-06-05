@@ -507,7 +507,7 @@ struct VolumeDetailView: View {
                         .font(.title)
                         .foregroundStyle(.orange)
                         .frame(width: 56, height: 56)
-                        .glassEffect(.regular, in: .circle)
+                        .glassEffectCompat(in: .circle)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(volume.name).font(.title3.bold()).lineLimit(2)
                         Text("Driver: \(volume.driver)").font(.caption).foregroundStyle(.secondary)

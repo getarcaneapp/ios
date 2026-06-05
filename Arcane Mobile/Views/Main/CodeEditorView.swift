@@ -55,6 +55,14 @@ struct CodeEditorView: UIViewRepresentable {
         func btn(_ title: String, action: Selector) -> UIBarButtonItem {
             UIBarButtonItem(title: title, style: .plain, target: coordinator, action: action)
         }
+        // `.prominent` bar-button style is iOS 26+; `.done` (bold title) is the
+        // closest equivalent on iOS 18.
+        let doneStyle: UIBarButtonItem.Style
+        if #available(iOS 26, *) {
+            doneStyle = .prominent
+        } else {
+            doneStyle = .done
+        }
         if language == .yaml {
             tb.items = [
                 btn("⇥", action: #selector(Coordinator.indent)),
@@ -65,14 +73,14 @@ struct CodeEditorView: UIViewRepresentable {
                 btn("|", action: #selector(Coordinator.pipe)),
                 btn("\"\"", action: #selector(Coordinator.quotes)),
                 flex,
-                UIBarButtonItem(title: "Done", style: .prominent, target: coordinator, action: #selector(Coordinator.done)),
+                UIBarButtonItem(title: "Done", style: doneStyle, target: coordinator, action: #selector(Coordinator.done)),
             ]
         } else {
             tb.items = [
                 btn("=", action: #selector(Coordinator.equals)),
                 btn("\"\"", action: #selector(Coordinator.quotes)),
                 flex,
-                UIBarButtonItem(title: "Done", style: .prominent, target: coordinator, action: #selector(Coordinator.done)),
+                UIBarButtonItem(title: "Done", style: doneStyle, target: coordinator, action: #selector(Coordinator.done)),
             ]
         }
         return tb

@@ -170,7 +170,7 @@ private struct ArchivedProjectRow: View {
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .frame(width: 36, height: 36)
-                    .glassEffect(.regular, in: .circle)
+                    .glassEffectCompat(in: .circle)
             }
 
             VStack(alignment: .leading, spacing: 3) {

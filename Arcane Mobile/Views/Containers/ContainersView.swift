@@ -445,7 +445,7 @@ struct ResourceSearchControls: View {
             }
             .padding(.horizontal, 12)
             .frame(height: 44)
-            .glassEffect(.regular, in: .capsule)
+            .glassEffectCompat(in: .capsule)
 
             Menu {
                 Picker("Sort", selection: $sortOrder) {
@@ -459,7 +459,7 @@ struct ResourceSearchControls: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color.accentColor)
-            .glassEffect(.regular, in: .circle)
+            .glassEffectCompat(in: .circle)
 
             Button(action: onFilter) {
                 Image(systemName: filterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
@@ -467,7 +467,7 @@ struct ResourceSearchControls: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(Color.accentColor)
-            .glassEffect(.regular, in: .circle)
+            .glassEffectCompat(in: .circle)
         }
         .padding(.top, 8)
         .padding(.bottom, 4)

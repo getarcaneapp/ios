@@ -157,7 +157,7 @@ struct EnvironmentRow: View {
                 .font(.title3)
                 .foregroundStyle(environment.isOnline ?? false ? .green : .secondary)
                 .frame(width: 36, height: 36)
-                .glassEffect(.regular, in: .circle)
+                .glassEffectCompat(in: .circle)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {

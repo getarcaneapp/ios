@@ -81,7 +81,7 @@ private struct ActionToolbarModifier: ViewModifier {
     }
 
     private var bottomBar: some View {
-        GlassEffectContainer(spacing: 8) {
+        GlassContainerCompat(spacing: 8) {
             HStack(spacing: 0) {
                 ForEach(items) { item in
                     actionButton(item)
@@ -121,7 +121,7 @@ private struct ActionToolbarModifier: ViewModifier {
                 .motionAwareAnimation(.smooth(duration: 0.2), value: isRunning)
             }
             .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: .circle)
+            .glassEffectCompat(tint: item.tint, interactive: true, in: .circle)
             .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
             .disabled(buttonDisabled || isRunning)
             .opacity(buttonDisabled && !isRunning ? 0.45 : 1.0)

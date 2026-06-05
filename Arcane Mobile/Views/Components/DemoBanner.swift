@@ -46,11 +46,11 @@ struct DemoBanner: View {
                             .foregroundStyle(brandColor)
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.tint(brandColor.opacity(0.18)), in: .capsule)
+                    .glassEffectCompat(tint: brandColor.opacity(0.18), in: .capsule)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .glassEffect(.regular, in: .rect(cornerRadius: 22))
+                .glassEffectCompat(in: .rect(cornerRadius: 22))
                 .padding(.horizontal, 12)
                 .padding(.top, 6)
                 .padding(.bottom, 4)

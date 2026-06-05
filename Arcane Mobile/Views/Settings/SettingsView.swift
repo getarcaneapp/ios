@@ -28,7 +28,9 @@ struct SettingsView: View {
                     }
                     .accessibilityLabel("App Settings")
                 }
-                ToolbarSpacer(.fixed, placement: .navigationBarTrailing)
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.fixed, placement: .navigationBarTrailing)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(role: .destructive) {
                         showLogoutConfirm = true
@@ -346,7 +348,7 @@ struct UserRow: View {
                 .font(.title2)
                 .foregroundStyle(user.isAdmin ? .indigo : .blue)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular, in: .circle)
+                .glassEffectCompat(in: .circle)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(user.displayUsername).font(.headline)
@@ -770,7 +772,7 @@ struct NewAPIKeyView: View {
                     .font(.system(size: 48))
                     .foregroundStyle(.yellow)
                     .padding(24)
-                    .glassEffect(.regular, in: .circle)
+                    .glassEffectCompat(in: .circle)
 
                 Text("Save Your API Key")
                     .font(.title2.bold())
@@ -784,7 +786,7 @@ struct NewAPIKeyView: View {
                     .font(.system(.caption, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(16)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 12))
+                    .glassEffectCompat(in: .rect(cornerRadius: 12))
                     .padding(.horizontal, 24)
 
                 Button {
@@ -794,7 +796,7 @@ struct NewAPIKeyView: View {
                         .frame(maxWidth: .infinity)
                         .padding()
                 }
-                .buttonStyle(.glassProminent)
+                .glassProminentButtonStyleCompat()
                 .padding(.horizontal, 24)
 
                 Spacer()
@@ -1134,7 +1136,7 @@ struct RegistryRow: View {
             Image(systemName: "shippingbox.fill")
                 .font(.title3).foregroundStyle(Color.accentColor)
                 .frame(width: 36, height: 36)
-                .glassEffect(.regular, in: .circle)
+                .glassEffectCompat(in: .circle)
             VStack(alignment: .leading, spacing: 3) {
                 Text(registry.name ?? registry.id).font(.headline)
                 Text(registry.url).font(.caption).foregroundStyle(.secondary)
@@ -1193,7 +1195,7 @@ struct TemplateRegistryRow: View {
             Image(systemName: "doc.text.fill")
                 .font(.title3).foregroundStyle(.indigo)
                 .frame(width: 36, height: 36)
-                .glassEffect(.regular, in: .circle)
+                .glassEffectCompat(in: .circle)
             VStack(alignment: .leading, spacing: 3) {
                 Text(registry.name).font(.headline)
                 Text(registry.url).font(.caption).foregroundStyle(.secondary)
@@ -1640,7 +1642,7 @@ struct TemplateRow: View {
                     .font(.title3)
                     .foregroundStyle(template.isRemote ? .blue : .indigo)
                     .frame(width: 36, height: 36)
-                    .glassEffect(.regular, in: .circle)
+                    .glassEffectCompat(in: .circle)
             }
 
             VStack(alignment: .leading, spacing: 3) {

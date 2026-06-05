@@ -69,7 +69,7 @@ struct ProjectDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .softTopScrollEdgeEffectCompat()
         .actionToolbar(
             items: actionItems,
             runningItemID: runningActionID,
@@ -158,7 +158,7 @@ struct ProjectDetailView: View {
                     .font(.title)
                     .foregroundStyle(.indigo)
                     .frame(width: 56, height: 56)
-                    .glassEffect(.regular, in: .circle)
+                    .glassEffectCompat(in: .circle)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -426,7 +426,7 @@ struct ComposeFileView: View {
                                         .font(.title3.weight(.semibold))
                                         .foregroundStyle(.indigo)
                                         .frame(width: 52, height: 52)
-                                        .glassEffect(.regular, in: .circle)
+                                        .glassEffectCompat(in: .circle)
                                 }
                                 .padding(.trailing, 16)
                                 .padding(.bottom, 16)

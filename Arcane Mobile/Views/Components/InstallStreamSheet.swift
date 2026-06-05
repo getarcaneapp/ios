@@ -63,7 +63,7 @@ struct InstallStreamSheet: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .glassEffectCompat(in: .rect(cornerRadius: 22))
     }
 
     private var iconBadge: some View {
@@ -84,7 +84,7 @@ struct InstallStreamSheet: View {
         }
         .font(.system(size: 24, weight: .semibold))
         .frame(width: 48, height: 48)
-        .glassEffect(.regular.tint(iconTint.opacity(0.25)), in: .circle)
+        .glassEffectCompat(tint: iconTint.opacity(0.25), in: .circle)
     }
 
     private var iconTint: Color {
@@ -107,7 +107,7 @@ struct InstallStreamSheet: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .glassEffect(.regular.tint(phaseTint.opacity(0.25)), in: .capsule)
+        .glassEffectCompat(tint: phaseTint.opacity(0.25), in: .capsule)
     }
 
     private var phaseLabel: String {
@@ -157,8 +157,8 @@ struct InstallStreamSheet: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .glassEffect(
-            .regular.tint((isCurrent ? Color.accentColor : Color.green).opacity(isCurrent ? 0.3 : 0.15)),
+        .glassEffectCompat(
+            tint: (isCurrent ? Color.accentColor : Color.green).opacity(isCurrent ? 0.3 : 0.15),
             in: .capsule
         )
     }
@@ -169,7 +169,7 @@ struct InstallStreamSheet: View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(.clear)
-                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                .glassEffectCompat(in: .rect(cornerRadius: 20))
 
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in
@@ -262,7 +262,7 @@ struct InstallStreamSheet: View {
                     .labelStyle(.iconOnly)
                     .frame(width: 44, height: 44)
             }
-            .buttonStyle(.glass)
+            .glassButtonStyleCompat()
             .disabled(lines.isEmpty)
             .accessibilityLabel("Copy log to clipboard")
 
@@ -275,7 +275,7 @@ struct InstallStreamSheet: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 44)
             }
-            .buttonStyle(.glassProminent)
+            .glassProminentButtonStyleCompat()
             .tint(doneTint)
             .disabled(!status.isTerminal)
         }

@@ -89,6 +89,9 @@ final class ArcaneClientManager {
 
     // MARK: - Server setup
     func configure(serverURL url: String) {
+        // Clear any stale validation error before re-validating, so a previous
+        // "Invalid server URL" doesn't linger once a good URL is entered.
+        errorMessage = nil
         let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowered = trimmed.lowercased()
         // Default to https:// when the user omits a scheme. Local HTTP servers

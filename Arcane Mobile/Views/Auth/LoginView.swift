@@ -129,7 +129,7 @@ struct LoginView: View {
                 .scaledToFit()
                 .frame(width: 72, height: 72)
                 .padding(20)
-                .glassEffect(.regular, in: .rect(cornerRadius: 24))
+                .glassEffectCompat(in: .rect(cornerRadius: 24))
                 .overlay(
                     RoundedRectangle(cornerRadius: 24)
                         .stroke(.white.opacity(0.12), lineWidth: 1)
@@ -205,9 +205,13 @@ struct LoginView: View {
                     .focused($focusedField, equals: .serverURL)
                     .submitLabel(.go)
                     .onSubmit { connectToServer() }
+                    .onChange(of: serverURL) { _, _ in
+                        // Drop a stale validation error the moment the user edits the URL.
+                        if manager.errorMessage != nil { manager.errorMessage = nil }
+                    }
                 }
             }
-            .glassEffect(.regular, in: .rect(cornerRadius: 18))
+            .glassEffectCompat(in: .rect(cornerRadius: 18))
 
             Text("For a local server, include the scheme — e.g. http://192.168.1.50:3000")
                 .font(.caption)
@@ -264,7 +268,7 @@ struct LoginView: View {
                 }
             }
         }
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .glassEffectCompat(in: .rect(cornerRadius: 18))
     }
 
     private func infoBanner(_ message: String) -> some View {
@@ -436,7 +440,7 @@ struct LoginView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .glassEffectCompat(in: .rect(cornerRadius: 18))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
                 .stroke(brandColor.opacity(0.22), lineWidth: 1)

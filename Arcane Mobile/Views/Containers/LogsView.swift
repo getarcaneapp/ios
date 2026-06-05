@@ -35,19 +35,19 @@ struct LogsView: View {
                             Button("Done") { dismiss() }
                         }
                         ToolbarItem(placement: .navigationBarTrailing) {
-                            GlassEffectContainer(spacing: 8) {
+                            GlassContainerCompat(spacing: 8) {
                                 HStack(spacing: 8) {
                                     if isStreaming {
                                         ProgressView()
                                             .scaleEffect(0.8)
-                                            .glassEffect()
+                                            .glassEffectCompat()
                                     }
                                     Button {
                                         lines.removeAll()
                                     } label: {
                                         Image(systemName: "trash")
                                     }
-                                    .glassEffect()
+                                    .glassEffectCompat()
                                 }
                             }
                         }
@@ -101,7 +101,7 @@ struct LogsView: View {
                         .font(.caption.bold())
                         .contentTransition(.symbolEffect(.replace))
                 }
-                .buttonStyle(.glass)
+                .glassButtonStyleCompat()
                 .padding(16)
             }
         }
@@ -124,7 +124,7 @@ struct LogsView: View {
         }
         .buttonStyle(.plain)
         .background(Color.accentColor, in: .capsule)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .glassEffectOverlayCompat(interactive: true, in: .capsule)
         .shadow(color: .black.opacity(0.2), radius: 8, y: 2)
         .accessibilityLabel("\(newLinesWhilePaused) new log lines. Tap to jump to latest.")
     }
