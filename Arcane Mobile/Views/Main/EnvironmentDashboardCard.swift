@@ -5,6 +5,7 @@ struct EnvironmentDashboardCard: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environment: Arcane.Environment
     var cachedCard: DashboardGlobalEnvironmentCard?
+    var refreshToken: Int = 0
     var onSelect: () -> Void = {}
 
     @State private var dockerInfo: DockerInfo?
@@ -194,6 +195,9 @@ struct EnvironmentDashboardCard: View {
         .sensoryFeedback(.success, trigger: syncSuccessPulse)
         .task { await loadDockerInfo() }
         .task { await checkUpgradeAvailability() }
+        .onChange(of: refreshToken) { _, _ in
+            Task { await loadDockerInfo(refresh: true) }
+        }
         .task {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled, let client = manager.client else { return }
@@ -259,7 +263,7 @@ struct EnvironmentDashboardCard: View {
         return "\(value)"
     }
 
-    private func loadDockerInfo() async {
+    private func loadDockerInfo(refresh: Bool = false) async {
         guard let client = manager.client, let cached = manager.cached else { return }
         let path = client.rest.environmentPath(envID, "system/docker/info")
         let fetcher: @Sendable () async throws -> DockerInfo = {
@@ -269,7 +273,7 @@ struct EnvironmentDashboardCard: View {
         do {
             let info = try await cached.getCustom(
                 path: path, as: DockerInfo.self, policy: .dockerInfo,
-                envID: envID, refresh: false,
+                envID: envID, refresh: refresh,
                 onFresh: { fresh in
                     dockerInfo = fresh
                     dockerError = nil

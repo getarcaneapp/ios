@@ -79,6 +79,9 @@ struct DashboardView: View {
 
     @State private var isLoading = false
     @State private var hasLoadedOnce = false
+    /// Bumped on pull-to-refresh so per-environment cards force-refetch their own
+    /// `system/docker/info` — their `.task` does not re-run on a parent refresh.
+    @State private var cardRefreshToken = 0
     @State private var showPruneSheet = false
     @State private var showVolumes = false
     @State private var showImageUpdates = false
@@ -181,6 +184,7 @@ struct DashboardView: View {
                 EnvironmentDashboardCard(
                     environment: env,
                     cachedCard: cardData,
+                    refreshToken: cardRefreshToken,
                     onSelect: {
                         detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
                     }
@@ -355,6 +359,7 @@ struct DashboardView: View {
 
     private func loadData(refresh: Bool = false) async {
         guard let client = manager.client else { return }
+        if refresh { cardRefreshToken += 1 }
         if !hasLoadedOnce { isLoading = true }
         defer {
             isLoading = false

@@ -16,6 +16,7 @@ struct ImageDetailView: View {
     @State private var isCheckingUpdate = false
     @State private var vulnSummary: ScanSummary?
     @State private var scannerStatus: ScannerStatus?
+    @State private var usingContainers: [ContainerSummary] = []
 
     var body: some View {
         List {
@@ -23,36 +24,27 @@ struct ImageDetailView: View {
                 imageHeader
             }
 
-            if let details {
-                Section("Details") {
-                    LabeledContent("Created", value: details.created.formattedDate)
-                    LabeledContent("Architecture", value: details.architecture)
-                    LabeledContent("OS", value: details.os)
-                    LabeledContent("Size", value: details.size.byteString)
-                    if !details.author.isEmpty {
-                        let author = details.author
-                        LabeledContent("Author", value: author)
+            if !usingContainers.isEmpty {
+                Section("Used By") {
+                    ForEach(usingContainers) { container in
+                        NavigationLink {
+                            ContainerDetailView(container: container, environmentID: environmentID)
+                        } label: {
+                            HStack(spacing: 10) {
+                                StatusIcon(status: container.status, isLive: container.isRunning)
+                                Text(container.displayName)
+                            }
+                        }
                     }
                 }
+            }
 
-                if !details.repoTags.isEmpty {
+            if let details {
+                if details.repoTags.count > 1 {
                     let tags = details.repoTags
                     Section("Tags") {
                         ForEach(tags, id: \.self) { tag in
                             Text(tag).font(.caption.monospaced())
-                        }
-                        updateCheckRow
-                    }
-                }
-
-                if !details.repoDigests.isEmpty {
-                    let digests = details.repoDigests
-                    Section("Digests") {
-                        ForEach(digests, id: \.self) { digest in
-                            Text(digest)
-                                .font(.caption.monospaced())
-                                .textSelection(.enabled)
-                                .lineLimit(2)
                         }
                     }
                 }
@@ -67,15 +59,27 @@ struct ImageDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(role: .destructive) {
-                    showDeleteConfirm = true
+                Menu {
+                    Button {
+                        Task { await checkForUpdate() }
+                    } label: {
+                        Label("Recheck for Updates", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .disabled(isCheckingUpdate)
+                    Divider()
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        Label("Remove Image", systemImage: "trash")
+                    }
                 } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
+                    Image(systemName: "ellipsis.circle")
                 }
             }
         }
         .task { await loadDetails() }
+        .task { await loadUpdateStatus() }
+        .task { await loadUsingContainers() }
         .confirmationDialog("Remove Image", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { Task { await removeImage() } }
         } message: {
@@ -95,29 +99,59 @@ struct ImageDetailView: View {
     }
 
     private var imageHeader: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             Image(systemName: "photo.stack.fill")
-                .font(.title)
+                .font(.title2)
                 .foregroundStyle(.purple)
-                .frame(width: 56, height: 56)
+                .frame(width: 48, height: 48)
                 .glassEffectCompat(in: .circle)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(image.displayName)
-                    .font(.title3.bold())
-                    .lineLimit(2)
+                    .font(.headline)
                 Text(image.id)
-                    .font(.caption.monospaced())
+                    .font(.caption2.monospaced())
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(image.size.byteString)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
+                if let details {
+                    Text("\(details.os)/\(details.architecture)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(headerDate(details.created))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if isCheckingUpdate {
+                    HStack(spacing: 5) {
+                        ProgressView().scaleEffect(0.6)
+                        Text("Checking…").font(.caption2).foregroundStyle(.secondary)
+                    }
+                } else if updateState != .unknown {
+                    UpdateStateBadge(state: updateState)
+                }
+                if let info = updateInfo, info.hasUpdate,
+                   let latest = info.latestVersion, let current = info.currentVersion, latest != current {
+                    Text("\(current) → \(latest)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func headerDate(_ iso: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: iso) {
+            return date.formatted(date: .abbreviated, time: .omitted)
+        }
+        return iso
     }
 
     private func imageConfigSection(_ config: ImageDetailConfig) -> some View {
@@ -147,50 +181,13 @@ struct ImageDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var updateCheckRow: some View {
-        if isCheckingUpdate {
-            HStack {
-                Text("Checking for updates…").foregroundStyle(.secondary)
-                Spacer()
-                ProgressView().scaleEffect(0.8)
-            }
-        } else if let info = updateInfo {
-            if let err = info.error, !err.isEmpty {
-                Label(err, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-            } else if info.hasUpdate {
-                HStack {
-                    Image(systemName: "arrow.up.circle.fill").foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Update available").font(.caption.bold())
-                        if let latest = info.latestVersion, let current = info.currentVersion, latest != current {
-                            Text("\(current) → \(latest)").font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    Button("Recheck") { Task { await checkForUpdate() } }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                }
-            } else {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    Text("Up to date").font(.caption)
-                    Spacer()
-                    Button("Recheck") { Task { await checkForUpdate() } }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                }
-            }
-        } else {
-            Button {
-                Task { await checkForUpdate() }
-            } label: {
-                Label("Check for updates", systemImage: "arrow.up.arrow.down.circle")
-            }
-        }
+    // List-style update state derived from the fetched update info, shown as a
+    // compact badge in the header (matches the Images list).
+    private var updateState: ImageUpdateState {
+        guard let info = updateInfo else { return .unknown }
+        if let err = info.error, !err.isEmpty { return .error(err) }
+        if info.hasUpdate { return .hasUpdate }
+        return .upToDate
     }
 
     @ViewBuilder
@@ -253,6 +250,67 @@ struct ImageDetailView: View {
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    /// Loads the last-known update status (cheap, cached) for the header without
+    /// forcing a fresh registry check. The navbar "Recheck" forces a fresh one.
+    private func loadUpdateStatus() async {
+        guard let client = manager.client else { return }
+        let refs = image.repoTags.filter { $0 != "<none>:<none>" }
+        guard !refs.isEmpty else { return }
+        do {
+            let path = client.rest.environmentPath(environmentID, "image-updates/by-refs")
+            let query = [URLQueryItem(name: "imageRefs", value: refs.joined(separator: ","))]
+            let map: BatchImageUpdateResponse = try await client.rest.get(path, query: query)
+            for tag in refs where map[tag] != nil {
+                updateInfo = map[tag]
+                break
+            }
+        } catch {
+            // Best-effort; the navbar recheck can force a fresh check.
+        }
+    }
+
+    private func loadUsingContainers() async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        do {
+            let path = client.rest.environmentPath(environmentID, "containers")
+            if let all = try await cached.getList(
+                path, elementType: ContainerSummary.self, policy: .containersList,
+                envID: environmentID
+            ) {
+                usingContainers = all.filter(usesThisImage)
+            }
+        } catch {
+            // Best-effort decoration.
+        }
+    }
+
+    private func usesThisImage(_ container: ContainerSummary) -> Bool {
+        // Primary: same resolved image id (sha), tolerant of short ids / prefix.
+        let imageHex = normalizedID(image.id)
+        let containerHex = normalizedID(container.imageId)
+        if !imageHex.isEmpty, !containerHex.isEmpty,
+           imageHex == containerHex || imageHex.hasPrefix(containerHex) || containerHex.hasPrefix(imageHex) {
+            return true
+        }
+        // Fallback: the container's image ref matches one of this image's tags,
+        // ignoring implicit Docker Hub registry/namespace prefixes and any digest.
+        let containerRef = normalizedRef(container.image)
+        return image.repoTags.contains { normalizedRef($0) == containerRef }
+    }
+
+    private func normalizedID(_ id: String) -> String {
+        id.hasPrefix("sha256:") ? String(id.dropFirst(7)) : id
+    }
+
+    private func normalizedRef(_ ref: String) -> String {
+        var r = ref
+        if let at = r.firstIndex(of: "@") { r = String(r[..<at]) }  // drop @sha256:… digest
+        for prefix in ["index.docker.io/library/", "index.docker.io/", "docker.io/library/", "docker.io/", "library/"] {
+            if r.hasPrefix(prefix) { r = String(r.dropFirst(prefix.count)); break }
+        }
+        return r
     }
 
     private func removeImage() async {

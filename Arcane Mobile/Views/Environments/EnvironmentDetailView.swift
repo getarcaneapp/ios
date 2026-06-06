@@ -87,7 +87,7 @@ struct EnvironmentDetailView: View {
         .navigationTitle(environment.name ?? environment.id)
         .navigationBarTitleDisplayMode(.large)
         .task { await loadDockerInfo() }
-        .refreshable { await loadDockerInfo() }
+        .refreshable { await loadDockerInfo(refresh: true) }
     }
 
     private var infoCard: some View {

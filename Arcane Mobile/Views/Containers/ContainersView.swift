@@ -478,6 +478,26 @@ struct ContainerRow: View {
     let container: ContainerSummary
     var isPinned: Bool = false
 
+    // Docker reports health inside the status string, e.g.
+    // "Up 3 hours (healthy)" / "(unhealthy)" / "(health: starting)".
+    private var health: (icon: String, color: Color, label: String)? {
+        let s = container.status.lowercased()
+        if s.contains("unhealthy") { return ("heart.slash.fill", .red, "Unhealthy") }
+        if s.contains("health: starting") { return ("heart.fill", .yellow, "Health starting") }
+        if s.contains("(healthy)") { return ("heart.fill", .green, "Healthy") }
+        return nil
+    }
+
+    // The status string with the health parenthetical stripped, leaving the
+    // uptime/downtime (e.g. "Up 3 hours", "Exited (0) 2 hours ago").
+    private var statusText: String {
+        var s = container.status
+        for token in ["(healthy)", "(unhealthy)", "(health: starting)"] {
+            s = s.replacingOccurrences(of: token, with: "", options: [.caseInsensitive])
+        }
+        return s.trimmingCharacters(in: .whitespaces)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
@@ -503,7 +523,7 @@ struct ContainerRow: View {
             }
             .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Text(container.displayName)
                         .font(.subheadline.weight(.medium))
@@ -513,6 +533,22 @@ struct ContainerRow: View {
                             .font(.caption2)
                             .foregroundStyle(.yellow)
                             .accessibilityHidden(true)
+                    }
+                }
+                if !statusText.isEmpty || health != nil {
+                    HStack(spacing: 5) {
+                        if !statusText.isEmpty {
+                            Text(statusText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        if let health {
+                            Image(systemName: health.icon)
+                                .font(.caption)
+                                .foregroundStyle(health.color)
+                                .accessibilityLabel(health.label)
+                        }
                     }
                 }
             }
