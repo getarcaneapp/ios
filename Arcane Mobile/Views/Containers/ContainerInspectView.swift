@@ -11,7 +11,6 @@ struct ContainerInspectView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
-    @State private var copyConfirm = false
 
     var body: some View {
         Group {
@@ -55,22 +54,15 @@ struct ContainerInspectView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     UIPasteboard.general.string = rawJSON
-                    copyConfirm = true
+                    showToast(.copied("Inspect JSON copied"))
                 } label: {
-                    Image(systemName: copyConfirm ? "checkmark" : "doc.on.doc")
+                    Image(systemName: "doc.on.doc")
                 }
                 .disabled(rawJSON.isEmpty)
             }
         }
         .task { await load() }
         .refreshable { await load() }
-        .onChange(of: copyConfirm) { _, newValue in
-            guard newValue else { return }
-            Task {
-                try? await Task.sleep(for: .milliseconds(1500))
-                copyConfirm = false
-            }
-        }
     }
 
     private var filteredJSON: String {

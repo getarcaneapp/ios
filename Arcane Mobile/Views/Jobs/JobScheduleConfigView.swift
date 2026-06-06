@@ -29,7 +29,6 @@ struct JobScheduleConfigView: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var savedMessage: String?
 
     private var hasChanges: Bool {
         jobScheduleFields.contains { values[$0.key] != original[$0.key] }
@@ -76,11 +75,6 @@ struct JobScheduleConfigView: View {
                     }
                 }
 
-                if let msg = savedMessage {
-                    Section {
-                        Label(msg, systemImage: "checkmark.circle").foregroundStyle(.green)
-                    }
-                }
             }
         }
         .navigationTitle("Schedules")
@@ -165,7 +159,6 @@ struct JobScheduleConfigView: View {
         guard let client = manager.client else { return }
         isSaving = true
         errorMessage = nil
-        savedMessage = nil
         defer { isSaving = false }
 
         var changed: [String: String] = [:]
@@ -185,9 +178,7 @@ struct JobScheduleConfigView: View {
             for (key, value) in changed {
                 original[key] = value
             }
-            savedMessage = "Schedules saved"
-            try? await Task.sleep(for: .seconds(3))
-            savedMessage = nil
+            showToast(.success("Schedules saved"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

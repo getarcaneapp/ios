@@ -970,7 +970,6 @@ struct SystemPruneView: View {
 
     @State private var isPruning = false
     @State private var errorMessage: String?
-    @State private var resultMessage: String?
 
     private var selectedCount: Int {
         var count = 0
@@ -1053,11 +1052,6 @@ struct SystemPruneView: View {
                     }
                 }
             }
-            .alert("Prune complete", isPresented: Binding(get: { resultMessage != nil }, set: { if !$0 { resultMessage = nil; dismiss() } })) {
-                Button("OK") { resultMessage = nil; dismiss() }
-            } message: {
-                Text(resultMessage ?? "")
-            }
             .alert("Prune failed", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK") { errorMessage = nil }
             } message: {
@@ -1105,8 +1099,9 @@ struct SystemPruneView: View {
 
         do {
             let result = try await client.system.prune(request, envID: environmentID)
-            resultMessage = formatPruneResult(result)
             await ResponseCache.shared.invalidateEnvironment(environmentID.rawValue)
+            showToast(.success(formatPruneResult(result)))
+            dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

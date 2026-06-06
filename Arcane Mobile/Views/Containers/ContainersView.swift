@@ -352,10 +352,10 @@ struct ContainersView: View {
             rebuildSections()
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-            HapticsManager.success()
+            showToast(.success("Container removed"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
-            HapticsManager.warning()
+            showToast(.error("Couldn't remove container"))
         }
     }
 
@@ -385,10 +385,10 @@ struct ContainersView: View {
             try await client.containers.start(envID: environmentID, id: container.id)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-            HapticsManager.success()
+            showToast(.success("Container started"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
-            HapticsManager.warning()
+            showToast(.error("Couldn't start container"))
         }
     }
 
@@ -398,10 +398,10 @@ struct ContainersView: View {
             try await client.containers.stop(envID: environmentID, id: container.id)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-            HapticsManager.success()
+            showToast(.success("Container stopped"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
-            HapticsManager.warning()
+            showToast(.error("Couldn't stop container"))
         }
     }
 
@@ -412,10 +412,10 @@ struct ContainersView: View {
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-            HapticsManager.success()
+            showToast(.success("Containers pruned"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
-            HapticsManager.warning()
+            showToast(.error("Prune failed"))
         }
     }
 
@@ -425,10 +425,10 @@ struct ContainersView: View {
             try await client.containers.restart(envID: environmentID, id: container.id)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
-            HapticsManager.success()
+            showToast(.success("Container restarted"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
-            HapticsManager.warning()
+            showToast(.error("Couldn't restart container"))
         }
     }
 

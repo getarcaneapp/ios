@@ -16,7 +16,6 @@ struct EnvironmentDashboardCard: View {
     @State private var showPruneSheet = false
     @State private var showUpgradeSheet = false
     @State private var isSyncing = false
-    @State private var syncErrorMessage: String?
     @State private var syncSuccessPulse = false
     @State private var canUpgrade = false
 
@@ -180,17 +179,6 @@ struct EnvironmentDashboardCard: View {
                     }
             }
         }
-        .alert(
-            "Sync failed",
-            isPresented: Binding(
-                get: { syncErrorMessage != nil },
-                set: { if !$0 { syncErrorMessage = nil } }
-            )
-        ) {
-            Button("OK") { syncErrorMessage = nil }
-        } message: {
-            Text(syncErrorMessage ?? "")
-        }
         .sensoryFeedback(.selection, trigger: selectionPulse)
         .sensoryFeedback(.success, trigger: syncSuccessPulse)
         .task { await loadDockerInfo() }
@@ -326,9 +314,9 @@ struct EnvironmentDashboardCard: View {
             await loadDockerInfo()
             syncSuccessPulse.toggle()
         } catch let error as ArcaneError {
-            syncErrorMessage = arcaneMessage(error)
+            showToast(.error(arcaneMessage(error)))
         } catch {
-            syncErrorMessage = "Sync failed"
+            showToast(.error("Sync failed"))
         }
     }
 

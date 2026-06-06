@@ -57,6 +57,7 @@ enum ReleaseNotes {
                 .init("App Now Supports iOS 18 and up."),
                 .init("Custom Navbar that morphs into resource controls in detail views."),
                 .init("New Uniform Delete confirmation dialog for all actions."),
+                .init("New Toasts for notifying you of completed or failed actions."),
             ],
             changed: [
                 .init("Redesigned List View Rows to better visual appearance."),

@@ -300,6 +300,6 @@ struct InstallStreamSheet: View {
     private func copyTranscript() {
         let joined = lines.map(\.text).joined(separator: "\n")
         UIPasteboard.general.string = joined
-        HapticsManager.light()
+        showToast(.copied("Logs copied"))
     }
 }

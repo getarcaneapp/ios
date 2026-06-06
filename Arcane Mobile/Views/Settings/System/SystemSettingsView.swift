@@ -245,7 +245,6 @@ struct SettingsCategoryView: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var savedMessage: String?
 
     private var hasChanges: Bool {
         category.fields.contains { settings[$0.key] != originalSettings[$0.key] }
@@ -293,12 +292,6 @@ struct SettingsCategoryView: View {
             if let error = errorMessage {
                 Section {
                     Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
-                }
-            }
-
-            if let msg = savedMessage {
-                Section {
-                    Label(msg, systemImage: "checkmark.circle").foregroundStyle(.green)
                 }
             }
         }
@@ -402,7 +395,6 @@ struct SettingsCategoryView: View {
         guard let client = manager.client else { return }
         isSaving = true
         errorMessage = nil
-        savedMessage = nil
         defer { isSaving = false }
 
         var changedPairs: [String: String] = [:]
@@ -422,8 +414,7 @@ struct SettingsCategoryView: View {
             for (key, value) in changedPairs {
                 originalSettings[key] = value
             }
-            savedMessage = "Settings saved"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { savedMessage = nil }
+            showToast(.success("Settings saved"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

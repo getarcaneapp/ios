@@ -6,11 +6,12 @@ struct SettingsView: View {
     @State private var showLogoutConfirm = false
     @State private var volumeSizeBytes: Int64? = nil
     @State private var loadingVolumeSize = false
+    @State private var navPath = NavigationPath()
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             List {
                 managementSection
                 resourcesSection
@@ -18,6 +19,23 @@ struct SettingsView: View {
                 administrationSection
             }
             .listStyle(.insetGrouped)
+            // Push tab destinations by value so the whole Settings stack is
+            // path-consistent. Object-based pushes here desynced the stack when
+            // the pushed resource view (e.g. VolumesView) did its own value-based
+            // child navigation — the detail landed under the re-rendered list.
+            .navigationDestination(for: AppTab.self) { tab in
+                appTabDestination(tab, manager: manager, selectedTab: .constant(""))
+            }
+            // Drop the morphing-bar controls the instant we pop back out of a
+            // resource detail reached *via Settings*. The tab stacks get this from
+            // `TabNavigationContainer`'s path watcher; the Settings stack needs its
+            // own, otherwise the controls linger until the detail's (zoom-delayed)
+            // `onDisappear`. Settings-pushed details register under the "settings" id.
+            .onChange(of: navPath.count) { oldCount, newCount in
+                if newCount < oldCount {
+                    TabBarMorphStore.shared.clearTab("settings")
+                }
+            }
             .navigationTitle("Settings")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -103,7 +121,7 @@ struct SettingsView: View {
         if !tabs.isEmpty {
             Section("Management") {
                 ForEach(tabs) { tab in
-                    NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
+                    NavigationLink(value: tab) {
                         SettingsRow(
                             title: tab.title,
                             systemImage: tab.systemImage,
@@ -121,7 +139,7 @@ struct SettingsView: View {
         if !tabs.isEmpty {
             Section("Swarm") {
                 ForEach(tabs) { tab in
-                    NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
+                    NavigationLink(value: tab) {
                         SettingsRow(
                             title: tab.title,
                             systemImage: tab.systemImage,
@@ -139,7 +157,7 @@ struct SettingsView: View {
         if !tabs.isEmpty {
             Section("Resources") {
                 ForEach(tabs) { tab in
-                    NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
+                    NavigationLink(value: tab) {
                         resourceRow(tab)
                     }
                 }
@@ -172,7 +190,7 @@ struct SettingsView: View {
         if !tabs.isEmpty {
             Section {
                 ForEach(tabs) { tab in
-                    NavigationLink(destination: appTabDestination(tab, manager: manager, selectedTab: .constant(""))) {
+                    NavigationLink(value: tab) {
                         SettingsRow(
                             title: tab.title,
                             systemImage: tab.systemImage,
@@ -814,6 +832,7 @@ struct NewAPIKeyView: View {
 
                 Button {
                     UIPasteboard.general.string = key
+                    showToast(.copied("API key copied"))
                 } label: {
                     Label("Copy to Clipboard", systemImage: "doc.on.clipboard")
                         .frame(maxWidth: .infinity)

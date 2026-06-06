@@ -26,7 +26,6 @@ struct AuthenticationSettingsView: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var savedMessage: String?
 
     // Env-var override status
     @State private var oidcEnvForced = false
@@ -154,12 +153,6 @@ struct AuthenticationSettingsView: View {
                 }
             }
 
-            if let msg = savedMessage {
-                Section {
-                    Label(msg, systemImage: "checkmark.circle").foregroundStyle(.green)
-                }
-            }
-
             Section {
                 Button {
                     Task { await save() }
@@ -231,7 +224,6 @@ struct AuthenticationSettingsView: View {
         guard let client = manager.client else { return }
         isSaving = true
         errorMessage = nil
-        savedMessage = nil
         defer { isSaving = false }
         do {
             var body = UpdateSettings()
@@ -255,8 +247,7 @@ struct AuthenticationSettingsView: View {
             if let cached = manager.cached {
                 await cached.invalidate(envID: manager.activeEnvironmentID, paths: [path, path + "*"])
             }
-            savedMessage = "Authentication settings saved"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { savedMessage = nil }
+            showToast(.success("Authentication settings saved"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

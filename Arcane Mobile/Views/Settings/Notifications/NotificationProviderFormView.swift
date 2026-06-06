@@ -15,7 +15,6 @@ struct NotificationProviderFormView: View {
     @State private var isSaving = false
     @State private var isTesting = false
     @State private var errorMessage: String?
-    @State private var testResult: String?
 
     // Snapshots taken in `populateForm` so Save can stay disabled until the
     // user actually edits something (or, for new providers, fills required fields).
@@ -94,12 +93,6 @@ struct NotificationProviderFormView: View {
                     }
                 }
                 .disabled(isTesting || !enabled)
-
-                if let result = testResult {
-                    Label(result, systemImage: result.contains("Success") ? "checkmark.circle" : "exclamationmark.triangle")
-                        .foregroundStyle(result.contains("Success") ? .green : .red)
-                        .font(.caption)
-                }
             }
         }
         .navigationTitle(provider.displayName)
@@ -255,14 +248,13 @@ struct NotificationProviderFormView: View {
     private func testNotification() async {
         guard let client = manager.client else { return }
         isTesting = true
-        testResult = nil
         defer { isTesting = false }
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/test/\(provider.rawValue)")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
-            testResult = "Success — test notification sent"
+            showToast(.success("Test notification sent"))
         } catch {
-            testResult = friendlyErrorMessage(error)
+            showToast(.error(friendlyErrorMessage(error)))
         }
     }
 }

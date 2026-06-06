@@ -288,6 +288,7 @@ struct NewWebhookTokenView: View {
 
                 Button {
                     UIPasteboard.general.string = token
+                    showToast(.copied("Webhook token copied"))
                 } label: {
                     Label("Copy to Clipboard", systemImage: "doc.on.clipboard")
                         .frame(maxWidth: .infinity)

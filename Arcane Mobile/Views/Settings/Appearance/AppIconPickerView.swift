@@ -115,7 +115,7 @@ struct AppIconPickerView: View {
                     withAnimation(animation) {
                         currentIconName = option.alternateName
                     }
-                    HapticsManager.success()
+                    showToast(.success("App icon changed"))
                 }
             }
         }

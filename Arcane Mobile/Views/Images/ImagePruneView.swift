@@ -11,7 +11,6 @@ struct ImagePruneView: View {
     @State private var mode: Mode = .dangling
     @State private var until: String = "24h"
     @State private var isPruning = false
-    @State private var resultMessage: String?
     @State private var errorMessage: String?
 
     enum Mode: String, CaseIterable, Identifiable {
@@ -73,11 +72,6 @@ struct ImagePruneView: View {
                     }
                 }
             }
-            .alert("Prune complete", isPresented: Binding(get: { resultMessage != nil }, set: { if !$0 { resultMessage = nil; dismiss() } })) {
-                Button("OK") { resultMessage = nil; dismiss() }
-            } message: {
-                Text(resultMessage ?? "")
-            }
             .alert("Prune failed", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("OK") { errorMessage = nil }
             } message: {
@@ -111,8 +105,9 @@ struct ImagePruneView: View {
                 ])
             }
             mutationStore.markChanged(kind: .images, envID: environmentID)
-            resultMessage = formatResult(report)
             await onComplete()
+            showToast(.success(formatResult(report)))
+            dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

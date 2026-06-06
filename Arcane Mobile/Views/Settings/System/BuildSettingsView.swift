@@ -13,7 +13,6 @@ struct BuildSettingsView: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var savedMessage: String?
 
     var body: some View {
         Form {
@@ -73,12 +72,6 @@ struct BuildSettingsView: View {
                 }
             }
 
-            if let msg = savedMessage {
-                Section {
-                    Label(msg, systemImage: "checkmark.circle").foregroundStyle(.green)
-                }
-            }
-
             Section {
                 Button {
                     Task { await save() }
@@ -126,7 +119,6 @@ struct BuildSettingsView: View {
         guard let client = manager.client else { return }
         isSaving = true
         errorMessage = nil
-        savedMessage = nil
         defer { isSaving = false }
         do {
             var body = UpdateSettings()
@@ -137,8 +129,7 @@ struct BuildSettingsView: View {
             body.depotToken = buildProvider == "depot" ? (depotToken.isEmpty ? nil : depotToken) : nil
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
             let _: [PublicSetting] = try await client.rest.put(path, body: body)
-            savedMessage = "Build settings saved"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { savedMessage = nil }
+            showToast(.success("Build settings saved"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

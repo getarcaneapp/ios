@@ -38,6 +38,10 @@ struct ContentView: View {
         // card. Mounted above the tab bar and navigation stacks so the card and
         // its scrim float over everything.
         .deleteConfirmationHost()
+        // Single app-wide host for transient toasts. Mounted after the delete
+        // host so a toast layers above the confirmation card's scrim, and on the
+        // outer Group so toasts also work on the login / setup screens.
+        .toastHost()
     }
 
     private func evaluateWhatsNew() {

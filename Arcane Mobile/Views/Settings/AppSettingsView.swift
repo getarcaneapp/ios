@@ -4,7 +4,6 @@ import Arcane
 struct AppSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var pendingDestructive: PendingDestructive?
-    @State private var showCacheCleared = false
     @State private var cacheSizeBytes: Int = 0
     @State private var showWhatsNew = false
 
@@ -43,11 +42,6 @@ struct AppSettingsView: View {
         .navigationTitle("App Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { await refreshCacheSize() }
-        .alert("Cache Cleared", isPresented: $showCacheCleared) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Cached images and API responses will be reloaded from the server.")
-        }
         .sheet(isPresented: $showWhatsNew) {
             WhatsNewView()
         }
@@ -74,7 +68,7 @@ struct AppSettingsView: View {
                             await ImageCache.shared.clear()
                             await ResponseCache.shared.invalidateAll()
                             await refreshCacheSize()
-                            showCacheCleared = true
+                            showToast(.success("Cache cleared"))
                         }
                     }]
                 )

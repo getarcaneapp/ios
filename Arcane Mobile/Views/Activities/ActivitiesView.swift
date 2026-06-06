@@ -6,7 +6,6 @@ struct ActivitiesView: View {
 
     @State private var store = ActivityCenterStore()
     @State private var showClearConfirm = false
-    @State private var clearMessage: String?
 
     private var taskID: String {
         "\(manager.supportsActivities)"
@@ -157,23 +156,13 @@ struct ActivitiesView: View {
         ) {
             Task {
                 if let result = await store.clearHistory(environmentIDs: clearableEnvironmentIDs) {
-                    clearMessage = "Cleared \(result.deleted) completed activit\(result.deleted == 1 ? "y" : "ies")."
+                    var message = "Cleared \(result.deleted) completed activit\(result.deleted == 1 ? "y" : "ies")."
                     if result.failed > 0 {
-                        clearMessage? += " \(result.failed) environment\(result.failed == 1 ? "" : "s") could not be cleared."
+                        message += " \(result.failed) environment\(result.failed == 1 ? "" : "s") could not be cleared."
                     }
+                    showToast(.success(message))
                 }
             }
-        }
-        .alert(
-            "Activity History",
-            isPresented: Binding(
-                get: { clearMessage != nil },
-                set: { if !$0 { clearMessage = nil } }
-            )
-        ) {
-            Button("OK") { clearMessage = nil }
-        } message: {
-            Text(clearMessage ?? "")
         }
     }
 

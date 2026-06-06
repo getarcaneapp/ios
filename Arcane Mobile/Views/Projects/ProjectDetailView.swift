@@ -238,7 +238,7 @@ struct ProjectDetailView: View {
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
             await loadProject(refresh: true)
-            HapticsManager.success()
+            showToast(.success("Action complete"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
             errorMessage = friendlyErrorMessage(error)
