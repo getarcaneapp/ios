@@ -6,6 +6,7 @@ struct ProjectDetailView: View {
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
+    @Namespace private var heroTransition
     let project: ProjectDetails
     let environmentID: EnvironmentID
 
@@ -14,15 +15,29 @@ struct ProjectDetailView: View {
     @State private var isActioning = false
     @State private var actionStatus: String?
     @State private var showLogs = false
-    @State private var showCompose = false
     @State private var showDeleteConfirm = false
     @State private var streamingAction: StreamingAction?
     @State private var errorMessage: String?
     @State private var runningActionID: String?
+    @State private var selectedTab: DetailTab = .services
+    @State private var projectContainers: [ContainerSummary] = []
+    @State private var servicesLoading = false
 
     private var currentProject: ProjectDetails { refreshedProject ?? project }
     private var isRunning: Bool { currentProject.status.lowercased() == "running" }
     private var hasBuild: Bool { currentProject.hasBuildDirective == true }
+    private var containerMutationVersion: Int { mutationStore.version(kind: .containers, envID: environmentID) }
+
+    private enum DetailTab: String, CaseIterable, Identifiable {
+        case services, configuration
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .services: return "Services"
+            case .configuration: return "Configuration"
+            }
+        }
+    }
 
     struct StreamingAction: Identifiable {
         let id = UUID()
@@ -33,6 +48,102 @@ struct ProjectDetailView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            Picker("Section", selection: $selectedTab) {
+                ForEach(DetailTab.allCases) { tab in
+                    Text(tab.title).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+
+            // Both tabs stay mounted (crossfade rather than insert/remove) so the
+            // editor keeps unsaved edits when the user flips to Services and back.
+            ZStack {
+                servicesTab
+                    .opacity(selectedTab == .services ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .services)
+                    .accessibilityHidden(selectedTab != .services)
+
+                ProjectConfigurationTab(
+                    projectID: project.id,
+                    projectName: currentProject.name,
+                    environmentID: environmentID,
+                    isActive: selectedTab == .configuration
+                ) {
+                    await invalidateProjectCaches()
+                    mutationStore.markChanged(kind: .projects, envID: environmentID)
+                    await loadProject(refresh: true)
+                    await loadServices(refresh: true)
+                }
+                .opacity(selectedTab == .configuration ? 1 : 0)
+                .allowsHitTesting(selectedTab == .configuration)
+                .accessibilityHidden(selectedTab != .configuration)
+            }
+            .motionAwareAnimation(.smooth(duration: 0.25), value: selectedTab)
+        }
+        .morphingActions(
+            primary: morphPrimary,
+            inline: morphInline,
+            overflow: morphOverflow,
+            runningItemID: runningActionID,
+            isDisabled: isActioning,
+            resourceName: currentProject.displayName
+        )
+        .navigationTitle(currentProject.displayName)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await loadProject() }
+        .task { await loadServices() }
+        .refreshable {
+            await loadProject(refresh: true)
+            await loadServices(refresh: true)
+        }
+        .onChange(of: containerMutationVersion) { _, _ in
+            Task { await loadServices(refresh: true) }
+        }
+        .navigationDestination(for: ContainerSummary.self) { container in
+            ContainerDetailView(container: container, environmentID: environmentID)
+                .navigationTransition(.zoom(sourceID: container.id, in: heroTransition))
+        }
+        .sheet(isPresented: $showLogs) {
+            LogsView(
+                title: currentProject.displayName,
+                logStream: manager.client?.projects.logs(envID: environmentID, projectID: project.id)
+            )
+        }
+        .sheet(item: $streamingAction) { action in
+            StreamingActionView(
+                title: action.title,
+                path: action.path,
+                method: action.method,
+                body: action.body
+            ) {
+                await invalidateProjectCaches()
+                mutationStore.markChanged(kind: .projects, envID: environmentID)
+                await loadProject(refresh: true)
+                await loadServices(refresh: true)
+                HapticsManager.success()
+                ReviewPrompter.shared.recordSuccess()
+            }
+        }
+        .deleteConfirmation(isPresented: $showDeleteConfirm, config: DeleteConfirmationConfig(
+            title: "Delete Project",
+            message: "Remove the project from Arcane, or also remove its files from disk.",
+            icon: "trash",
+            actions: [
+                DeleteConfirmationAction(title: "Delete") {
+                    Task { await deleteProject(removeFiles: false) }
+                },
+                DeleteConfirmationAction(title: "Delete and Remove Files") {
+                    Task { await deleteProject(removeFiles: true) }
+                }
+            ]
+        ))
+    }
+
+    private var servicesTab: some View {
         List {
             Section {
                 projectHeader
@@ -59,74 +170,34 @@ struct ProjectDetailView: View {
                 }
             }
 
-            Section("Info") {
-                LabeledContent("Status", value: currentProject.status.capitalized)
-                LabeledContent("Services", value: "\(currentProject.serviceCount)")
-                LabeledContent("Running", value: "\(currentProject.runningCount)")
-                LabeledContent("Created", value: currentProject.createdAt)
-                if let version = currentProject.composeVersion {
-                    LabeledContent("Compose Version", value: version)
+            Section("Services") {
+                if servicesLoading && projectContainers.isEmpty {
+                    HStack(spacing: 10) {
+                        ProgressView().scaleEffect(0.8)
+                        Text("Loading services…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if projectContainers.isEmpty {
+                    Text("No running services")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(projectContainers) { container in
+                        NavigationLink(value: container) {
+                            ContainerRow(container: container)
+                        }
+                        .matchedTransitionSource(id: container.id, in: heroTransition)
+                    }
                 }
             }
         }
         .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .morphingActions(
-            primary: morphPrimary,
-            inline: morphInline,
-            overflow: morphOverflow,
-            runningItemID: runningActionID,
-            isDisabled: isActioning,
-            resourceName: currentProject.displayName
-        )
-        .navigationTitle(currentProject.displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await loadProject() }
-        .refreshable { await loadProject(refresh: true) }
-        .sheet(isPresented: $showLogs) {
-            LogsView(
-                title: currentProject.displayName,
-                logStream: manager.client?.projects.logs(envID: environmentID, projectID: project.id)
-            )
-        }
-        .sheet(isPresented: $showCompose) {
-            ComposeFileView(
-                projectID: project.id,
-                projectName: currentProject.name,
-                environmentID: environmentID
-            )
-        }
-        .sheet(item: $streamingAction) { action in
-            StreamingActionView(
-                title: action.title,
-                path: action.path,
-                method: action.method,
-                body: action.body
-            ) {
-                await invalidateProjectCaches()
-                mutationStore.markChanged(kind: .projects, envID: environmentID)
-                await loadProject(refresh: true)
-                HapticsManager.success()
-                ReviewPrompter.shared.recordSuccess()
-            }
-        }
-        .deleteConfirmation(isPresented: $showDeleteConfirm, config: DeleteConfirmationConfig(
-            title: "Delete Project",
-            message: "Remove the project from Arcane, or also remove its files from disk.",
-            icon: "trash",
-            actions: [
-                DeleteConfirmationAction(title: "Delete") {
-                    Task { await deleteProject(removeFiles: false) }
-                },
-                DeleteConfirmationAction(title: "Delete and Remove Files") {
-                    Task { await deleteProject(removeFiles: true) }
-                }
-            ]
-        ))
     }
 
     private var projectHeader: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             CachedAsyncImage(url: currentProject.themedIconUrl(for: colorScheme), size: 56) {
                 Image(systemName: "square.stack.3d.up.fill")
                     .font(.title)
@@ -135,15 +206,39 @@ struct ProjectDetailView: View {
                     .glassEffectCompat(in: .circle)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(currentProject.displayName).font(.title3.bold())
+            VStack(alignment: .leading, spacing: 3) {
+                Text(currentProject.displayName)
+                    .font(.headline)
                 let count = currentProject.serviceCount
-                Text("\(count) service\(count == 1 ? "" : "s")")
-                    .font(.caption).foregroundStyle(.secondary)
-                StatusBadge(status: currentProject.status).padding(.top, 2)
+                Text("\(count) service\(count == 1 ? "" : "s") · \(currentProject.runningCount) running")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(headerDate(currentProject.createdAt))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if let version = currentProject.composeVersion {
+                    Text("Compose \(version)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                StatusBadge(status: currentProject.status)
+                    .padding(.top, 2)
             }
         }
         .padding(.vertical, 4)
+    }
+
+    /// Formats the project's ISO-8601 `createdAt`, tolerating both fractional and
+    /// whole-second timestamps; falls back to the raw string.
+    private func headerDate(_ iso: String) -> String {
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let date = withFraction.date(from: iso) ?? plain.date(from: iso) {
+            return date.formatted(date: .abbreviated, time: .omitted)
+        }
+        return iso
     }
 
     /// State-aware centre action: Deploy when stopped, Stop when running.
@@ -184,9 +279,6 @@ struct ProjectDetailView: View {
         }
         items.append(ActionButtonItem(id: "logs", title: "Logs", systemImage: "doc.text.fill", tint: .secondary) {
             showLogs = true
-        })
-        items.append(ActionButtonItem(id: "compose", title: "View Compose File", systemImage: "doc.text", tint: .accentColor) {
-            showCompose = true
         })
         if currentProject.isArchived {
             items.append(ActionButtonItem(id: "unarchive", title: "Unarchive Project", systemImage: "tray.and.arrow.up", tint: .accentColor) {
@@ -238,6 +330,7 @@ struct ProjectDetailView: View {
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
             await loadProject(refresh: true)
+            await loadServices(refresh: true)
             showToast(.success("Action complete"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
@@ -321,6 +414,46 @@ struct ProjectDetailView: View {
         }
     }
 
+    /// Loads the project's containers for the Services tab. The project `runtime`
+    /// endpoint is the authoritative source of which container IDs belong to this
+    /// project; we intersect that set with the (cache-warm) environment container
+    /// list so the rows reuse `ContainerRow` + the standard container navigation.
+    private func loadServices(refresh: Bool = false) async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        if projectContainers.isEmpty { servicesLoading = true }
+        defer { servicesLoading = false }
+        do {
+            let runtime = try await client.projects.runtime(envID: environmentID, projectID: project.id)
+            let ids = Set((runtime.runtimeServices ?? []).compactMap { $0.containerId }.filter { !$0.isEmpty })
+
+            let path = client.rest.environmentPath(environmentID, "containers")
+            if let all: [ContainerSummary] = try await cached.getList(
+                path, elementType: ContainerSummary.self, policy: .containersList,
+                envID: environmentID, refresh: refresh,
+                onFresh: { fresh in projectContainers = filterProjectContainers(fresh, ids: ids) }
+            ) {
+                projectContainers = filterProjectContainers(all, ids: ids)
+            }
+        } catch {
+            // Non-fatal: the project info still renders; the Services section just
+            // shows its empty state.
+        }
+    }
+
+    /// Keeps the environment containers that belong to this project, tolerating
+    /// short/long Docker ID forms, sorted running-first then by name.
+    private func filterProjectContainers(_ all: [ContainerSummary], ids: Set<String>) -> [ContainerSummary] {
+        all.filter { container in
+            ids.contains { id in
+                container.id == id || container.id.hasPrefix(id) || id.hasPrefix(container.id)
+            }
+        }
+        .sorted { lhs, rhs in
+            if lhs.isRunning != rhs.isRunning { return lhs.isRunning }
+            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+        }
+    }
+
     private func invalidateProjectCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
         await cached.invalidate(envID: environmentID, paths: [
@@ -332,19 +465,25 @@ struct ProjectDetailView: View {
     }
 }
 
-struct ComposeFileView: View {
+/// The project's compose / `.env` editor, embedded as the "Configuration" tab of
+/// `ProjectDetailView`. `isActive` drives a lazy first load and gates the Save
+/// toolbar item so it only appears while this tab is showing; the view stays
+/// mounted across tab switches so in-progress edits are preserved.
+struct ProjectConfigurationTab: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @SwiftUI.Environment(\.dismiss) private var dismiss
     let projectID: String
     let projectName: String
     let environmentID: EnvironmentID
+    let isActive: Bool
+    var onSaved: () async -> Void = {}
 
     @State private var name: String = ""
     @State private var composeContent: String = ""
     @State private var envContent: String = ""
     @State private var originalCompose: String = ""
     @State private var originalEnv: String = ""
-    @State private var selectedTab: Int = 0
+    @State private var selectedFile: Int = 0
+    @State private var hasLoaded = false
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -355,67 +494,62 @@ struct ComposeFileView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if isLoading {
-                    ProgressView("Loading files...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    VStack(spacing: 0) {
-                        Picker("File", selection: $selectedTab) {
-                            Text("compose.yml").tag(0)
-                            Text(".env").tag(1)
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
+        Group {
+            if isLoading {
+                ProgressView("Loading files...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 0) {
+                    Picker("File", selection: $selectedFile) {
+                        Text("compose.yml").tag(0)
+                        Text(".env").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
 
-                        Divider()
+                    Divider()
 
-                        ZStack(alignment: .bottomTrailing) {
-                            if selectedTab == 0 {
-                                CodeEditorView(text: $composeContent, language: .yaml)
-                            } else {
-                                CodeEditorView(text: $envContent, language: .env)
-                            }
-
-                            if selectedTab == 0 && !composeContent.isEmpty {
-                                Button {
-                                    showRender = true
-                                } label: {
-                                    Image(systemName: "curlybraces")
-                                        .font(.title3.weight(.semibold))
-                                        .foregroundStyle(.indigo)
-                                        .frame(width: 52, height: 52)
-                                        .glassEffectCompat(in: .circle)
-                                }
-                                .padding(.trailing, 16)
-                                .padding(.bottom, 16)
-                                .accessibilityLabel("Resolve Variables")
-                            }
+                    ZStack(alignment: .bottomTrailing) {
+                        if selectedFile == 0 {
+                            CodeEditorView(text: $composeContent, language: .yaml)
+                        } else {
+                            CodeEditorView(text: $envContent, language: .env)
                         }
 
-                        if let errorMessage {
-                            HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.red)
-                                Text(errorMessage)
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
+                        if selectedFile == 0 && !composeContent.isEmpty {
+                            Button {
+                                showRender = true
+                            } label: {
+                                Image(systemName: "curlybraces")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(.indigo)
+                                    .frame(width: 52, height: 52)
+                                    .glassEffectCompat(in: .circle)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(.red.opacity(0.1))
+                            .padding(.trailing, 16)
+                            .padding(.bottom, 16)
+                            .accessibilityLabel("Resolve Variables")
                         }
+                    }
+
+                    if let errorMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(.red.opacity(0.1))
                     }
                 }
             }
-            .navigationTitle("Project Files")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
+        }
+        .toolbar {
+            if isActive {
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await saveFiles() }
@@ -426,16 +560,21 @@ struct ComposeFileView: View {
                     .disabled(isSaving || !hasChanges)
                 }
             }
-            .sheet(isPresented: $showRender) {
-                RenderComposeView(
-                    initialCompose: composeContent,
-                    initialEnv: envContent,
-                    environmentID: environmentID
-                ) { resolved in
-                    composeContent = resolved
-                }
+        }
+        .sheet(isPresented: $showRender) {
+            RenderComposeView(
+                initialCompose: composeContent,
+                initialEnv: envContent,
+                environmentID: environmentID
+            ) { resolved in
+                composeContent = resolved
             }
-            .task { await loadFiles() }
+        }
+        .task(id: isActive) {
+            if isActive && !hasLoaded {
+                hasLoaded = true
+                await loadFiles()
+            }
         }
     }
 
@@ -467,9 +606,13 @@ struct ComposeFileView: View {
             let resolvedName = name.isEmpty ? projectName : name
             let request = UpdateProject(name: resolvedName, composeContent: composeContent, envContent: envContent)
             _ = try await client.projects.update(envID: environmentID, projectID: projectID, request: request)
-            dismiss()
+            originalCompose = composeContent
+            originalEnv = envContent
+            showToast(.success("Saved"))
+            await onSaved()
         } catch {
             errorMessage = friendlyErrorMessage(error)
+            showToast(.error("Couldn't save"))
         }
     }
 }

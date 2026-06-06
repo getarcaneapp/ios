@@ -64,6 +64,7 @@ enum ReleaseNotes {
                 .init("Remove the Builds tab from resources since builds are not in the application yet."),
                 .init("Redesigned the Image Details view with less clutter and proper update status display."),
                 .init("Container Health Status displays in the list view."),
+                .init("Overhaul of the project details page."),
             ],
             fixed: [
                 .init("Fixed the issue with the iOS Keychain signing users out even when refresh tokens exist."),
