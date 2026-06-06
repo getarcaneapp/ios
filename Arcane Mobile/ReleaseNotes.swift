@@ -54,7 +54,8 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.3.0",
             new: [
-                .init("App Now Supports iOS 18 and up!"),
+                .init("App Now Supports iOS 18 and up."),
+                .init("Custom Navbar that morphs into resource controls in detail views."),
             ],
             changed: [
                 .init("Redesigned List View Rows to better visual appearance."),

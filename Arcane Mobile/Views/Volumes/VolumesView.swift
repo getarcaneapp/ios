@@ -502,10 +502,12 @@ struct VolumeDetailView: View {
     let volume: Volume
     let environmentID: EnvironmentID
 
-    @State private var showDeleteConfirm = false
     @State private var sizeBytes: Int64? = nil
     @State private var loadingSize = false
     @State private var errorMessage: String?
+    @State private var route: VolumeRoute?
+
+    private enum VolumeRoute: Hashable { case browse, backups }
 
     var body: some View {
         List {
@@ -568,21 +570,46 @@ struct VolumeDetailView: View {
 
         }
         .listStyle(.insetGrouped)
+        .morphingActions(
+            primary: ActionButtonItem(
+                id: "browse",
+                title: "Browse Files",
+                systemImage: "folder",
+                tint: .accentColor
+            ) {
+                route = .browse
+            },
+            inline: [
+                ActionButtonItem(
+                    id: "backups",
+                    title: "Backups",
+                    systemImage: "clock.arrow.circlepath",
+                    tint: .accentColor
+                ) {
+                    route = .backups
+                }
+            ],
+            overflow: [
+                ActionButtonItem(
+                    id: "delete",
+                    title: "Delete",
+                    systemImage: "trash",
+                    tint: .red,
+                    role: .destructive
+                ) {
+                    Task { await deleteVolume() }
+                }
+            ],
+            resourceName: volume.name
+        )
         .navigationTitle(volume.name)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(role: .destructive) {
-                    showDeleteConfirm = true
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
-                }
-            }
-        }
-        .confirmationDialog("Delete Volume", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                Task { await deleteVolume() }
+        .navigationDestination(item: $route) { route in
+            switch route {
+            case .browse:
+                VolumeBrowserView(environmentID: environmentID, volumeName: volume.name)
+            case .backups:
+                VolumeBackupsView(environmentID: environmentID, volumeName: volume.name)
             }
         }
         .task { await loadSize() }

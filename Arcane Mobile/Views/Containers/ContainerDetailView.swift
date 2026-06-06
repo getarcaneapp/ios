@@ -15,7 +15,6 @@ struct ContainerDetailView: View {
     @State private var errorMessage: String?
     @State private var showTerminal = false
     @State private var showRename = false
-    @State private var showDeleteConfirm = false
     @State private var showInspect = false
     @State private var runningActionID: String?
     @State private var selectedTab: DetailTab = .overview
@@ -86,42 +85,14 @@ struct ContainerDetailView: View {
         }
         .navigationTitle(displayedName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                Button {
-                    showInspect = true
-                } label: {
-                    Image(systemName: "doc.text.magnifyingglass")
-                }
-                .disabled(isActioning)
-
-                if isRunning && !isPaused {
-                    Button {
-                        showTerminal = true
-                    } label: {
-                        Image(systemName: "terminal.fill")
-                    }
-                    .disabled(isActioning)
-                }
-
-                Menu {
-                    Button {
-                        showRename = true
-                    } label: {
-                        Label("Rename", systemImage: "pencil")
-                    }
-                    Button(role: .destructive) {
-                        showDeleteConfirm = true
-                    } label: {
-                        DestructiveLabel(text: "Delete")
-                    }
-                    .tint(.red)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .disabled(isActioning)
-            }
-        }
+        .morphingActions(
+            primary: morphPrimary,
+            inline: morphInline,
+            overflow: morphOverflow,
+            runningItemID: runningActionID,
+            isDisabled: isActioning,
+            resourceName: displayedName
+        )
         .task { await loadDetails() }
         .refreshable { await loadDetails() }
         .sheet(isPresented: $showInspect) {
@@ -143,13 +114,6 @@ struct ContainerDetailView: View {
             RenameContainerSheet(currentName: displayedName) { newName in
                 await renameContainer(newName: newName)
             }
-        }
-        .confirmationDialog("Delete Container", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                Task { await deleteContainer() }
-            }
-        } message: {
-            Text("This will permanently delete the container and cannot be undone.")
         }
         .alert(
             "Error",
@@ -190,12 +154,6 @@ struct ContainerDetailView: View {
         }
         .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .actionToolbar(
-            items: actionItems,
-            runningItemID: runningActionID,
-            isDisabled: isActioning,
-            resourceName: displayedName
-        )
     }
 
     private var statusHeader: some View {
@@ -238,56 +196,61 @@ struct ContainerDetailView: View {
         }
     }
 
-    private var actionItems: [ActionButtonItem] {
-        var items: [ActionButtonItem] = []
-
+    /// State-aware centre action: Start when stopped, Stop when running,
+    /// Unpause when paused.
+    private var morphPrimary: ActionButtonItem {
         if isPaused {
-            items.append(ActionButtonItem(
-                id: "unpause",
-                title: "Unpause",
-                systemImage: "play.fill",
-                tint: .green
-            ) {
+            return ActionButtonItem(id: "unpause", title: "Unpause", systemImage: "play.fill", tint: .green) {
                 Task { await performAction(.unpause, actionID: "unpause") }
-            })
+            }
         } else if isRunning {
-            items.append(ActionButtonItem(
-                id: "stop",
-                title: "Stop",
-                systemImage: "stop.fill",
-                tint: .red,
-                role: .destructive
-            ) {
+            return ActionButtonItem(id: "stop", title: "Stop", systemImage: "stop.fill", tint: .red, role: .destructive) {
                 Task { await performAction(.stop, actionID: "stop") }
-            })
-            items.append(ActionButtonItem(
-                id: "restart",
-                title: "Restart",
-                systemImage: "arrow.clockwise",
-                tint: .orange
-            ) {
+            }
+        } else {
+            return ActionButtonItem(id: "start", title: "Start", systemImage: "play.fill", tint: .green) {
+                Task { await performAction(.start, actionID: "start") }
+            }
+        }
+    }
+
+    private var morphInline: [ActionButtonItem] {
+        var items: [ActionButtonItem] = []
+        if isRunning && !isPaused {
+            items.append(ActionButtonItem(id: "restart", title: "Restart", systemImage: "arrow.clockwise", tint: .orange) {
                 Task { await performAction(.restart, actionID: "restart") }
             })
-        } else {
-            items.append(ActionButtonItem(
-                id: "start",
-                title: "Start",
-                systemImage: "play.fill",
-                tint: .green
-            ) {
-                Task { await performAction(.start, actionID: "start") }
-            })
         }
-
-        items.append(ActionButtonItem(
-            id: "redeploy",
-            title: "Redeploy",
-            systemImage: "arrow.triangle.2.circlepath",
-            tint: .accentColor
-        ) {
+        items.append(ActionButtonItem(id: "redeploy", title: "Redeploy", systemImage: "arrow.triangle.2.circlepath", tint: .accentColor) {
             Task { await performAction(.redeploy, actionID: "redeploy") }
         })
+        return items
+    }
 
+    private var morphOverflow: [ActionButtonItem] {
+        var items: [ActionButtonItem] = [
+            ActionButtonItem(id: "inspect", title: "Inspect", systemImage: "doc.text.magnifyingglass", tint: .accentColor) {
+                showInspect = true
+            }
+        ]
+        if isRunning && !isPaused {
+            items.append(ActionButtonItem(id: "terminal", title: "Terminal", systemImage: "terminal.fill", tint: .accentColor) {
+                showTerminal = true
+            })
+        }
+        items.append(ActionButtonItem(id: "rename", title: "Rename", systemImage: "pencil", tint: .accentColor) {
+            showRename = true
+        })
+        items.append(ActionButtonItem(
+            id: "delete",
+            title: "Delete",
+            systemImage: "trash",
+            tint: .red,
+            role: .destructive,
+            confirmationMessage: "This will permanently delete the container and cannot be undone."
+        ) {
+            Task { await deleteContainer() }
+        })
         return items
     }
 

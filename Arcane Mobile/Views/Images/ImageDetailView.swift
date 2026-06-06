@@ -10,7 +10,6 @@ struct ImageDetailView: View {
 
     @State private var details: ImageDetailSummary?
     @State private var isLoading = false
-    @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
     @State private var updateInfo: ImageUpdateResponse?
     @State private var isCheckingUpdate = false
@@ -55,36 +54,35 @@ struct ImageDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .morphingActions(
+            primary: ActionButtonItem(
+                id: "recheck",
+                title: "Recheck for Updates",
+                systemImage: "arrow.triangle.2.circlepath",
+                tint: .accentColor
+            ) {
+                Task { await checkForUpdate() }
+            },
+            inline: [
+                ActionButtonItem(
+                    id: "remove",
+                    title: "Remove Image",
+                    systemImage: "trash",
+                    tint: .red,
+                    role: .destructive,
+                    confirmationMessage: "This will remove the image from the host."
+                ) {
+                    Task { await removeImage() }
+                }
+            ],
+            runningItemID: isCheckingUpdate ? "recheck" : nil,
+            isDisabled: isCheckingUpdate
+        )
         .navigationTitle("Image Details")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button {
-                        Task { await checkForUpdate() }
-                    } label: {
-                        Label("Recheck for Updates", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .disabled(isCheckingUpdate)
-                    Divider()
-                    Button(role: .destructive) {
-                        showDeleteConfirm = true
-                    } label: {
-                        Label("Remove Image", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
-        }
         .task { await loadDetails() }
         .task { await loadUpdateStatus() }
         .task { await loadUsingContainers() }
-        .confirmationDialog("Remove Image", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Remove", role: .destructive) { Task { await removeImage() } }
-        } message: {
-            Text("This will remove the image from the host.")
-        }
         .alert(
             "Error",
             isPresented: Binding(

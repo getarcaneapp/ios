@@ -70,17 +70,15 @@ struct EnvironmentDetailView: View {
         }
         .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .actionToolbar(
-            items: [
-                ActionButtonItem(
-                    id: "test",
-                    title: "Test Connection",
-                    systemImage: "network",
-                    tint: .accentColor
-                ) {
-                    Task { await testConnection() }
-                }
-            ],
+        .morphingActions(
+            primary: ActionButtonItem(
+                id: "test",
+                title: "Test Connection",
+                systemImage: "network",
+                tint: .accentColor
+            ) {
+                Task { await testConnection() }
+            },
             runningItemID: isTestingConnection ? "test" : nil,
             isDisabled: isTestingConnection
         )

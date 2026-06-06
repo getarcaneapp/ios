@@ -70,47 +70,16 @@ struct ProjectDetailView: View {
         }
         .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .actionToolbar(
-            items: actionItems,
+        .morphingActions(
+            primary: morphPrimary,
+            inline: morphInline,
+            overflow: morphOverflow,
             runningItemID: runningActionID,
             isDisabled: isActioning,
             resourceName: currentProject.displayName
         )
         .navigationTitle(currentProject.displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button {
-                        showCompose = true
-                    } label: {
-                        Label("View Compose File", systemImage: "doc.text")
-                    }
-                    if currentProject.isArchived {
-                        Button {
-                            Task { await unarchiveProject() }
-                        } label: {
-                            Label("Unarchive Project", systemImage: "tray.and.arrow.up")
-                        }
-                    } else {
-                        Button {
-                            Task { await archiveProject() }
-                        } label: {
-                            Label("Archive Project", systemImage: "archivebox")
-                        }
-                    }
-                    Button(role: .destructive) {
-                        showDeleteConfirm = true
-                    } label: {
-                        DestructiveLabel(text: "Delete Project")
-                    }
-                    .tint(.red)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .disabled(isActioning)
-            }
-        }
         .task { await loadProject() }
         .refreshable { await loadProject(refresh: true) }
         .sheet(isPresented: $showLogs) {
@@ -172,76 +141,63 @@ struct ProjectDetailView: View {
         .padding(.vertical, 4)
     }
 
-    private var actionItems: [ActionButtonItem] {
-        var items: [ActionButtonItem] = []
-
+    /// State-aware centre action: Deploy when stopped, Stop when running.
+    private var morphPrimary: ActionButtonItem {
         if isRunning {
-            items.append(ActionButtonItem(
-                id: "stop",
-                title: "Stop",
-                systemImage: "stop.fill",
-                tint: .red,
-                role: .destructive
-            ) {
+            return ActionButtonItem(id: "stop", title: "Stop", systemImage: "stop.fill", tint: .red, role: .destructive) {
                 Task { await performSimpleAction(suffix: "down", label: "Stopping", actionID: "stop") }
-            })
-            items.append(ActionButtonItem(
-                id: "restart",
-                title: "Restart",
-                systemImage: "arrow.clockwise",
-                tint: .orange
-            ) {
+            }
+        } else {
+            return ActionButtonItem(id: "start", title: "Deploy", systemImage: "play.fill", tint: .green) {
+                startStreamingAction(suffix: "up", title: "Deploy \(currentProject.displayName)")
+            }
+        }
+    }
+
+    private var morphInline: [ActionButtonItem] {
+        var items: [ActionButtonItem] = []
+        if isRunning {
+            items.append(ActionButtonItem(id: "restart", title: "Restart", systemImage: "arrow.clockwise", tint: .orange) {
                 Task { await performSimpleAction(suffix: "restart", label: "Restarting", actionID: "restart") }
             })
-        } else {
-            items.append(ActionButtonItem(
-                id: "start",
-                title: "Deploy",
-                systemImage: "play.fill",
-                tint: .green
-            ) {
-                startStreamingAction(suffix: "up", title: "Deploy \(currentProject.displayName)")
-            })
         }
-
-        items.append(ActionButtonItem(
-            id: "redeploy",
-            title: "Redeploy",
-            systemImage: "arrow.triangle.2.circlepath",
-            tint: .purple
-        ) {
+        items.append(ActionButtonItem(id: "redeploy", title: "Redeploy", systemImage: "arrow.triangle.2.circlepath", tint: .purple) {
             startStreamingAction(suffix: "redeploy", title: "Redeploy \(currentProject.displayName)")
         })
-
-        items.append(ActionButtonItem(
-            id: "pull",
-            title: "Pull",
-            systemImage: "arrow.down",
-            tint: .accentColor
-        ) {
+        items.append(ActionButtonItem(id: "pull", title: "Pull", systemImage: "arrow.down", tint: .accentColor) {
             startStreamingAction(suffix: "pull", title: "Pull Images")
         })
+        return items
+    }
 
+    private var morphOverflow: [ActionButtonItem] {
+        var items: [ActionButtonItem] = []
         if hasBuild {
-            items.append(ActionButtonItem(
-                id: "build",
-                title: "Build",
-                systemImage: "hammer.fill",
-                tint: .indigo
-            ) {
+            items.append(ActionButtonItem(id: "build", title: "Build", systemImage: "hammer.fill", tint: .indigo) {
                 startStreamingAction(suffix: "build", title: "Build Images")
             })
         }
-
-        items.append(ActionButtonItem(
-            id: "logs",
-            title: "Logs",
-            systemImage: "doc.text.fill",
-            tint: .secondary
-        ) {
+        items.append(ActionButtonItem(id: "logs", title: "Logs", systemImage: "doc.text.fill", tint: .secondary) {
             showLogs = true
         })
-
+        items.append(ActionButtonItem(id: "compose", title: "View Compose File", systemImage: "doc.text", tint: .accentColor) {
+            showCompose = true
+        })
+        if currentProject.isArchived {
+            items.append(ActionButtonItem(id: "unarchive", title: "Unarchive Project", systemImage: "tray.and.arrow.up", tint: .accentColor) {
+                Task { await unarchiveProject() }
+            })
+        } else {
+            items.append(ActionButtonItem(id: "archive", title: "Archive Project", systemImage: "archivebox", tint: .accentColor) {
+                Task { await archiveProject() }
+            })
+        }
+        // `role: nil` + red tint: keeps the view's bespoke two-option delete
+        // alert (Delete / Delete and Remove Files) while still reading as
+        // destructive in the overflow menu.
+        items.append(ActionButtonItem(id: "delete", title: "Delete Project", systemImage: "trash", tint: .red) {
+            showDeleteConfirm = true
+        })
         return items
     }
 

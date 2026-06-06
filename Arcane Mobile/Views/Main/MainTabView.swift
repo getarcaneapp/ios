@@ -9,92 +9,113 @@ struct MainTabView: View {
     @State private var swapTarget: AppTab? = nil
     @State private var store = NavTabsStore.shared
     @State private var router = QuickActionRouter.shared
-    @AppStorage("arcane.tip.tabSwapDismissed") private var tabSwapTipDismissed = false
+    @State private var morphStore = TabBarMorphStore.shared
+    @AppStorage("accentColorHex") private var accentColorHex = ""
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
     private var supportsV2: Bool { manager.serverCapabilities?.mode == .rbac }
+
+    /// The configured accent (matches `Arcane_MobileApp`), used to tint the
+    /// morphing bar's selected-tab indicator.
+    private var accentColor: Color {
+        guard !accentColorHex.isEmpty, let color = Color(hex: accentColorHex) else {
+            return .accentColor
+        }
+        return color
+    }
 
     private var visibleTabs: [AppTab] {
         store.visibleTabs(isAdmin: isAdmin, supportsV2: supportsV2)
     }
 
+    /// Tabs for the morphing bar: the visible set plus the locked Settings slot.
+    private var morphTabs: [MorphingTabBar.TabEntry] {
+        visibleTabs.map { MorphingTabBar.TabEntry(id: $0.id, symbol: $0.systemImage) }
+            + [MorphingTabBar.TabEntry(id: "settings", symbol: "gearshape.fill")]
+    }
+
     @ViewBuilder
     private var coreTabView: some View {
+        // The native tab bar is hidden per-tab (`.toolbar(.hidden, for: .tabBar)`)
+        // — `MainTabView` overlays `MorphingTabBar` in its place so the bar can
+        // morph into detail-page controls. The `TabView` still drives selection.
         TabView(selection: $selectedTab) {
             ForEach(visibleTabs) { tab in
                 Tab(tab.tabBarTitle, systemImage: tab.systemImage, value: tab.id) {
-                    NavigationStack {
+                    TabNavigationContainer(tabID: tab.id, morphStore: morphStore) {
                         appTabDestination(tab, manager: manager, selectedTab: $selectedTab)
                     }
+                    .environment(\.currentTabID, tab.id)
+                    .toolbar(.hidden, for: .tabBar)
                     .id(tab.isEnvironmentScoped ? "\(tab.id)-\(manager.activeEnvironmentID.rawValue)" : tab.id)
                 }
             }
             Tab("Settings", systemImage: "gearshape.fill", value: "settings") {
                 SettingsView()
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        Color.clear.frame(height: MorphingTabBar.reservedHeight)
+                    }
+                    .environment(\.currentTabID, "settings")
+                    .toolbar(.hidden, for: .tabBar)
             }
         }
     }
 
     var body: some View {
-        Group {
-            if tabSwapTipDismissed {
-                coreTabView
-            } else if #available(iOS 26, *) {
-                // The accessory modifier reserves a slot above the floating tab
-                // bar. Apply it only while the tip is undismissed so the slot
-                // disappears entirely once the user dismisses or long-presses.
-                // iOS 18 has no floating-glass tab bar / accessory slot, so the
-                // banner simply doesn't appear there (long-press swap still works).
-                coreTabView
-                    .tabViewBottomAccessory {
-                        TabSwapHintBanner {
-                            withAnimation(.smooth(duration: 0.3)) {
-                                tabSwapTipDismissed = true
-                            }
-                            TabSwapTip.didDiscoverFeature = true
-                        }
-                    }
-            } else {
-                coreTabView
+        coreTabView
+            .overlay(alignment: .bottom) {
+                MorphingTabBar(
+                    tabs: morphTabs,
+                    selectedID: $selectedTab,
+                    store: morphStore,
+                    onLongPressTab: handleLongPressTab,
+                    accentColor: accentColor
+                )
+                // Pin the bar a fixed gap above the *physical* bottom (just above
+                // the home indicator), like the native bar: fill the height and
+                // bottom-align, then ignore the safe area so it sits within it.
+                .padding(.bottom, 10)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .ignoresSafeArea()
             }
-        }
-        .background {
-            TabBarLongPressInstaller { idx in
-                let tabs = visibleTabs
-                guard idx >= 0, idx < tabs.count else { return }
-                HapticsManager.medium()
-                withAnimation(.smooth(duration: 0.3)) {
-                    tabSwapTipDismissed = true
+            .sheet(item: $swapTarget) { current in
+                TabSwapSheet(current: current) { replacement in
+                    HapticsManager.success()
+                    store.swap(pinned: current, with: replacement)
+                    if selectedTab == current.id { selectedTab = replacement.id }
+                    swapTarget = nil
                 }
-                TabSwapTip.didDiscoverFeature = true
-                swapTarget = tabs[idx]
+                .environment(manager)
             }
-        }
-        .sheet(item: $swapTarget) { current in
-            TabSwapSheet(current: current) { replacement in
-                HapticsManager.success()
-                store.swap(pinned: current, with: replacement)
-                if selectedTab == current.id { selectedTab = replacement.id }
-                swapTarget = nil
+            .onChange(of: selectedTab) { _, newValue in
+                morphStore.activeTabID = newValue
             }
-            .environment(manager)
-        }
-        .onChange(of: router.pendingTabID) { _, newValue in
-            guard let target = newValue else { return }
-            selectedTab = target
-            ensureSelectedTabVisible()
-            router.pendingTabID = nil
-        }
-        .onChange(of: visibleTabs.map(\.id)) { _, _ in
-            ensureSelectedTabVisible()
-        }
-        .onAppear {
-            if let target = router.pendingTabID {
+            .onChange(of: router.pendingTabID) { _, newValue in
+                guard let target = newValue else { return }
                 selectedTab = target
+                ensureSelectedTabVisible()
                 router.pendingTabID = nil
             }
-            ensureSelectedTabVisible()
-        }
+            .onChange(of: visibleTabs.map(\.id)) { _, _ in
+                ensureSelectedTabVisible()
+            }
+            .onAppear {
+                if let target = router.pendingTabID {
+                    selectedTab = target
+                    router.pendingTabID = nil
+                }
+                ensureSelectedTabVisible()
+                morphStore.activeTabID = selectedTab
+            }
+    }
+
+    /// Long-press on a tab (tabs state only) opens the swap sheet. Settings —
+    /// the last slot — is locked and ignored.
+    private func handleLongPressTab(_ idx: Int) {
+        let tabs = visibleTabs
+        guard idx >= 0, idx < tabs.count else { return }
+        HapticsManager.medium()
+        swapTarget = tabs[idx]
     }
 
     private func ensureSelectedTabVisible() {
@@ -105,124 +126,35 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - Hint banner
+// The long-press "swap a tab" gesture used to hook the native `UITabBar` via a
+// `TabBarLongPressInstaller`, and a `tabViewBottomAccessory` hint banner pointed
+// at it. Both are gone now that `MorphingTabBar` owns the bar: the long-press
+// lives on the bar's custom tab buttons (`onLongPressTab`, gated to the
+// non-morphed state) and is wired up in `body` via `handleLongPressTab`.
 
-/// Compact one-liner sized to fit the `tabViewBottomAccessory` slot. Shows
-/// once and stays dismissed forever once tapped X or the user long-presses a
-/// tab (which sets the same `@AppStorage` key).
-private struct TabSwapHintBanner: View {
-    let onDismiss: () -> Void
+// MARK: - Per-tab navigation container
+
+/// Wraps a tab's `NavigationStack` with an explicit path so we can drop the morph
+/// the *instant* navigation returns to the root list — the detail page's own
+/// `onDisappear` fires only when the pop (and its zoom transition) finishes, which
+/// left the controls bar lingering. Also reserves the floating bar's footprint so
+/// content clears it (a stack-level inset doesn't propagate into the List).
+private struct TabNavigationContainer<Content: View>: View {
+    let tabID: String
+    let morphStore: TabBarMorphStore
+    @ViewBuilder var content: Content
+
+    @State private var path = NavigationPath()
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "hand.tap.fill")
-                .foregroundStyle(.blue)
-                .accessibilityHidden(true)
-            Text("Long-press a tab to customize")
-                .font(.footnote.weight(.medium))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            Spacer(minLength: 4)
-            Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.tertiary)
-                    .imageScale(.medium)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss hint")
+        NavigationStack(path: $path) {
+            content
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    Color.clear.frame(height: MorphingTabBar.reservedHeight)
+                }
         }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Hint: long-press a tab to customize the tab bar")
-    }
-}
-
-// MARK: - Long-press detection
-
-/// Attaches a `UILongPressGestureRecognizer` to the underlying `UITabBar`
-/// once it's available in the window hierarchy. Uses `cancelsTouchesInView =
-/// false` so normal tab taps continue to work. Only fires for the first 4 tab
-/// slots — the rightmost (Settings) slot is treated as a no-op.
-private struct TabBarLongPressInstaller: UIViewRepresentable {
-    let onLongPress: (Int) -> Void
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .clear
-        view.isUserInteractionEnabled = false
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.onLongPress = onLongPress
-        if !context.coordinator.installed {
-            DispatchQueue.main.async {
-                tryInstall(from: uiView, coordinator: context.coordinator, retries: 10)
-            }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onLongPress: onLongPress)
-    }
-
-    private func tryInstall(from anchor: UIView, coordinator: Coordinator, retries: Int) {
-        guard !coordinator.installed else { return }
-        if let window = anchor.window, let tabBar = findTabBar(in: window) {
-            let lp = UILongPressGestureRecognizer(
-                target: coordinator,
-                action: #selector(Coordinator.handle(_:))
-            )
-            lp.minimumPressDuration = 0.4
-            lp.cancelsTouchesInView = false
-            lp.delegate = coordinator
-            tabBar.addGestureRecognizer(lp)
-            coordinator.installed = true
-            coordinator.tabBar = tabBar
-            return
-        }
-        guard retries > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak anchor] in
-            guard let anchor else { return }
-            tryInstall(from: anchor, coordinator: coordinator, retries: retries - 1)
-        }
-    }
-
-    private func findTabBar(in view: UIView) -> UITabBar? {
-        if let tb = view as? UITabBar { return tb }
-        for sub in view.subviews {
-            if let tb = findTabBar(in: sub) { return tb }
-        }
-        return nil
-    }
-
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var onLongPress: (Int) -> Void
-        weak var tabBar: UITabBar?
-        var installed = false
-
-        init(onLongPress: @escaping (Int) -> Void) {
-            self.onLongPress = onLongPress
-        }
-
-        @objc func handle(_ gr: UILongPressGestureRecognizer) {
-            guard gr.state == .began, let tabBar else { return }
-            let loc = gr.location(in: tabBar)
-            let slots = max(tabBar.items?.count ?? 5, 1)
-            guard tabBar.bounds.width > 0 else { return }
-            let slotWidth = tabBar.bounds.width / CGFloat(slots)
-            let idx = min(max(Int(loc.x / slotWidth), 0), slots - 1)
-            // The rightmost slot is Settings — locked, no swap.
-            if idx >= slots - 1 { return }
-            onLongPress(idx)
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
-        ) -> Bool {
-            true
+        .onChange(of: path.isEmpty) { _, isEmpty in
+            if isEmpty { morphStore.clearTab(tabID) }
         }
     }
 }
