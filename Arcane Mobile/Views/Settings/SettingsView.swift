@@ -268,12 +268,13 @@ struct UsersView: View {
                         NavigationLink(destination: UserDetailView(user: user, onUpdate: { await loadUsers() })) {
                             UserRow(user: user)
                         }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button {
                                 pendingDeleteUser = user
                             } label: {
-                                DestructiveLabel(text: "Delete")
+                                Label("Delete", systemImage: "trash")
                             }
+                            .tint(.red)
                         }
                     }
                 }
@@ -642,6 +643,7 @@ struct APIKeysView: View {
     @State private var showCreateSheet = false
     @State private var createdKey: String?
     @State private var actionErrorMessage: String?
+    @State private var pendingDeleteKey: APIKey?
 
     var body: some View {
         Group {
@@ -661,13 +663,14 @@ struct APIKeysView: View {
                 List {
                     ForEach(apiKeys) { key in
                         APIKeyRow(apiKey: key)
-                            .swipeActions(edge: .trailing) {
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if key.isProtected != true {
-                                    Button(role: .destructive) {
-                                        Task { await deleteKey(key) }
+                                    Button {
+                                        pendingDeleteKey = key
                                     } label: {
-                                        DestructiveLabel(text: "Delete")
+                                        Label("Delete", systemImage: "trash")
                                     }
+                                    .tint(.red)
                                 }
                             }
                     }
@@ -676,6 +679,15 @@ struct APIKeysView: View {
             }
         }
         .navigationTitle("API Keys")
+        .deleteConfirmation(
+            item: $pendingDeleteKey,
+            title: { _ in "Delete API Key" },
+            message: { _ in "This permanently revokes the API key. Anything using it will stop working." },
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) { key in
+            Task { await deleteKey(key) }
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: { Image(systemName: "plus") }
@@ -891,6 +903,7 @@ struct ContainerRegistriesView: View {
     @State private var showCreateRegistrySheet = false
     @State private var editingRegistry: ContainerRegistry?
     @State private var actionErrorMessage: String?
+    @State private var pendingDeleteRegistry: ContainerRegistry?
 
     var body: some View {
         Group {
@@ -914,14 +927,15 @@ struct ContainerRegistriesView: View {
                         PressableRegistryRow(
                             registry: registry,
                             onEdit: { editingRegistry = registry },
-                            onDelete: { Task { await deleteRegistry(registry) } }
+                            onDelete: { pendingDeleteRegistry = registry }
                         )
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                Task { await deleteRegistry(registry) }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button {
+                                pendingDeleteRegistry = registry
                             } label: {
-                                DestructiveLabel(text: "Delete")
+                                Label("Delete", systemImage: "trash")
                             }
+                            .tint(.red)
                         }
                     }
                 }
@@ -929,6 +943,15 @@ struct ContainerRegistriesView: View {
             }
         }
         .navigationTitle("Container Registries")
+        .deleteConfirmation(
+            item: $pendingDeleteRegistry,
+            title: { _ in "Delete Registry" },
+            message: { _ in "This removes the container registry and its saved credentials." },
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) { registry in
+            Task { await deleteRegistry(registry) }
+        }
         .toolbar {
             if manager.currentUser?.isAdmin == true {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -1017,6 +1040,7 @@ struct TemplateRegistriesView: View {
     @State private var showBrowser = false
     @State private var editingRegistry: TemplateRegistry?
     @State private var actionErrorMessage: String?
+    @State private var pendingDeleteRegistry: TemplateRegistry?
 
     var body: some View {
         Group {
@@ -1040,14 +1064,15 @@ struct TemplateRegistriesView: View {
                         PressableTemplateRegistryRow(
                             registry: registry,
                             onEdit: { editingRegistry = registry },
-                            onDelete: { Task { await deleteTemplateRegistry(registry) } }
+                            onDelete: { pendingDeleteRegistry = registry }
                         )
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                Task { await deleteTemplateRegistry(registry) }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button {
+                                pendingDeleteRegistry = registry
                             } label: {
-                                DestructiveLabel(text: "Delete")
+                                Label("Delete", systemImage: "trash")
                             }
+                            .tint(.red)
                         }
                     }
                 }
@@ -1055,6 +1080,15 @@ struct TemplateRegistriesView: View {
             }
         }
         .navigationTitle("Template Registries")
+        .deleteConfirmation(
+            item: $pendingDeleteRegistry,
+            title: { _ in "Delete Template Registry" },
+            message: { _ in "This removes the template registry." },
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) { registry in
+            Task { await deleteTemplateRegistry(registry) }
+        }
         .toolbar {
             if manager.currentUser?.isAdmin == true {
                 ToolbarItem(placement: .navigationBarTrailing) {

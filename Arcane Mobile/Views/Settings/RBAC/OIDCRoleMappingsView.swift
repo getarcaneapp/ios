@@ -61,13 +61,14 @@ struct OIDCRoleMappingsView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             if mapping.sourceKind == .manual {
-                                Button(role: .destructive) {
+                                Button {
                                     pendingDeleteMapping = mapping
                                 } label: {
-                                    DestructiveLabel(text: "Delete")
+                                    Label("Delete", systemImage: "trash")
                                 }
+                                .tint(.red)
                             }
                         }
                     }

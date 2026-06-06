@@ -359,12 +359,13 @@ struct ProjectsView: View {
             }
             .tint(.yellow)
         }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
                 pendingDeleteProject = project
             } label: {
-                DestructiveLabel(text: "Delete")
+                Label("Delete", systemImage: "trash")
             }
+            .tint(.red)
         }
     }
 
@@ -445,6 +446,7 @@ struct ProjectsView: View {
 }
 
 struct ProjectRow: View {
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let project: ProjectDetails
     var isPinned: Bool = false
 
@@ -459,7 +461,7 @@ struct ProjectRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CachedAsyncImage(url: project.iconUrl, size: 36) {
+            CachedAsyncImage(url: project.themedIconUrl(for: colorScheme), size: 36) {
                 if #available(iOS 26, *) {
                     Image(systemName: "square.stack.3d.up.fill")
                         .font(.title3)

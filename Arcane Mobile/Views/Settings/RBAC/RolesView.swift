@@ -57,12 +57,13 @@ struct RolesView: View {
                                 NavigationLink(destination: RoleDetailView(role: role, manifest: manifest, mode: .edit, onUpdate: { await load(refresh: true) })) {
                                     RoleRow(role: role)
                                 }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button {
                                         pendingDeleteRole = role
                                     } label: {
-                                        DestructiveLabel(text: "Delete")
+                                        Label("Delete", systemImage: "trash")
                                     }
+                                    .tint(.red)
                                 }
                             }
                         }

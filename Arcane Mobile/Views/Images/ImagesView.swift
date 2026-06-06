@@ -297,12 +297,13 @@ struct ImagesView: View {
         } preview: {
             imagePreview(image, state: state)
         }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
                 pendingDestructive = .delete(image)
             } label: {
-                DestructiveLabel(text: "Delete")
+                Label("Delete", systemImage: "trash")
             }
+            .tint(.red)
         }
     }
 

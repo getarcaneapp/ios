@@ -5,6 +5,7 @@ struct ContainerDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     let container: ContainerSummary
     let environmentID: EnvironmentID
@@ -50,6 +51,10 @@ struct ContainerDetailView: View {
             if !trimmed.isEmpty { return trimmed }
         }
         return container.displayName
+    }
+
+    private var headerIconUrl: String? {
+        details?.themedIconUrl(for: colorScheme) ?? container.themedIconUrl(for: colorScheme)
     }
 
     var body: some View {
@@ -159,7 +164,7 @@ struct ContainerDetailView: View {
     private var statusHeader: some View {
         HStack(spacing: 16) {
             ZStack(alignment: .bottomTrailing) {
-                CachedAsyncImage(url: container.iconUrl, size: 56) {
+                CachedAsyncImage(url: headerIconUrl, size: 56) {
                     Image(systemName: "cube.box.fill")
                         .font(.title)
                         .foregroundStyle(isRunning ? .green : .secondary)

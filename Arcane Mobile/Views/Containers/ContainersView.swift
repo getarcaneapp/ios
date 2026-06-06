@@ -498,6 +498,7 @@ struct ResourceSearchControls: View {
 }
 
 struct ContainerRow: View {
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let container: ContainerSummary
     var isPinned: Bool = false
 
@@ -524,7 +525,7 @@ struct ContainerRow: View {
     var body: some View {
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
-                CachedAsyncImage(url: container.iconUrl, size: 36) {
+                CachedAsyncImage(url: container.themedIconUrl(for: colorScheme), size: 36) {
                     if #available(iOS 26, *) {
                         Image(systemName: "cube.box.fill")
                             .font(.title3)

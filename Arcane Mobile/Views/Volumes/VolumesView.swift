@@ -273,12 +273,13 @@ struct VolumesView: View {
             }
             .tint(.yellow)
         }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
                 pendingDestructive = .delete(volume)
             } label: {
-                DestructiveLabel(text: "Delete")
+                Label("Delete", systemImage: "trash")
             }
+            .tint(.red)
         }
     }
 

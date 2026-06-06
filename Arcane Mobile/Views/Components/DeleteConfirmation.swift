@@ -3,15 +3,21 @@
 //  Arcane Mobile
 //
 //  A reusable destructive-confirmation surface used app-wide in place of
-//  `.alert` / `.confirmationDialog`. It presents a bottom card with a dark
-//  scrim and capsule Cancel / action buttons that rises and fades in.
+//  `.alert` / `.confirmationDialog`. It shows a bottom "card" with a dark scrim
+//  and Cancel / action capsule buttons that rises and fades in.
 //
 //  The card design + spring timing are adapted from Balaji Venkatesh's
-//  `AnimatedDeleteButton` sample. The original morphs out of the tapped button
-//  via an ImageRenderer snapshot; because most of this app's confirmations fire
-//  from swipe actions, context menus, toolbar buttons and `.alert` state (none
-//  of which leave a persistent source button), we present the same card as a
-//  unified bottom sheet instead — one consistent look for every trigger.
+//  `AnimatedDeleteButton` sample. The original morphs out of the tapped button;
+//  because most of this app's confirmations fire from swipe actions, context
+//  menus, toolbar buttons and `.alert` state (none of which leave a persistent
+//  source button), we present the same card as a unified bottom sheet instead.
+//
+//  IMPORTANT: the card is rendered by a SINGLE host (`.deleteConfirmationHost()`,
+//  mounted once near the app root) as a plain ZStack overlay — NOT via
+//  `.fullScreenCover`. A clear-background `fullScreenCover` is unreliable here:
+//  dismissing it can leave the screen stuck on a black cover. A root overlay has
+//  no cover to leave behind, so it presents and dismisses cleanly every time.
+//  `.deleteConfirmation(...)` call sites just publish a request to the host.
 //
 
 import SwiftUI
@@ -51,7 +57,72 @@ struct DeleteConfirmationConfig {
     var cancelTitle: String = "Cancel"
 }
 
-// MARK: - View modifiers (public API)
+// MARK: - Presenter (single source of truth)
+
+/// App-wide store for the currently-presented confirmation. `.deleteConfirmation`
+/// modifiers publish here; the host (`DeleteConfirmationHost`) renders it.
+@MainActor
+@Observable
+final class DeleteConfirmationPresenter {
+    static let shared = DeleteConfirmationPresenter()
+    private init() {}
+
+    struct Request: Identifiable {
+        let id = UUID()
+        var config: DeleteConfirmationConfig
+        /// Resets the source binding (`isPresented = false` / `item = nil`) once
+        /// the card is gone, so the trigger can fire again.
+        var onDismiss: () -> Void
+    }
+
+    private(set) var request: Request?
+
+    func present(_ config: DeleteConfirmationConfig, onDismiss: @escaping () -> Void) {
+        // Defensively retire anything already showing (shouldn't normally happen
+        // since the card is modal) so we never strand a binding stuck "on".
+        request?.onDismiss()
+        request = Request(config: config, onDismiss: onDismiss)
+    }
+
+    /// Called by the host once the card has animated out.
+    func clear() {
+        let onDismiss = request?.onDismiss
+        request = nil
+        onDismiss?()
+    }
+}
+
+// MARK: - Host (mount once near the root)
+
+extension View {
+    /// Mounts the single, app-wide confirmation overlay. Apply once near the
+    /// root (above the tab bar / navigation stacks).
+    func deleteConfirmationHost() -> some View {
+        overlay { DeleteConfirmationHost() }
+    }
+}
+
+private struct DeleteConfirmationHost: View {
+    @State private var presenter = DeleteConfirmationPresenter.shared
+
+    var body: some View {
+        ZStack {
+            if let request = presenter.request {
+                DeleteConfirmationCard(config: request.config) { action in
+                    action?()
+                    presenter.clear()
+                }
+                // Fresh identity per request so the card's entrance `onAppear`
+                // runs every time it's shown.
+                .id(request.id)
+                .transition(.identity)
+            }
+        }
+        .allowsHitTesting(presenter.request != nil)
+    }
+}
+
+// MARK: - View modifiers (public API — call sites are unchanged)
 
 extension View {
     /// Bool-driven, single destructive action. Mirrors `.alert(_:isPresented:)`.
@@ -64,7 +135,7 @@ extension View {
         confirmTint: Color? = nil,
         onConfirm: @escaping () -> Void
     ) -> some View {
-        modifier(DeleteConfirmationBoolModifier(
+        deleteConfirmation(
             isPresented: isPresented,
             config: DeleteConfirmationConfig(
                 title: title,
@@ -76,7 +147,7 @@ extension View {
                     action: onConfirm
                 )]
             )
-        ))
+        )
     }
 
     /// Bool-driven, full control over the card (multiple actions, custom cancel).
@@ -84,7 +155,7 @@ extension View {
         isPresented: Binding<Bool>,
         config: DeleteConfirmationConfig
     ) -> some View {
-        modifier(DeleteConfirmationBoolModifier(isPresented: isPresented, config: config))
+        modifier(DeleteConfirmationBoolPublisher(isPresented: isPresented, config: config))
     }
 
     /// Item-driven, single destructive action. Mirrors
@@ -99,7 +170,7 @@ extension View {
         confirmTint: Color? = nil,
         onConfirm: @escaping (Item) -> Void
     ) -> some View {
-        modifier(DeleteConfirmationItemModifier(item: item) { value in
+        deleteConfirmation(item: item) { value in
             DeleteConfirmationConfig(
                 title: title(value),
                 message: message(value),
@@ -110,7 +181,7 @@ extension View {
                     action: { onConfirm(value) }
                 )]
             )
-        })
+        }
     }
 
     /// Item-driven, full control over the card.
@@ -118,85 +189,36 @@ extension View {
         item: Binding<Item?>,
         config: @escaping (Item) -> DeleteConfirmationConfig
     ) -> some View {
-        modifier(DeleteConfirmationItemModifier(item: item, configBuilder: config))
+        modifier(DeleteConfirmationItemPublisher(item: item, configBuilder: config))
     }
 }
 
-// MARK: - Modifiers
-
-private struct DeleteConfirmationBoolModifier: ViewModifier {
+private struct DeleteConfirmationBoolPublisher: ViewModifier {
     @Binding var isPresented: Bool
     let config: DeleteConfirmationConfig
 
-    /// Internal mirror so we control the cover's (suppressed) transition.
-    @State private var coverShown = false
-
     func body(content: Content) -> some View {
-        content
-            .onChange(of: isPresented) { _, presented in
-                if presented, !coverShown {
-                    withoutAnimation { coverShown = true }
-                } else if !presented, coverShown {
-                    withoutAnimation { coverShown = false }
-                }
+        content.onChange(of: isPresented) { _, now in
+            guard now else { return }
+            DeleteConfirmationPresenter.shared.present(config) {
+                if isPresented { isPresented = false }
             }
-            .fullScreenCover(isPresented: $coverShown) {
-                DeleteConfirmationCard(config: config) { action in
-                    withoutAnimation {
-                        coverShown = false
-                        isPresented = false
-                    }
-                    action?()
-                }
-                .deleteConfirmationCoverChrome()
-            }
+        }
     }
 }
 
-private struct DeleteConfirmationItemModifier<Item>: ViewModifier {
+private struct DeleteConfirmationItemPublisher<Item>: ViewModifier {
     @Binding var item: Item?
     let configBuilder: (Item) -> DeleteConfirmationConfig
 
-    @State private var coverShown = false
-    /// Held across the exit animation so the card keeps its content while the
-    /// caller's `item` is cleared.
-    @State private var captured: Item?
-
     func body(content: Content) -> some View {
-        content
-            // Optional-to-nil comparison needs no Equatable on `Item`.
-            .onChange(of: item != nil) { _, hasItem in
-                if hasItem {
-                    captured = item
-                    withoutAnimation { coverShown = true }
-                } else if coverShown {
-                    withoutAnimation { coverShown = false }
-                }
+        // Optional-to-nil comparison needs no Equatable on `Item`.
+        content.onChange(of: item != nil) { _, hasItem in
+            guard hasItem, let value = item else { return }
+            DeleteConfirmationPresenter.shared.present(configBuilder(value)) {
+                if item != nil { item = nil }
             }
-            .fullScreenCover(isPresented: $coverShown) {
-                if let captured {
-                    DeleteConfirmationCard(config: configBuilder(captured)) { action in
-                        withoutAnimation {
-                            coverShown = false
-                            item = nil
-                        }
-                        action?()
-                        self.captured = nil
-                    }
-                    .deleteConfirmationCoverChrome()
-                }
-            }
-    }
-}
-
-private extension View {
-    /// Shared chrome for the confirmation's full-screen cover so the scrim/card
-    /// float above the nav and tab bars with no system background of their own.
-    func deleteConfirmationCoverChrome() -> some View {
-        self
-            .ignoresSafeArea()
-            .presentationBackground(.clear)
-            .persistentSystemOverlays(.hidden)
+        }
     }
 }
 
@@ -209,6 +231,7 @@ private struct DeleteConfirmationCard: View {
     let onResolved: (_ action: (() -> Void)?) -> Void
 
     @State private var shown = false
+    @State private var isDismissing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let cornerRadius: CGFloat = 40
@@ -231,7 +254,7 @@ private struct DeleteConfirmationCard: View {
                 .blur(radius: shown ? 0 : entranceBlur)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .allowsHitTesting(shown)
+        .ignoresSafeArea()
         .onAppear {
             HapticsManager.warning()
             withAnimation(entrance) { shown = true }
@@ -289,34 +312,65 @@ private struct DeleteConfirmationCard: View {
         }
     }
 
+    @ViewBuilder
     private var cancelButton: some View {
-        Button { resolve(nil) } label: {
-            Text(config.cancelTitle)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(.gray.opacity(0.25), in: .capsule)
+        if #available(iOS 26, *) {
+            // Liquid Glass neutral button.
+            Button { resolve(nil) } label: {
+                Text(config.cancelTitle)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.glass)
+            .controlSize(.large)
+        } else {
+            Button { resolve(nil) } label: {
+                Text(config.cancelTitle)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(.gray.opacity(0.25), in: .capsule)
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 
+    @ViewBuilder
     private func actionButton(_ action: DeleteConfirmationAction) -> some View {
         let tint = action.tint ?? (action.role == .destructive ? .red : .accentColor)
-        return Button { resolve(action.action) } label: {
-            Text(action.title)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(tint.gradient, in: .capsule)
+        if #available(iOS 26, *) {
+            // Prominent Liquid Glass tinted with the action's color.
+            Button { resolve(action.action) } label: {
+                Text(action.title)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.glassProminent)
+            .controlSize(.large)
+            .tint(tint)
+        } else {
+            Button { resolve(action.action) } label: {
+                Text(action.title)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(tint.gradient, in: .capsule)
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 
     private func resolve(_ action: (() -> Void)?) {
+        guard !isDismissing else { return }
+        isDismissing = true
         if action != nil { HapticsManager.success() }
-        withAnimation(exit, completionCriteria: .removed) {
-            shown = false
-        } completion: {
+        withAnimation(exit) { shown = false }
+        // Let the card finish animating out, then hand back to the host (which
+        // runs the action and clears the request). A plain timer is used rather
+        // than `withAnimation(completionCriteria:)`, whose completion handler is
+        // unreliable for interpolating springs.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(reduceMotion ? 170 : 340))
             onResolved(action)
         }
     }
@@ -333,15 +387,4 @@ private struct DeleteConfirmationCard: View {
 
     private var offscreenOffset: CGFloat { reduceMotion ? 0 : 28 }
     private var entranceBlur: CGFloat { reduceMotion ? 0 : 12 }
-}
-
-// MARK: - Helpers
-
-/// Run a state mutation with implicit animations disabled. Used to present /
-/// dismiss the full-screen cover instantly so only the card's own animation
-/// shows, never the cover's default slide.
-private func withoutAnimation(_ body: () -> Void) {
-    var transaction = Transaction()
-    transaction.disablesAnimations = true
-    withTransaction(transaction, body)
 }

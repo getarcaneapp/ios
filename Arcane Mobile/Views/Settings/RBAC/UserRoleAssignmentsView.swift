@@ -94,13 +94,14 @@ struct UserRoleAssignmentsView: View {
                             assignment: assignment,
                             role: availableRoles.first(where: { $0.id == assignment.roleId })
                         )
-                        .swipeActions(edge: .trailing) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             if assignment.sourceKind == .manual {
-                                Button(role: .destructive) {
+                                Button {
                                     pendingRemoveAssignment = assignment
                                 } label: {
-                                    DestructiveLabel(text: "Remove")
+                                    Label("Remove", systemImage: "trash")
                                 }
+                                .tint(.red)
                             }
                         }
                     }
@@ -114,13 +115,14 @@ struct UserRoleAssignmentsView: View {
                             assignment: assignment,
                             role: availableRoles.first(where: { $0.id == assignment.roleId })
                         )
-                        .swipeActions(edge: .trailing) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             if assignment.sourceKind == .manual {
-                                Button(role: .destructive) {
+                                Button {
                                     pendingRemoveAssignment = assignment
                                 } label: {
-                                    DestructiveLabel(text: "Remove")
+                                    Label("Remove", systemImage: "trash")
                                 }
+                                .tint(.red)
                             }
                         }
                     }

@@ -5,6 +5,7 @@ struct ProjectDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let project: ProjectDetails
     let environmentID: EnvironmentID
 
@@ -126,7 +127,7 @@ struct ProjectDetailView: View {
 
     private var projectHeader: some View {
         HStack(spacing: 16) {
-            CachedAsyncImage(url: currentProject.iconUrl, size: 56) {
+            CachedAsyncImage(url: currentProject.themedIconUrl(for: colorScheme), size: 56) {
                 Image(systemName: "square.stack.3d.up.fill")
                     .font(.title)
                     .foregroundStyle(.indigo)

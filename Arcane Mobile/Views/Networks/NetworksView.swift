@@ -146,12 +146,13 @@ struct NetworksView: View {
                                 } preview: {
                                     networkPreview(network)
                                 }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button {
                                         pendingDestructive = .delete(network)
                                     } label: {
-                                        DestructiveLabel(text: "Delete")
+                                        Label("Delete", systemImage: "trash")
                                     }
+                                    .tint(.red)
                                 }
                             }
                         }

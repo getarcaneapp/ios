@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Arcane
 
 enum ListSortOrder: String, CaseIterable, Identifiable {
@@ -169,8 +170,33 @@ extension ContainerSummary {
         return first.isEmpty ? String(id.prefix(12)) : first
     }
     var isRunning: Bool { state.lowercased() == "running" }
-    var iconUrl: String? { labels["com.getarcaneapp.arcane.icon"] }
+    var iconUrl: String? { ThemedIconURL.firstUsableURL(legacyIconUrl) }
+    var legacyIconUrl: String? {
+        labels["com.getarcaneapp.arcane.icon"] ?? labels["arcane.icon"]
+    }
+    func themedIconUrl(for colorScheme: ColorScheme) -> String? {
+        ThemedIconURL.select(
+            iconLightUrl: iconLightUrl,
+            iconDarkUrl: iconDarkUrl,
+            fallback: legacyIconUrl,
+            colorScheme: colorScheme
+        )
+    }
     var hasAvailableUpdate: Bool { updateInfo?.hasUpdate == true }
+}
+
+extension ContainerDetails {
+    var legacyIconUrl: String? {
+        labels?["com.getarcaneapp.arcane.icon"] ?? labels?["arcane.icon"]
+    }
+    func themedIconUrl(for colorScheme: ColorScheme) -> String? {
+        ThemedIconURL.select(
+            iconLightUrl: iconLightUrl,
+            iconDarkUrl: iconDarkUrl,
+            fallback: legacyIconUrl,
+            colorScheme: colorScheme
+        )
+    }
 }
 
 extension ImageSummary {
@@ -183,6 +209,14 @@ extension ImageSummary {
 extension ProjectDetails {
     var displayName: String { name }
     var composeVersion: String? { nil }
+    func themedIconUrl(for colorScheme: ColorScheme) -> String? {
+        ThemedIconURL.select(
+            iconLightUrl: iconLightUrl,
+            iconDarkUrl: iconDarkUrl,
+            fallback: iconUrl,
+            colorScheme: colorScheme
+        )
+    }
     var hasAvailableUpdate: Bool { updateInfo?.hasUpdate == true }
     var statusColor: String {
         switch status.lowercased() {
@@ -191,6 +225,56 @@ extension ProjectDetails {
         case "partial", "partially running": return "orange"
         default: return "gray"
         }
+    }
+}
+
+extension RuntimeService {
+    func themedIconUrl(for colorScheme: ColorScheme) -> String? {
+        ThemedIconURL.select(
+            iconLightUrl: iconLightUrl,
+            iconDarkUrl: iconDarkUrl,
+            fallback: iconUrl,
+            colorScheme: colorScheme
+        )
+    }
+}
+
+private enum ThemedIconURL {
+    static func select(
+        iconLightUrl: String?,
+        iconDarkUrl: String?,
+        fallback: String?,
+        colorScheme: ColorScheme
+    ) -> String? {
+        switch colorScheme {
+        case .light:
+            return firstUsableURL(iconDarkUrl, iconLightUrl, fallback)
+        case .dark:
+            return firstUsableURL(iconLightUrl, iconDarkUrl, fallback)
+        @unknown default:
+            return firstUsableURL(iconLightUrl, iconDarkUrl, fallback)
+        }
+    }
+
+    static func firstUsableURL(_ values: String?...) -> String? {
+        for value in values {
+            guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !trimmed.isEmpty,
+                  isDirectURL(trimmed) else {
+                continue
+            }
+            return trimmed
+        }
+        return nil
+    }
+
+    private static func isDirectURL(_ value: String) -> Bool {
+        if value.hasPrefix("/") { return true }
+        guard let url = URL(string: value),
+              let scheme = url.scheme?.lowercased() else {
+            return false
+        }
+        return scheme == "http" || scheme == "https"
     }
 }
 

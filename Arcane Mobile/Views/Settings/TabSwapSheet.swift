@@ -71,15 +71,20 @@ struct TabSwapSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .deleteConfirmation(
+        // This view is itself presented as a sheet, and the app-wide
+        // `.deleteConfirmation` host renders below sheets — so keep a native
+        // confirmation dialog here.
+        .confirmationDialog(
+            "Reset Tab Bar?",
             isPresented: $showResetConfirm,
-            title: "Reset Tab Bar?",
-            message: "Restores the bottom tab bar to Dashboard, Containers, Images, and Projects.",
-            icon: "arrow.counterclockwise",
-            confirmTitle: "Reset to Default"
+            titleVisibility: .visible
         ) {
-            store.resetToDefaults()
-            dismiss()
+            Button("Reset to Default", role: .destructive) {
+                store.resetToDefaults()
+                dismiss()
+            }
+        } message: {
+            Text("Restores the bottom tab bar to Dashboard, Containers, Images, and Projects.")
         }
     }
 

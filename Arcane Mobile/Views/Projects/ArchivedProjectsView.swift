@@ -154,6 +154,7 @@ struct ArchivedProjectsView: View {
 }
 
 private struct ArchivedProjectRow: View {
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let project: ProjectDetails
 
     private static let dateFormatter: DateFormatter = {
@@ -165,7 +166,7 @@ private struct ArchivedProjectRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CachedAsyncImage(url: project.iconUrl, size: 36) {
+            CachedAsyncImage(url: project.themedIconUrl(for: colorScheme), size: 36) {
                 Image(systemName: "archivebox.fill")
                     .font(.title3)
                     .foregroundStyle(.secondary)

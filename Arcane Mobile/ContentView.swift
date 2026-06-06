@@ -34,6 +34,10 @@ struct ContentView: View {
         .task {
             await manager.checkExistingAuth()
         }
+        // Single app-wide host for the animated delete/destructive confirmation
+        // card. Mounted above the tab bar and navigation stacks so the card and
+        // its scrim float over everything.
+        .deleteConfirmationHost()
     }
 
     private func evaluateWhatsNew() {

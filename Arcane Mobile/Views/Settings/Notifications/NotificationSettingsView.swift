@@ -82,12 +82,12 @@ struct NotificationSettingsView: View {
                         }
                     }
                 }
-                .swipeActions(edge: .trailing) {
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if existing != nil {
-                        Button(role: .destructive) {
+                        Button {
                             pendingDeleteProvider = provider
                         } label: {
-                            DestructiveLabel(text: "Delete")
+                            Label("Delete", systemImage: "trash")
                         }
                         .tint(.red)
                     }
