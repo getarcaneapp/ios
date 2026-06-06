@@ -85,7 +85,6 @@ struct MorphingTabBar: View {
     private var primaryCapsule: some View {
         let primary = payload?.primary
         let isRunningPrimary = primary != nil && payload?.runningItemID == primary?.id
-        let morphTint = isMorphed ? (primary?.tint ?? .clear) : nil
 
         return CustomTabBar(
             tabs: tabs,
@@ -127,10 +126,10 @@ struct MorphingTabBar: View {
             }
         }
         .clipShape(.capsule)
-        // Interactive (press) glass only for the morphed primary button — the
-        // tabs capsule stays non-interactive so pressing one tab doesn't depress
-        // the whole bar; the moving selection slider is the feedback instead.
-        .glassEffectCompat(tint: morphTint, interactive: isMorphed, in: .capsule)
+        // Morphed primary = a tinted, interactive chip (a *solid* fill on iOS 18
+        // so the white glyph keeps contrast). Tabs capsule = plain glass/material,
+        // non-interactive so pressing a tab doesn't depress the whole bar.
+        .modifier(PrimaryCapsuleGlass(isMorphed: isMorphed, tint: primary?.tint))
     }
 
     // MARK: - Secondary pills
@@ -223,6 +222,25 @@ struct MorphingTabBar: View {
     }
 }
 
+// MARK: - Primary capsule background
+
+/// Background for the morphing primary button. Morphed → a tinted chip via
+/// `glassChipCompat`, which is liquid glass on iOS 26 and a **solid** tint fill
+/// on iOS 18 (so the white glyph keeps contrast — `glassEffectCompat`'s 0.15
+/// wash is too faint there). Tabs → plain glass/material, non-interactive.
+private struct PrimaryCapsuleGlass: ViewModifier {
+    let isMorphed: Bool
+    let tint: Color?
+
+    func body(content: Content) -> some View {
+        if isMorphed, let tint {
+            content.glassChipCompat(tint: tint, interactive: true, in: .capsule)
+        } else {
+            content.glassEffectCompat(in: .capsule)
+        }
+    }
+}
+
 // MARK: - Tabs capsule (UISegmentedControl)
 
 /// The tabs state of the bar. A `UISegmentedControl` in a glass capsule (FX's
@@ -303,12 +321,27 @@ private struct CustomTabBar: UIViewRepresentable {
                 control.insertSegment(with: image, at: index, animated: false)
             }
             symbols = tabs.map(\.symbol)
-            // Drop the segmented control's own dividers so it reads as a clean
-            // glass pill (same trick FX uses).
-            DispatchQueue.main.async {
-                for subview in control.subviews.dropLast() where subview is UIImageView {
-                    subview.alpha = 0
+            if #available(iOS 26, *) {
+                // iOS 26: hide the control's own divider/background image views so
+                // the liquid glass shows through. These are NOT the segment icons
+                // on iOS 26 — but they ARE on iOS 18, so this would blank the
+                // icons there; iOS 18 clears its chrome via appearance APIs instead.
+                DispatchQueue.main.async {
+                    for subview in control.subviews.dropLast() where subview is UIImageView {
+                        subview.alpha = 0
+                    }
                 }
+            } else {
+                // iOS 18: only drop the dividers. (Clearing the *background* image
+                // here disables the native selected-segment indicator — so leave
+                // the background, which is what `selectedSegmentTintColor` draws
+                // the selection highlight onto.)
+                control.setDividerImage(
+                    UIImage(),
+                    forLeftSegmentState: .normal,
+                    rightSegmentState: .normal,
+                    barMetrics: .default
+                )
             }
         }
 
