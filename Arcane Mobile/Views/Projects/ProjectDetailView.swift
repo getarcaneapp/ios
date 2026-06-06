@@ -109,15 +109,19 @@ struct ProjectDetailView: View {
                 ReviewPrompter.shared.recordSuccess()
             }
         }
-        .alert("Delete Project", isPresented: $showDeleteConfirm) {
-            Button("Delete", role: .destructive) { Task { await deleteProject(removeFiles: false) } }
-            Button("Delete and Remove Files", role: .destructive) {
-                Task { await deleteProject(removeFiles: true) }
-            }
-            Button("Cancel", role: .cancel) { showDeleteConfirm = false }
-        } message: {
-            Text("Remove the project from Arcane, or also remove its files from disk.")
-        }
+        .deleteConfirmation(isPresented: $showDeleteConfirm, config: DeleteConfirmationConfig(
+            title: "Delete Project",
+            message: "Remove the project from Arcane, or also remove its files from disk.",
+            icon: "trash",
+            actions: [
+                DeleteConfirmationAction(title: "Delete") {
+                    Task { await deleteProject(removeFiles: false) }
+                },
+                DeleteConfirmationAction(title: "Delete and Remove Files") {
+                    Task { await deleteProject(removeFiles: true) }
+                }
+            ]
+        ))
     }
 
     private var projectHeader: some View {

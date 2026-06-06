@@ -71,17 +71,15 @@ struct TabSwapSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .confirmationDialog(
-            "Reset Tab Bar?",
+        .deleteConfirmation(
             isPresented: $showResetConfirm,
-            titleVisibility: .visible
+            title: "Reset Tab Bar?",
+            message: "Restores the bottom tab bar to Dashboard, Containers, Images, and Projects.",
+            icon: "arrow.counterclockwise",
+            confirmTitle: "Reset to Default"
         ) {
-            Button("Reset to Default", role: .destructive) {
-                store.resetToDefaults()
-                dismiss()
-            }
-        } message: {
-            Text("Restores the bottom tab bar to Dashboard, Containers, Images, and Projects.")
+            store.resetToDefaults()
+            dismiss()
         }
     }
 

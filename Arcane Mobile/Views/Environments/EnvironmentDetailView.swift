@@ -18,38 +18,25 @@ struct EnvironmentDetailView: View {
                 infoCard
             }
 
-            // Resource navigation
+            // Resource navigation. Destinations are built lazily (only when the
+            // row is tapped) so the resource views' own `.navigationDestination`
+            // declarations don't register on this stack prematurely.
             Section("Resources") {
-                resourceLink(
-                    title: "Containers",
-                    icon: "cube.box.fill",
-                    color: Color.accentColor,
-                    destination: ContainersView(environmentID: envID, environmentName: environment.name ?? environment.id)
-                )
-                resourceLink(
-                    title: "Images",
-                    icon: "photo.stack.fill",
-                    color: Color.accentColor,
-                    destination: ImagesView(environmentID: envID, environmentName: environment.name ?? environment.id)
-                )
-                resourceLink(
-                    title: "Volumes",
-                    icon: "externaldrive.fill",
-                    color: Color.accentColor,
-                    destination: VolumesView(environmentID: envID, environmentName: environment.name ?? environment.id)
-                )
-                resourceLink(
-                    title: "Networks",
-                    icon: "network",
-                    color: Color.accentColor,
-                    destination: NetworksView(environmentID: envID, environmentName: environment.name ?? environment.id)
-                )
-                resourceLink(
-                    title: "Projects",
-                    icon: "square.stack.3d.up.fill",
-                    color: Color.accentColor,
-                    destination: ProjectsView(environmentID: envID, environmentName: environment.name ?? environment.id)
-                )
+                resourceLink(title: "Containers", icon: "cube.box.fill", color: .accentColor) {
+                    ContainersView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                }
+                resourceLink(title: "Images", icon: "photo.stack.fill", color: .accentColor) {
+                    ImagesView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                }
+                resourceLink(title: "Volumes", icon: "externaldrive.fill", color: .accentColor) {
+                    VolumesView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                }
+                resourceLink(title: "Networks", icon: "network", color: .accentColor) {
+                    NetworksView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                }
+                resourceLink(title: "Projects", icon: "square.stack.3d.up.fill", color: .accentColor) {
+                    ProjectsView(environmentID: envID, environmentName: environment.name ?? environment.id)
+                }
             }
 
             // System info
@@ -111,9 +98,15 @@ struct EnvironmentDetailView: View {
         .padding(.vertical, 4)
     }
 
-    @ViewBuilder
-    private func resourceLink<Dest: View>(title: String, icon: String, color: Color, destination: Dest) -> some View {
-        NavigationLink(destination: destination) {
+    private func resourceLink<Dest: View>(
+        title: String,
+        icon: String,
+        color: Color,
+        @ViewBuilder destination: @escaping () -> Dest
+    ) -> some View {
+        NavigationLink {
+            LazyDestination(content: destination)
+        } label: {
             Label {
                 Text(title)
             } icon: {
@@ -153,4 +146,13 @@ struct EnvironmentDetailView: View {
             // Handle error
         }
     }
+}
+
+/// Defers building a navigation destination until the row is actually pushed, so
+/// a destination that declares its own `.navigationDestination(for:)` doesn't
+/// register it on the current stack ahead of time (which logs "navigationDestination
+/// … declared earlier on the stack").
+private struct LazyDestination<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    var body: some View { content() }
 }

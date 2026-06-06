@@ -16,6 +16,7 @@ struct UserRoleAssignmentsView: View {
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
     @State private var showAddSheet = false
+    @State private var pendingRemoveAssignment: RoleAssignment?
 
     var body: some View {
         Group {
@@ -68,6 +69,18 @@ struct UserRoleAssignmentsView: View {
         } message: {
             Text(actionErrorMessage ?? "")
         }
+        .deleteConfirmation(
+            item: $pendingRemoveAssignment,
+            title: { _ in "Remove Assignment" },
+            message: { assignment in
+                let roleName = availableRoles.first(where: { $0.id == assignment.roleId })?.displayName ?? assignment.roleId
+                return "Remove the “\(roleName)” role from this user?"
+            },
+            icon: "person.crop.circle.badge.minus",
+            confirmTitle: "Remove"
+        ) { assignment in
+            Task { await remove(assignment) }
+        }
     }
 
     @ViewBuilder
@@ -84,7 +97,7 @@ struct UserRoleAssignmentsView: View {
                         .swipeActions(edge: .trailing) {
                             if assignment.sourceKind == .manual {
                                 Button(role: .destructive) {
-                                    Task { await remove(assignment) }
+                                    pendingRemoveAssignment = assignment
                                 } label: {
                                     DestructiveLabel(text: "Remove")
                                 }
@@ -104,7 +117,7 @@ struct UserRoleAssignmentsView: View {
                         .swipeActions(edge: .trailing) {
                             if assignment.sourceKind == .manual {
                                 Button(role: .destructive) {
-                                    Task { await remove(assignment) }
+                                    pendingRemoveAssignment = assignment
                                 } label: {
                                     DestructiveLabel(text: "Remove")
                                 }

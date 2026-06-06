@@ -15,7 +15,7 @@ struct ContainersView: View {
     @State private var errorMessage: String?
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
-    @State private var showPruneConfirm = false
+    @State private var pendingDestructive: ContainerDestructive?
     @State private var showFilterSheet = false
     @State private var stateFilter = ContainerStateFilter.all
     @State private var updateFilter = ResourceUpdateFilter.all
@@ -24,6 +24,13 @@ struct ContainersView: View {
 
     private enum ContainerStateFilter: String, CaseIterable {
         case all = "All", running = "Running", stopped = "Stopped"
+    }
+
+    /// Prune and per-container remove share one `.deleteConfirmation` cover
+    /// (one full-screen cover per view).
+    private enum ContainerDestructive {
+        case prune
+        case remove(ContainerSummary)
     }
 
     private var activeFilterCount: Int {
@@ -137,17 +144,33 @@ struct ContainersView: View {
                 .accessibilityLabel("More options")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showPruneConfirm = true } label: {
+                Button { pendingDestructive = .prune } label: {
                     Image(systemName: "trash")
                 }
                 .accessibilityLabel("Prune stopped containers")
             }
         }
-        .alert("Prune Stopped Containers", isPresented: $showPruneConfirm) {
-            Button("Prune", role: .destructive) { Task { await pruneContainers() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Remove all stopped containers. This cannot be undone.")
+        .deleteConfirmation(item: $pendingDestructive) { action in
+            switch action {
+            case .prune:
+                return DeleteConfirmationConfig(
+                    title: "Prune Stopped Containers",
+                    message: "Remove all stopped containers. This cannot be undone.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Prune") {
+                        Task { await pruneContainers() }
+                    }]
+                )
+            case .remove(let container):
+                return DeleteConfirmationConfig(
+                    title: "Remove Container",
+                    message: "Remove “\(container.displayName)”? This permanently deletes the container.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Remove") {
+                        Task { await removeContainer(container) }
+                    }]
+                )
+            }
         }
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
@@ -265,7 +288,7 @@ struct ContainersView: View {
                 Label("Start", systemImage: "play.fill")
             }
             Button(role: .destructive) {
-                Task { await removeContainer(container) }
+                pendingDestructive = .remove(container)
             } label: {
                 DestructiveLabel(text: "Remove")
             }

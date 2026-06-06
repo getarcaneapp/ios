@@ -11,6 +11,7 @@ struct OIDCRoleMappingsView: View {
     @State private var actionErrorMessage: String?
     @State private var showCreateSheet = false
     @State private var editingMapping: OidcRoleMapping?
+    @State private var pendingDeleteMapping: OidcRoleMapping?
 
     private var rbacAvailable: Bool {
         manager.serverCapabilities?.supportsRoleManagement == true
@@ -63,7 +64,7 @@ struct OIDCRoleMappingsView: View {
                         .swipeActions(edge: .trailing) {
                             if mapping.sourceKind == .manual {
                                 Button(role: .destructive) {
-                                    Task { await delete(mapping) }
+                                    pendingDeleteMapping = mapping
                                 } label: {
                                     DestructiveLabel(text: "Delete")
                                 }
@@ -110,6 +111,15 @@ struct OIDCRoleMappingsView: View {
             Button("OK", role: .cancel) { actionErrorMessage = nil }
         } message: {
             Text(actionErrorMessage ?? "")
+        }
+        .deleteConfirmation(
+            item: $pendingDeleteMapping,
+            title: { _ in "Delete Mapping" },
+            message: { "Delete the mapping for “\($0.claimValue)”? Users won't receive this role on their next login." },
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) { mapping in
+            Task { await delete(mapping) }
         }
     }
 

@@ -103,13 +103,6 @@ struct ProjectsView: View {
         mutationStore.version(kind: .projects, envID: environmentID)
     }
 
-    private var deleteAlertPresented: Binding<Bool> {
-        Binding(
-            get: { pendingDeleteProject != nil },
-            set: { if !$0 { pendingDeleteProject = nil } }
-        )
-    }
-
     private var actionErrorPresented: Binding<Bool> {
         Binding(
             get: { actionErrorMessage != nil },
@@ -264,20 +257,20 @@ struct ProjectsView: View {
         .onChange(of: updateFilter) { rebuildSections() }
         .onChange(of: sortOrder) { rebuildSections(animated: true) }
         .onChange(of: pinnedIDs) { rebuildSections() }
-        .alert(
-            "Delete Project",
-            isPresented: deleteAlertPresented,
-            presenting: pendingDeleteProject
-        ) { project in
-            Button("Delete", role: .destructive) {
-                Task { await deleteProject(project, removeFiles: false) }
-            }
-            Button("Delete and Remove Files", role: .destructive) {
-                Task { await deleteProject(project, removeFiles: true) }
-            }
-            Button("Cancel", role: .cancel) { pendingDeleteProject = nil }
-        } message: { _ in
-            Text("Remove the project from Arcane, or also remove its files from disk.")
+        .deleteConfirmation(item: $pendingDeleteProject) { project in
+            DeleteConfirmationConfig(
+                title: "Delete Project",
+                message: "Remove the project from Arcane, or also remove its files from disk.",
+                icon: "trash",
+                actions: [
+                    DeleteConfirmationAction(title: "Delete") {
+                        Task { await deleteProject(project, removeFiles: false) }
+                    },
+                    DeleteConfirmationAction(title: "Delete and Remove Files") {
+                        Task { await deleteProject(project, removeFiles: true) }
+                    }
+                ]
+            )
         }
         .alert(
             "Couldn't Delete Project",

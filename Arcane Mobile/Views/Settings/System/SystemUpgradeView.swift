@@ -78,13 +78,14 @@ struct SystemUpgradeView: View {
             guard isAdmin else { return }
             await checkUpgrade()
         }
-        .confirmationDialog("Upgrade Arcane?", isPresented: $showConfirm, titleVisibility: .visible) {
-            Button("Upgrade", role: .destructive) {
-                Task { await triggerUpgrade() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Arcane will restart. The mobile app may briefly lose connection.")
+        .deleteConfirmation(
+            isPresented: $showConfirm,
+            title: "Upgrade Arcane?",
+            message: "Arcane will restart. The mobile app may briefly lose connection.",
+            icon: "arrow.up.circle",
+            confirmTitle: "Upgrade"
+        ) {
+            Task { await triggerUpgrade() }
         }
     }
 

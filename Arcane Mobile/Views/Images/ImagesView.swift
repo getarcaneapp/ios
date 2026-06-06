@@ -20,7 +20,7 @@ struct ImagesView: View {
     @State private var debouncedSearchText = ""
     @State private var updateInfo: [String: ImageUpdateResponse] = [:]
     @State private var showPullSheet = false
-    @State private var showPruneConfirm = false
+    @State private var pendingDestructive: ImageDestructive?
     @State private var showPruneSheet = false
     @State private var showUploadSheet = false
     @State private var currentPage = 1
@@ -34,6 +34,13 @@ struct ImagesView: View {
 
     private enum ImageTagsFilter: String, CaseIterable {
         case all = "All", tagged = "Tagged", untagged = "Untagged"
+    }
+
+    /// Quick prune and per-image delete share one `.deleteConfirmation` cover
+    /// (one full-screen cover per view). The Prune Options form is separate.
+    private enum ImageDestructive {
+        case prune
+        case delete(ImageSummary)
     }
 
     private var activeFilterCount: Int { tagsFilter != .all ? 1 : 0 }
@@ -179,7 +186,7 @@ struct ImagesView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button {
-                        showPruneConfirm = true
+                        pendingDestructive = .prune
                     } label: {
                         Label("Quick Prune (Dangling)", systemImage: "trash")
                     }
@@ -194,11 +201,27 @@ struct ImagesView: View {
                 .accessibilityLabel("Prune images")
             }
         }
-        .alert("Prune Dangling Images", isPresented: $showPruneConfirm) {
-            Button("Prune", role: .destructive) { Task { await pruneImages() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Remove all dangling images. This cannot be undone.")
+        .deleteConfirmation(item: $pendingDestructive) { action in
+            switch action {
+            case .prune:
+                return DeleteConfirmationConfig(
+                    title: "Prune Dangling Images",
+                    message: "Remove all dangling images. This cannot be undone.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Prune") {
+                        Task { await pruneImages() }
+                    }]
+                )
+            case .delete(let image):
+                return DeleteConfirmationConfig(
+                    title: "Delete Image",
+                    message: "Delete “\(image.displayName)”? This removes the image from the host.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Delete") {
+                        Task { await removeImage(image) }
+                    }]
+                )
+            }
         }
         .alert(
             "Something Went Wrong",
@@ -266,7 +289,7 @@ struct ImagesView: View {
         .matchedTransitionSource(id: image.id, in: heroTransition)
         .contextMenu {
             Button(role: .destructive) {
-                Task { await removeImage(image) }
+                pendingDestructive = .delete(image)
             } label: {
                 DestructiveLabel(text: "Delete")
             }
@@ -276,7 +299,7 @@ struct ImagesView: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                Task { await removeImage(image) }
+                pendingDestructive = .delete(image)
             } label: {
                 DestructiveLabel(text: "Delete")
             }

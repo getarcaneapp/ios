@@ -9,6 +9,7 @@ struct RolesView: View {
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
     @State private var showCreateSheet = false
+    @State private var pendingDeleteRole: Role?
 
     private var rbacAvailable: Bool {
         manager.serverCapabilities?.supportsRoleManagement == true
@@ -58,7 +59,7 @@ struct RolesView: View {
                                 }
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
-                                        Task { await deleteRole(role) }
+                                        pendingDeleteRole = role
                                     } label: {
                                         DestructiveLabel(text: "Delete")
                                     }
@@ -95,6 +96,15 @@ struct RolesView: View {
             Button("OK", role: .cancel) { actionErrorMessage = nil }
         } message: {
             Text(actionErrorMessage ?? "")
+        }
+        .deleteConfirmation(
+            item: $pendingDeleteRole,
+            title: { _ in "Delete Role" },
+            message: { "Delete the “\($0.displayName)” role? This cannot be undone." },
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) { role in
+            Task { await deleteRole(role) }
         }
     }
 

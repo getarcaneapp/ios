@@ -44,13 +44,14 @@ struct SettingsView: View {
             .task {
                 await loadVolumeSize()
             }
-            .alert("Sign Out", isPresented: $showLogoutConfirm) {
-                Button("Sign Out", role: .destructive) {
-                    Task { await manager.logout() }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("You'll be signed out of this server.")
+            .deleteConfirmation(
+                isPresented: $showLogoutConfirm,
+                title: "Sign Out",
+                message: "You'll be signed out of this server.",
+                icon: "rectangle.portrait.and.arrow.right",
+                confirmTitle: "Sign Out"
+            ) {
+                Task { await manager.logout() }
             }
         }
     }
@@ -249,6 +250,7 @@ struct SettingsNavigationRow: View {
 struct UsersView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var users: [User] = []
+    @State private var pendingDeleteUser: User?
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
@@ -268,7 +270,7 @@ struct UsersView: View {
                         }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
-                                Task { await deleteUser(user) }
+                                pendingDeleteUser = user
                             } label: {
                                 DestructiveLabel(text: "Delete")
                             }
@@ -304,6 +306,15 @@ struct UsersView: View {
             Button("OK", role: .cancel) { actionErrorMessage = nil }
         } message: {
             Text(actionErrorMessage ?? "")
+        }
+        .deleteConfirmation(
+            item: $pendingDeleteUser,
+            title: { _ in "Delete User" },
+            message: { "Delete the user “\($0.username)”? This permanently revokes their access." },
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) { user in
+            Task { await deleteUser(user) }
         }
     }
 

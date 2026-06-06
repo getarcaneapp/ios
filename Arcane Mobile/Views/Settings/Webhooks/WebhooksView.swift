@@ -8,6 +8,7 @@ struct WebhooksView: View {
     @State private var showCreateSheet = false
     @State private var createdWebhook: CreatedWebhookWrapper?
     @State private var errorMessage: String?
+    @State private var pendingDeleteWebhook: Webhook?
 
     var body: some View {
         Group {
@@ -29,7 +30,7 @@ struct WebhooksView: View {
                                     )
                                 }
                                 Button(role: .destructive) {
-                                    Task { await deleteWebhook(webhook) }
+                                    pendingDeleteWebhook = webhook
                                 } label: {
                                     DestructiveLabel(text: "Delete")
                                 }
@@ -39,7 +40,7 @@ struct WebhooksView: View {
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
-                                    Task { await deleteWebhook(webhook) }
+                                    pendingDeleteWebhook = webhook
                                 } label: {
                                     DestructiveLabel(text: "Delete")
                                 }
@@ -87,6 +88,15 @@ struct WebhooksView: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+        .deleteConfirmation(
+            item: $pendingDeleteWebhook,
+            title: { _ in "Delete Webhook" },
+            message: { "Delete “\($0.name)”? This cannot be undone." },
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) { webhook in
+            Task { await deleteWebhook(webhook) }
         }
     }
 

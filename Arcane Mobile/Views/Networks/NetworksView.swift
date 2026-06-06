@@ -19,7 +19,7 @@ struct NetworksView: View {
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var showCreateSheet = false
-    @State private var showPruneConfirm = false
+    @State private var pendingDestructive: NetworkDestructive?
     @State private var showFilterSheet = false
     @State private var typeFilter = NetworkTypeFilter.all
     @State private var sortOrder = ListSortOrder.ascending
@@ -32,6 +32,13 @@ struct NetworksView: View {
 
     private enum NetworkTypeFilter: String, CaseIterable {
         case all = "All", standard = "Standard", internalOnly = "Internal"
+    }
+
+    /// Both destructive confirmations on this screen route through a single
+    /// `.deleteConfirmation` cover (one full-screen cover per view).
+    private enum NetworkDestructive {
+        case prune
+        case delete(NetworkSummary)
     }
 
     private var activeFilterCount: Int { typeFilter != .all ? 1 : 0 }
@@ -131,7 +138,7 @@ struct NetworksView: View {
                                 .matchedTransitionSource(id: network.id, in: heroTransition)
                                 .contextMenu {
                                     Button(role: .destructive) {
-                                        Task { await deleteNetwork(network) }
+                                        pendingDestructive = .delete(network)
                                     } label: {
                                         DestructiveLabel(text: "Delete")
                                     }
@@ -141,7 +148,7 @@ struct NetworksView: View {
                                 }
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) {
-                                        Task { await deleteNetwork(network) }
+                                        pendingDestructive = .delete(network)
                                     } label: {
                                         DestructiveLabel(text: "Delete")
                                     }
@@ -188,7 +195,7 @@ struct NetworksView: View {
                 .accessibilityLabel("Create network")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showPruneConfirm = true } label: {
+                Button { pendingDestructive = .prune } label: {
                     Image(systemName: "trash")
                 }
                 .accessibilityLabel("Prune unused networks")
@@ -204,11 +211,27 @@ struct NetworksView: View {
         .sheet(isPresented: $showCreateSheet) {
             CreateNetworkView(environmentID: environmentID) {}
         }
-        .alert("Prune Networks", isPresented: $showPruneConfirm) {
-            Button("Prune", role: .destructive) { Task { await pruneNetworks() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Remove all unused networks.")
+        .deleteConfirmation(item: $pendingDestructive) { action in
+            switch action {
+            case .prune:
+                return DeleteConfirmationConfig(
+                    title: "Prune Networks",
+                    message: "Remove all unused networks.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Prune") {
+                        Task { await pruneNetworks() }
+                    }]
+                )
+            case .delete(let network):
+                return DeleteConfirmationConfig(
+                    title: "Delete Network",
+                    message: "Delete “\(network.name)”? This cannot be undone.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Delete") {
+                        Task { await deleteNetwork(network) }
+                    }]
+                )
+            }
         }
         .alert(
             "Action Failed",
@@ -514,10 +537,14 @@ struct NetworkDetailView: View {
         }
         .task { await loadInspect() }
         .refreshable { await loadInspect() }
-        .confirmationDialog("Delete Network", isPresented: $showDeleteConfirm) {
-            Button("Delete", role: .destructive) {
-                Task { await deleteNetwork() }
-            }
+        .deleteConfirmation(
+            isPresented: $showDeleteConfirm,
+            title: "Delete Network",
+            message: "Delete “\(network.name)”? This cannot be undone.",
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) {
+            Task { await deleteNetwork() }
         }
         .alert(
             "Error",

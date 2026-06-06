@@ -3,11 +3,18 @@ import Arcane
 
 struct AppSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @State private var showChangeServerConfirm = false
-    @State private var showClearCacheConfirm = false
+    @State private var pendingDestructive: PendingDestructive?
     @State private var showCacheCleared = false
     @State private var cacheSizeBytes: Int = 0
     @State private var showWhatsNew = false
+
+    /// Both of this screen's destructive confirmations route through a single
+    /// `.deleteConfirmation` cover (only one full-screen cover can be active per
+    /// view), distinguished by this case.
+    private enum PendingDestructive {
+        case changeServer
+        case clearCache
+    }
 
     private var appVersionString: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -44,6 +51,35 @@ struct AppSettingsView: View {
         .sheet(isPresented: $showWhatsNew) {
             WhatsNewView()
         }
+        .deleteConfirmation(item: $pendingDestructive) { action in
+            switch action {
+            case .changeServer:
+                return DeleteConfirmationConfig(
+                    title: "Change Server?",
+                    message: "You'll be signed out and asked for a new server URL.",
+                    icon: "link",
+                    actions: [DeleteConfirmationAction(title: "Change Server") {
+                        Task { await manager.logout() }
+                    }]
+                )
+            case .clearCache:
+                return DeleteConfirmationConfig(
+                    title: "Clear Cache?",
+                    message: cacheSizeBytes > 0
+                        ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images and API data. Everything will be re-fetched as needed."
+                        : "This will clear all cached images and API data.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Clear Cache") {
+                        Task {
+                            await ImageCache.shared.clear()
+                            await ResponseCache.shared.invalidateAll()
+                            await refreshCacheSize()
+                            showCacheCleared = true
+                        }
+                    }]
+                )
+            }
+        }
     }
 
     @ViewBuilder
@@ -53,7 +89,7 @@ struct AppSettingsView: View {
                 SettingsRow(title: "Appearance", systemImage: "paintbrush.fill", color: .pink)
             }
             Button {
-                showChangeServerConfirm = true
+                pendingDestructive = .changeServer
             } label: {
                 HStack {
                     SettingsRow(
@@ -71,21 +107,10 @@ struct AppSettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .confirmationDialog(
-                "Change Server?",
-                isPresented: $showChangeServerConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Change Server", role: .destructive) {
-                    Task { await manager.logout() }
-                }
-            } message: {
-                Text("You'll be signed out and asked for a new server URL.")
-            }
         }
         Section {
             Button(role: .destructive) {
-                showClearCacheConfirm = true
+                pendingDestructive = .clearCache
             } label: {
                 HStack {
                     SettingsRow(
@@ -100,29 +125,6 @@ struct AppSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-        }
-        .confirmationDialog(
-            "Clear Cache?",
-            isPresented: $showClearCacheConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Cache", role: .destructive) {
-                Task {
-                    await ImageCache.shared.clear()
-                    await ResponseCache.shared.invalidateAll()
-                    await refreshCacheSize()
-                    showCacheCleared = true
-                }
-            }
-        } message: {
-            Text(
-                cacheSizeBytes > 0
-                    ? """
-                    This will remove \(Int64(cacheSizeBytes).byteString) of cached images and API data. \
-                    Everything will be re-fetched as needed.
-                    """
-                    : "This will clear all cached images and API data."
-            )
         }
     }
 

@@ -21,7 +21,7 @@ struct VolumesView: View {
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var showCreateSheet = false
-    @State private var showPruneConfirm = false
+    @State private var pendingDestructive: VolumeDestructive?
     @State private var showFilterSheet = false
     @State private var scopeFilter = VolumeScopeFilter.all
     @State private var sortOrder = ListSortOrder.ascending
@@ -33,6 +33,13 @@ struct VolumesView: View {
 
     private enum VolumeScopeFilter: String, CaseIterable {
         case all = "All", local = "Local", global = "Global"
+    }
+
+    /// Prune and per-volume delete share one `.deleteConfirmation` cover
+    /// (one full-screen cover per view).
+    private enum VolumeDestructive {
+        case prune
+        case delete(Volume)
     }
 
     private var activeFilterCount: Int { scopeFilter != .all ? 1 : 0 }
@@ -154,7 +161,7 @@ struct VolumesView: View {
                 .accessibilityLabel("Create volume")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showPruneConfirm = true } label: {
+                Button { pendingDestructive = .prune } label: {
                     Image(systemName: "trash")
                 }
                 .accessibilityLabel("Prune unused volumes")
@@ -170,11 +177,27 @@ struct VolumesView: View {
         .sheet(isPresented: $showCreateSheet) {
             CreateVolumeView(environmentID: environmentID) {}
         }
-        .alert("Prune Unused Volumes", isPresented: $showPruneConfirm) {
-            Button("Prune", role: .destructive) { Task { await pruneVolumes() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("All unused volumes will be permanently deleted.")
+        .deleteConfirmation(item: $pendingDestructive) { action in
+            switch action {
+            case .prune:
+                return DeleteConfirmationConfig(
+                    title: "Prune Unused Volumes",
+                    message: "All unused volumes will be permanently deleted.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Prune") {
+                        Task { await pruneVolumes() }
+                    }]
+                )
+            case .delete(let volume):
+                return DeleteConfirmationConfig(
+                    title: "Delete Volume",
+                    message: "Delete “\(volume.name)”? This cannot be undone.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Delete") {
+                        Task { await deleteVolume(volume) }
+                    }]
+                )
+            }
         }
         .alert(
             "Action Failed",
@@ -233,7 +256,7 @@ struct VolumesView: View {
                       systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
             }
             Button(role: .destructive) {
-                Task { await deleteVolume(volume) }
+                pendingDestructive = .delete(volume)
             } label: {
                 DestructiveLabel(text: "Delete")
             }
@@ -252,7 +275,7 @@ struct VolumesView: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                Task { await deleteVolume(volume) }
+                pendingDestructive = .delete(volume)
             } label: {
                 DestructiveLabel(text: "Delete")
             }

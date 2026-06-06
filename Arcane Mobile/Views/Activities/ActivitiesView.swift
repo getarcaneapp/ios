@@ -148,24 +148,21 @@ struct ActivitiesView: View {
         .onDisappear {
             store.stopStream()
         }
-        .confirmationDialog(
-            "Clear Activity History?",
+        .deleteConfirmation(
             isPresented: $showClearConfirm,
-            titleVisibility: .visible
+            title: "Clear Activity History?",
+            message: "Running and queued activities are preserved.",
+            icon: "trash",
+            confirmTitle: "Clear History"
         ) {
-            Button("Clear History", role: .destructive) {
-                Task {
-                    if let result = await store.clearHistory(environmentIDs: clearableEnvironmentIDs) {
-                        clearMessage = "Cleared \(result.deleted) completed activit\(result.deleted == 1 ? "y" : "ies")."
-                        if result.failed > 0 {
-                            clearMessage? += " \(result.failed) environment\(result.failed == 1 ? "" : "s") could not be cleared."
-                        }
+            Task {
+                if let result = await store.clearHistory(environmentIDs: clearableEnvironmentIDs) {
+                    clearMessage = "Cleared \(result.deleted) completed activit\(result.deleted == 1 ? "y" : "ies")."
+                    if result.failed > 0 {
+                        clearMessage? += " \(result.failed) environment\(result.failed == 1 ? "" : "s") could not be cleared."
                     }
                 }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Running and queued activities are preserved.")
         }
         .alert(
             "Activity History",
@@ -398,18 +395,15 @@ struct ActivityDetailView: View {
         }
         .task { await loadDetail() }
         .refreshable { await loadDetail() }
-        .confirmationDialog(
-            "Cancel Activity?",
-            isPresented: $showCancelConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Cancel Activity", role: .destructive) {
+        .deleteConfirmation(isPresented: $showCancelConfirm, config: DeleteConfirmationConfig(
+            title: "Cancel Activity?",
+            message: "Arcane will request cancellation. Work that already finished cannot be undone.",
+            icon: "xmark.circle",
+            actions: [DeleteConfirmationAction(title: "Cancel Activity") {
                 Task { await cancelActivity() }
-            }
-            Button("Keep Running", role: .cancel) {}
-        } message: {
-            Text("Arcane will request cancellation. Work that already finished cannot be undone.")
-        }
+            }],
+            cancelTitle: "Keep Running"
+        ))
         .alert(
             "Error",
             isPresented: Binding(

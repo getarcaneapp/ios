@@ -6,6 +6,7 @@ struct NotificationSettingsView: View {
     @State private var configuredProviders: [NotificationSettings] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var pendingDeleteProvider: NotificationProvider?
 
     private func configuredResponse(for provider: NotificationProvider) -> NotificationSettings? {
         configuredProviders.first { $0.provider == provider }
@@ -39,6 +40,15 @@ struct NotificationSettingsView: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+        .deleteConfirmation(
+            item: $pendingDeleteProvider,
+            title: { _ in "Delete Provider" },
+            message: { "Remove the “\($0.displayName)” notification provider? You'll stop receiving its notifications." },
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) { provider in
+            Task { await deleteProvider(provider) }
         }
     }
 
@@ -75,7 +85,7 @@ struct NotificationSettingsView: View {
                 .swipeActions(edge: .trailing) {
                     if existing != nil {
                         Button(role: .destructive) {
-                            Task { await deleteProvider(provider) }
+                            pendingDeleteProvider = provider
                         } label: {
                             DestructiveLabel(text: "Delete")
                         }

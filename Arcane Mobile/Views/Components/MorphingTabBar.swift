@@ -65,22 +65,18 @@ struct MorphingTabBar: View {
         .animation(.smooth(duration: 0.25), value: payload?.runningItemID)
         .padding(.horizontal, 15)
         .padding(.vertical, 6)
-        .confirmationDialog(
-            destructiveTitle,
-            isPresented: Binding(
-                get: { store.pendingDestructive != nil },
-                set: { if !$0 { store.pendingDestructive = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: store.pendingDestructive
+        .deleteConfirmation(
+            item: Binding(
+                get: { store.pendingDestructive },
+                set: { store.pendingDestructive = $0 }
+            )
         ) { item in
-            Button(item.title, role: .destructive) {
-                item.action()
-                store.pendingDestructive = nil
-            }
-            Button("Cancel", role: .cancel) { store.pendingDestructive = nil }
-        } message: { item in
-            Text(item.confirmationMessage ?? defaultConfirmMessage(for: item))
+            DeleteConfirmationConfig(
+                title: destructiveTitle(for: item),
+                message: item.confirmationMessage ?? defaultConfirmMessage(for: item),
+                icon: item.systemImage,
+                actions: [DeleteConfirmationAction(title: item.title, action: item.action)]
+            )
         }
     }
 
@@ -212,8 +208,7 @@ struct MorphingTabBar: View {
         return nil
     }
 
-    private var destructiveTitle: String {
-        guard let item = store.pendingDestructive else { return "" }
+    private func destructiveTitle(for item: ActionButtonItem) -> String {
         if let name = store.activePayload?.resourceName {
             return "\(item.title) \(name)?"
         }

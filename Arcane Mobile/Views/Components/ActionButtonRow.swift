@@ -59,24 +59,13 @@ private struct ActionToolbarModifier: ViewModifier {
                     bottomBar
                 }
             }
-            .confirmationDialog(
-                destructiveDialogTitle,
-                isPresented: Binding(
-                    get: { pendingDestructive != nil },
-                    set: { if !$0 { pendingDestructive = nil } }
-                ),
-                titleVisibility: .visible,
-                presenting: pendingDestructive
-            ) { item in
-                Button(item.title, role: .destructive) {
-                    item.action()
-                    pendingDestructive = nil
-                }
-                Button("Cancel", role: .cancel) {
-                    pendingDestructive = nil
-                }
-            } message: { item in
-                Text(item.confirmationMessage ?? defaultConfirmationMessage(for: item))
+            .deleteConfirmation(item: $pendingDestructive) { item in
+                DeleteConfirmationConfig(
+                    title: destructiveDialogTitle(for: item),
+                    message: item.confirmationMessage ?? defaultConfirmationMessage(for: item),
+                    icon: item.systemImage,
+                    actions: [DeleteConfirmationAction(title: item.title, action: item.action)]
+                )
             }
     }
 
@@ -146,8 +135,7 @@ private struct ActionToolbarModifier: ViewModifier {
         }
     }
 
-    private var destructiveDialogTitle: String {
-        guard let item = pendingDestructive else { return "" }
+    private func destructiveDialogTitle(for item: ActionButtonItem) -> String {
         if let name = resourceName {
             return "\(item.title) \(name)?"
         }
