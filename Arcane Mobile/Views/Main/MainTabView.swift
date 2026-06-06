@@ -52,9 +52,6 @@ struct MainTabView: View {
             }
             Tab("Settings", systemImage: "gearshape.fill", value: "settings") {
                 SettingsView()
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        Color.clear.frame(height: MorphingTabBar.reservedHeight)
-                    }
                     .environment(\.currentTabID, "settings")
                     .toolbar(.hidden, for: .tabBar)
             }
@@ -63,6 +60,12 @@ struct MainTabView: View {
 
     var body: some View {
         coreTabView
+            // Reserve room for the floating bar on every page (tabs, pushed
+            // details, and the nested Settings stack) by insetting the backing
+            // tab controller — the job the native tab bar used to do for us.
+            .background {
+                BottomBarInsetInstaller(barTop: 88)
+            }
             .overlay(alignment: .bottom) {
                 MorphingTabBar(
                     tabs: morphTabs,
@@ -74,7 +77,7 @@ struct MainTabView: View {
                 // Pin the bar a fixed gap above the *physical* bottom (just above
                 // the home indicator), like the native bar: fill the height and
                 // bottom-align, then ignore the safe area so it sits within it.
-                .padding(.bottom, 10)
+                .padding(.bottom, 18)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .ignoresSafeArea()
             }
@@ -137,8 +140,8 @@ struct MainTabView: View {
 /// Wraps a tab's `NavigationStack` with an explicit path so we can drop the morph
 /// the *instant* navigation returns to the root list — the detail page's own
 /// `onDisappear` fires only when the pop (and its zoom transition) finishes, which
-/// left the controls bar lingering. Also reserves the floating bar's footprint so
-/// content clears it (a stack-level inset doesn't propagate into the List).
+/// left the controls bar lingering. (Content clearance for the floating bar is
+/// handled globally by `BottomBarInsetInstaller`.)
 private struct TabNavigationContainer<Content: View>: View {
     let tabID: String
     let morphStore: TabBarMorphStore
@@ -149,12 +152,72 @@ private struct TabNavigationContainer<Content: View>: View {
     var body: some View {
         NavigationStack(path: $path) {
             content
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    Color.clear.frame(height: MorphingTabBar.reservedHeight)
-                }
         }
         .onChange(of: path.isEmpty) { _, isEmpty in
             if isEmpty { morphStore.clearTab(tabID) }
         }
+    }
+}
+
+// MARK: - Global bottom inset for the floating bar
+
+/// Restores the content inset the native tab bar used to provide. Because the
+/// custom `MorphingTabBar` floats as an overlay (the native bar is hidden), no
+/// page reserves space for it automatically. Setting `additionalSafeAreaInsets`
+/// on the backing `UITabBarController` propagates to every tab, every pushed
+/// page, and the nested Settings stack — one place, full coverage.
+private struct BottomBarInsetInstaller: UIViewRepresentable {
+    /// Distance from the physical screen bottom to the top of the floating bar.
+    let barTop: CGFloat
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        let barTop = self.barTop
+        DispatchQueue.main.async {
+            apply(from: uiView, barTop: barTop, retries: 10)
+        }
+    }
+
+    private func apply(from view: UIView, barTop: CGFloat, retries: Int) {
+        guard let tabBarController = findTabBarController(from: view) else {
+            if retries > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    apply(from: view, barTop: barTop, retries: retries - 1)
+                }
+            }
+            return
+        }
+        // `additionalSafeAreaInsets` is added on top of the system inset (home
+        // indicator), so subtract it to land content exactly at the bar's top.
+        let systemBottom = view.window?.safeAreaInsets.bottom ?? 0
+        let additional = max(0, barTop - systemBottom)
+        if abs(tabBarController.additionalSafeAreaInsets.bottom - additional) > 0.5 {
+            tabBarController.additionalSafeAreaInsets.bottom = additional
+        }
+    }
+
+    private func findTabBarController(from view: UIView) -> UITabBarController? {
+        var responder: UIResponder? = view
+        while let current = responder {
+            if let tabBarController = current as? UITabBarController { return tabBarController }
+            responder = current.next
+        }
+        return view.window?.rootViewController?.deepTabBarController()
+    }
+}
+
+private extension UIViewController {
+    func deepTabBarController() -> UITabBarController? {
+        if let tabBarController = self as? UITabBarController { return tabBarController }
+        for child in children {
+            if let found = child.deepTabBarController() { return found }
+        }
+        return presentedViewController?.deepTabBarController()
     }
 }

@@ -26,11 +26,6 @@ struct MorphingTabBar: View {
     /// Tints the selected-tab indicator (follows the app's configured accent).
     var accentColor: Color = .accentColor
 
-    /// Extra space (beyond the bottom safe area) to reserve at the bottom of
-    /// scrollable content so the floating bar never covers the last row. The bar
-    /// now dips into the safe-area zone, so content already insets for part of it.
-    static let reservedHeight: CGFloat = 58
-
     /// Sizing for the tabs capsule and the morphed controls. The tabs capsule
     /// fills the available width — like the native floating tab bar — so only its
     /// height is fixed here.

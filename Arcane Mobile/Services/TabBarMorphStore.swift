@@ -140,12 +140,6 @@ private struct MorphingActionsModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // Reserve the floating bar's footprint on the detail page itself so
-            // its content clears the bar (applied to the page, not the stack —
-            // a stack-level inset doesn't propagate into the List).
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear.frame(height: MorphingTabBar.reservedHeight)
-            }
             .onAppear {
                 TabBarMorphStore.shared.register(id: token, tabID: tabID, payload: payload)
             }
