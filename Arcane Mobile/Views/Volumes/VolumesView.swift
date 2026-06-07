@@ -91,7 +91,7 @@ struct VolumesView: View {
     private func rebuildSections(animated: Bool = false) {
         let new = computeSections()
         if animated {
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { sections = new }
+            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) { sections = new }
         } else {
             sections = new
         }
@@ -101,11 +101,15 @@ struct VolumesView: View {
         mutationStore.version(kind: .volumes, envID: environmentID)
     }
 
+    /// Per-section item counts — drives the List's implicit reflow animation so a
+    /// programmatic insert/remove animates too.
+    private var sectionCounts: [Int] { sections.map(\.items.count) }
+
     var body: some View {
-        Group {
-            if isLoading && volumes.isEmpty {
-                SkeletonListLoadingView()
-            } else if let error = errorMessage, volumes.isEmpty {
+        LoadingCrossfade(showSkeleton: isLoading && volumes.isEmpty) {
+            SkeletonListLoadingView()
+        } content: {
+            if let error = errorMessage, volumes.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
             } else if volumes.isEmpty {
                 ContentUnavailableView {
@@ -131,6 +135,7 @@ struct VolumesView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .motionAwareAnimation(Motion.reflow, value: sectionCounts)
             }
         }
         .navigationTitle("Volumes")

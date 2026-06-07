@@ -101,9 +101,11 @@ struct DashboardView: View {
                         skeletonView
                     } else {
                         overviewGrid
+                            .cardEntrance()
 
                         if manager.supportsActivities && !failedActivities.isEmpty {
                             DashboardFailedWorkCard(activities: failedActivities)
+                                .cardEntrance()
                         }
 
                         environmentsSection
@@ -210,7 +212,7 @@ struct DashboardView: View {
                 .padding(.horizontal, 4)
                 .padding(.top, 4)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
     }
 
     private var dashboardHeader: some View {
@@ -646,7 +648,7 @@ struct StatRing: View {
                         .foregroundStyle(.primary)
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                        .motionAwareAnimation(.smooth(duration: 0.3), value: valueText)
+                        .motionAwareAnimation(Motion.state, value: valueText)
                 }
             }
             Text(label)
@@ -691,7 +693,7 @@ struct DashboardGlassTile: View {
                         .minimumScaleFactor(0.8)
                         .lineLimit(1)
                         .contentTransition(.numericText())
-                        .motionAwareAnimation(.smooth(duration: 0.35), value: value)
+                        .motionAwareAnimation(Motion.state, value: value)
                     Text(title)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -702,7 +704,7 @@ struct DashboardGlassTile: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .dashboardCardBackground(cornerRadius: 16)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(value)")
         .accessibilityAddTraits(.isButton)
@@ -745,7 +747,7 @@ struct DashboardFailedWorkCard: View {
                     } label: {
                         DashboardFailedWorkRow(activity: activity)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressable)
                     .contentShape(.rect)
                     .accessibilityHint("Opens this failed activity")
                 }
@@ -821,7 +823,7 @@ struct SmoothProgressBar: View {
             .trim(from: 0.0, to: CGFloat(min(progress, 1.0)))
             .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             .rotationEffect(Angle(degrees: -90))
-            .animation(.spring(response: 0.8, dampingFraction: 0.7), value: progress)
+            .animation(Motion.gauge, value: progress)
     }
 }
 
@@ -836,7 +838,7 @@ struct DashboardMiniMetric: View {
                 .font(.subheadline.bold())
                 .foregroundStyle(color)
                 .contentTransition(.numericText())
-                .motionAwareAnimation(.smooth(duration: 0.3), value: value)
+                .motionAwareAnimation(Motion.state, value: value)
             Text(title)
                 .font(.caption2)
                 .foregroundStyle(.secondary)

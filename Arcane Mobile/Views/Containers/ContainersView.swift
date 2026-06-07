@@ -86,7 +86,7 @@ struct ContainersView: View {
     private func rebuildSections(animated: Bool = false) {
         let new = computeSections()
         if animated {
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { sections = new }
+            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) { sections = new }
         } else {
             sections = new
         }
@@ -96,11 +96,15 @@ struct ContainersView: View {
         mutationStore.version(kind: .containers, envID: environmentID)
     }
 
+    /// Per-section item counts — drives the List's implicit reflow animation so a
+    /// programmatic insert/remove (start/stop/remove/prune) animates too.
+    private var sectionCounts: [Int] { sections.map(\.items.count) }
+
     var body: some View {
-        Group {
-            if isLoading && containers.isEmpty {
-                SkeletonListLoadingView()
-            } else if let error = errorMessage, containers.isEmpty {
+        LoadingCrossfade(showSkeleton: isLoading && containers.isEmpty) {
+            SkeletonListLoadingView()
+        } content: {
+            if let error = errorMessage, containers.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
             } else if containers.isEmpty {
                 ContentUnavailableView {
@@ -120,6 +124,7 @@ struct ContainersView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .motionAwareAnimation(Motion.reflow, value: sectionCounts)
             }
         }
         .navigationTitle("Containers")
@@ -544,6 +549,7 @@ struct ContainerRow: View {
                     .fill(container.isRunning ? Color.green : Color.secondary.opacity(0.5))
                     .frame(width: 10, height: 10)
                     .offset(x: 2, y: 2)
+                    .motionAwareAnimation(Motion.state, value: container.isRunning)
             }
             .accessibilityHidden(true)
 

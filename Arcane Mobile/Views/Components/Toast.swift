@@ -181,8 +181,8 @@ private struct ToastHost: View {
         .padding(.bottom, barClearance)
         .allowsHitTesting(presenter.activeToast != nil)
         .animation(
-            reduceMotion ? .easeOut(duration: 0.2)
-                         : .interpolatingSpring(duration: 0.35, bounce: 0),
+            reduceMotion ? Motion.reducedFallback
+                         : Motion.toast,
             value: presenter.activeToast?.id
         )
     }

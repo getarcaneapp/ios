@@ -79,7 +79,7 @@ struct ImagesView: View {
     private func rebuildSections(animated: Bool = false) {
         let new = computeSections()
         if animated {
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { sections = new }
+            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) { sections = new }
         } else {
             sections = new
         }
@@ -93,11 +93,15 @@ struct ImagesView: View {
         mutationStore.version(kind: .images, envID: environmentID)
     }
 
+    /// Per-section item counts — drives the List's implicit reflow animation so a
+    /// programmatic insert/remove animates too.
+    private var sectionCounts: [Int] { sections.map(\.items.count) }
+
     var body: some View {
-        Group {
-            if isLoading && images.isEmpty {
-                SkeletonListLoadingView()
-            } else if let error = errorMessage, images.isEmpty {
+        LoadingCrossfade(showSkeleton: isLoading && images.isEmpty) {
+            SkeletonListLoadingView()
+        } content: {
+            if let error = errorMessage, images.isEmpty {
                 ContentUnavailableView {
                     Label("Error", systemImage: "exclamationmark.triangle")
                 } description: {
@@ -129,6 +133,7 @@ struct ImagesView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .motionAwareAnimation(Motion.reflow, value: sectionCounts)
             }
         }
         .navigationTitle("Images")

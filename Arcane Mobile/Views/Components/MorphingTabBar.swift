@@ -62,7 +62,7 @@ struct MorphingTabBar: View {
         // Smooth morph both ways. The un-morph is triggered immediately by the
         // navigation path returning to root, so this is just the visual reshape.
         .animation(.smooth(duration: 0.38), value: isMorphed)
-        .animation(.smooth(duration: 0.25), value: payload?.runningItemID)
+        .animation(Motion.state, value: payload?.runningItemID)
         .padding(.horizontal, 15)
         .padding(.vertical, 6)
         .deleteConfirmation(

@@ -62,12 +62,17 @@ struct ResourceStatusBadge: View {
         }
     }
 
+    /// Drives the implicit cross-fade / symbol morph when status (or liveness)
+    /// changes — captures both so a colour-only change still animates.
+    private var animationKey: String { "\(normalizedStatus)|\(live)" }
+
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
-            .frame(width: 16, height: 16)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 16, height: 16)
 
             Text(displayText)
                 .font(.caption2.weight(.semibold))
@@ -82,6 +87,7 @@ struct ResourceStatusBadge: View {
             Capsule()
                 .strokeBorder(tint.opacity(live ? 0.28 : 0.18), lineWidth: 0.75)
         }
+        .motionAwareAnimation(Motion.state, value: animationKey)
         .accessibilityLabel("\(displayText) status")
     }
 }
@@ -119,10 +125,14 @@ struct StatusIcon: View {
         }
     }
 
+    private var animationKey: String { "\(normalized)|\(live)" }
+
     var body: some View {
         Image(systemName: config.icon)
             .font(.title3)
             .foregroundStyle(config.color)
+            .contentTransition(.symbolEffect(.replace))
+            .motionAwareAnimation(Motion.state, value: animationKey)
             .accessibilityLabel("\(config.label) status")
     }
 }

@@ -83,7 +83,7 @@ struct NetworksView: View {
     private func rebuildSections(animated: Bool = false) {
         let (system, user) = computePartition()
         if animated {
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
+            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
                 systemNetworks = system
                 userNetworks = user
             }
@@ -93,11 +93,15 @@ struct NetworksView: View {
         }
     }
 
+    /// Section item counts — drives the List's implicit reflow animation so a
+    /// programmatic insert/remove (delete/prune) animates too.
+    private var networkCounts: [Int] { [systemNetworks.count, userNetworks.count] }
+
     var body: some View {
-        Group {
-            if isLoading && networks.isEmpty {
-                SkeletonListLoadingView()
-            } else if let error = errorMessage, networks.isEmpty {
+        LoadingCrossfade(showSkeleton: isLoading && networks.isEmpty) {
+            SkeletonListLoadingView()
+        } content: {
+            if let error = errorMessage, networks.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
             } else if networks.isEmpty {
                 ContentUnavailableView {
@@ -166,6 +170,7 @@ struct NetworksView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .motionAwareAnimation(Motion.reflow, value: networkCounts)
             }
         }
         .navigationTitle("Networks")

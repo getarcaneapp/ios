@@ -65,7 +65,7 @@ struct StreamingActionView: View {
                     updatePhase(from: event)
                 }
             }
-            withAnimation(.smooth(duration: 0.25)) {
+            withAnimation(Motion.state) {
                 status = .success
                 currentPhase = "Complete"
             }

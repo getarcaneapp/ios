@@ -1454,7 +1454,7 @@ struct RegistryFormView: View {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isAWS)
+            .animation(Motion.entrance, value: isAWS)
             .navigationTitle(isEditing ? "Edit Registry" : "Add Registry")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

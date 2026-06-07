@@ -86,7 +86,7 @@ struct ContainerDetailView: View {
                     .transition(.motionAware(edge: .trailing, reduceMotion: reduceMotion))
                 }
             }
-            .motionAwareAnimation(.smooth(duration: 0.25), value: selectedTab)
+            .motionAwareAnimation(Motion.state, value: selectedTab)
         }
         .navigationTitle(displayedName)
         .navigationBarTitleDisplayMode(.inline)

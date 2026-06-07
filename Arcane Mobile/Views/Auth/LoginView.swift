@@ -99,9 +99,9 @@ struct LoginView: View {
             }
             .ignoresSafeArea()
         )
-        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: isSetupMode)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: manager.errorMessage)
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: manager.isStartingDemo)
+        .animation(Motion.entrance, value: isSetupMode)
+        .animation(Motion.entrance, value: manager.errorMessage)
+        .animation(Motion.entrance, value: manager.isStartingDemo)
         .animation(.spring(response: 0.3), value: manager.isLoading)
         .onAppear {
             serverURL = manager.serverURL
@@ -341,7 +341,7 @@ struct LoginView: View {
 
                 Button("Change Server") {
                     focusedField = nil
-                    withAnimation(.spring(response: 0.4)) { showSetup = true }
+                    withAnimation(Motion.entrance) { showSetup = true }
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.large)
@@ -377,7 +377,7 @@ struct LoginView: View {
     private var passwordDisclosure: some View {
         Button {
             focusedField = nil
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            withAnimation(Motion.entrance) {
                 showsPasswordForm.toggle()
             }
             if showsPasswordForm {
@@ -455,7 +455,7 @@ struct LoginView: View {
     private func connectToServer() {
         focusedField = nil
         manager.configure(serverURL: serverURL)
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { showSetup = false }
+        withAnimation(Motion.entrance) { showSetup = false }
     }
 
     private func signIn() {

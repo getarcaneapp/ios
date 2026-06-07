@@ -86,7 +86,7 @@ struct LogsView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
-                .motionAwareAnimation(.smooth(duration: 0.25), value: newLinesWhilePaused > 0)
+                .motionAwareAnimation(Motion.state, value: newLinesWhilePaused > 0)
             }
 
             HStack {

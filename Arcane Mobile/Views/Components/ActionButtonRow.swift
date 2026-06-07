@@ -107,14 +107,14 @@ private struct ActionToolbarModifier: ViewModifier {
                 }
                 .frame(width: 50, height: 50)
                 .contentShape(Circle())
-                .motionAwareAnimation(.smooth(duration: 0.2), value: isRunning)
+                .motionAwareAnimation(Motion.state, value: isRunning)
             }
             .buttonStyle(.plain)
             .glassEffectCompat(tint: item.tint, interactive: true, in: .circle)
             .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
             .disabled(buttonDisabled || isRunning)
             .opacity(buttonDisabled && !isRunning ? 0.45 : 1.0)
-            .motionAwareAnimation(.smooth(duration: 0.2), value: buttonDisabled)
+            .motionAwareAnimation(Motion.state, value: buttonDisabled)
 
             Text(item.title)
                 .font(.caption2.weight(.medium))

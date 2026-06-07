@@ -378,11 +378,11 @@ private struct DeleteConfirmationCard: View {
     // MARK: Motion
 
     private var entrance: Animation {
-        reduceMotion ? .easeOut(duration: 0.15) : .interpolatingSpring(duration: 0.3)
+        reduceMotion ? Motion.reducedFallback : Motion.overlay
     }
 
     private var exit: Animation {
-        reduceMotion ? .easeOut(duration: 0.15) : .interpolatingSpring(duration: 0.3)
+        reduceMotion ? Motion.reducedFallback : Motion.overlay
     }
 
     private var offscreenOffset: CGFloat { reduceMotion ? 0 : 28 }

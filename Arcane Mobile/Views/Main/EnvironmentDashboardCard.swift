@@ -131,7 +131,10 @@ struct EnvironmentDashboardCard: View {
                     .stroke(isActiveEnvironment ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 2)
             )
         }
-        .buttonStyle(.plain)
+        // Opacity-only press: this card is a `.matchedTransitionSource` hero-zoom
+        // source, so it must not change geometry on press (a scale would disturb
+        // the zoom snapshot). Feedback without breaking the push transition.
+        .buttonStyle(.pressable(scales: false))
         .contextMenu {
             if !isActiveEnvironment {
                 Button {

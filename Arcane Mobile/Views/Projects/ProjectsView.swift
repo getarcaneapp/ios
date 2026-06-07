@@ -89,7 +89,7 @@ struct ProjectsView: View {
     private func rebuildSections(animated: Bool = false) {
         let new = computeSections()
         if animated {
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) { sections = new }
+            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) { sections = new }
         } else {
             sections = new
         }
@@ -103,6 +103,10 @@ struct ProjectsView: View {
         mutationStore.version(kind: .projects, envID: environmentID)
     }
 
+    /// Per-section item counts — drives the List's implicit reflow animation so a
+    /// programmatic insert/remove animates too.
+    private var sectionCounts: [Int] { sections.map(\.items.count) }
+
     private var actionErrorPresented: Binding<Bool> {
         Binding(
             get: { actionErrorMessage != nil },
@@ -112,9 +116,10 @@ struct ProjectsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if isLoading && projects.isEmpty {
+        LoadingCrossfade(showSkeleton: isLoading && projects.isEmpty) {
             SkeletonListLoadingView()
-        } else if let error = errorMessage, projects.isEmpty {
+        } content: {
+            if let error = errorMessage, projects.isEmpty {
             ContentUnavailableView(
                 "Error",
                 systemImage: "exclamationmark.triangle",
@@ -131,6 +136,7 @@ struct ProjectsView: View {
             }
         } else {
             projectsList
+        }
         }
     }
 
@@ -149,6 +155,7 @@ struct ProjectsView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .motionAwareAnimation(Motion.reflow, value: sectionCounts)
     }
 
     @ToolbarContentBuilder

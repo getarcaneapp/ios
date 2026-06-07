@@ -82,7 +82,7 @@ struct ProjectDetailView: View {
                 .allowsHitTesting(selectedTab == .configuration)
                 .accessibilityHidden(selectedTab != .configuration)
             }
-            .motionAwareAnimation(.smooth(duration: 0.25), value: selectedTab)
+            .motionAwareAnimation(Motion.state, value: selectedTab)
         }
         .morphingActions(
             primary: morphPrimary,
