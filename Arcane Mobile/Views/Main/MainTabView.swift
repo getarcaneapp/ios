@@ -70,7 +70,7 @@ struct MainTabView: View {
                 // Dim + tap-to-cancel behind the expanded picker. Always mounted;
                 // only catches touches (and dims) while a replace is in flight.
                 Color.black
-                    .opacity(swapTarget != nil ? 0.25 : 0)
+                    .opacity(swapTarget != nil ? 0.15 : 0)
                     .ignoresSafeArea()
                     .allowsHitTesting(swapTarget != nil)
                     .onTapGesture { swapTarget = nil }

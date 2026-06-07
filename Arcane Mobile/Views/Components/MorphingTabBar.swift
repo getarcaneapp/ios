@@ -286,7 +286,9 @@ private struct CustomTabBar: UIViewRepresentable {
             action: #selector(Coordinator.handleLongPress(_:))
         )
         lp.minimumPressDuration = 0.4
-        lp.cancelsTouchesInView = false
+        // Once the long-press fires, cancel the touch in the segmented control so
+        // releasing doesn't also commit a tap (which would switch tabs).
+        lp.cancelsTouchesInView = true
         lp.delegate = context.coordinator
         control.addGestureRecognizer(lp)
         context.coordinator.longPress = lp
@@ -368,12 +370,11 @@ private struct CustomTabBar: UIViewRepresentable {
             let slotWidth = control.bounds.width / CGFloat(control.numberOfSegments)
             let x = gr.location(in: control).x
             let idx = min(max(Int(x / slotWidth), 0), control.numberOfSegments - 1)
-            // Move the selection slider onto the pressed tab first (like the
-            // native bar) so the long-press reads as anchored to that one tab.
-            if idx < parent.tabs.count {
-                control.selectedSegmentIndex = idx
-                parent.activeIndex = idx
-            }
+            // Open the replace picker for the pressed tab WITHOUT changing the
+            // selection: a long-press must not navigate to that tab first (the
+            // picker's pointer already anchors it, and we don't want to wait on a
+            // tab switch). `cancelsTouchesInView` stops the segmented control from
+            // committing the tap on release, which would navigate too.
             parent.onLongPress(idx)
         }
 

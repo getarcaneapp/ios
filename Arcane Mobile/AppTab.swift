@@ -131,6 +131,25 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Whether this tab makes sense pinned to the bottom bar — a primary content
+    /// or resource view you navigate to often. Settings, admin, and one-off
+    /// config pages (users, registries, auth, webhooks, jobs, …) are excluded:
+    /// they live under Settings, so the long-press replace picker never offers
+    /// them as bar tabs. They stay fully reachable via the Settings list.
+    var canPinToBottomBar: Bool {
+        switch self {
+        case .dashboard, .containers, .images, .projects,
+             .volumes, .networks, .ports,
+             .updates, .activities, .events, .swarm:
+            return true
+        case .gitRepositories, .gitOps,
+             .containerRegistries, .templateRegistries,
+             .jobs, .users, .apiKeys, .notifications, .webhooks,
+             .systemSettings, .authentication, .roles, .oidcRoleMappings:
+            return false
+        }
+    }
+
     var requiresAdmin: Bool {
         switch self {
         case .containerRegistries, .templateRegistries, .gitRepositories, .gitOps,
@@ -173,10 +192,11 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     static let mainDefaults: [AppTab] = [.dashboard, .containers, .images, .projects]
     static var promotable: [AppTab] { AppTab.allCases.filter { !AppTab.mainDefaults.contains($0) } }
 
-    /// Tabs eligible to replace `current` in the bottom bar: every tab not
-    /// already pinned, minus `current` itself, gated by admin / v2 availability.
-    /// Flat (declaration order, no section grouping) — callers group if they
-    /// want. Shared by `TabSwapSheet` (iOS 18) and `TabReplacePopover` (iOS 26).
+    /// Tabs eligible to replace `current` in the bottom bar: every bottom-bar-
+    /// eligible tab not already pinned, minus `current` itself, gated by admin /
+    /// v2 availability. Flat (declaration order, no section grouping) — callers
+    /// group if they want. Shared by `TabSwapSheet` (iOS 18) and
+    /// `TabReplaceCallout` (iOS 26).
     static func replacementOptions(
         current: AppTab,
         pinned: Set<AppTab>,
@@ -184,7 +204,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         supportsV2: Bool
     ) -> [AppTab] {
         AppTab.allCases.filter { tab in
-            !pinned.contains(tab)
+            tab.canPinToBottomBar
+                && !pinned.contains(tab)
                 && tab != current
                 && (isAdmin || !tab.requiresAdmin)
                 && (supportsV2 || !tab.requiresV2)
