@@ -133,6 +133,28 @@ nonisolated struct VolumeSizeInfo: Codable, Sendable {
     let refCount: Int64?
 }
 
+/// Connected server's build metadata from `/app-version`. Decoded locally
+/// (rather than via the SDK's `VersionInfo`) so we also surface `nodeVersion`
+/// and `svelteKitVersion`, which the SDK model doesn't expose. Every field is
+/// optional so it decodes cleanly against both v1 and v2 backends — missing
+/// keys simply yield `nil` and their rows are hidden.
+nonisolated struct ServerVersionInfo: Codable, Sendable {
+    var displayVersion: String?
+    var currentVersion: String?
+    var currentTag: String?
+    var currentDigest: String?
+    var revision: String?
+    var shortRevision: String?
+    var goVersion: String?
+    var nodeVersion: String?
+    var svelteKitVersion: String?
+    var enabledFeatures: [String]?
+    var buildTime: String?
+    var updateAvailable: Bool?
+    var newestVersion: String?
+    var releaseUrl: String?
+}
+
 // `NotificationSettings: Identifiable` is now stated in the SDK itself.
 
 extension ContainerRegistry {

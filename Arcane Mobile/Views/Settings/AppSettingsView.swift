@@ -6,6 +6,8 @@ struct AppSettingsView: View {
     @State private var pendingDestructive: PendingDestructive?
     @State private var cacheSizeBytes: Int = 0
     @State private var showWhatsNew = false
+    @State private var serverVersion: ServerVersionInfo?
+    @State private var isLoadingServerVersion = false
 
     /// Both of this screen's destructive confirmations route through a single
     /// `.deleteConfirmation` cover (only one full-screen cover can be active per
@@ -34,6 +36,7 @@ struct AppSettingsView: View {
     var body: some View {
         List {
             applicationSection
+            serverVersionSection
             aboutSection
             supportSection
             versionSection
@@ -42,6 +45,7 @@ struct AppSettingsView: View {
         .navigationTitle("App Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { await refreshCacheSize() }
+        .task { await loadServerVersion() }
         .sheet(isPresented: $showWhatsNew) {
             WhatsNewView()
         }
@@ -123,6 +127,76 @@ struct AppSettingsView: View {
     }
 
     @ViewBuilder
+    private var serverVersionSection: some View {
+        if let v = serverVersion {
+            Section("Arcane Server") {
+                serverRow("Version", value: clean(v.displayVersion) ?? clean(v.currentVersion),
+                          icon: "shippingbox.fill", color: .blue)
+                if let tag = clean(v.currentTag) {
+                    serverRow("Image Tag", value: tag, icon: "tag.fill", color: .purple)
+                }
+                if let node = clean(v.nodeVersion) {
+                    serverRow("Node", value: node, icon: "leaf.fill", color: .green)
+                }
+                if let sk = clean(v.svelteKitVersion) {
+                    serverRow("SvelteKit", value: sk, icon: "bolt.fill", color: .orange)
+                }
+                if let go = clean(v.goVersion) {
+                    serverRow("Go", value: go, icon: "g.circle.fill", color: .teal)
+                }
+                if let rev = clean(v.shortRevision) {
+                    serverRow("Revision", value: rev, copy: v.revision ?? rev,
+                              icon: "number", color: .gray, mono: true)
+                }
+                if let bt = clean(v.buildTime) {
+                    serverRow("Build Time", value: bt, icon: "clock.fill", color: .gray)
+                }
+                if v.updateAvailable == true, let newest = clean(v.newestVersion) {
+                    serverRow("Update Available", value: newest,
+                              icon: "arrow.up.circle.fill", color: .blue)
+                }
+            }
+        } else if isLoadingServerVersion {
+            Section("Arcane Server") {
+                HStack {
+                    Text("Loading…").foregroundStyle(.secondary)
+                    Spacer()
+                    ProgressView()
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func serverRow(_ title: String, value: String?, copy: String? = nil,
+                           icon: String, color: Color, mono: Bool = false) -> some View {
+        let display = value ?? "—"
+        Button {
+            UIPasteboard.general.string = copy ?? display
+            showToast(.copied("\(title) copied"))
+        } label: {
+            HStack {
+                SettingsRow(title: title, systemImage: icon, color: color)
+                Spacer()
+                Text(display)
+                    .font(mono ? .subheadline.monospaced() : .subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Treats nil/empty/`"unknown"` as absent so those rows are hidden, matching
+    /// the web "About Arcane" dialog.
+    private func clean(_ s: String?) -> String? {
+        guard let s, !s.isEmpty, s != "unknown" else { return nil }
+        return s
+    }
+
+    @ViewBuilder
     private var aboutSection: some View {
         Section("About") {
             Link(destination: URL(string: "https://getarcane.app")!) {
@@ -198,5 +272,18 @@ struct AppSettingsView: View {
         async let images = ImageCache.shared.diskBytes()
         async let responses = ResponseCache.shared.diskBytes()
         cacheSizeBytes = await images + responses
+    }
+
+    private func loadServerVersion() async {
+        guard let client = manager.client, serverVersion == nil else { return }
+        isLoadingServerVersion = true
+        defer { isLoadingServerVersion = false }
+        do {
+            let data = try await client.transport.rawRequest(
+                "app-version", body: Optional<String>.none, authorized: false)
+            serverVersion = try JSONDecoder().decode(ServerVersionInfo.self, from: data)
+        } catch {
+            // Leave nil — section hides itself. No error UI for optional metadata.
+        }
     }
 }
