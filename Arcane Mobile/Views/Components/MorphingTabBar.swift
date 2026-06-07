@@ -61,8 +61,8 @@ struct MorphingTabBar: View {
         }
         // Smooth morph both ways. The un-morph is triggered immediately by the
         // navigation path returning to root, so this is just the visual reshape.
-        .animation(.smooth(duration: 0.38), value: isMorphed)
-        .animation(Motion.state, value: payload?.runningItemID)
+        .motionAwareAnimation(.smooth(duration: 0.38), value: isMorphed)
+        .motionAwareAnimation(Motion.state, value: payload?.runningItemID)
         .padding(.horizontal, 15)
         .padding(.vertical, 6)
         .deleteConfirmation(
@@ -107,22 +107,27 @@ struct MorphingTabBar: View {
         .frame(height: isMorphed ? primarySize : barHeight)
         .overlay {
             if let primary {
-                ZStack {
-                    if isRunningPrimary {
-                        ProgressView().tint(.white)
-                    } else {
-                        Image(systemName: primary.systemImage)
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.white)
+                Button {
+                    handleTap(primary)
+                } label: {
+                    ZStack {
+                        if isRunningPrimary {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: primary.systemImage)
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.white)
+                        }
                     }
                 }
+                .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(.capsule)
                 .opacity(isMorphed ? 1 : 0)
                 .blur(radius: isMorphed ? 0 : 6)
+                .disabled(!isMorphed || disabled(primary))
                 .allowsHitTesting(isMorphed && !disabled(primary))
-                .onTapGesture { handleTap(primary) }
             }
         }
         .clipShape(.capsule)
@@ -138,23 +143,27 @@ struct MorphingTabBar: View {
         let isRunning = payload?.runningItemID == item.id
         let isDisabled = disabled(item)
 
-        return ZStack {
-            if isRunning {
-                ProgressView()
-                    .controlSize(.regular)
-                    .tint(item.tint)
-            } else {
-                Image(systemName: item.systemImage)
-                    .font(.title3)
-                    .foregroundStyle(item.tint)
+        return Button {
+            handleTap(item)
+        } label: {
+            ZStack {
+                if isRunning {
+                    ProgressView()
+                        .controlSize(.regular)
+                        .tint(item.tint)
+                } else {
+                    Image(systemName: item.systemImage)
+                        .font(.title3)
+                        .foregroundStyle(item.tint)
+                }
             }
         }
+        .buttonStyle(.plain)
         .frame(width: pillSize, height: pillSize)
         .contentShape(.circle)
         .glassEffectCompat(interactive: true, in: .circle)
         .opacity(isDisabled && !isRunning ? 0.45 : 1)
-        .allowsHitTesting(isMorphed)
-        .onTapGesture { if !isDisabled { handleTap(item) } }
+        .disabled(!isMorphed || isDisabled)
         .transition(.blurReplace.combined(with: .opacity))
     }
 

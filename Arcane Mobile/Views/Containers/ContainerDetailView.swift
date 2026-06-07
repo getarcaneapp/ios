@@ -481,11 +481,6 @@ struct BindsView: View {
 // MARK: - Helpers
 private extension String {
     var formattedDate: String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: self) {
-            return date.formatted(date: .abbreviated, time: .shortened)
-        }
-        return self
+        ArcaneDateFormatting.formattedISO8601(self, date: .abbreviated, time: .shortened)
     }
 }

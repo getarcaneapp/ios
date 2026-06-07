@@ -144,12 +144,7 @@ struct ImageDetailView: View {
     }
 
     private func headerDate(_ iso: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: iso) {
-            return date.formatted(date: .abbreviated, time: .omitted)
-        }
-        return iso
+        ArcaneDateFormatting.formattedISO8601(iso, date: .abbreviated, time: .omitted)
     }
 
     private func imageConfigSection(_ config: ImageDetailConfig) -> some View {
@@ -332,11 +327,6 @@ struct ImageDetailView: View {
 
 private extension String {
     var formattedDate: String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: self) {
-            return date.formatted(date: .abbreviated, time: .shortened)
-        }
-        return self
+        ArcaneDateFormatting.formattedISO8601(self, date: .abbreviated, time: .shortened)
     }
 }

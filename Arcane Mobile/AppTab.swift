@@ -172,6 +172,24 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
 
     static let mainDefaults: [AppTab] = [.dashboard, .containers, .images, .projects]
     static var promotable: [AppTab] { AppTab.allCases.filter { !AppTab.mainDefaults.contains($0) } }
+
+    /// Tabs eligible to replace `current` in the bottom bar: every tab not
+    /// already pinned, minus `current` itself, gated by admin / v2 availability.
+    /// Flat (declaration order, no section grouping) — callers group if they
+    /// want. Shared by `TabSwapSheet` (iOS 18) and `TabReplacePopover` (iOS 26).
+    static func replacementOptions(
+        current: AppTab,
+        pinned: Set<AppTab>,
+        isAdmin: Bool,
+        supportsV2: Bool
+    ) -> [AppTab] {
+        AppTab.allCases.filter { tab in
+            !pinned.contains(tab)
+                && tab != current
+                && (isAdmin || !tab.requiresAdmin)
+                && (supportsV2 || !tab.requiresV2)
+        }
+    }
 }
 
 /// Single source of truth for building a destination view from an AppTab.

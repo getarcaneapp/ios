@@ -58,6 +58,54 @@ struct MainTabView: View {
         }
     }
 
+    /// The floating bottom bar. On iOS 26 it's the morph host
+    /// (`TabReplaceMorphBar`) plus a tap-to-cancel scrim, so a long-press grows
+    /// the bar into the tab picker. On iOS 18 it's the plain bar (long-press opens
+    /// `TabSwapSheet`). Both pin a fixed gap above the physical bottom — fill the
+    /// height, bottom-align, then ignore the safe area so the bar sits within it.
+    @ViewBuilder
+    private var bottomBarOverlay: some View {
+        if #available(iOS 26, *) {
+            ZStack(alignment: .bottom) {
+                // Dim + tap-to-cancel behind the expanded picker. Always mounted;
+                // only catches touches (and dims) while a replace is in flight.
+                Color.black
+                    .opacity(swapTarget != nil ? 0.25 : 0)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(swapTarget != nil)
+                    .onTapGesture { swapTarget = nil }
+                    .motionAwareAnimation(Motion.state, value: swapTarget != nil)
+
+                TabReplaceMorphBar(
+                    tabs: morphTabs,
+                    selectedID: $selectedTab,
+                    store: morphStore,
+                    accentColor: accentColor,
+                    pinnedTabs: store.pinnedTabs,
+                    swapTarget: $swapTarget,
+                    isAdmin: isAdmin,
+                    supportsV2: supportsV2,
+                    onLongPressTab: handleLongPressTab,
+                    onPick: handleMorphPick
+                )
+                .padding(.bottom, 18)
+            }
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .ignoresSafeArea()
+        } else {
+            MorphingTabBar(
+                tabs: morphTabs,
+                selectedID: $selectedTab,
+                store: morphStore,
+                onLongPressTab: handleLongPressTab,
+                accentColor: accentColor
+            )
+            .padding(.bottom, 18)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .ignoresSafeArea()
+        }
+    }
+
     var body: some View {
         coreTabView
             // Reserve room for the floating bar on every page (tabs, pushed
@@ -67,29 +115,16 @@ struct MainTabView: View {
                 BottomBarInsetInstaller(barTop: 88)
             }
             .overlay(alignment: .bottom) {
-                MorphingTabBar(
-                    tabs: morphTabs,
-                    selectedID: $selectedTab,
-                    store: morphStore,
-                    onLongPressTab: handleLongPressTab,
-                    accentColor: accentColor
-                )
-                // Pin the bar a fixed gap above the *physical* bottom (just above
-                // the home indicator), like the native bar: fill the height and
-                // bottom-align, then ignore the safe area so it sits within it.
-                .padding(.bottom, 18)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .ignoresSafeArea()
+                bottomBarOverlay
             }
-            .sheet(item: $swapTarget) { current in
-                TabSwapSheet(current: current) { replacement in
-                    HapticsManager.success()
-                    store.swap(pinned: current, with: replacement)
-                    if selectedTab == current.id { selectedTab = replacement.id }
-                    swapTarget = nil
-                }
-                .environment(manager)
-            }
+            // iOS 18 keeps the modal `TabSwapSheet`; on iOS 26 the morph
+            // (`TabReplaceMorphBar`) owns long-press replace, so the sheet is
+            // suppressed there.
+            .modifier(LegacySwapSheet(
+                swapTarget: $swapTarget,
+                manager: manager,
+                onPick: { performSwap(current: $0, replacement: $1) }
+            ))
             .onChange(of: selectedTab) { _, newValue in
                 morphStore.activeTabID = newValue
             }
@@ -121,10 +156,51 @@ struct MainTabView: View {
         swapTarget = tabs[idx]
     }
 
+    /// Apply a tab swap from the long-press replace flow. Shared by the iOS 26
+    /// morph picker and the iOS 18 `TabSwapSheet`.
+    private func performSwap(current: AppTab, replacement: AppTab) {
+        HapticsManager.success()
+        store.swap(pinned: current, with: replacement)
+        if selectedTab == current.id { selectedTab = replacement.id }
+        swapTarget = nil
+    }
+
+    /// The morph picker reports only the chosen replacement; `swapTarget` holds
+    /// the tab being replaced.
+    private func handleMorphPick(_ replacement: AppTab) {
+        guard let current = swapTarget else { return }
+        performSwap(current: current, replacement: replacement)
+    }
+
     private func ensureSelectedTabVisible() {
         let allowed = Set(visibleTabs.map(\.id) + ["settings"])
         if !allowed.contains(selectedTab) {
             selectedTab = AppTab.dashboard.id
+        }
+    }
+}
+
+// MARK: - Legacy (iOS 18) swap sheet
+
+/// Presents `TabSwapSheet` for long-press replace on iOS 18 only. On iOS 26 the
+/// `TabReplaceMorphBar` morph owns that flow, so the sheet must not also fire off
+/// the same `swapTarget`.
+private struct LegacySwapSheet: ViewModifier {
+    @Binding var swapTarget: AppTab?
+    let manager: ArcaneClientManager
+    /// `(current, replacement)` — applied identically to the iOS 26 picker.
+    let onPick: (AppTab, AppTab) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content
+        } else {
+            content.sheet(item: $swapTarget) { current in
+                TabSwapSheet(current: current) { replacement in
+                    onPick(current, replacement)
+                }
+                .environment(manager)
+            }
         }
     }
 }

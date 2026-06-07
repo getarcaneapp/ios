@@ -7,7 +7,6 @@ struct TabSwapSheet: View {
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    @State private var showResetConfirm = false
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
     private var supportsV2: Bool { manager.serverCapabilities?.mode == .rbac }
@@ -16,13 +15,10 @@ struct TabSwapSheet: View {
     private var pinnedSet: Set<AppTab> { Set(store.pinnedTabs) }
 
     private func eligible(_ section: AppTab.Section) -> [AppTab] {
-        AppTab.allCases.filter { tab in
-            tab.section == section
-                && !pinnedSet.contains(tab)
-                && tab != current
-                && (isAdmin || !tab.requiresAdmin)
-                && (supportsV2 || !tab.requiresV2)
-        }
+        AppTab.replacementOptions(
+            current: current, pinned: pinnedSet, isAdmin: isAdmin, supportsV2: supportsV2
+        )
+        .filter { $0.section == section }
     }
 
     private static let columnCount = 3
@@ -61,31 +57,10 @@ struct TabSwapSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Reset", role: .destructive) {
-                        showResetConfirm = true
-                    }
-                    .disabled(store.pinnedTabs == AppTab.mainDefaults)
-                }
             }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        // This view is itself presented as a sheet, and the app-wide
-        // `.deleteConfirmation` host renders below sheets — so keep a native
-        // confirmation dialog here.
-        .confirmationDialog(
-            "Reset Tab Bar?",
-            isPresented: $showResetConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Reset to Default", role: .destructive) {
-                store.resetToDefaults()
-                dismiss()
-            }
-        } message: {
-            Text("Restores the bottom tab bar to Dashboard, Containers, Images, and Projects.")
-        }
     }
 
     @ViewBuilder
@@ -121,7 +96,7 @@ struct TabSwapSheet: View {
     }
 }
 
-private struct TabTile: View {
+struct TabTile: View {
     let tab: AppTab
     let onPick: (AppTab) -> Void
 

@@ -47,6 +47,8 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
 struct AppearanceSettingsView: View {
     @AppStorage("accentColorHex") private var accentColorHex = ""
     @State private var customColor: Color = .blue
+    @State private var showTabBarResetConfirm = false
+    @State private var navTabsStore = NavTabsStore.shared
 
     // Derive the selected swatch from the stored hex so the two can never
     // drift apart. An empty hex means "use the system default" which we
@@ -149,6 +151,20 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
+                Button(role: .destructive) {
+                    showTabBarResetConfirm = true
+                } label: {
+                    Text("Reset Tab Bar")
+                }
+                .foregroundStyle(.red)
+                .disabled(navTabsStore.pinnedTabs == AppTab.mainDefaults)
+            } header: {
+                Text("Tab Bar")
+            } footer: {
+                Text("Restores the bottom tab bar to Dashboard, Containers, Images, and Projects. Long-press a tab to swap it.")
+            }
+
+            Section {
                 Button("Reset to Default") {
                     accentColorHex = ""
                 }
@@ -157,6 +173,15 @@ struct AppearanceSettingsView: View {
         }
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
+        .deleteConfirmation(
+            isPresented: $showTabBarResetConfirm,
+            title: "Reset Tab Bar",
+            message: "Restores the bottom tab bar to Dashboard, Containers, Images, and Projects.",
+            icon: "rectangle.3.offgrid",
+            confirmTitle: "Reset"
+        ) {
+            navTabsStore.resetToDefaults()
+        }
         .onAppear {
             if selectedOption == .custom, let color = Color(hex: accentColorHex) {
                 customColor = color

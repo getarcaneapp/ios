@@ -28,6 +28,18 @@ enum Motion {
     /// Root overlay (delete-confirmation card) entrance/exit.
     static let overlay: Animation = .interpolatingSpring(duration: 0.3)
 
+    /// Long-press tab-replace: the bottom bar's Liquid Glass **expand** into the
+    /// tab picker. A touch of bounce sells the "morph" (iOS 26 only). Bounce is
+    /// safe on expand — it overshoots the *open* state, never the resting state.
+    static let morph: Animation = .bouncy(duration: 0.5, extraBounce: 0.05)
+
+    /// The **collapse** half of the same morph. Deliberately non-bouncy: a bounce
+    /// here undershoots past the bar's resting state, which is exactly where the
+    /// morph's Liquid Glass switches off — so the spring would flick the glass
+    /// off/on as it settles (a flash on dismiss). A smooth spring lands straight
+    /// on rest.
+    static let morphCollapse: Animation = .smooth(duration: 0.4)
+
     /// Toast host entrance/exit.
     static let toast: Animation = .interpolatingSpring(duration: 0.35, bounce: 0)
 

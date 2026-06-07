@@ -76,15 +76,6 @@ struct ContainerHealthHistoryView: View {
 
 private extension String {
     var formattedHealthDate: String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: self) {
-            return d.formatted(date: .abbreviated, time: .standard)
-        }
-        f.formatOptions = [.withInternetDateTime]
-        if let d = f.date(from: self) {
-            return d.formatted(date: .abbreviated, time: .standard)
-        }
-        return self
+        ArcaneDateFormatting.formattedISO8601(self, date: .abbreviated, time: .standard)
     }
 }

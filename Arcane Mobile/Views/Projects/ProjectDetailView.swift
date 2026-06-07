@@ -231,14 +231,7 @@ struct ProjectDetailView: View {
     /// Formats the project's ISO-8601 `createdAt`, tolerating both fractional and
     /// whole-second timestamps; falls back to the raw string.
     private func headerDate(_ iso: String) -> String {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        if let date = withFraction.date(from: iso) ?? plain.date(from: iso) {
-            return date.formatted(date: .abbreviated, time: .omitted)
-        }
-        return iso
+        ArcaneDateFormatting.formattedISO8601(iso, date: .abbreviated, time: .omitted)
     }
 
     /// State-aware centre action: Deploy when stopped, Stop when running.

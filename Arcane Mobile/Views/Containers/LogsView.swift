@@ -193,11 +193,8 @@ struct LogLineView: View {
 
 private extension String {
     var logTimestamp: String {
-        // Try to parse ISO timestamp and show just time
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: self) {
-            return date.formatted(.dateTime.hour().minute().second())
+        if let formatted = ArcaneDateFormatting.formattedClockTime(fromISO8601: self) {
+            return formatted
         }
         // Fallback: just show last 8 chars
         return count > 8 ? String(suffix(8)) : self
