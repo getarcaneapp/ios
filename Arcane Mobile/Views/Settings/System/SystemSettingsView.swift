@@ -8,6 +8,8 @@ struct SettingFieldDef: Identifiable {
     let label: String
     let type: SettingFieldType
     var description: String? = nil
+    var minValue: Int? = nil
+    var maxValue: Int? = nil
     var id: String { key }
 }
 
@@ -18,6 +20,7 @@ enum SettingFieldType {
     case password
     case select([String])
     case cron
+    case textarea
 }
 
 struct SettingsCategoryDef: Identifiable {
@@ -40,17 +43,17 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
             .init(key: "enableGravatar", label: "Enable Gravatar", type: .boolean),
             .init(key: "defaultShell", label: "Default Shell", type: .text),
             .init(key: "autoInjectEnv", label: "Auto-Inject .env", type: .boolean),
-            .init(key: "defaultDeployPullPolicy", label: "Default Pull Policy", type: .select(["always", "missing", "never", "build"])),
+            .init(key: "defaultDeployPullPolicy", label: "Default Pull Policy", type: .select(["missing", "always", "never"])),
         ]
     ),
     .init(
         id: "docker",
-        title: "Docker Daemon",
-        icon: "shippingbox",
-        summary: "Docker host and project directories",
+        title: "Directories",
+        icon: "folder",
+        summary: "Project, template, and swarm directories",
         fields: [
-            .init(key: "dockerHost", label: "Docker Host", type: .text),
             .init(key: "projectsDirectory", label: "Projects Directory", type: .text),
+            .init(key: "templatesDirectory", label: "Templates Directory", type: .text),
             .init(key: "swarmStackSourcesDirectory", label: "Swarm Stack Sources", type: .text),
             .init(key: "followProjectSymlinks", label: "Follow Project Symlinks", type: .boolean),
         ]
@@ -62,8 +65,10 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
         summary: "Automatic image updates and polling",
         fields: [
             .init(key: "autoUpdate", label: "Enabled", type: .boolean),
+            .init(key: "autoUpdateInterval", label: "Update Interval", type: .cron),
             .init(key: "autoUpdateExcludedContainers", label: "Excluded Containers", type: .text),
             .init(key: "pollingEnabled", label: "Polling Enabled", type: .boolean),
+            .init(key: "pollingInterval", label: "Polling Interval", type: .cron),
         ]
     ),
     .init(
@@ -73,6 +78,7 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
         summary: "Restart unhealthy containers automatically",
         fields: [
             .init(key: "autoHealEnabled", label: "Enabled", type: .boolean),
+            .init(key: "autoHealInterval", label: "Check Interval", type: .cron),
             .init(key: "autoHealMaxRestarts", label: "Max Restarts", type: .number),
             .init(key: "autoHealRestartWindow", label: "Restart Window (min)", type: .number),
             .init(key: "autoHealExcludedContainers", label: "Excluded Containers", type: .text),
@@ -98,21 +104,46 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
         ]
     ),
     .init(
+        id: "maintenance",
+        title: "Maintenance Schedule",
+        icon: "calendar.badge.clock",
+        summary: "Background job and cleanup intervals",
+        fields: [
+            .init(key: "environmentHealthInterval", label: "Environment Health Check", type: .cron),
+            .init(key: "dockerClientRefreshInterval", label: "Docker Client Refresh", type: .cron),
+            .init(key: "eventCleanupInterval", label: "Event Cleanup", type: .cron),
+            .init(key: "expiredSessionsCleanupInterval", label: "Expired Sessions Cleanup", type: .cron),
+        ]
+    ),
+    .init(
         id: "vulnerability",
         title: "Vulnerability Scanning",
         icon: "shield.lefthalf.filled",
         summary: "Trivy scanner configuration",
         fields: [
             .init(key: "vulnerabilityScanEnabled", label: "Enabled", type: .boolean),
+            .init(key: "vulnerabilityScanInterval", label: "Scan Interval", type: .cron),
             .init(key: "trivyImage", label: "Trivy Image", type: .text),
             .init(key: "trivyNetwork", label: "Network", type: .text),
-            .init(key: "trivySecurityOpts", label: "Security Options", type: .text),
+            .init(key: "trivySecurityOpts", label: "Security Options", type: .textarea),
             .init(key: "trivyPrivileged", label: "Privileged Mode", type: .boolean),
             .init(key: "trivyResourceLimitsEnabled", label: "Resource Limits", type: .boolean),
             .init(key: "trivyCpuLimit", label: "CPU Limit", type: .text),
             .init(key: "trivyMemoryLimitMb", label: "Memory Limit (MB)", type: .number),
-            .init(key: "trivyConcurrentScanContainers", label: "Concurrent Scans", type: .number),
+            .init(key: "trivyConcurrentScanContainers", label: "Concurrent Scans", type: .number, minValue: 1),
             .init(key: "trivyPreserveCacheOnVolumePrune", label: "Preserve Cache", type: .boolean),
+            .init(key: "trivyConfig", label: "Trivy Config (YAML)", type: .textarea),
+            .init(key: "trivyIgnore", label: ".trivyignore", type: .textarea),
+        ]
+    ),
+    .init(
+        id: "activity",
+        title: "Activity",
+        icon: "list.bullet.rectangle",
+        summary: "Activity Center history retention",
+        fields: [
+            .init(key: "activityHistoryRetentionDays", label: "Retention (days)", type: .number, minValue: 0, maxValue: 3650),
+            .init(key: "activityHistoryMaxEntries", label: "Max Entries", type: .number, minValue: 0, maxValue: 100000),
         ]
     ),
     .init(
@@ -121,14 +152,13 @@ let systemSettingsCategories: [SettingsCategoryDef] = [
         icon: "clock",
         summary: "Operation timeouts in seconds",
         fields: [
-            .init(key: "dockerApiTimeout", label: "Docker API (s)", type: .number),
-            .init(key: "dockerImagePullTimeout", label: "Image Pull (s)", type: .number),
-            .init(key: "trivyScanTimeout", label: "Trivy Scan (s)", type: .number),
-            .init(key: "gitOperationTimeout", label: "Git Operation (s)", type: .number),
-            .init(key: "httpClientTimeout", label: "HTTP Client (s)", type: .number),
-            .init(key: "registryTimeout", label: "Registry (s)", type: .number),
-            .init(key: "proxyRequestTimeout", label: "Proxy Request (s)", type: .number),
-            .init(key: "buildTimeout", label: "Build (s)", type: .number),
+            .init(key: "dockerApiTimeout", label: "Docker API (s)", type: .number, minValue: 1, maxValue: 3600),
+            .init(key: "dockerImagePullTimeout", label: "Image Pull (s)", type: .number, minValue: 30, maxValue: 7200),
+            .init(key: "trivyScanTimeout", label: "Trivy Scan (s)", type: .number, minValue: 60, maxValue: 14400),
+            .init(key: "gitOperationTimeout", label: "Git Operation (s)", type: .number, minValue: 30, maxValue: 3600),
+            .init(key: "httpClientTimeout", label: "HTTP Client (s)", type: .number, minValue: 5, maxValue: 300),
+            .init(key: "registryTimeout", label: "Registry (s)", type: .number, minValue: 5, maxValue: 300),
+            .init(key: "proxyRequestTimeout", label: "Proxy Request (s)", type: .number, minValue: 10, maxValue: 600),
         ]
     ),
     .init(
@@ -326,7 +356,8 @@ struct SettingsCategoryView: View {
                     title: field.label,
                     placeholder: "0",
                     text: binding,
-                    keyboardType: .numberPad
+                    keyboardType: .numberPad,
+                    helper: rangeHint(field)
                 )
             case .password:
                 FormSecureField(title: field.label, placeholder: "Secret value", text: binding)
@@ -359,6 +390,17 @@ struct SettingsCategoryView: View {
                     text: binding,
                     autocapitalization: .never,
                     autocorrectionDisabled: true
+                )
+            case .textarea:
+                FormTextField(
+                    title: field.label,
+                    placeholder: "Value",
+                    text: binding,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true,
+                    axis: .vertical,
+                    lineLimit: 3...10,
+                    monospaced: true
                 )
             }
             if let description = field.description {
@@ -393,6 +435,12 @@ struct SettingsCategoryView: View {
 
     private func saveSettings() async {
         guard let client = manager.client else { return }
+
+        if let validationError = validate() {
+            errorMessage = validationError
+            return
+        }
+
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -407,16 +455,45 @@ struct SettingsCategoryView: View {
         guard !changedPairs.isEmpty else { return }
 
         do {
-            let jsonData = try JSONSerialization.data(withJSONObject: changedPairs)
-            let update = try JSONDecoder().decode(UpdateSettings.self, from: jsonData)
+            // Settings are flat string key/values server-side; send the raw dict so we
+            // aren't limited to keys the SDK's UpdateSettings struct happens to model.
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
-            let _: [PublicSetting] = try await client.rest.put(path, body: update)
+            let _: [PublicSetting] = try await client.rest.put(path, body: changedPairs)
             for (key, value) in changedPairs {
                 originalSettings[key] = value
             }
             showToast(.success("Settings saved"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    /// Validates numeric fields against their allowed range before saving.
+    private func validate() -> String? {
+        for field in category.fields {
+            guard case .number = field.type else { continue }
+            let raw = (settings[field.key] ?? "").trimmingCharacters(in: .whitespaces)
+            if raw.isEmpty { continue }
+            guard let num = Int(raw) else {
+                return "\(field.label) must be a whole number."
+            }
+            if let min = field.minValue, num < min {
+                return "\(field.label) must be at least \(min)."
+            }
+            if let max = field.maxValue, num > max {
+                return "\(field.label) must be at most \(max)."
+            }
+        }
+        return nil
+    }
+
+    /// A short "Allowed: min–max" hint shown under numeric fields that declare a range.
+    private func rangeHint(_ field: SettingFieldDef) -> String? {
+        switch (field.minValue, field.maxValue) {
+        case let (min?, max?): return "Allowed: \(min)–\(max)"
+        case let (min?, nil): return "Minimum: \(min)"
+        case let (nil, max?): return "Maximum: \(max)"
+        default: return nil
         }
     }
 }

@@ -35,7 +35,7 @@ struct BuildSettingsView: View {
                     placeholder: "1800",
                     text: $buildTimeout,
                     keyboardType: .numberPad,
-                    helper: "Maximum build duration in seconds."
+                    helper: "Build duration in seconds (60–14400)."
                 )
                 FormTextField(
                     title: "Builds Directory",
@@ -117,16 +117,29 @@ struct BuildSettingsView: View {
 
     private func save() async {
         guard let client = manager.client else { return }
+
+        if let t = Int(buildTimeout.trimmingCharacters(in: .whitespaces)), t < 60 || t > 14400 {
+            errorMessage = "Build Timeout must be between 60 and 14400 seconds."
+            return
+        }
+
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
         do {
-            var body = UpdateSettings()
-            body.buildProvider = buildProvider
-            body.buildsDirectory = buildsDirectory.isEmpty ? nil : buildsDirectory
-            body.buildTimeout = buildTimeout
-            body.depotProjectId = buildProvider == "depot" ? (depotProjectId.isEmpty ? nil : depotProjectId) : nil
-            body.depotToken = buildProvider == "depot" ? (depotToken.isEmpty ? nil : depotToken) : nil
+            // Settings are flat string key/values server-side; send a raw dict instead of
+            // the SDK's UpdateSettings struct.
+            var body: [String: String] = [
+                "buildProvider": buildProvider,
+                "buildTimeout": buildTimeout,
+            ]
+            let trimmedDir = buildsDirectory.trimmingCharacters(in: .whitespaces)
+            if !trimmedDir.isEmpty { body["buildsDirectory"] = trimmedDir }
+            if buildProvider == "depot" {
+                let trimmedProject = depotProjectId.trimmingCharacters(in: .whitespaces)
+                if !trimmedProject.isEmpty { body["depotProjectId"] = trimmedProject }
+                if !depotToken.isEmpty { body["depotToken"] = depotToken }
+            }
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
             let _: [PublicSetting] = try await client.rest.put(path, body: body)
             showToast(.success("Build settings saved"))

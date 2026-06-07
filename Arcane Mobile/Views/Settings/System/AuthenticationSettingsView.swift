@@ -16,8 +16,7 @@ struct AuthenticationSettingsView: View {
     @State private var oidcClientId = ""
     @State private var oidcClientSecret = ""
     @State private var oidcScopes = "openid email profile"
-    @State private var oidcAdminClaim = ""
-    @State private var oidcAdminValue = ""
+    @State private var oidcGroupsClaim = ""
     @State private var oidcSkipTlsVerify = false
     @State private var oidcAutoRedirectToProvider = false
     @State private var oidcMergeAccounts = false
@@ -45,7 +44,7 @@ struct AuthenticationSettingsView: View {
                     placeholder: "1440",
                     text: $authSessionTimeout,
                     keyboardType: .numberPad,
-                    helper: "Maximum session length in minutes."
+                    helper: "Session length in minutes (15–1440)."
                 )
                 FormPicker(
                     title: "Password Policy",
@@ -126,18 +125,12 @@ struct AuthenticationSettingsView: View {
 
             Section {
                 FormTextField(
-                    title: "Admin Claim",
+                    title: "Groups Claim",
                     placeholder: "groups",
-                    text: $oidcAdminClaim,
+                    text: $oidcGroupsClaim,
                     autocapitalization: .never,
-                    autocorrectionDisabled: true
-                )
-                FormTextField(
-                    title: "Admin Value",
-                    placeholder: "arcane-admins",
-                    text: $oidcAdminValue,
-                    autocapitalization: .never,
-                    autocorrectionDisabled: true
+                    autocorrectionDisabled: true,
+                    helper: "Token claim read for group memberships. Map groups to roles in the Arcane web app."
                 )
                 Toggle("Skip TLS Verify", isOn: $oidcSkipTlsVerify)
                 Toggle("Auto-Redirect to Provider", isOn: $oidcAutoRedirectToProvider)
@@ -195,8 +188,7 @@ struct AuthenticationSettingsView: View {
             oidcClientId = dict["oidcClientId"] ?? ""
             oidcClientSecret = dict["oidcClientSecret"] ?? ""
             oidcScopes = dict["oidcScopes"] ?? "openid email profile"
-            oidcAdminClaim = dict["oidcAdminClaim"] ?? ""
-            oidcAdminValue = dict["oidcAdminValue"] ?? ""
+            oidcGroupsClaim = dict["oidcGroupsClaim"] ?? ""
             oidcSkipTlsVerify = dict["oidcSkipTlsVerify"]?.lowercased() == "true"
             oidcAutoRedirectToProvider = dict["oidcAutoRedirectToProvider"]?.lowercased() == "true"
             oidcMergeAccounts = dict["oidcMergeAccounts"]?.lowercased() == "true"
@@ -222,26 +214,40 @@ struct AuthenticationSettingsView: View {
 
     private func save() async {
         guard let client = manager.client else { return }
+
+        if let t = Int(authSessionTimeout.trimmingCharacters(in: .whitespaces)), t < 15 || t > 1440 {
+            errorMessage = "Session Timeout must be between 15 and 1440 minutes."
+            return
+        }
+
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
         do {
-            var body = UpdateSettings()
-            body.authLocalEnabled = String(authLocalEnabled)
-            body.authPasswordPolicy = authPasswordPolicy
-            body.authSessionTimeout = authSessionTimeout
-            body.oidcEnabled = String(oidcEnabled)
-            body.oidcMergeAccounts = String(oidcMergeAccounts)
-            body.oidcSkipTlsVerify = String(oidcSkipTlsVerify)
-            body.oidcAutoRedirectToProvider = String(oidcAutoRedirectToProvider)
-            body.oidcClientId = oidcClientId.isEmpty ? nil : oidcClientId
-            body.oidcClientSecret = oidcClientSecret.isEmpty ? nil : oidcClientSecret
-            body.oidcIssuerUrl = oidcIssuerUrl.isEmpty ? nil : oidcIssuerUrl
-            body.oidcScopes = oidcScopes.isEmpty ? nil : oidcScopes
-            body.oidcAdminClaim = oidcAdminClaim.isEmpty ? nil : oidcAdminClaim
-            body.oidcAdminValue = oidcAdminValue.isEmpty ? nil : oidcAdminValue
-            body.oidcProviderName = oidcProviderName.isEmpty ? nil : oidcProviderName
-            body.oidcProviderLogoUrl = oidcProviderLogoUrl.isEmpty ? nil : oidcProviderLogoUrl
+            // Settings are flat string key/values server-side; send a raw dict so we can
+            // include keys (e.g. oidcGroupsClaim) the SDK's UpdateSettings doesn't model.
+            var body: [String: String] = [
+                "authLocalEnabled": String(authLocalEnabled),
+                "authPasswordPolicy": authPasswordPolicy,
+                "authSessionTimeout": authSessionTimeout,
+                "oidcEnabled": String(oidcEnabled),
+                "oidcMergeAccounts": String(oidcMergeAccounts),
+                "oidcSkipTlsVerify": String(oidcSkipTlsVerify),
+                "oidcAutoRedirectToProvider": String(oidcAutoRedirectToProvider),
+            ]
+            // Omit empty optional fields so they don't overwrite existing server values.
+            func setIfPresent(_ key: String, _ value: String) {
+                let trimmed = value.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { body[key] = trimmed }
+            }
+            setIfPresent("oidcClientId", oidcClientId)
+            setIfPresent("oidcClientSecret", oidcClientSecret)
+            setIfPresent("oidcIssuerUrl", oidcIssuerUrl)
+            setIfPresent("oidcScopes", oidcScopes)
+            setIfPresent("oidcGroupsClaim", oidcGroupsClaim)
+            setIfPresent("oidcProviderName", oidcProviderName)
+            setIfPresent("oidcProviderLogoUrl", oidcProviderLogoUrl)
+
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
             let _: [PublicSetting] = try await client.rest.put(path, body: body)
             if let cached = manager.cached {
