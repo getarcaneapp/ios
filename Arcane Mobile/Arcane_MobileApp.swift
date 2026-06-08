@@ -7,8 +7,8 @@ struct Arcane_MobileApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @State private var clientManager = ArcaneClientManager()
-    @State private var pinnedStore = PinnedItemsStore.shared
-    @State private var resourceMutationStore = ResourceMutationStore.shared
+    private var pinnedStore = PinnedItemsStore.shared
+    private var resourceMutationStore = ResourceMutationStore.shared
     @AppStorage("accentColorHex") private var accentColorHex = ""
 
     private var accentColor: Color {

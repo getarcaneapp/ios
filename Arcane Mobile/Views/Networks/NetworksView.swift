@@ -212,7 +212,7 @@ struct NetworksView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: NetworkSummary.self) { network in
             NetworkDetailView(network: network, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: network.id, in: heroTransition))
+                .pageEntranceFromTop()
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateNetworkView(environmentID: environmentID) {}

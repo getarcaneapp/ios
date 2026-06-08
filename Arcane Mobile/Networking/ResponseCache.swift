@@ -44,6 +44,7 @@ actor ResponseCache {
     private var inFlight: [CacheKey: Task<any Sendable, Error>] = [:]
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let ioQueue = DispatchQueue(label: "com.arcane.response-cache.io", qos: .utility)
 
     private init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
@@ -58,16 +59,56 @@ actor ResponseCache {
         decoder = dec
     }
 
+    // MARK: - Disk Non-Blocking Helpers
+
+    private func readDisk(at url: URL) async -> Data? {
+        await withCheckedContinuation { continuation in
+            ioQueue.async {
+                let data = try? Data(contentsOf: url, options: .mappedIfSafe)
+                continuation.resume(returning: data)
+            }
+        }
+    }
+
+    private func writeDisk(_ data: Data, to url: URL) async {
+        await withCheckedContinuation { continuation in
+            ioQueue.async {
+                try? data.write(to: url, options: .atomic)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func deleteDisk(at url: URL) async {
+        await withCheckedContinuation { continuation in
+            ioQueue.async {
+                try? FileManager.default.removeItem(at: url)
+                continuation.resume()
+            }
+        }
+    }
+
+    private func listDiskDirectory() async -> [URL] {
+        await withCheckedContinuation { continuation in
+            ioQueue.async {
+                let urls = (try? FileManager.default.contentsOfDirectory(
+                    at: self.diskDirectory, includingPropertiesForKeys: nil
+                )) ?? []
+                continuation.resume(returning: urls)
+            }
+        }
+    }
+
     // MARK: - Read
 
-    func get<T: Codable & Sendable>(_ key: CacheKey, as type: T.Type, ttl: TimeInterval) -> T? {
+    func get<T: Codable & Sendable>(_ key: CacheKey, as type: T.Type, ttl: TimeInterval) async -> T? {
         let now = Date()
         if let entry = hot[key] {
             if now.timeIntervalSince(entry.storedAt) > ttl { return nil }
             return entry.value as? T
         }
         let url = diskURL(for: key)
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+        guard let data = await readDisk(at: url) else { return nil }
         // Cheap header parse first to avoid decoding the full payload on collision/expiry.
         guard let header = try? decoder.decode(EnvelopeHeader.self, from: data),
               header.key == key else { return nil }
@@ -79,44 +120,41 @@ actor ResponseCache {
 
     // MARK: - Write
 
-    func set<T: Codable & Sendable>(_ key: CacheKey, value: T) {
+    func set<T: Codable & Sendable>(_ key: CacheKey, value: T) async {
         let storedAt = Date()
         hot[key] = HotEntry(value: value, storedAt: storedAt)
         let env = ValueEnvelope(key: key, storedAt: storedAt, value: value)
         guard let data = try? encoder.encode(env) else { return }
         let url = diskURL(for: key)
-        try? data.write(to: url, options: .atomic)
+        await writeDisk(data, to: url)
     }
 
     // MARK: - Invalidation
 
-    func invalidate(matching predicate: @Sendable (CacheKey) -> Bool) {
+    func invalidate(matching predicate: @Sendable (CacheKey) -> Bool) async {
         for k in hot.keys where predicate(k) { hot.removeValue(forKey: k) }
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: diskDirectory, includingPropertiesForKeys: nil
-        ) else { return }
+        let entries = await listDiskDirectory()
         for url in entries {
-            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+            guard let data = await readDisk(at: url),
                   let header = try? decoder.decode(EnvelopeHeader.self, from: data) else {
-                try? FileManager.default.removeItem(at: url)
+                await deleteDisk(at: url)
                 continue
             }
             if predicate(header.key) {
-                try? FileManager.default.removeItem(at: url)
+                await deleteDisk(at: url)
             }
         }
     }
 
-    func invalidateEnvironment(_ envID: String) {
-        invalidate(matching: { $0.envID == envID })
+    func invalidateEnvironment(_ envID: String) async {
+        await invalidate(matching: { $0.envID == envID })
     }
 
-    func invalidateAll() {
+    func invalidateAll() async {
         hot.removeAll()
-        if let entries = try? FileManager.default.contentsOfDirectory(
-            at: diskDirectory, includingPropertiesForKeys: nil
-        ) {
-            for url in entries { try? FileManager.default.removeItem(at: url) }
+        let entries = await listDiskDirectory()
+        for url in entries {
+            await deleteDisk(at: url)
         }
     }
 
@@ -148,20 +186,27 @@ actor ResponseCache {
         return diskDirectory.appendingPathComponent(name + ".json")
     }
 
-    func diskBytes() -> Int {
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
-            at: diskDirectory,
-            includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
-        var total = 0
-        for url in entries {
-            if let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]),
-               let size = v.totalFileAllocatedSize {
-                total += size
+    func diskBytes() async -> Int {
+        await withCheckedContinuation { continuation in
+            ioQueue.async {
+                let fm = FileManager.default
+                guard let entries = try? fm.contentsOfDirectory(
+                    at: self.diskDirectory,
+                    includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+                    options: [.skipsHiddenFiles]
+                ) else {
+                    continuation.resume(returning: 0)
+                    return
+                }
+                var total = 0
+                for url in entries {
+                    if let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]),
+                       let size = v.totalFileAllocatedSize {
+                        total += size
+                    }
+                }
+                continuation.resume(returning: total)
             }
         }
-        return total
     }
 }

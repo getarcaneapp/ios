@@ -162,7 +162,7 @@ struct DashboardView: View {
                     environmentID: EnvironmentID(rawValue: route.id),
                     environmentName: route.name
                 )
-                .navigationTransition(.zoom(sourceID: route.id, in: heroTransition))
+                .pageEntranceFromTop()
             }
             .task { await loadData() }
             .refreshable { await loadData(refresh: true) }

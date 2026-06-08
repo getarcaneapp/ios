@@ -156,26 +156,20 @@ struct LiveResourcesCard: View {
         streamError = nil
         let stream = client.system.statsStream(envID: environmentID)
         isStreaming = true
-        streamTask = Task { @concurrent in
+        streamTask = Task {
             do {
                 for try await frame in stream {
                     if Task.isCancelled { break }
-                    await MainActor.run {
-                        latestStats = frame
-                        streamError = nil
-                    }
+                    latestStats = frame
+                    streamError = nil
                 }
             } catch is CancellationError {
                 // expected
             } catch {
-                await MainActor.run {
-                    latestStats = nil
-                    streamError = "Live metrics unavailable: \(friendlyErrorMessage(error))"
-                }
+                latestStats = nil
+                streamError = "Live metrics unavailable: \(friendlyErrorMessage(error))"
             }
-            await MainActor.run {
-                isStreaming = false
-            }
+            isStreaming = false
         }
     }
 

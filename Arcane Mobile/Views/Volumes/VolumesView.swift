@@ -177,7 +177,7 @@ struct VolumesView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: Volume.self) { volume in
             VolumeDetailView(volume: volume, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: volume.id, in: heroTransition))
+                .pageEntranceFromTop()
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateVolumeView(environmentID: environmentID) {}

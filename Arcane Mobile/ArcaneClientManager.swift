@@ -278,7 +278,7 @@ final class ArcaneClientManager {
             Task { await endDemo(reason: .expired) }
             return
         }
-        demoExpiryTask = Task { @concurrent [weak self] in
+        demoExpiryTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(interval))
             if Task.isCancelled { return }
             await self?.endDemo(reason: .expired)

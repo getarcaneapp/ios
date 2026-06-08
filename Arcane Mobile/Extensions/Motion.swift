@@ -130,6 +130,34 @@ extension View {
     func cardEntrance() -> some View {
         modifier(CardEntranceModifier())
     }
+
+    /// Subtle page entrance used for pushed detail screens: content drops in
+    /// from the top with a fade. Collapses to an instant presentation when
+    /// Reduce Motion is enabled.
+    func pageEntranceFromTop() -> some View {
+        modifier(PageEntranceFromTopModifier())
+    }
+}
+
+private struct PageEntranceFromTopModifier: ViewModifier {
+    @State private var hasAppeared = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(hasAppeared ? 1 : 0.01)
+            .offset(y: (hasAppeared || reduceMotion) ? 0 : -20)
+            .onAppear {
+                guard !hasAppeared else { return }
+                if reduceMotion {
+                    hasAppeared = true
+                } else {
+                    withAnimation(Motion.entrance) {
+                        hasAppeared = true
+                    }
+                }
+            }
+    }
 }
 
 // MARK: - Loading cross-fade

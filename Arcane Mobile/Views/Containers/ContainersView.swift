@@ -214,7 +214,7 @@ struct ContainersView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ContainerSummary.self) { container in
             ContainerDetailView(container: container, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: container.id, in: heroTransition))
+                .pageEntranceFromTop()
         }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadContainers(refresh: true) }

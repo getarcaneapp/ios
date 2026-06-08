@@ -250,7 +250,7 @@ struct ProjectsView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ProjectDetails.self) { project in
             ProjectDetailView(project: project, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: project.id, in: heroTransition))
+                .pageEntranceFromTop()
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateProjectView(environmentID: environmentID) {}

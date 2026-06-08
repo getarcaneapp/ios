@@ -171,31 +171,32 @@ struct ContainerTerminalView: View {
             isConnected = true
             isConnecting = false
             inputFocused = true
-            outputTask = Task { @concurrent in
+            outputTask = Task {
                 do {
                     for try await chunk in s.output {
                         if Task.isCancelled { break }
-                        let raw = String(decoding: chunk, as: UTF8.self)
+                        
+                        let (stripped, needsReply) = await Task.detached(priority: .userInitiated) {
+                            let raw = String(decoding: chunk, as: UTF8.self)
+                            let needsReply = raw.contains("\u{001b}[6n")
+                            let stripped = AnsiSanitizer.strip(raw)
+                            return (stripped, needsReply)
+                        }.value
+                        
                         // Auto-reply to cursor-position requests (DSR [6n) so the
                         // shell prompt finishes drawing instead of waiting forever.
-                        if raw.contains("\u{001b}[6n") {
+                        if needsReply {
                             try? await s.send("\u{001b}[1;1R")
                         }
-                        let stripped = AnsiSanitizer.strip(raw)
-                        await MainActor.run {
-                            appendOutput(stripped)
-                        }
+                        
+                        appendOutput(stripped)
                     }
                 } catch is CancellationError {
                     // expected
                 } catch {
-                    await MainActor.run {
-                        connectError = "Disconnected: \(friendlyErrorMessage(error))"
-                    }
+                    connectError = "Disconnected: \(friendlyErrorMessage(error))"
                 }
-                await MainActor.run {
-                    isConnected = false
-                }
+                isConnected = false
             }
         } catch {
             connectError = friendlyErrorMessage(error)

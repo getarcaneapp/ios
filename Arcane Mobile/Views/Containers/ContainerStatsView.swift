@@ -211,35 +211,36 @@ struct ContainerStatsView: View {
         let existingLatest = latest ?? existingFrames.last
         let windowSize = windowSize
         isStreaming = true
-        streamTask = Task { @concurrent in
+        streamTask = Task {
             var bufferedFrames = existingFrames
             var previousFrame = existingLatest
             do {
                 for try await frame in stream {
                     if Task.isCancelled { break }
-                    if let parsed = ContainerStatsFrame.from(json: frame, previous: previousFrame) {
-                        previousFrame = parsed
-                        bufferedFrames.append(parsed)
-                        if bufferedFrames.count > windowSize {
-                            bufferedFrames.removeFirst(bufferedFrames.count - windowSize)
-                        }
-                        let framesSnapshot = bufferedFrames
-                        await MainActor.run {
-                            frames = framesSnapshot
-                            latest = parsed
-                        }
+
+                    let raw = frame.raw
+                    let previousSnapshot = previousFrame
+                    // Offload heavy JSON framing calculations without sending the
+                    // SDK payload itself across isolation boundaries.
+                    let parseTask = Task.detached(priority: .userInitiated) {
+                        Self.parseFrame(raw: raw, previous: previousSnapshot)
                     }
+                    guard let parsed = await parseTask.value else { continue }
+                    
+                    previousFrame = parsed
+                    bufferedFrames.append(parsed)
+                    if bufferedFrames.count > windowSize {
+                        bufferedFrames.removeFirst(bufferedFrames.count - windowSize)
+                    }
+                    frames = bufferedFrames
+                    latest = parsed
                 }
             } catch is CancellationError {
                 // expected on view dismissal
             } catch {
-                await MainActor.run {
-                    errorMessage = "Stats stream ended: \(friendlyErrorMessage(error))"
-                }
+                errorMessage = "Stats stream ended: \(friendlyErrorMessage(error))"
             }
-            await MainActor.run {
-                isStreaming = false
-            }
+            isStreaming = false
         }
     }
 
@@ -260,5 +261,12 @@ struct ContainerStatsView: View {
         guard let bps = bytesPerSec, bps.isFinite else { return "—" }
         let value = Int64(max(0, bps))
         return "\(value.byteString)/s"
+    }
+
+    private nonisolated static func parseFrame(
+        raw: [String: JSONValue],
+        previous: ContainerStatsFrame?
+    ) -> ContainerStatsFrame? {
+        ContainerStatsFrame.from(json: .object(raw), previous: previous)
     }
 }

@@ -30,7 +30,7 @@ struct ImagesView: View {
     @State private var showFilterSheet = false
     @State private var tagsFilter = ImageTagsFilter.all
     @State private var sortOrder = ListSortOrder.ascending
-    @State private var sections: [StableListSection<String, ImageSummary>] = []
+    @State private var sections: [StableListSection<String, ImageRowModel>] = []
 
     private enum ImageTagsFilter: String, CaseIterable {
         case all = "All", tagged = "Tagged", untagged = "Untagged"
@@ -47,7 +47,7 @@ struct ImagesView: View {
 
     /// Filters + sorts once and partitions in a single pass. Pure — reads the
     /// current inputs and returns the grouped sections without touching state.
-    private func computeSections() -> [StableListSection<String, ImageSummary>] {
+    private func computeSections() -> [StableListSection<String, ImageRowModel>] {
         let query = debouncedSearchText
         let filtered = images.filter { image in
             let matchesSearch = query.isEmpty ||
@@ -62,10 +62,20 @@ struct ImagesView: View {
         .sorted {
             sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
         }
-        var used: [ImageSummary] = []
-        var unused: [ImageSummary] = []
+        var used: [ImageRowModel] = []
+        var unused: [ImageRowModel] = []
         for image in filtered {
-            if image.inUse { used.append(image) } else { unused.append(image) }
+            let row = ImageRowModel(
+                image: image,
+                displayName: image.displayName,
+                sizeText: image.size.byteString,
+                updateState: updateState(for: image)
+            )
+            if image.inUse {
+                used.append(row)
+            } else {
+                unused.append(row)
+            }
         }
         return [
             .init(id: "used", title: "Used", items: used),
@@ -270,7 +280,7 @@ struct ImagesView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ImageSummary.self) { image in
             ImageDetailView(image: image, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: image.id, in: heroTransition))
+                .pageEntranceFromTop()
         }
         .sheet(isPresented: $showPullSheet) {
             PullImageView(environmentID: environmentID) {}
@@ -286,10 +296,10 @@ struct ImagesView: View {
         .onChange(of: sortOrder) { rebuildSections(animated: true) }
     }
 
-    private func imageLink(_ image: ImageSummary) -> some View {
-        let state = updateState(for: image)
+    private func imageLink(_ row: ImageRowModel) -> some View {
+        let image = row.image
         return NavigationLink(value: image) {
-            ImageRow(image: image, updateState: state)
+            ImageRow(row: row)
         }
         .matchedTransitionSource(id: image.id, in: heroTransition)
         .contextMenu {
@@ -300,7 +310,7 @@ struct ImagesView: View {
             }
             .tint(.red)
         } preview: {
-            imagePreview(image, state: state)
+            imagePreview(image, state: row.updateState)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button {
@@ -400,6 +410,7 @@ struct ImagesView: View {
             let query = [URLQueryItem(name: "imageRefs", value: refs.joined(separator: ","))]
             let map: BatchImageUpdateResponse = try await client.rest.get(path, query: query)
             updateInfo.merge(map) { _, new in new }
+            rebuildSections()
         } catch {
             // Update info is best-effort decoration — silent failure.
         }
@@ -460,41 +471,37 @@ enum ImageUpdateState: Equatable {
 }
 
 struct ImageRow: View {
-    let image: ImageSummary
-    var updateState: ImageUpdateState = .unknown
+    let row: ImageRowModel
+
+    // Dense scrolling lists are a poor fit for per-row live Liquid Glass: the
+    // compositor can thrash as rows enter/leave the viewport, producing the
+    // "glassEffect() tried to update multiple times per frame" warning and
+    // visible hitching. Use a static tinted chip here instead.
+    private let iconTint = Color.purple
 
     var body: some View {
         HStack(spacing: 12) {
-            if #available(iOS 26, *) {
-                Image(systemName: "photo.stack.fill")
-                    .font(.title3)
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .glassEffect(.regular.tint(.purple), in: .circle)
-                    .accessibilityHidden(true)
-            } else {
-                Image(systemName: "photo.stack.fill")
-                    .font(.title3)
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.purple, in: .circle)
-                    .accessibilityHidden(true)
-            }
+            Image(systemName: "photo.stack.fill")
+                .font(.title3)
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(iconTint, in: .circle)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(image.displayName)
+                Text(row.displayName)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                 HStack(spacing: 6) {
-                    Text(image.size.byteString)
+                    Text(row.sizeText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if updateState != .unknown {
+                    if row.updateState != .unknown {
                         Text("•")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    UpdateStateBadge(state: updateState)
+                    UpdateStateBadge(state: row.updateState)
                 }
             }
 
@@ -503,6 +510,15 @@ struct ImageRow: View {
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
     }
+}
+
+struct ImageRowModel: Identifiable {
+    let image: ImageSummary
+    let displayName: String
+    let sizeText: String
+    let updateState: ImageUpdateState
+
+    var id: String { image.id }
 }
 
 struct UpdateStateBadge: View {

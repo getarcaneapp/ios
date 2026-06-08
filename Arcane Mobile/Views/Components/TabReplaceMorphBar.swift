@@ -171,7 +171,7 @@ private struct TabReplaceCallout: View {
 /// bottom edge, centered at `pointerX`. Used as the Liquid Glass shape for the
 /// callout so the panel and its pointer are one continuous glass surface.
 @available(iOS 26, *)
-private struct CalloutShape: Shape {
+private nonisolated struct CalloutShape: Shape {
     var cornerRadius: CGFloat
     var pointerWidth: CGFloat
     var pointerHeight: CGFloat
