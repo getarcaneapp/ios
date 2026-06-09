@@ -11,7 +11,6 @@ struct MainTabView: View {
     @State private var router = QuickActionRouter.shared
     @State private var morphStore = TabBarMorphStore.shared
     @AppStorage("accentColorHex") private var accentColorHex = ""
-
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
     private var supportsV2: Bool { manager.serverCapabilities?.mode == .rbac }
 
@@ -89,6 +88,8 @@ struct MainTabView: View {
                     onPick: handleMorphPick
                 )
                 .padding(.bottom, 18)
+
+
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
             .ignoresSafeArea()
@@ -145,6 +146,7 @@ struct MainTabView: View {
                 ensureSelectedTabVisible()
                 morphStore.activeTabID = selectedTab
             }
+
     }
 
     /// Long-press on a tab (tabs state only) opens the swap sheet. Settings —
@@ -228,6 +230,7 @@ private struct TabNavigationContainer<Content: View>: View {
     var body: some View {
         NavigationStack(path: $path) {
             content
+                .aiAssistantToolbar()
         }
         .onChange(of: path.isEmpty) { _, isEmpty in
             if isEmpty { morphStore.clearTab(tabID) }

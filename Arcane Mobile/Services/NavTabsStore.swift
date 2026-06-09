@@ -30,7 +30,10 @@ final class NavTabsStore {
     /// `slotCount` entries.
     func visibleTabs(isAdmin: Bool, supportsV2: Bool) -> [AppTab] {
         var visible = pinnedTabs.filter { tab in
-            (isAdmin || !tab.requiresAdmin) && (supportsV2 || !tab.requiresV2)
+            tab.canPinToBottomBar
+                && (isAdmin || !tab.requiresAdmin)
+                && (supportsV2 || !tab.requiresV2)
+                && (AppTab.deviceSupportsFoundationModels || !tab.requiresiOS26)
         }
         if visible.count < Self.slotCount {
             for fallback in AppTab.mainDefaults {

@@ -3,6 +3,7 @@ import Arcane
 
 struct AppSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @AppStorage("arcane.showAssistantButton") private var showAssistantButton = true
     @State private var pendingDestructive: PendingDestructive?
     @State private var cacheSizeBytes: Int = 0
     @State private var showWhatsNew = false
@@ -105,6 +106,13 @@ struct AppSettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+        }
+        if #available(iOS 26, *) {
+            Section("AI Assistant") {
+                Toggle(isOn: $showAssistantButton) {
+                    SettingsRow(title: "Show AI Button", systemImage: "sparkles", color: .pink)
+                }
+            }
         }
         Section {
             Button(role: .destructive) {

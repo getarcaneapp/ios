@@ -11,6 +11,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case users, apiKeys, containerRegistries, templateRegistries,
          notifications, webhooks, systemSettings, authentication, jobs,
          roles, oidcRoleMappings
+    case aiAssistant
 
     enum Section: Hashable {
         case management, resources, swarm, administration
@@ -44,6 +45,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .jobs: return "Jobs"
         case .roles: return "Roles"
         case .oidcRoleMappings: return "OIDC Role Mappings"
+        case .aiAssistant: return "Assistant"
         }
     }
 
@@ -89,6 +91,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .jobs: return "calendar.badge.clock"
         case .roles: return "person.crop.rectangle.stack.fill"
         case .oidcRoleMappings: return "person.badge.key.fill"
+        case .aiAssistant: return "sparkles"
         }
     }
 
@@ -114,12 +117,13 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .jobs: return .pink
         case .roles: return .purple
         case .oidcRoleMappings: return .indigo
+        case .aiAssistant: return .purple
         }
     }
 
     var section: Section {
         switch self {
-        case .dashboard, .projects, .containerRegistries, .templateRegistries, .gitRepositories, .gitOps:
+        case .dashboard, .projects, .containerRegistries, .templateRegistries, .gitRepositories, .gitOps, .aiAssistant:
             return .management
         case .containers, .images, .updates, .activities, .networks, .ports, .volumes, .jobs:
             return .resources
@@ -145,7 +149,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .gitRepositories, .gitOps,
              .containerRegistries, .templateRegistries,
              .jobs, .users, .apiKeys, .notifications, .webhooks,
-             .systemSettings, .authentication, .roles, .oidcRoleMappings:
+             .systemSettings, .authentication, .roles, .oidcRoleMappings,
+             .aiAssistant:
             return false
         }
     }
@@ -157,7 +162,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
              .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication,
              .roles, .oidcRoleMappings:
             return true
-        case .dashboard, .projects, .containers, .images, .updates, .activities, .networks, .ports, .volumes, .events:
+        case .dashboard, .projects, .containers, .images, .updates, .activities, .networks, .ports, .volumes, .events, .aiAssistant:
             return false
         }
     }
@@ -179,7 +184,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
     var isEnvironmentScoped: Bool {
         switch self {
         case .dashboard, .containers, .images, .projects, .volumes, .networks,
-             .ports, .gitOps, .jobs:
+             .ports, .gitOps, .jobs, .aiAssistant:
             return true
         case .activities, .updates, .events, .gitRepositories, .users, .apiKeys,
              .containerRegistries, .templateRegistries,
@@ -188,6 +193,16 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
             return false
         }
     }
+
+    /// Whether this tab's destination requires the Foundation Models framework
+    /// (iOS 26+). Used to hide the Assistant tab on older OS versions.
+    var requiresiOS26: Bool { self == .aiAssistant }
+
+    /// Computed once: does the running OS support Foundation Models at all?
+    /// Gates whether iOS-26-only tabs are even offered in the replace picker.
+    static let deviceSupportsFoundationModels: Bool = {
+        if #available(iOS 26, *) { return true } else { return false }
+    }()
 
     static let mainDefaults: [AppTab] = [.dashboard, .containers, .images, .projects]
     static var promotable: [AppTab] { AppTab.allCases.filter { !AppTab.mainDefaults.contains($0) } }
@@ -209,6 +224,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
                 && tab != current
                 && (isAdmin || !tab.requiresAdmin)
                 && (supportsV2 || !tab.requiresV2)
+                && (Self.deviceSupportsFoundationModels || !tab.requiresiOS26)
         }
     }
 }
@@ -286,5 +302,11 @@ func appTabDestination(
         RolesView()
     case .oidcRoleMappings:
         OIDCRoleMappingsView()
+    case .aiAssistant:
+        if #available(iOS 26, *) {
+            AIAssistantView()
+        } else {
+            AIUnavailableView(state: .osTooOld)
+        }
     }
 }

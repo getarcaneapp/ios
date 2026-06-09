@@ -16,6 +16,7 @@ struct ProjectDetailView: View {
     @State private var actionStatus: String?
     @State private var showLogs = false
     @State private var showDeleteConfirm = false
+    @State private var showAskAI = false
     @State private var streamingAction: StreamingAction?
     @State private var errorMessage: String?
     @State private var runningActionID: String?
@@ -112,6 +113,18 @@ struct ProjectDetailView: View {
                 title: currentProject.displayName,
                 logStream: manager.client?.projects.logs(envID: environmentID, projectID: project.id)
             )
+        }
+        .sheet(isPresented: $showAskAI) {
+            if #available(iOS 26, *) {
+                NavigationStack {
+                    AIAssistantView(seed: .project(id: project.id, name: currentProject.displayName))
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Done") { showAskAI = false }
+                            }
+                        }
+                }
+            }
         }
         .sheet(item: $streamingAction) { action in
             StreamingActionView(
@@ -280,6 +293,11 @@ struct ProjectDetailView: View {
         } else {
             items.append(ActionButtonItem(id: "archive", title: "Archive Project", systemImage: "archivebox", tint: .accentColor) {
                 Task { await archiveProject() }
+            })
+        }
+        if AIAvailability.isReady {
+            items.append(ActionButtonItem(id: "ask-ai", title: "Ask AI", systemImage: "sparkles", tint: .purple) {
+                showAskAI = true
             })
         }
         // `role: nil` + red tint: keeps the view's bespoke two-option delete
