@@ -103,11 +103,6 @@ struct DashboardView: View {
                         overviewGrid
                             .cardEntrance()
 
-                        if manager.supportsActivities && !failedActivities.isEmpty {
-                            DashboardFailedWorkCard(activities: failedActivities)
-                                .cardEntrance()
-                        }
-
                         environmentsSection
                             .padding(.top, 8)
                     }
@@ -124,8 +119,21 @@ struct DashboardView: View {
                     if manager.supportsActivities {
                         Button { showActivities = true } label: {
                             Image(systemName: "clock.arrow.circlepath")
+                                .overlay(alignment: .topTrailing) {
+                                    if failedActivityBadgeCount > 0 {
+                                        Text(failedActivityBadgeText)
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, failedActivityBadgeCount > 9 ? 5 : 4)
+                                            .frame(minWidth: 18, minHeight: 18)
+                                            .background(.red, in: .capsule)
+                                            .offset(x: 10, y: -8)
+                                            .accessibilityHidden(true)
+                                            .allowsHitTesting(false)
+                                    }
+                                }
                         }
-                        .accessibilityLabel("Activity Center")
+                        .accessibilityLabel(activityButtonAccessibilityLabel)
                     }
                 }
 
@@ -152,7 +160,9 @@ struct DashboardView: View {
                     AllEnvironmentsImageUpdatesView()
                 }
             }
-            .sheet(isPresented: $showActivities) {
+            .sheet(isPresented: $showActivities, onDismiss: {
+                Task { failedActivities = await loadFailedWork() }
+            }) {
                 NavigationStack {
                     ActivitiesView()
                 }
@@ -225,6 +235,19 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var failedActivityBadgeCount: Int {
+        failedActivities.count
+    }
+
+    private var failedActivityBadgeText: String {
+        failedActivityBadgeCount > 9 ? "9+" : "\(failedActivityBadgeCount)"
+    }
+
+    private var activityButtonAccessibilityLabel: String {
+        guard failedActivityBadgeCount > 0 else { return "Activity Center" }
+        return "Activity Center, \(failedActivityBadgeCount) failed activit\(failedActivityBadgeCount == 1 ? "y" : "ies") need attention"
     }
 
     private var skeletonView: some View {
@@ -709,96 +732,6 @@ struct DashboardGlassTile: View {
         .accessibilityLabel("\(title): \(value)")
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens \(title)")
-    }
-}
-
-struct DashboardFailedWorkCard: View {
-    let activities: [Activity]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 32, height: 32)
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Failed Work")
-                        .font(.headline)
-                    Text("\(activities.count) failure\(activities.count == 1 ? "" : "s") need attention")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Failed Work, \(activities.count) failures need attention")
-
-            VStack(spacing: 8) {
-                ForEach(activities.prefix(3)) { activity in
-                    NavigationLink {
-                        ActivityDetailView(activity: activity)
-                    } label: {
-                        DashboardFailedWorkRow(activity: activity)
-                    }
-                    .buttonStyle(.pressable)
-                    .contentShape(.rect)
-                    .accessibilityHint("Opens this failed activity")
-                }
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground(cornerRadius: 16)
-    }
-}
-
-private struct DashboardFailedWorkRow: View {
-    let activity: Activity
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(tint)
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(activity.displayTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Text(activity.latestMessage.isEmpty ? activity.subtitle : activity.latestMessage)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
-
-            Text(activity.status.rawValue.capitalized)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(tint)
-
-            Image(systemName: "chevron.right")
-                .font(.caption2.bold())
-                .foregroundStyle(.secondary.opacity(0.5))
-                .accessibilityHidden(true)
-        }
-    }
-
-    private var tint: Color {
-        switch activity.status {
-        case .failed: return .red
-        case .running: return .blue
-        case .queued: return .orange
-        default: return .secondary
-        }
     }
 }
 

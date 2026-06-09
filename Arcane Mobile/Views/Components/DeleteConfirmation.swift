@@ -69,7 +69,9 @@ final class DeleteConfirmationPresenter {
 
     struct Request: Identifiable {
         let id = UUID()
+        let sourceHostID: UUID
         var config: DeleteConfirmationConfig
+        var onConfirmDismiss: () -> Void
         /// Resets the source binding (`isPresented = false` / `item = nil`) once
         /// the card is gone, so the trigger can fire again.
         var onDismiss: () -> Void
@@ -77,11 +79,21 @@ final class DeleteConfirmationPresenter {
 
     private(set) var request: Request?
 
-    func present(_ config: DeleteConfirmationConfig, onDismiss: @escaping () -> Void) {
+    func present(
+        _ config: DeleteConfirmationConfig,
+        sourceHostID: UUID,
+        onConfirmDismiss: @escaping () -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
         // Defensively retire anything already showing (shouldn't normally happen
         // since the card is modal) so we never strand a binding stuck "on".
         request?.onDismiss()
-        request = Request(config: config, onDismiss: onDismiss)
+        request = Request(
+            sourceHostID: sourceHostID,
+            config: config,
+            onConfirmDismiss: onConfirmDismiss,
+            onDismiss: onDismiss
+        )
     }
 
     /// Called by the host once the card has animated out.
@@ -98,18 +110,22 @@ extension View {
     /// Mounts the single, app-wide confirmation overlay. Apply once near the
     /// root (above the tab bar / navigation stacks).
     func deleteConfirmationHost() -> some View {
-        overlay { DeleteConfirmationHost() }
+        overlay { DeleteConfirmationHost(hostID: UUID()) }
     }
 }
 
 private struct DeleteConfirmationHost: View {
+    let hostID: UUID
     @State private var presenter = DeleteConfirmationPresenter.shared
 
     var body: some View {
         ZStack {
-            if let request = presenter.request {
+            if let request = presenter.request, request.sourceHostID == hostID {
                 DeleteConfirmationCard(config: request.config) { action in
                     action?()
+                    if action != nil {
+                        request.onConfirmDismiss()
+                    }
                     presenter.clear()
                 }
                 // Fresh identity per request so the card's entrance `onAppear`
@@ -196,29 +212,47 @@ extension View {
 private struct DeleteConfirmationBoolPublisher: ViewModifier {
     @Binding var isPresented: Bool
     let config: DeleteConfirmationConfig
+    @State private var hostID = UUID()
+    @Environment(\.dismiss) private var dismiss
 
     func body(content: Content) -> some View {
-        content.onChange(of: isPresented) { _, now in
-            guard now else { return }
-            DeleteConfirmationPresenter.shared.present(config) {
-                if isPresented { isPresented = false }
+        content
+            .overlay { DeleteConfirmationHost(hostID: hostID) }
+            .onChange(of: isPresented) { _, now in
+                guard now else { return }
+                DeleteConfirmationPresenter.shared.present(
+                    config,
+                    sourceHostID: hostID,
+                    onConfirmDismiss: { dismiss() },
+                    onDismiss: {
+                        if isPresented { isPresented = false }
+                    }
+                )
             }
-        }
     }
 }
 
 private struct DeleteConfirmationItemPublisher<Item>: ViewModifier {
     @Binding var item: Item?
     let configBuilder: (Item) -> DeleteConfirmationConfig
+    @State private var hostID = UUID()
+    @Environment(\.dismiss) private var dismiss
 
     func body(content: Content) -> some View {
         // Optional-to-nil comparison needs no Equatable on `Item`.
-        content.onChange(of: item != nil) { _, hasItem in
-            guard hasItem, let value = item else { return }
-            DeleteConfirmationPresenter.shared.present(configBuilder(value)) {
-                if item != nil { item = nil }
+        content
+            .overlay { DeleteConfirmationHost(hostID: hostID) }
+            .onChange(of: item != nil) { _, hasItem in
+                guard hasItem, let value = item else { return }
+                DeleteConfirmationPresenter.shared.present(
+                    configBuilder(value),
+                    sourceHostID: hostID,
+                    onConfirmDismiss: { dismiss() },
+                    onDismiss: {
+                        if item != nil { item = nil }
+                    }
+                )
             }
-        }
     }
 }
 
