@@ -3,7 +3,6 @@ import UIKit
 
 enum AccentColorOption: String, CaseIterable, Identifiable {
     case blue, indigo, purple, pink, red, orange, yellow, green, teal, mint, cyan
-    case custom
 
     var id: String { rawValue }
 
@@ -22,11 +21,10 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
         case .teal: return .teal
         case .mint: return .mint
         case .cyan: return .cyan
-        case .custom: return .gray
         }
     }
 
-    var hex: String? {
+    var hex: String {
         switch self {
         case .blue: return "#007AFF"
         case .indigo: return "#5856D6"
@@ -39,38 +37,32 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
         case .teal: return "#5AC8FA"
         case .mint: return "#00C7BE"
         case .cyan: return "#32D2F0"
-        case .custom: return nil
         }
     }
 }
 
 struct AppearanceSettingsView: View {
     @AppStorage("accentColorHex") private var accentColorHex = ""
-    @State private var customColor: Color = .blue
     @State private var showTabBarResetConfirm = false
     @State private var navTabsStore = NavTabsStore.shared
 
     // Derive the selected swatch from the stored hex so the two can never
     // drift apart. An empty hex means "use the system default" which we
-    // visually represent as the blue swatch.
-    private var selectedOption: AccentColorOption {
+    // visually represent as the blue swatch. `nil` means a custom hex from
+    // an older build is stored, so no swatch is highlighted.
+    private var selectedOption: AccentColorOption? {
         if accentColorHex.isEmpty { return .blue }
         let normalized = accentColorHex.lowercased()
-        for option in AccentColorOption.allCases where option != .custom {
-            if option.hex?.lowercased() == normalized { return option }
-        }
-        return .custom
+        return AccentColorOption.allCases.first { $0.hex.lowercased() == normalized }
     }
 
     var body: some View {
         Form {
             Section {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 48), spacing: 12)], spacing: 12) {
-                    ForEach(AccentColorOption.allCases.filter { $0 != .custom }) { option in
+                    ForEach(AccentColorOption.allCases) { option in
                         Button {
-                            if let hex = option.hex {
-                                accentColorHex = hex
-                            }
+                            accentColorHex = option.hex
                         } label: {
                             Circle()
                                 .fill(option.color)
@@ -95,43 +87,11 @@ struct AppearanceSettingsView: View {
                 Text("Choose a color to customize the app's appearance.")
             }
 
-            Section {
-                HStack {
-                    Circle()
-                        .fill(customColor)
-                        .frame(width: 32, height: 32)
-                        .overlay {
-                            if selectedOption == .custom {
-                                Image(systemName: "checkmark")
-                                    .font(.caption.bold())
-                                    .foregroundStyle(.white)
-                            }
-                        }
-
-                    ColorPicker("Custom Color", selection: $customColor, supportsOpacity: false)
-                }
-                .onChange(of: customColor) { _, newColor in
-                    if let hex = newColor.hexString {
-                        accentColorHex = hex
-                    }
-                }
-
-                if selectedOption == .custom {
-                    Button("Apply Custom Color") {
-                        if let hex = customColor.hexString {
-                            accentColorHex = hex
-                        }
-                    }
-                }
-            } header: {
-                Text("Custom")
-            }
-
             if UIApplication.shared.supportsAlternateIcons {
                 Section {
                     NavigationLink(destination: AppIconPickerView()) {
                         HStack(spacing: 12) {
-                            if let image = UIImage(named: UIApplication.shared.alternateIconName ?? "AppIcon") {
+                            if let image = UIImage(named: UIApplication.shared.alternateIconName.map({ "\($0)-Preview" }) ?? "AppIcon-Preview") {
                                 Image(uiImage: image)
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
@@ -181,11 +141,6 @@ struct AppearanceSettingsView: View {
             confirmTitle: "Reset"
         ) {
             navTabsStore.resetToDefaults()
-        }
-        .onAppear {
-            if selectedOption == .custom, let color = Color(hex: accentColorHex) {
-                customColor = color
-            }
         }
     }
 }

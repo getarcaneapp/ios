@@ -8,8 +8,6 @@ struct AppSettingsView: View {
     @State private var pendingDestructive: PendingDestructive?
     @State private var cacheSizeBytes: Int = 0
     @State private var showWhatsNew = false
-    @State private var serverVersion: ServerVersionInfo?
-    @State private var isLoadingServerVersion = false
 
     /// Both of this screen's destructive confirmations route through a single
     /// `.deleteConfirmation` cover (only one full-screen cover can be active per
@@ -37,8 +35,9 @@ struct AppSettingsView: View {
 
     var body: some View {
         List {
-            applicationSection
-            serverVersionSection
+            generalSection
+            serverSection
+            storageSection
             aboutSection
             supportSection
         }
@@ -46,7 +45,6 @@ struct AppSettingsView: View {
         .navigationTitle("App Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { await refreshCacheSize() }
-        .task { await loadServerVersion() }
         .sheet(isPresented: $showWhatsNew) {
             WhatsNewView()
         }
@@ -82,21 +80,39 @@ struct AppSettingsView: View {
     }
 
     @ViewBuilder
-    private var applicationSection: some View {
-        Section("Application") {
+    private var generalSection: some View {
+        Section("General") {
             NavigationLink(destination: AppearanceSettingsView()) {
                 SettingsRow(title: "Appearance", systemImage: "paintbrush.fill", color: .pink)
             }
             Toggle(isOn: $rememberLastTab) {
                 SettingsRow(title: "Remember Last Tab", systemImage: "arrow.uturn.backward.square", color: .indigo)
             }
+            if #available(iOS 26, *) {
+                Toggle(isOn: $showAssistantButton) {
+                    SettingsRow(title: "Arcane Assistant", systemImage: "sparkles", color: .pink)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var serverSection: some View {
+        Section {
+            NavigationLink(destination: ServerInfoView()) {
+                SettingsRow(
+                    title: "Server Info",
+                    subtitle: serverURLText,
+                    systemImage: "server.rack",
+                    color: .teal
+                )
+            }
             Button {
                 pendingDestructive = .changeServer
             } label: {
                 HStack {
                     SettingsRow(
-                        title: "Server",
-                        subtitle: serverURLText,
+                        title: "Change Server",
                         systemImage: "link",
                         color: .blue,
                         titleColor: .primary
@@ -109,14 +125,15 @@ struct AppSettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+        } header: {
+            Text("Server")
+        } footer: {
+            Text("Changing the server signs you out.")
         }
-        if #available(iOS 26, *) {
-            Section("AI Assistant") {
-                Toggle(isOn: $showAssistantButton) {
-                    SettingsRow(title: "Enable Arcane Assistant", systemImage: "sparkles", color: .pink)
-                }
-            }
-        }
+    }
+
+    @ViewBuilder
+    private var storageSection: some View {
         Section {
             Button(role: .destructive) {
                 pendingDestructive = .clearCache
@@ -134,77 +151,11 @@ struct AppSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        } header: {
+            Text("Storage")
+        } footer: {
+            Text("Cached images and API responses are re-fetched as needed.")
         }
-    }
-
-    @ViewBuilder
-    private var serverVersionSection: some View {
-        if let v = serverVersion {
-            Section("Arcane Server") {
-                serverRow("Version", value: clean(v.displayVersion) ?? clean(v.currentVersion),
-                          icon: "shippingbox.fill", color: .blue)
-                if let tag = clean(v.currentTag) {
-                    serverRow("Image Tag", value: tag, icon: "tag.fill", color: .purple)
-                }
-                if let node = clean(v.nodeVersion) {
-                    serverRow("Node", value: node, icon: "leaf.fill", color: .green)
-                }
-                if let sk = clean(v.svelteKitVersion) {
-                    serverRow("SvelteKit", value: sk, icon: "bolt.fill", color: .orange)
-                }
-                if let go = clean(v.goVersion) {
-                    serverRow("Go", value: go, icon: "g.circle.fill", color: .teal)
-                }
-                if let rev = clean(v.shortRevision) {
-                    serverRow("Revision", value: rev, copy: v.revision ?? rev,
-                              icon: "number", color: .gray, mono: true)
-                }
-                if let bt = clean(v.buildTime) {
-                    serverRow("Build Time", value: bt, icon: "clock.fill", color: .gray)
-                }
-                if v.updateAvailable == true, let newest = clean(v.newestVersion) {
-                    serverRow("Update Available", value: newest,
-                              icon: "arrow.up.circle.fill", color: .blue)
-                }
-            }
-        } else if isLoadingServerVersion {
-            Section("Arcane Server") {
-                HStack {
-                    Text("Loading…").foregroundStyle(.secondary)
-                    Spacer()
-                    ProgressView()
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func serverRow(_ title: String, value: String?, copy: String? = nil,
-                           icon: String, color: Color, mono: Bool = false) -> some View {
-        let display = value ?? "—"
-        Button {
-            UIPasteboard.general.string = copy ?? display
-            showToast(.copied("\(title) copied"))
-        } label: {
-            HStack {
-                SettingsRow(title: title, systemImage: icon, color: color)
-                Spacer()
-                Text(display)
-                    .font(mono ? .subheadline.monospaced() : .subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Treats nil/empty/`"unknown"` as absent so those rows are hidden, matching
-    /// the web "About Arcane" dialog.
-    private func clean(_ s: String?) -> String? {
-        guard let s, !s.isEmpty, s != "unknown" else { return nil }
-        return s
     }
 
     @ViewBuilder
@@ -292,18 +243,5 @@ struct AppSettingsView: View {
         async let images = ImageCache.shared.diskBytes()
         async let responses = ResponseCache.shared.diskBytes()
         cacheSizeBytes = await images + responses
-    }
-
-    private func loadServerVersion() async {
-        guard let client = manager.client, serverVersion == nil else { return }
-        isLoadingServerVersion = true
-        defer { isLoadingServerVersion = false }
-        do {
-            let data = try await client.transport.rawRequest(
-                "app-version", body: Optional<String>.none, authorized: false)
-            serverVersion = try JSONDecoder().decode(ServerVersionInfo.self, from: data)
-        } catch {
-            // Leave nil — section hides itself. No error UI for optional metadata.
-        }
     }
 }

@@ -20,7 +20,7 @@ struct AppIconPickerView: View {
     /// Returns an array starting with the primary icon, followed by each alternate.
     private var options: [AppIconOption] {
         var result: [AppIconOption] = [
-            .init(alternateName: nil, displayName: "Default", previewAssetName: "AppIcon")
+            .init(alternateName: nil, displayName: "Default", previewAssetName: "AppIcon-Preview")
         ]
         guard
             let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any],
@@ -30,7 +30,7 @@ struct AppIconPickerView: View {
             result.append(.init(
                 alternateName: name,
                 displayName: prettify(name),
-                previewAssetName: name
+                previewAssetName: "\(name)-Preview"
             ))
         }
         return result
@@ -62,11 +62,10 @@ struct AppIconPickerView: View {
                                     .matchedGeometryEffect(id: "selection", in: selectionNamespace)
                             }
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
-            } footer: {
-                Text("iOS will briefly show an \"App Icon Changed\" alert when you switch.")
             }
         }
         .navigationTitle("App Icon")

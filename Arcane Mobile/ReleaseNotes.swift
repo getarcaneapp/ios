@@ -52,6 +52,12 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.3.1",
+            new: [
+                .init("Add New Application Icon Variants"),
+            ]
+        ),
+        ReleaseNote(
             version: "0.3.0",
             new: [
                 .init("App Now Supports iOS 18 and up."),
