@@ -31,9 +31,13 @@ nonisolated private struct ValueEnvelope<T: Codable>: Codable {
     let value: T
 }
 
+// @unchecked: `value` is always a Sendable payload (every call site requires
+// `T: Codable & Sendable`) and entries are only stored/read under ResponseCache
+// actor isolation — the existential box just can't prove that statically.
 private struct HotEntry: @unchecked Sendable {
     let value: any Sendable
     let storedAt: Date
+    var lastAccess: UInt64
 }
 
 actor ResponseCache {
@@ -41,6 +45,8 @@ actor ResponseCache {
 
     private let diskDirectory: URL
     private var hot: [CacheKey: HotEntry] = [:]
+    private let hotCapacity = 128
+    private var accessTick: UInt64 = 0
     private var inFlight: [CacheKey: Task<any Sendable, Error>] = [:]
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
@@ -99,12 +105,28 @@ actor ResponseCache {
         }
     }
 
+    // MARK: - Hot Cache (LRU-bounded)
+
+    private func nextTick() -> UInt64 {
+        accessTick &+= 1
+        return accessTick
+    }
+
+    private func insertHot(_ key: CacheKey, value: any Sendable, storedAt: Date) {
+        hot[key] = HotEntry(value: value, storedAt: storedAt, lastAccess: nextTick())
+        guard hot.count > hotCapacity else { return }
+        let overflow = hot.count - hotCapacity
+        let oldest = hot.sorted { $0.value.lastAccess < $1.value.lastAccess }.prefix(overflow)
+        for (staleKey, _) in oldest { hot.removeValue(forKey: staleKey) }
+    }
+
     // MARK: - Read
 
     func get<T: Codable & Sendable>(_ key: CacheKey, as type: T.Type, ttl: TimeInterval) async -> T? {
         let now = Date()
         if let entry = hot[key] {
             if now.timeIntervalSince(entry.storedAt) > ttl { return nil }
+            hot[key]?.lastAccess = nextTick()
             return entry.value as? T
         }
         let url = diskURL(for: key)
@@ -114,7 +136,7 @@ actor ResponseCache {
               header.key == key else { return nil }
         if now.timeIntervalSince(header.storedAt) > ttl { return nil }
         guard let env = try? decoder.decode(ValueEnvelope<T>.self, from: data) else { return nil }
-        hot[key] = HotEntry(value: env.value, storedAt: env.storedAt)
+        insertHot(key, value: env.value, storedAt: env.storedAt)
         return env.value
     }
 
@@ -122,7 +144,7 @@ actor ResponseCache {
 
     func set<T: Codable & Sendable>(_ key: CacheKey, value: T) async {
         let storedAt = Date()
-        hot[key] = HotEntry(value: value, storedAt: storedAt)
+        insertHot(key, value: value, storedAt: storedAt)
         let env = ValueEnvelope(key: key, storedAt: storedAt, value: value)
         guard let data = try? encoder.encode(env) else { return }
         let url = diskURL(for: key)

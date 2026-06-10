@@ -485,7 +485,13 @@ struct NetworkDetailView: View {
                     if let driver = ipam.driver, !driver.isEmpty {
                         LabeledContent("Driver", value: driver)
                     }
-                    ForEach(Array((ipam.config ?? []).enumerated()), id: \.offset) { _, config in
+                    // Identity derived from content (offset only disambiguates duplicates)
+                    // so rows keep stable identity if the config list reorders.
+                    let ipamConfigs = (ipam.config ?? []).enumerated().map { offset, config in
+                        (id: "\(config.subnet ?? "")|\(config.gateway ?? "")|\(config.ipRange ?? "")#\(offset)", config: config)
+                    }
+                    ForEach(ipamConfigs, id: \.id) { item in
+                        let config = item.config
                         if let subnet = config.subnet, !subnet.isEmpty {
                             LabeledContent("Subnet") {
                                 Text(subnet).font(.body.monospaced())

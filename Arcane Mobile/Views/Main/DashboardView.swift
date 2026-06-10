@@ -196,6 +196,7 @@ struct DashboardView: View {
                 EnvironmentDashboardCard(
                     environment: env,
                     cachedCard: cardData,
+                    isActive: env.id == manager.activeEnvironmentID.rawValue,
                     refreshToken: cardRefreshToken,
                     onSelect: {
                         detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)

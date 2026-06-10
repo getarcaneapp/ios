@@ -110,7 +110,7 @@ struct AppSettingsView: View {
         if #available(iOS 26, *) {
             Section("AI Assistant") {
                 Toggle(isOn: $showAssistantButton) {
-                    SettingsRow(title: "Show AI Button", systemImage: "sparkles", color: .pink)
+                    SettingsRow(title: "Enable Arcane Assistant", systemImage: "sparkles", color: .pink)
                 }
             }
         }

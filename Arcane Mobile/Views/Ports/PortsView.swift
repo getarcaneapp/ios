@@ -9,12 +9,22 @@ struct PortsView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    // Filtered + grouped result cached here so body doesn't re-run the
+    // filter/group/sort pipeline on every evaluation (see rebuildSections()).
+    @State private var sections: [PortGroup] = []
 
-    private var grouped: [(container: String, ports: [PortMapping])] {
-        let filtered = filteredPorts
+    private struct PortGroup: Identifiable {
+        let container: String
+        let ports: [PortMapping]
+        var id: String { container }
+    }
+
+    private func rebuildSections() {
+        let filtered = filteredPorts(matching: debouncedSearchText)
         let groups = Dictionary(grouping: filtered) { $0.containerName }
-        return groups
-            .map { (container: $0.key, ports: $0.value.sorted { lhs, rhs in
+        sections = groups
+            .map { PortGroup(container: $0.key, ports: $0.value.sorted { lhs, rhs in
                 let lhsHost = lhs.hostPort ?? Int.max
                 let rhsHost = rhs.hostPort ?? Int.max
                 if lhsHost != rhsHost { return lhsHost < rhsHost }
@@ -23,8 +33,8 @@ struct PortsView: View {
             .sorted { $0.container.localizedStandardCompare($1.container) == .orderedAscending }
     }
 
-    private var filteredPorts: [PortMapping] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func filteredPorts(matching query: String) -> [PortMapping] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return ports }
         return ports.filter { port in
             port.containerName.localizedCaseInsensitiveContains(trimmed) ||
@@ -46,7 +56,7 @@ struct PortsView: View {
                 ContentUnavailableView("No Ports", systemImage: "point.3.connected.trianglepath.dotted")
             } else {
                 List {
-                    ForEach(grouped, id: \.container) { group in
+                    ForEach(sections) { group in
                         Section {
                             ForEach(group.ports) { port in
                                 NavigationLink {
@@ -74,6 +84,8 @@ struct PortsView: View {
         }
         .navigationTitle("Ports")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search ports")
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .onChange(of: debouncedSearchText) { rebuildSections() }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
@@ -99,6 +111,7 @@ struct PortsView: View {
                 query: .init(start: 0, limit: 500)
             )
             ports = response.data
+            rebuildSections()
             errorMessage = nil
         } catch {
             errorMessage = friendlyErrorMessage(error)

@@ -5,6 +5,10 @@ struct EnvironmentDashboardCard: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environment: Arcane.Environment
     var cachedCard: DashboardGlobalEnvironmentCard?
+    /// Passed in by the parent instead of reading manager.activeEnvironmentID
+    /// here — a body read would make every card track the manager and
+    /// re-render on any manager change, not just environment switches.
+    var isActive: Bool = false
     var refreshToken: Int = 0
     var onSelect: () -> Void = {}
 
@@ -23,10 +27,6 @@ struct EnvironmentDashboardCard: View {
         EnvironmentID(rawValue: environment.id)
     }
 
-    private var isActiveEnvironment: Bool {
-        manager.activeEnvironmentID.rawValue == environment.id
-    }
-
     var body: some View {
         Button {
             selectionPulse.toggle()
@@ -36,7 +36,7 @@ struct EnvironmentDashboardCard: View {
                 // Header
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Image(systemName: isActiveEnvironment ? "checkmark.circle.fill" : "server.rack")
+                        Image(systemName: isActive ? "checkmark.circle.fill" : "server.rack")
                             .font(.caption.weight(.semibold))
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(.primary)
@@ -128,7 +128,7 @@ struct EnvironmentDashboardCard: View {
             .dashboardCardBackground(cornerRadius: 20)
             .overlay(
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(isActiveEnvironment ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 2)
+                    .stroke(isActive ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 2)
             )
         }
         // Opacity-only press: this card is a `.matchedTransitionSource` hero-zoom
@@ -136,7 +136,7 @@ struct EnvironmentDashboardCard: View {
         // the zoom snapshot). Feedback without breaking the push transition.
         .buttonStyle(.pressable(scales: false))
         .contextMenu {
-            if !isActiveEnvironment {
+            if !isActive {
                 Button {
                     manager.setActiveEnvironment(id: envID, name: environment.name ?? environment.id)
                 } label: {

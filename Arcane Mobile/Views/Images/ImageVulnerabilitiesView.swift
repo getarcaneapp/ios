@@ -63,7 +63,10 @@ struct ImageVulnerabilitiesView: View {
     }
 
     private var scanList: some View {
-        List {
+        // Filter once per body evaluation; the local shadows the computed
+        // property so the three usages below don't re-filter independently.
+        let filtered = self.filtered
+        return List {
             if let summary {
                 Section("Summary") {
                     SeveritySummaryRow(summary: summary.summary, scanTime: summary.scanTime, status: summary.status, error: summary.error)

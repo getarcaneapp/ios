@@ -26,6 +26,9 @@ final class ActivityCenterStore {
     private var activityBuckets: [String: [Activity]] = [:]
     private var environmentNames: [String: String] = [:]
     private var streamTasks: [String: Task<Void, Never>] = [:]
+    /// Bumped on every startStream() so a finishing task from a previous
+    /// stream generation can't evict its replacement from `streamTasks`.
+    private var streamGeneration = 0
 
     var filteredActivities: [Activity] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -134,9 +137,11 @@ final class ActivityCenterStore {
         guard !environments.isEmpty else { return }
 
         isStreaming = true
+        streamGeneration += 1
+        let generation = streamGeneration
         for environment in environments {
             streamTasks[environment.id.rawValue] = Task { [weak self] in
-                await self?.consumeStream(client: client, environment: environment)
+                await self?.consumeStream(client: client, environment: environment, generation: generation)
             }
         }
     }
@@ -195,10 +200,14 @@ final class ActivityCenterStore {
         return (deleted, failed)
     }
 
-    private func consumeStream(client: ArcaneClient, environment: ActivityEnvironment) async {
+    private func consumeStream(client: ArcaneClient, environment: ActivityEnvironment, generation: Int) async {
         defer {
-            streamTasks[environment.id.rawValue] = nil
-            isStreaming = !streamTasks.isEmpty
+            // Only clean up our own entry — a stale task finishing after a
+            // restart must not remove the current generation's task.
+            if generation == streamGeneration {
+                streamTasks[environment.id.rawValue] = nil
+                isStreaming = !streamTasks.isEmpty
+            }
         }
 
         do {

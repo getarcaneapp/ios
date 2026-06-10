@@ -31,6 +31,9 @@ final class AIAssistantService {
 
     @ObservationIgnored private var session: LanguageModelSession?
     @ObservationIgnored private var streamTask: Task<Void, Never>?
+    /// In-flight confirmed-action executions, keyed by action ID so each can be
+    /// cancelled on conversation reset. Entries remove themselves on completion.
+    @ObservationIgnored private var actionTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var didJustRebuild = false
     /// Result notes from confirmed actions, prepended to the next user prompt so
     /// the model learns outcomes without a wasted extra generation round-trip.
@@ -104,6 +107,8 @@ final class AIAssistantService {
 
     func clearConversation() {
         stop()
+        actionTasks.values.forEach { $0.cancel() }
+        actionTasks.removeAll()
         messages.removeAll()
         visibleActions.removeAll()
         pendingSystemNotes.removeAll()
@@ -206,8 +211,9 @@ final class AIAssistantService {
         guard visibleActions.contains(where: { $0.id == action.id }) else { return }
         visibleActions.removeAll { $0.id == action.id }
 
-        Task { [weak self] in
+        actionTasks[action.id] = Task { [weak self] in
             guard let self else { return }
+            defer { self.actionTasks[action.id] = nil }
             do {
                 let summary = try await action.execute(client: self.context.client, envID: self.context.envID)
                 self.invalidate(action)

@@ -104,9 +104,9 @@ final class DemoService {
     func startHeartbeat() {
         stopHeartbeat()
         heartbeatTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(15))
-                if Task.isCancelled { break }
+            while true {
+                // Task.sleep throws CancellationError when cancelled.
+                do { try await Task.sleep(for: .seconds(15)) } catch { break }
                 await self?.sendHeartbeat()
             }
         }
@@ -166,9 +166,9 @@ final class DemoService {
                 if self.heartbeatTask == nil || self.heartbeatTask?.isCancelled == true {
                     self.heartbeatTask = Task { [weak self] in
                         await self?.sendHeartbeat()
-                        while !Task.isCancelled {
-                            try? await Task.sleep(for: .seconds(15))
-                            if Task.isCancelled { break }
+                        while true {
+                            // Task.sleep throws CancellationError when cancelled.
+                            do { try await Task.sleep(for: .seconds(15)) } catch { break }
                             await self?.sendHeartbeat()
                         }
                     }
