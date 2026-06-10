@@ -149,8 +149,9 @@ struct ContainersView: View {
                 .accessibilityLabel("More options")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { pendingDestructive = .prune } label: {
+                Button(role: .destructive) { pendingDestructive = .prune } label: {
                     Image(systemName: "trash")
+                        .foregroundStyle(.red)
                 }
                 .accessibilityLabel("Prune stopped containers")
             }
@@ -208,6 +209,7 @@ struct ContainersView: View {
                 }
             }
             .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
         }
         .task { await loadContainers() }
         .refreshable { await loadContainers(refresh: true) }

@@ -166,8 +166,9 @@ struct VolumesView: View {
                 .accessibilityLabel("Create volume")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { pendingDestructive = .prune } label: {
+                Button(role: .destructive) { pendingDestructive = .prune } label: {
                     Image(systemName: "trash")
+                        .foregroundStyle(.red)
                 }
                 .accessibilityLabel("Prune unused volumes")
             }
@@ -181,6 +182,8 @@ struct VolumesView: View {
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateVolumeView(environmentID: environmentID) {}
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .deleteConfirmation(item: $pendingDestructive) { action in
             switch action {
@@ -237,6 +240,7 @@ struct VolumesView: View {
                 }
             }
             .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadVolumes(reset: true, refresh: true) }

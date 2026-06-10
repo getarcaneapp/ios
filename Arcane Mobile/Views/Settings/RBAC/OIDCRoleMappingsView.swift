@@ -80,7 +80,7 @@ struct OIDCRoleMappingsView: View {
         .toolbar {
             if rbacAvailable && manager.permissions.canManageOIDCMappings {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }
+                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Role Mapping")
                 }
             }
         }

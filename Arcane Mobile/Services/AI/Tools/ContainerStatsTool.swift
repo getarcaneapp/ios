@@ -18,6 +18,7 @@ struct ContainerStatsTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        context.status.report("Reading stats…")
         let ctx = context
         let id = arguments.containerId
 

@@ -200,7 +200,7 @@ struct ImagesView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
-                    Button {
+                    Button(role: .destructive) {
                         pendingDestructive = .prune
                     } label: {
                         Label("Quick Prune (Dangling)", systemImage: "trash")
@@ -212,6 +212,7 @@ struct ImagesView: View {
                     }
                 } label: {
                     Image(systemName: "trash")
+                        .foregroundStyle(.red)
                 }
                 .accessibilityLabel("Prune images")
             }
@@ -274,6 +275,7 @@ struct ImagesView: View {
                 }
             }
             .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
         }
         .task { await loadImages(reset: true) }
         .refreshable { await loadImages(reset: true, refresh: true) }
@@ -284,9 +286,13 @@ struct ImagesView: View {
         }
         .sheet(isPresented: $showPullSheet) {
             PullImageView(environmentID: environmentID) {}
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showUploadSheet) {
             UploadImageView(environmentID: environmentID) {}
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadImages(reset: true, refresh: true) }

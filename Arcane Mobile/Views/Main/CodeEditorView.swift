@@ -25,7 +25,11 @@ struct CodeEditorView: UIViewRepresentable {
         tv.smartInsertDeleteType = .no
         tv.spellCheckingType = .no
         tv.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 32, right: 8)
-        tv.inputAccessoryView = makeToolbar(coordinator: context.coordinator)
+        // Quick-keys bar styled like the system predictive bar: a UIInputView
+        // (keyboard material) hosting a horizontally scrollable SwiftUI strip.
+        // NOT a UIToolbar — on iOS 26 toolbar items render as floating glass
+        // pills that collide with the keyboard's own controls.
+        tv.inputAccessoryView = makeQuickKeysBar(coordinator: context.coordinator)
         context.coordinator.textView = tv
         applyHighlighting(to: tv, text: text)
         return tv
@@ -48,42 +52,30 @@ struct CodeEditorView: UIViewRepresentable {
             : EnvHighlighter.highlight(text, font: font)
     }
 
-    private func makeToolbar(coordinator: Coordinator) -> UIToolbar {
-        let tb = UIToolbar()
-        tb.sizeToFit()
-        let flex = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
-        func btn(_ title: String, action: Selector) -> UIBarButtonItem {
-            UIBarButtonItem(title: title, style: .plain, target: coordinator, action: action)
-        }
-        // `.prominent` bar-button style is iOS 26+; `.done` (bold title) is the
-        // closest equivalent on iOS 18.
-        let doneStyle: UIBarButtonItem.Style
-        if #available(iOS 26, *) {
-            doneStyle = .prominent
-        } else {
-            doneStyle = .done
-        }
-        if language == .yaml {
-            tb.items = [
-                btn("⇥", action: #selector(Coordinator.indent)),
-                btn("⇤", action: #selector(Coordinator.dedent)),
-                flex,
-                btn(":", action: #selector(Coordinator.colon)),
-                btn("-", action: #selector(Coordinator.dash)),
-                btn("|", action: #selector(Coordinator.pipe)),
-                btn("\"\"", action: #selector(Coordinator.quotes)),
-                flex,
-                UIBarButtonItem(title: "Done", style: doneStyle, target: coordinator, action: #selector(Coordinator.done)),
-            ]
-        } else {
-            tb.items = [
-                btn("=", action: #selector(Coordinator.equals)),
-                btn("\"\"", action: #selector(Coordinator.quotes)),
-                flex,
-                UIBarButtonItem(title: "Done", style: doneStyle, target: coordinator, action: #selector(Coordinator.done)),
-            ]
-        }
-        return tb
+    // MARK: - Quick keys bar
+
+    private func makeQuickKeysBar(coordinator: Coordinator) -> UIView {
+        let host = UIHostingController(
+            rootView: EditorQuickKeysBar(language: language, coordinator: coordinator)
+        )
+        host.view.backgroundColor = .clear
+        // Retain the hosting controller — handing UIKit just the view would
+        // deallocate it and break button actions.
+        coordinator.quickKeysHost = host
+
+        let bar = UIInputView(
+            frame: CGRect(x: 0, y: 0, width: 0, height: 48),
+            inputViewStyle: .keyboard
+        )
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        bar.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: bar.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
+        ])
+        return bar
     }
 
     // MARK: - Coordinator
@@ -92,6 +84,8 @@ struct CodeEditorView: UIViewRepresentable {
         var parent: CodeEditorView
         weak var textView: UITextView?
         var appliedLanguage: EditorLanguage
+        /// Retains the quick-keys bar's hosting controller (see makeQuickKeysBar).
+        var quickKeysHost: UIHostingController<EditorQuickKeysBar>?
 
         init(_ parent: CodeEditorView) {
             self.parent = parent
@@ -125,9 +119,11 @@ struct CodeEditorView: UIViewRepresentable {
             return false
         }
 
-        @objc func indent() { textView?.insertText("  ") }
+        // MARK: Quick-key actions
 
-        @objc func dedent() {
+        func indent() { textView?.insertText("  ") }
+
+        func dedent() {
             guard let tv = textView else { return }
             let ns = tv.text as NSString
             let lr = ns.lineRange(for: tv.selectedRange)
@@ -141,9 +137,9 @@ struct CodeEditorView: UIViewRepresentable {
             textViewDidChange(tv)
         }
 
-        @objc func colon() { textView?.insertText(": ") }
+        func colon() { textView?.insertText(": ") }
 
-        @objc func dash() {
+        func dash() {
             guard let tv = textView else { return }
             let ns = tv.text as NSString
             let lineRange = ns.lineRange(for: NSRange(location: tv.selectedRange.location, length: 0))
@@ -156,18 +152,86 @@ struct CodeEditorView: UIViewRepresentable {
             }
         }
 
-        @objc func pipe() { textView?.insertText(" |") }
+        func pipe() { textView?.insertText(" |") }
 
-        @objc func quotes() {
+        func quotes() {
             textView?.insertText("\"\"")
             if let tv = textView {
                 tv.selectedRange = NSRange(location: tv.selectedRange.location - 1, length: 0)
             }
         }
 
-        @objc func equals() { textView?.insertText("=") }
+        func equals() { textView?.insertText("=") }
 
-        @objc func done() { textView?.resignFirstResponder() }
+        func hash() { textView?.insertText("# ") }
+
+        func dismissKeyboard() { textView?.resignFirstResponder() }
+    }
+}
+
+// MARK: - Quick keys bar (SwiftUI)
+
+/// Predictive-bar-style strip above the keyboard: capsule keys in a horizontal
+/// scroller (so any number of keys stays usable), with a pinned dismiss button.
+/// Hosted inside a `UIInputView` so it sits on keyboard material.
+struct EditorQuickKeysBar: View {
+    let language: EditorLanguage
+    // Strong ref is fine: the bar lives and dies with the coordinator's text view.
+    let coordinator: CodeEditorView.Coordinator
+
+    private var keys: [(label: String, action: () -> Void)] {
+        switch language {
+        case .yaml:
+            return [
+                ("⇥", coordinator.indent),
+                ("⇤", coordinator.dedent),
+                (":", coordinator.colon),
+                ("-", coordinator.dash),
+                ("|", coordinator.pipe),
+                ("\u{201C}\u{201D}", coordinator.quotes),
+                ("#", coordinator.hash),
+            ]
+        case .env:
+            return [
+                ("=", coordinator.equals),
+                ("\u{201C}\u{201D}", coordinator.quotes),
+                ("#", coordinator.hash),
+            ]
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
+                        Button(action: key.action) {
+                            Text(key.label)
+                                .font(.callout.weight(.medium).monospaced())
+                                .foregroundStyle(.primary)
+                                .frame(minWidth: 44, minHeight: 34)
+                                .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 10)
+            }
+
+            Button {
+                coordinator.dismissKeyboard()
+            } label: {
+                Image(systemName: "keyboard.chevron.compact.down")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 34)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss Keyboard")
+            .padding(.trailing, 8)
+        }
+        .frame(height: 48)
     }
 }
 

@@ -99,6 +99,8 @@ struct EnvironmentsView: View {
         .refreshable { await loadEnvironments(refresh: true) }
         .sheet(isPresented: $showAddEnvironment) {
             AddEnvironmentView {}
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadEnvironments(refresh: true) }

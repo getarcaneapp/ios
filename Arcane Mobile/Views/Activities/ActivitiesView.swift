@@ -131,6 +131,7 @@ struct ActivitiesView: View {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button(role: .destructive) { showClearConfirm = true } label: {
                             Image(systemName: "trash")
+                                .foregroundStyle(.red)
                         }
                         .accessibilityLabel("Clear history")
                         .disabled(store.activities.isEmpty)

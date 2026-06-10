@@ -17,6 +17,7 @@ struct ListProjectsTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        context.status.report("Checking projects…")
         var items: [ProjectDetails]
         do {
             items = try await context.client.projects.list(

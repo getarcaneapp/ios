@@ -19,6 +19,7 @@ struct InspectContainerTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        context.status.report("Inspecting container…")
         let d: ContainerDetails
         do {
             d = try await context.client.containers.inspect(envID: context.envID, id: arguments.containerId)

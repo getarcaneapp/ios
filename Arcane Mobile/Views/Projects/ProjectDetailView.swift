@@ -113,6 +113,7 @@ struct ProjectDetailView: View {
                 title: currentProject.displayName,
                 logStream: manager.client?.projects.logs(envID: environmentID, projectID: project.id)
             )
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showAskAI) {
             if #available(iOS 26, *) {
@@ -124,6 +125,7 @@ struct ProjectDetailView: View {
                             }
                         }
                 }
+                .presentationDragIndicator(.visible)
             }
         }
         .sheet(item: $streamingAction) { action in
@@ -140,6 +142,7 @@ struct ProjectDetailView: View {
                 HapticsManager.success()
                 ReviewPrompter.shared.recordSuccess()
             }
+            .presentationDragIndicator(.visible)
         }
         .deleteConfirmation(isPresented: $showDeleteConfirm, config: DeleteConfirmationConfig(
             title: "Delete Project",
@@ -580,6 +583,7 @@ struct ProjectConfigurationTab: View {
             ) { resolved in
                 composeContent = resolved
             }
+            .presentationDragIndicator(.visible)
         }
         .task(id: isActive) {
             if isActive && !hasLoaded {
@@ -775,6 +779,7 @@ struct CreateProjectView: View {
                 ) { resolved in
                     composeContent = resolved
                 }
+                .presentationDragIndicator(.visible)
             }
             .task {
                 if !isPrefilled {

@@ -1,10 +1,14 @@
 import SwiftUI
 
-/// One transcript row. User turns sit in an accent-tinted bubble (trailing);
-/// assistant replies are plain selectable text (leading, no bubble); system
-/// lines (action outcomes) are a small centered pill.
+/// One transcript row, iMessage-style. User turns sit in an accent-tinted
+/// bubble (trailing); assistant replies sit in a gray bubble (leading) under
+/// an "Arcane" sender label, with the thinking indicator rendered inside the
+/// same bubble shape; system lines (action outcomes) are a small centered pill.
 struct AIMessageBubble: View {
     let message: AIMessage
+    /// Live tool-status line ("Checking containers…") shown next to the
+    /// thinking dots while a turn has produced no text yet.
+    var thinkingStatus: String? = nil
 
     var body: some View {
         switch message.role {
@@ -29,18 +33,39 @@ struct AIMessageBubble: View {
 
     @ViewBuilder
     private var assistantText: some View {
-        if message.text.isEmpty && message.isStreaming {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Arcane")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 6)
+
             HStack {
-                ThinkingDots()
-                Spacer(minLength: 0)
+                Group {
+                    if message.text.isEmpty && message.isStreaming {
+                        HStack(spacing: 8) {
+                            ThinkingDots()
+                            Text(thinkingStatus ?? "Thinking…")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .contentTransition(.opacity)
+                        }
+                        .motionAwareAnimation(Motion.state, value: thinkingStatus)
+                    } else {
+                        Text(LocalizedStringKey(message.text))
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(
+                    Color(.secondarySystemGroupedBackground),
+                    in: .rect(cornerRadius: 20, style: .continuous)
+                )
+
+                Spacer(minLength: 56)
             }
-            .padding(.vertical, 4)
-        } else {
-            Text(LocalizedStringKey(message.text))
-                .font(.body)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
         }
     }
 

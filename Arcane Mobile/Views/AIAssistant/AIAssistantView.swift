@@ -1,8 +1,8 @@
 import SwiftUI
 import Arcane
 
-/// Entry point for the assistant — used both as the `.aiAssistant` tab
-/// destination and as a seeded sheet from container/project detail screens.
+/// Entry point for the assistant — presented as a sheet from the toolbar
+/// button and as a seeded sheet from container/project detail screens.
 @available(iOS 26, *)
 struct AIAssistantView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -44,7 +44,7 @@ struct AIAssistantView: View {
                     Text("Arcane Assistant")
                         .font(.headline)
                     Text("ALPHA")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -71,7 +71,8 @@ struct AIAssistantView: View {
         let context = ArcaneToolContext(
             client: client,
             envID: envID,
-            envName: manager.activeEnvironmentName
+            envName: manager.activeEnvironmentName,
+            status: AIToolStatus()
         )
         let store = mutationStore
 

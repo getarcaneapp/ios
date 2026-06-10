@@ -22,15 +22,26 @@ struct ListContainersTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        context.status.report("Checking containers…")
         var items: [ContainerSummary]
         do {
-            items = try await context.client.containers.list(
-                envID: context.envID,
-                query: SearchPaginationSort(start: 0, limit: 500)
-            ).data
+            // Raw REST path + lenient decode, exactly like ContainersView.
+            // The typed `client.containers.list` endpoint doesn't match the
+            // current server's response shape and fails — the containers page
+            // deliberately avoids it for the same reason.
+            let path = context.client.rest.environmentPath(context.envID, "containers")
+            let wrapped: LenientArray<ContainerSummary> = try await context.client.rest.get(path)
+            items = wrapped.elements
         } catch {
             return "Couldn't list containers: \(error.localizedDescription)"
         }
+
+        // Totals BEFORE any filtering — the header must always reflect the real
+        // environment state, or "onlyProblematic with zero matches" reads to the
+        // model as "zero containers exist".
+        let total = items.count
+        let runningTotal = items.count { $0.state.lowercased() == "running" }
+        let header = "\(total) container(s) in \(context.envName): \(runningTotal) running, \(total - runningTotal) not running."
 
         if let filter = arguments.filter?.trimmingCharacters(in: .whitespacesAndNewlines), !filter.isEmpty {
             items = items.filter { c in
@@ -48,9 +59,15 @@ struct ListContainersTool: Tool {
             let displayName = raw.isEmpty ? String(c.id.prefix(12)) : raw
             return "- \(displayName) [\(c.state)] image=\(c.image) id=\(String(c.id.prefix(12)))"
         }
-        let header = "\(items.count) container(s) in \(context.envName)."
         let more = items.count > shown.count ? "\n(+\(items.count - shown.count) more not shown)" : ""
-        let body = lines.isEmpty ? "(no matching containers)" : lines.joined(separator: "\n")
+        let body: String
+        if lines.isEmpty {
+            body = arguments.onlyProblematic == true
+                ? "(no problematic containers — every container is running)"
+                : "(no containers match that filter)"
+        } else {
+            body = lines.joined(separator: "\n")
+        }
         return "\(header)\n\(body)\(more)"
     }
 }

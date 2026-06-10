@@ -56,7 +56,7 @@ struct APIKeysView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showCreateSheet = true } label: { Image(systemName: "plus") }
+                Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Create API Key")
             }
         }
         .task { await loadKeys() }

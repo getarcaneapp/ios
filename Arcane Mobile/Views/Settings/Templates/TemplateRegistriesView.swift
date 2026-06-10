@@ -62,10 +62,10 @@ struct TemplateRegistriesView: View {
         .toolbar {
             if manager.currentUser?.isAdmin == true {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showBrowser = true } label: { Image(systemName: "doc.text.magnifyingglass") }
+                    Button { showBrowser = true } label: { Image(systemName: "doc.text.magnifyingglass") }.accessibilityLabel("Browse Templates")
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }
+                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Template Registry")
                 }
             }
         }

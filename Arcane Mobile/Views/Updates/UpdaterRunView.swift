@@ -210,7 +210,7 @@ struct UpdaterRunView: View {
                     .lineLimit(1)
             }
             Text("\(value)")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(.title, design: .rounded).bold())
                 .foregroundStyle(.primary)
                 .contentTransition(.numericText())
         }

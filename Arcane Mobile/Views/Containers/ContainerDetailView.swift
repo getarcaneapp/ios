@@ -112,6 +112,7 @@ struct ContainerDetailView: View {
                         }
                     }
             }
+            .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: $showTerminal) {
             ContainerTerminalView(container: container, environmentID: environmentID)
@@ -130,6 +131,7 @@ struct ContainerDetailView: View {
                                 Button("Done") { showAskAI = false }
                             }
                         }
+                        .presentationDragIndicator(.visible)
                 }
             }
         }

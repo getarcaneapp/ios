@@ -146,6 +146,8 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showPruneSheet) {
                 SystemPruneView(environmentID: envID)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showVolumes) {
                 NavigationStack {
@@ -154,11 +156,13 @@ struct DashboardView: View {
                         environmentName: manager.activeEnvironmentName
                     )
                 }
+                .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showImageUpdates) {
                 NavigationStack {
                     AllEnvironmentsImageUpdatesView()
                 }
+                .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showActivities, onDismiss: {
                 Task { failedActivities = await loadFailedWork() }
@@ -166,6 +170,7 @@ struct DashboardView: View {
                 NavigationStack {
                     ActivitiesView()
                 }
+                .presentationDragIndicator(.visible)
             }
             .navigationDestination(item: $detailRoute) { route in
                 SystemInfoDetailView(

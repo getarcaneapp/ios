@@ -155,6 +155,7 @@ struct AllVulnerabilitiesView: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private func bindingForSeverity(_ sev: VulnerabilitySeverity) -> Binding<Bool> {

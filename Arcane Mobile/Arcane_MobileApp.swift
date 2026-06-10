@@ -51,7 +51,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         configureLegacyBarAppearance()
+        publishVersionToSettingsBundle()
         return true
+    }
+
+    /// The Settings.bundle "Version"/"Build" rows are PSTitleValueSpecifiers that
+    /// display UserDefaults values, so they must be refreshed on every launch to
+    /// track the installed build.
+    private func publishVersionToSettingsBundle() {
+        let info = Bundle.main.infoDictionary
+        let defaults = UserDefaults.standard
+        defaults.set(info?["CFBundleShortVersionString"] as? String ?? "—",
+                     forKey: "arcane.settings.appVersion")
+        defaults.set(info?["CFBundleVersion"] as? String ?? "—",
+                     forKey: "arcane.settings.appBuild")
     }
 
     /// On iOS 18 the traditional tab bar flips between its transparent scroll-edge

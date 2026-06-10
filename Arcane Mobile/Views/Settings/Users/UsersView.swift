@@ -38,7 +38,7 @@ struct UsersView: View {
         .navigationTitle("Users")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showCreateSheet = true } label: { Image(systemName: "plus") }
+                Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add User")
             }
         }
         .task { await loadUsers() }

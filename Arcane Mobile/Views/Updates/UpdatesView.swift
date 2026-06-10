@@ -26,6 +26,7 @@ struct UpdatesView: View {
                     }
                 }
                 .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
             }
             .actionToolbar(
                 items: [

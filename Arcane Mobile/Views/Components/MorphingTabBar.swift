@@ -122,6 +122,7 @@ struct MorphingTabBar: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(primary.title)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(.capsule)
                 .opacity(isMorphed ? 1 : 0)
@@ -159,6 +160,7 @@ struct MorphingTabBar: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(item.title)
         .frame(width: pillSize, height: pillSize)
         .contentShape(.circle)
         .glassEffectCompat(interactive: true, in: .circle)
@@ -186,6 +188,7 @@ struct MorphingTabBar: View {
                 .contentShape(.circle)
                 .glassEffectCompat(interactive: true, in: .circle)
         }
+        .accessibilityLabel("More Actions")
         .transition(.blurReplace.combined(with: .opacity))
     }
 

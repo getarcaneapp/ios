@@ -201,8 +201,9 @@ struct NetworksView: View {
                 .accessibilityLabel("Create network")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { pendingDestructive = .prune } label: {
+                Button(role: .destructive) { pendingDestructive = .prune } label: {
                     Image(systemName: "trash")
+                        .foregroundStyle(.red)
                 }
                 .accessibilityLabel("Prune unused networks")
             }
@@ -216,6 +217,8 @@ struct NetworksView: View {
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateNetworkView(environmentID: environmentID) {}
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .deleteConfirmation(item: $pendingDestructive) { action in
             switch action {
@@ -272,6 +275,7 @@ struct NetworksView: View {
                 }
             }
             .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadNetworks(reset: true, refresh: true) }

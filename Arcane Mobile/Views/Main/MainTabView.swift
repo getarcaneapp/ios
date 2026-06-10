@@ -11,6 +11,21 @@ struct MainTabView: View {
     @State private var router = QuickActionRouter.shared
     @State private var morphStore = TabBarMorphStore.shared
     @AppStorage("accentColorHex") private var accentColorHex = ""
+
+    init() {
+        // Restore the last selected tab (opt-out via App Settings). Seeding the
+        // initial State here instead of onAppear avoids a visible tab flash.
+        // ensureSelectedTabVisible() falls back to Dashboard if the saved tab is
+        // no longer available, and quick-action routing still takes precedence.
+        let defaults = UserDefaults.standard
+        let remember = defaults.object(forKey: "arcane.rememberLastTab") as? Bool ?? true
+        if remember,
+           let saved = defaults.string(forKey: "arcane.lastSelectedTabID"),
+           !saved.isEmpty {
+            _selectedTab = State(initialValue: saved)
+        }
+    }
+
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
     private var supportsV2: Bool { manager.serverCapabilities?.mode == .rbac }
 
@@ -128,6 +143,7 @@ struct MainTabView: View {
             ))
             .onChange(of: selectedTab) { _, newValue in
                 morphStore.activeTabID = newValue
+                UserDefaults.standard.set(newValue, forKey: "arcane.lastSelectedTabID")
             }
             .onChange(of: router.pendingTabID) { _, newValue in
                 guard let target = newValue else { return }

@@ -69,10 +69,10 @@ struct ResourceStatusBadge: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .symbolRenderingMode(.hierarchical)
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: 16, height: 16)
+                .frame(minWidth: 16, minHeight: 16)
 
             Text(displayText)
                 .font(.caption2.weight(.semibold))

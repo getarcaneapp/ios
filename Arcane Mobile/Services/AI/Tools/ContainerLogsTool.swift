@@ -21,6 +21,7 @@ struct ContainerLogsTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        context.status.report("Reading logs…")
         let cap = min(max(arguments.tail ?? 60, 10), 80)
         let ctx = context
         let id = arguments.containerId

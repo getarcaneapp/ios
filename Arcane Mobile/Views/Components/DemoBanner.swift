@@ -35,14 +35,19 @@ struct DemoBanner: View {
                 Button {
                     Task { await manager.endDemo(reason: .userInitiated) }
                 } label: {
+                    // Glass capsule lives on the text so the visible pill keeps
+                    // its size while the surrounding frame provides a 44pt
+                    // minimum hit target.
                     Text("End")
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 7)
                         .foregroundStyle(brandColor)
+                        .glassEffectCompat(tint: brandColor.opacity(0.18), in: .capsule)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .glassEffectCompat(tint: brandColor.opacity(0.18), in: .capsule)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)

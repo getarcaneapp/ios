@@ -28,6 +28,7 @@ struct ContainerActionTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        context.status.report("Preparing action…")
         let raw = arguments.action.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard let verb = ContainerVerb(rawValue: raw) else {
             let valid = ContainerVerb.allCases.map(\.rawValue).joined(separator: ", ")

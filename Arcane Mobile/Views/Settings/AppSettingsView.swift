@@ -4,6 +4,7 @@ import Arcane
 struct AppSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @AppStorage("arcane.showAssistantButton") private var showAssistantButton = true
+    @AppStorage("arcane.rememberLastTab") private var rememberLastTab = true
     @State private var pendingDestructive: PendingDestructive?
     @State private var cacheSizeBytes: Int = 0
     @State private var showWhatsNew = false
@@ -40,7 +41,6 @@ struct AppSettingsView: View {
             serverVersionSection
             aboutSection
             supportSection
-            versionSection
         }
         .listStyle(.insetGrouped)
         .navigationTitle("App Settings")
@@ -86,6 +86,9 @@ struct AppSettingsView: View {
         Section("Application") {
             NavigationLink(destination: AppearanceSettingsView()) {
                 SettingsRow(title: "Appearance", systemImage: "paintbrush.fill", color: .pink)
+            }
+            Toggle(isOn: $rememberLastTab) {
+                SettingsRow(title: "Remember Last Tab", systemImage: "arrow.uturn.backward.square", color: .indigo)
             }
             Button {
                 pendingDestructive = .changeServer
@@ -207,6 +210,19 @@ struct AppSettingsView: View {
     @ViewBuilder
     private var aboutSection: some View {
         Section("About") {
+            Button {
+                showWhatsNew = true
+            } label: {
+                HStack {
+                    SettingsRow(title: "What's New", systemImage: "sparkles", color: .yellow, titleColor: .primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             Link(destination: URL(string: "https://getarcane.app")!) {
                 SettingsExternalRow(title: "Documentation", systemImage: "globe", color: .blue)
             }
@@ -226,53 +242,49 @@ struct AppSettingsView: View {
 
     @ViewBuilder
     private var supportSection: some View {
-        Section("Support") {
-            Link(destination: URL(string: "https://buymeacoffee.com/kmendell")!) {
-                SettingsExternalRow(title: "Buy Me a Coffee", systemImage: "cup.and.saucer.fill", color: .orange)
-            }
-            Link(destination: URL(string: "https://discord.gg/WyXYpdyV3Z")!) {
-                SettingsExternalRow(
-                    title: "Join the Discord",
-                    systemImage: "bubble.left.and.bubble.right.fill",
-                    color: .indigo
-                )
-            }
-            Link(destination: URL(string: "https://github.com/getarcaneapp/ios/issues")!) {
-                SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
-            }
+        Section {
+            supportRows
+        } header: {
+            Text("Support")
+        } footer: {
+            versionFooter
+        }
+    }
+
+    /// Compact replacement for the old "Version" section rows; tapping copies
+    /// the full version string since the rows it replaced were copyable.
+    private var versionFooter: some View {
+        VStack(spacing: 2) {
+            Text("Arcane Mobile")
+                .fontWeight(.medium)
+            Text("Version \(appVersionString) (\(appBuildString))")
+                .monospacedDigit()
+        }
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 12)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            UIPasteboard.general.string = "\(appVersionString) (\(appBuildString))"
+            showToast(.copied("Version copied"))
         }
     }
 
     @ViewBuilder
-    private var versionSection: some View {
-        Section("Version") {
-            Button {
-                showWhatsNew = true
-            } label: {
-                HStack {
-                    SettingsRow(title: "What's New", systemImage: "sparkles", color: .yellow, titleColor: .primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            HStack {
-                SettingsRow(title: "Version", systemImage: "app.badge", color: .gray)
-                Spacer()
-                Text(appVersionString)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            HStack {
-                SettingsRow(title: "Build", systemImage: "hammer", color: .gray)
-                Spacer()
-                Text(appBuildString)
-                    .font(.subheadline.monospaced())
-                    .foregroundStyle(.secondary)
-            }
+    private var supportRows: some View {
+        Link(destination: URL(string: "https://buymeacoffee.com/kmendell")!) {
+            SettingsExternalRow(title: "Buy Me a Coffee", systemImage: "cup.and.saucer.fill", color: .orange)
+        }
+        Link(destination: URL(string: "https://discord.gg/WyXYpdyV3Z")!) {
+            SettingsExternalRow(
+                title: "Join the Discord",
+                systemImage: "bubble.left.and.bubble.right.fill",
+                color: .indigo
+            )
+        }
+        Link(destination: URL(string: "https://github.com/getarcaneapp/ios/issues")!) {
+            SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
         }
     }
 

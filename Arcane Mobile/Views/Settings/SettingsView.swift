@@ -106,7 +106,6 @@ struct SettingsView: View {
                 && !pinned.contains(tab)
                 && (isAdmin || !tab.requiresAdmin)
                 && (supportsV2 || !tab.requiresV2)
-                && (AppTab.deviceSupportsFoundationModels || !tab.requiresiOS26)
         }
     }
 

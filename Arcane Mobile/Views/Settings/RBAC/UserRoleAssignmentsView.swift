@@ -43,7 +43,7 @@ struct UserRoleAssignmentsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showAddSheet = true } label: { Image(systemName: "plus") }
+                Button { showAddSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Role Assignment")
                     .disabled(availableRoles.isEmpty)
             }
         }

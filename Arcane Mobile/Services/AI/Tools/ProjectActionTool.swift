@@ -27,6 +27,7 @@ struct ProjectActionTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        context.status.report("Preparing action…")
         let raw = arguments.action.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let verb: ProjectVerb? = switch raw {
         case "up", "start", "deploy": .up

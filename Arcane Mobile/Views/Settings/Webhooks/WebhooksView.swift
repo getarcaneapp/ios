@@ -65,7 +65,7 @@ struct WebhooksView: View {
         .navigationTitle("Webhooks")
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showCreateSheet = true } label: { Image(systemName: "plus") }
+                Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Webhook")
             }
         }
         .task { await loadWebhooks() }

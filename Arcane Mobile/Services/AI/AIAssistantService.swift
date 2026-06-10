@@ -51,6 +51,9 @@ final class AIAssistantService {
     }
 
     var contextBanner: String? { seed.contextBanner }
+    /// Live "what is the assistant doing" line from tool calls, shown by the
+    /// thinking bubble while a turn has no streamed text yet.
+    var toolStatusText: String? { context.status.text }
     var canSend: Bool {
         !inputDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !isResponding
@@ -88,6 +91,7 @@ final class AIAssistantService {
         let assistant = AIMessage.assistantPlaceholder()
         messages.append(assistant)
         isResponding = true
+        context.status.text = nil
 
         streamTask = Task { [weak self] in
             await self?.runTurn(prompt: prompt, assistantID: assistant.id)
@@ -160,6 +164,7 @@ final class AIAssistantService {
     }
 
     private func finishTurn(assistantID: UUID) async {
+        context.status.text = nil
         if let idx = messages.firstIndex(where: { $0.id == assistantID }) {
             messages[idx].isStreaming = false
             if messages[idx].text.isEmpty {
@@ -179,6 +184,8 @@ final class AIAssistantService {
     }
 
     private func update(_ id: UUID, text: String) {
+        // Once real text streams, the tool-status line is stale — drop it.
+        if !text.isEmpty, context.status.text != nil { context.status.text = nil }
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
         messages[idx].text = text
     }

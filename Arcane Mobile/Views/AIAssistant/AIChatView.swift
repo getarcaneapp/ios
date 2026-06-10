@@ -29,8 +29,11 @@ struct AIChatView: View {
                         }
 
                         ForEach(service.messages) { message in
-                            AIMessageBubble(message: message)
-                                .id(message.id)
+                            AIMessageBubble(
+                                message: message,
+                                thinkingStatus: message.isStreaming ? service.toolStatusText : nil
+                            )
+                            .id(message.id)
                         }
 
                         ForEach(service.visibleActions) { action in
@@ -48,7 +51,12 @@ struct AIChatView: View {
                     .padding(.top, 12)
                 }
                 .softTopScrollEdgeEffectCompat()
-                .scrollDismissesKeyboard(.interactively)
+                // .immediately, not .interactively: interactive dismissal ties the
+                // keyboard's input session to the scroll view's hosting context.
+                // With the composer hosted as a sibling (see header comment), the
+                // session tears the moment the scroll view adjusts for the keyboard
+                // — field looks focused but keystrokes go nowhere after the first.
+                .scrollDismissesKeyboard(.immediately)
                 .animation(reduceMotion ? nil : Motion.state, value: service.visibleActions.count)
                 .onChange(of: service.messages.count) { _, _ in
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {

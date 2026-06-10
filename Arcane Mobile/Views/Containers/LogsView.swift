@@ -42,11 +42,13 @@ struct LogsView: View {
                                             .scaleEffect(0.8)
                                             .glassEffectCompat()
                                     }
-                                    Button {
+                                    Button(role: .destructive) {
                                         lines.removeAll()
                                     } label: {
                                         Image(systemName: "trash")
+                                            .foregroundStyle(.red)
                                     }
+                                    .accessibilityLabel("Clear logs")
                                     .glassEffectCompat()
                                 }
                             }

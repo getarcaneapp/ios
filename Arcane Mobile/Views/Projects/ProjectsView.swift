@@ -235,6 +235,7 @@ struct ProjectsView: View {
             }
         }
         .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 
     var body: some View {
@@ -254,6 +255,7 @@ struct ProjectsView: View {
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateProjectView(environmentID: environmentID) {}
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showFilterSheet) { filterSheetContent }
         .onChange(of: mutationVersion) { _, _ in

@@ -33,7 +33,6 @@ final class NavTabsStore {
             tab.canPinToBottomBar
                 && (isAdmin || !tab.requiresAdmin)
                 && (supportsV2 || !tab.requiresV2)
-                && (AppTab.deviceSupportsFoundationModels || !tab.requiresiOS26)
         }
         if visible.count < Self.slotCount {
             for fallback in AppTab.mainDefaults {

@@ -76,7 +76,7 @@ struct RolesView: View {
         .toolbar {
             if rbacAvailable && manager.permissions.canManageRoles {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }
+                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Create Role")
                 }
             }
         }

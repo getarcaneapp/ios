@@ -148,7 +148,7 @@ struct InstallStreamSheet: View {
         return HStack(spacing: 4) {
             if isDone && !isCurrent {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(.green)
             }
             Text(phase)
