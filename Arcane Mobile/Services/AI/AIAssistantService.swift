@@ -68,7 +68,7 @@ final class AIAssistantService {
         guard session == nil, availability == .available else { return }
         // `instructions:` is an @InstructionsBuilder closure, not a String arg.
         let s = LanguageModelSession(tools: AIToolbox.make(context: context, sink: sink)) {
-            AIInstructions.build(environmentName: context.envName)
+            AIInstructions.build(environmentName: context.envName, capabilities: context.capabilities)
         }
         s.prewarm()
         session = s
@@ -136,7 +136,16 @@ final class AIAssistantService {
         } catch is CancellationError {
             // User stopped — keep whatever streamed.
         } catch {
-            update(assistantID, text: "Sorry — \(friendlyErrorMessage(error))")
+            // Availability can go stale mid-session (model assets purged or still
+            // downloading throw "Local Model Asset unavailable" at generation
+            // time). Re-check: if the model is no longer ready, flipping
+            // `availability` swaps the chat for AIUnavailableView's guidance.
+            refreshAvailability()
+            if availability == .available {
+                update(assistantID, text: "Sorry — \(friendlyErrorMessage(error))")
+            } else {
+                update(assistantID, text: Self.modelNotReadyText)
+            }
         }
     }
 
@@ -158,10 +167,15 @@ final class AIAssistantService {
             await runTurn(prompt: prompt, assistantID: assistantID)   // retry once on the fresh session
         case .guardrailViolation:
             update(assistantID, text: "I can't help with that request.")
+        case .assetsUnavailable:
+            refreshAvailability()
+            update(assistantID, text: Self.modelNotReadyText)
         default:
             update(assistantID, text: "Something went wrong generating that response. Please try again.")
         }
     }
+
+    private static let modelNotReadyText = "Apple Intelligence's on-device model isn't ready — it may still be downloading. Keep the device on Wi-Fi and power, then try again in a few minutes."
 
     private func finishTurn(assistantID: UUID) async {
         context.status.text = nil
@@ -179,7 +193,7 @@ final class AIAssistantService {
 
     private func rebuildSession() {
         session = LanguageModelSession(tools: AIToolbox.make(context: context, sink: sink)) {
-            AIInstructions.build(environmentName: context.envName)
+            AIInstructions.build(environmentName: context.envName, capabilities: context.capabilities)
         }
     }
 

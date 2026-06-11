@@ -72,12 +72,15 @@ struct AIAssistantView: View {
             client: client,
             envID: envID,
             envName: manager.activeEnvironmentName,
+            capabilities: manager.serverCapabilities ?? .unknown,
             status: AIToolStatus()
         )
         let store = mutationStore
 
         let svc = AIAssistantService(context: context, seed: seed) { action in
-            store.markChanged(kind: action.mutationKind, envID: envID)
+            for kind in action.mutationKinds {
+                store.markChanged(kind: kind, envID: envID)
+            }
             Task {
                 await manager.cached?.invalidate(
                     envID: envID,

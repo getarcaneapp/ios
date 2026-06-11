@@ -11,19 +11,15 @@ struct ContainerActionTool: Tool {
     let sink: AIPendingActionSink
 
     let name = "controlContainer"
-    let description = """
-    Stage a lifecycle action on a container: start, stop, restart, pause, unpause, or redeploy. \
-    This does NOT execute — it queues the action for the user to confirm with a button. \
-    Always tell the user you've prepared it and are waiting for their confirmation; never claim it ran.
-    """
+    let description = "Stage a container action (start, stop, restart, pause, unpause, redeploy) for user confirmation. Never executes."
 
     @Generable
     struct Arguments {
-        @Guide(description: "The container's id (full or short) from a previous listContainers/inspectContainer call.")
+        @Guide(description: "Container id from listContainers.")
         var containerId: String
-        @Guide(description: "Human-readable container name, for the confirmation prompt.")
+        @Guide(description: "Container name for the prompt.")
         var containerName: String
-        @Guide(description: "One of: start, stop, restart, pause, unpause, redeploy.")
+        @Guide(description: "start, stop, restart, pause, unpause, or redeploy.")
         var action: String
     }
 

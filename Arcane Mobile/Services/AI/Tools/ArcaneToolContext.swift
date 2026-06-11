@@ -12,6 +12,9 @@ struct ArcaneToolContext: Sendable {
     let client: ArcaneClient        // SDK client is Sendable (see CachedClient)
     let envID: EnvironmentID        // Sendable value type
     let envName: String
+    /// Which API shape the server speaks (v1 legacy vs v2 RBAC). Used to skip
+    /// registering v2-only tools and to phrase degradation messages.
+    let capabilities: ServerCapabilities
     /// Live "what is the assistant doing" relay — tools report a short line
     /// ("Checking containers…") that the thinking bubble shows in place of
     /// the generic "Thinking…".

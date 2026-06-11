@@ -2,27 +2,36 @@ import Foundation
 import Arcane
 import FoundationModels
 
-/// Reads the most recent activities (deploys, pulls, prunes, scans…) so the
-/// model can answer "what happened recently / did anything fail?". Uses the
-/// `nonisolated` Activity display helpers from ActivityDisplay.swift.
+/// Recent activities (deploys, pulls, prunes, scans…), or — when activityId is
+/// passed — one activity's full output log, tail-biased because failures put
+/// the cause in the last lines. v2-only; not registered on v1 servers.
 @available(iOS 26, *)
 struct RecentActivitiesTool: Tool {
     let context: ArcaneToolContext
 
     let name = "recentActivities"
-    let description = "List the most recent activities (deployments, image pulls, prunes, scans) in the current environment with their status. Use this to find out what happened recently or whether anything failed."
+    let description = "Recent activities with status and id. Pass activityId for one activity's full output — use to explain failures."
 
     @Generable
     struct Arguments {
-        @Guide(description: "If true, only return failed activities.")
+        @Guide(description: "Only failed activities.")
         var onlyFailed: Bool?
-        @Guide(description: "How many recent activities to read (5–25). Defaults to 15.")
+        @Guide(description: "How many to read (5–25).")
         var limit: Int?
+        @Guide(description: "An id from a previous call → full output log.")
+        var activityId: String?
     }
 
     func call(arguments: Arguments) async throws -> String {
+        if let id = arguments.activityId?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
+            return await detailText(id: id)
+        }
+        return await listText(onlyFailed: arguments.onlyFailed == true, limit: arguments.limit)
+    }
+
+    private func listText(onlyFailed: Bool, limit: Int?) async -> String {
         context.status.report("Reviewing recent activity…")
-        let cap = min(max(arguments.limit ?? 15, 5), 25)
+        let cap = min(max(limit ?? 15, 5), 25)
         var items: [Activity]
         do {
             items = try await context.client.activities.listPaginated(
@@ -32,10 +41,10 @@ struct RecentActivitiesTool: Tool {
                 limit: 25
             ).data
         } catch {
-            return "Couldn't read activities: \(error.localizedDescription)"
+            return ToolSupport.friendlyFailure(error, reading: "activity history")
         }
 
-        if arguments.onlyFailed == true {
+        if onlyFailed {
             items = items.filter { $0.status == .failed }
         }
 
@@ -43,12 +52,45 @@ struct RecentActivitiesTool: Tool {
         let formatter = RelativeDateTimeFormatter()
         let lines = shown.map { activity -> String in
             let when = formatter.localizedString(for: activity.sortTime, relativeTo: Date())
-            return "- \(activity.displayTitle) — \(activity.subtitle) [\(activity.status.rawValue)] \(when)"
+            return "- \(activity.displayTitle) — \(activity.subtitle) [\(activity.status.rawValue)] \(when) id=\(activity.id)"
         }
-        let header = arguments.onlyFailed == true
+        let header = onlyFailed
             ? "\(items.count) failed activit(ies) in \(context.envName)."
             : "Most recent activities in \(context.envName):"
         let body = lines.isEmpty ? "(none)" : lines.joined(separator: "\n")
         return "\(header)\n\(body)"
+    }
+
+    private func detailText(id: String) async -> String {
+        context.status.report("Reading activity output…")
+        let detail: ActivityDetail
+        do {
+            detail = try await context.client.activities.detail(
+                envID: context.envID,
+                activityID: id,
+                limit: 100
+            )
+        } catch {
+            return ToolSupport.friendlyFailure(error, reading: "activity “\(id)”")
+        }
+
+        let a = detail.activity
+        var lines: [String] = []
+        lines.append("\(a.displayTitle) — \(a.subtitle) [\(a.status.rawValue)]")
+        if let ms = a.durationMs { lines.append("duration: \(Double(ms) / 1000.0)s") }
+        if let error = a.error, !error.isEmpty { lines.append("error: \(error)") }
+
+        let messages = detail.messages.suffix(20)
+        if messages.isEmpty {
+            lines.append("(no output messages recorded)")
+        } else {
+            lines.append("output (most recent last):")
+            for m in messages {
+                lines.append("- [\(m.level.rawValue)] \(m.message)")
+            }
+        }
+        let text = lines.joined(separator: "\n")
+        // Keep the tail — that's where failure causes live.
+        return text.count > 1500 ? "…" + String(text.suffix(1500)) : text
     }
 }

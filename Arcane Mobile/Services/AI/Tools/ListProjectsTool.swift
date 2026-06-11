@@ -8,11 +8,11 @@ struct ListProjectsTool: Tool {
     let context: ArcaneToolContext
 
     let name = "listProjects"
-    let description = "List Compose projects in the current environment with their status and running/total service counts. Use to find a project or get an overview."
+    let description = "List Compose projects with status and running/total service counts."
 
     @Generable
     struct Arguments {
-        @Guide(description: "Optional substring to match against project names. Omit to list all.")
+        @Guide(description: "Name substring filter.")
         var filter: String?
     }
 
@@ -25,7 +25,7 @@ struct ListProjectsTool: Tool {
                 query: SearchPaginationSort(start: 0, limit: 200)
             ).data
         } catch {
-            return "Couldn't list projects: \(error.localizedDescription)"
+            return ToolSupport.friendlyFailure(error, reading: "projects")
         }
         if let filter = arguments.filter?.trimmingCharacters(in: .whitespacesAndNewlines), !filter.isEmpty {
             items = items.filter { $0.name.localizedCaseInsensitiveContains(filter) }

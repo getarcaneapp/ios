@@ -14,7 +14,6 @@ struct AIComposerBar: View {
     let onStop: () -> Void
 
     @State private var draft = ""
-    @State private var shimmerPhase: Double = 0
 
     private var pillShape: RoundedRectangle { .rect(cornerRadius: 22, style: .continuous) }
 
@@ -67,32 +66,16 @@ struct AIComposerBar: View {
             }
             .background(.regularMaterial, in: pillShape)
             .overlay {
-                ZStack {
-                    pillShape.strokeBorder(.primary.opacity(0.07), lineWidth: 0.5)
-                    if isResponding {
-                        pillShape.strokeBorder(
-                            LinearGradient(
-                                colors: [.indigo, .purple, .pink, .purple, .indigo],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1.5
-                        )
-                        .hueRotation(.degrees(shimmerPhase))
-                        .transition(.opacity)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.4), value: isResponding)
+                pillShape.strokeBorder(.primary.opacity(0.07), lineWidth: 0.5)
             }
-            .onChange(of: isResponding) { _, responding in
-                if responding {
-                    withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) {
-                        shimmerPhase = 25
-                    }
-                } else {
-                    shimmerPhase = 0
-                }
-            }
+            .borderBeam(
+                border: .purple,
+                beam: [.indigo, .purple, .pink],
+                beamBlur: 12,
+                cornerRadius: 22,
+                isEnabled: isResponding
+            )
+            .animation(.easeInOut(duration: 0.4), value: isResponding)
             .shadow(color: .black.opacity(0.1), radius: 8, y: 2)
             .padding(.horizontal, 16)
             .padding(.top, 4)

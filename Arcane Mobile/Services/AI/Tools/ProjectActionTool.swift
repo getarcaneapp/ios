@@ -10,19 +10,15 @@ struct ProjectActionTool: Tool {
     let sink: AIPendingActionSink
 
     let name = "controlProject"
-    let description = """
-    Stage a Compose project action: up (deploy/start), down (stop), restart, or redeploy. \
-    This does NOT execute — it queues the action for the user to confirm with a button. \
-    Always tell the user you've prepared it and are waiting for their confirmation; never claim it ran.
-    """
+    let description = "Stage a project action (up, down, restart, redeploy) for user confirmation. Never executes."
 
     @Generable
     struct Arguments {
-        @Guide(description: "The project's id from a previous listProjects call.")
+        @Guide(description: "Project id from listProjects.")
         var projectId: String
-        @Guide(description: "Human-readable project name, for the confirmation prompt.")
+        @Guide(description: "Project name for the prompt.")
         var projectName: String
-        @Guide(description: "One of: up (start/deploy), down (stop), restart, redeploy.")
+        @Guide(description: "up, down, restart, or redeploy.")
         var action: String
     }
 

@@ -10,13 +10,13 @@ struct ListImagesTool: Tool {
     let context: ArcaneToolContext
 
     let name = "listImages"
-    let description = "List Docker images in the current environment with their tag, size, and whether they're dangling (untagged). Use this to check what images exist or find unused ones."
+    let description = "List images with tag and size; header notes dangling images and available updates."
 
     @Generable
     struct Arguments {
-        @Guide(description: "Optional substring to match against image tags. Omit to list all.")
+        @Guide(description: "Tag substring filter.")
         var filter: String?
-        @Guide(description: "If true, only return dangling (untagged) images.")
+        @Guide(description: "Only dangling (untagged) images.")
         var onlyDangling: Bool?
     }
 
@@ -29,7 +29,7 @@ struct ListImagesTool: Tool {
                 query: SearchPaginationSort(start: 0, limit: 500)
             ).data
         } catch {
-            return "Couldn't list images: \(error.localizedDescription)"
+            return ToolSupport.friendlyFailure(error, reading: "images")
         }
 
         func tagOf(_ image: ImageSummary) -> String {
@@ -42,7 +42,15 @@ struct ListImagesTool: Tool {
         // Totals before filtering so a zero-match filter can't read as "no images exist".
         let total = items.count
         let danglingTotal = items.count(where: isDangling)
-        let header = "\(total) image(s) in \(context.envName) (\(danglingTotal) dangling)."
+        var header = "\(total) image(s) in \(context.envName) (\(danglingTotal) dangling)."
+        // Update availability is garnish — never fail the list for it. Raw REST +
+        // app-local ImageUpdateSummary, same recipe as DashboardView (the SDK's
+        // typed updateSummary doesn't match the current server's shape).
+        let summaryPath = context.client.rest.environmentPath(context.envID, "image-updates/summary")
+        if let updates: ImageUpdateSummary = try? await context.client.rest.get(summaryPath),
+           updates.imagesWithUpdates > 0 {
+            header += " \(updates.imagesWithUpdates) have update(s) available."
+        }
 
         if let filter = arguments.filter?.trimmingCharacters(in: .whitespacesAndNewlines), !filter.isEmpty {
             items = items.filter { tagOf($0).localizedCaseInsensitiveContains(filter) }

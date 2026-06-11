@@ -11,13 +11,13 @@ struct ListContainersTool: Tool {
     let context: ArcaneToolContext
 
     let name = "listContainers"
-    let description = "List containers in the current environment with their status (running/exited/paused) and image. Use this to find a container by name or to get an overview before diagnosing."
+    let description = "List containers with status and image. Use to find a container or get an overview."
 
     @Generable
     struct Arguments {
-        @Guide(description: "Optional substring to match against container names or image. Omit to list all.")
+        @Guide(description: "Name/image substring filter.")
         var filter: String?
-        @Guide(description: "If true, only return containers that are not running (exited, dead, restarting).")
+        @Guide(description: "Only non-running containers.")
         var onlyProblematic: Bool?
     }
 
@@ -33,7 +33,7 @@ struct ListContainersTool: Tool {
             let wrapped: LenientArray<ContainerSummary> = try await context.client.rest.get(path)
             items = wrapped.elements
         } catch {
-            return "Couldn't list containers: \(error.localizedDescription)"
+            return ToolSupport.friendlyFailure(error, reading: "containers")
         }
 
         // Totals BEFORE any filtering — the header must always reflect the real
