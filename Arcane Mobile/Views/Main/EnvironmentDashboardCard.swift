@@ -5,6 +5,9 @@ struct EnvironmentDashboardCard: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environment: Arcane.Environment
     var cachedCard: DashboardGlobalEnvironmentCard?
+    /// Live per-environment state from the aggregated dashboard stream; takes
+    /// precedence over `cachedCard` (v1) and `dockerInfo` for the counts.
+    var streamState: DashboardStreamStore.EnvironmentState?
     /// Passed in by the parent instead of reading manager.activeEnvironmentID
     /// here — a body read would make every card track the manager and
     /// re-render on any manager change, not just environment switches.
@@ -44,6 +47,9 @@ struct EnvironmentDashboardCard: View {
                         Text(environment.name ?? environment.id)
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
+                        if let versionInfo = streamSnapshot?.versionInfo {
+                            arcaneVersionBadge(versionInfo)
+                        }
                     }
                     if let version = dockerInfo?.serverVersion {
                         Text("Docker " + version)
@@ -101,18 +107,29 @@ struct EnvironmentDashboardCard: View {
 
                 Divider()
 
-                // Mini Metrics
+                // Mini Metrics — stream snapshot wins, then the v1 overview
+                // card, then raw Docker info.
                 let hasCachedCounts = cachedCard?.snapshotState == "ready"
-                let running = cachedCard?.containers?.runningContainers ?? Int(dockerInfo?.containersRunning ?? 0)
-                let stopped = cachedCard?.containers?.stoppedContainers ?? Int(dockerInfo?.containersStopped ?? 0)
-                let images = cachedCard?.imageUsageCounts?.totalImages ?? Int(dockerInfo?.images ?? 0)
-                let hasAnyData = hasCachedCounts || dockerInfo != nil
+                let running = streamSnapshot?.containers.counts.runningContainers
+                    ?? cachedCard?.containers?.runningContainers
+                    ?? Int(dockerInfo?.containersRunning ?? 0)
+                let stopped = streamSnapshot?.containers.counts.stoppedContainers
+                    ?? cachedCard?.containers?.stoppedContainers
+                    ?? Int(dockerInfo?.containersStopped ?? 0)
+                let images = streamSnapshot?.imageUsageCounts.totalImages
+                    ?? cachedCard?.imageUsageCounts?.totalImages
+                    ?? Int(dockerInfo?.images ?? 0)
+                let hasAnyData = streamSnapshot != nil || hasCachedCounts || dockerInfo != nil
                 HStack(spacing: 12) {
                     DashboardMiniMetric(title: "Running", value: hasAnyData ? "\(running)" : "--", color: .green)
                     DashboardMiniMetric(title: "Stopped", value: hasAnyData ? "\(stopped)" : "--", color: .secondary)
                     DashboardMiniMetric(title: "Images", value: hasAnyData ? "\(images)" : "--", color: .purple)
                 }
                 .frame(maxWidth: .infinity)
+
+                if let items = streamSnapshot?.actionItems.items, !items.isEmpty {
+                    actionItemsRow(items)
+                }
 
                 if let banner = errorBanner {
                     Text(banner)
@@ -206,7 +223,20 @@ struct EnvironmentDashboardCard: View {
         }
     }
 
+    /// Latest stream snapshot, gated on the one-way loaded latch so an
+    /// erroring environment keeps showing its last-known counts.
+    private var streamSnapshot: DashboardSnapshot? {
+        guard streamState?.hasLoaded == true else { return nil }
+        return streamState?.snapshot
+    }
+
     private var errorBanner: String? {
+        if streamState?.streamError == true {
+            if streamState?.errorCode == .agentIncompatible {
+                return "Agent version doesn't provide dashboard data; showing last known values"
+            }
+            return streamState?.errorMessage ?? "Live dashboard counts unavailable"
+        }
         switch cachedCard?.snapshotState {
         case "ready":
             return nil
@@ -217,6 +247,83 @@ struct EnvironmentDashboardCard: View {
         default:
             return dockerError
         }
+    }
+
+    // MARK: - Action items & version badge
+
+    private func actionItemsRow(_ items: [ActionItem]) -> some View {
+        let hasCritical = items.contains { $0.severity == .critical }
+        let summary = items
+            .prefix(2)
+            .map { "\($0.count) \(Self.actionItemLabel($0.kind))" }
+            .joined(separator: " · ")
+        return HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(hasCritical ? .red : .orange)
+                .accessibilityHidden(true)
+            Text(summary)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Needs attention: \(summary)")
+    }
+
+    private static func actionItemLabel(_ kind: ActionItemKind) -> String {
+        switch kind {
+        case .stoppedContainers: return "Stopped"
+        case .imageUpdates: return "Updates"
+        case .actionableVulnerabilities: return "Vulnerabilities"
+        case .expiringKeys: return "Expiring Keys"
+        case .unknown(let raw): return raw.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    /// Arcane version pill matching the web's per-environment badge: mono
+    /// version text with a static amber dot when an update is available.
+    /// Tappable into the upgrade sheet only when this user can upgrade.
+    @ViewBuilder
+    private func arcaneVersionBadge(_ info: VersionInfo) -> some View {
+        let label = Self.versionBadgeText(info)
+        let badge = HStack(spacing: 4) {
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .monospaced()
+            if info.updateAvailable {
+                Circle()
+                    .fill(.orange)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .foregroundStyle(.secondary)
+        .background(.secondary.opacity(0.12), in: Capsule())
+        .accessibilityLabel(info.updateAvailable ? "Arcane \(label), update available" : "Arcane \(label)")
+
+        if info.updateAvailable, canUpgrade {
+            Button {
+                showUpgradeSheet = true
+            } label: {
+                badge
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens the upgrade screen")
+        } else {
+            badge
+        }
+    }
+
+    private static func versionBadgeText(_ info: VersionInfo) -> String {
+        var raw = info.displayVersion
+        if raw.isEmpty { raw = info.currentTag ?? "" }
+        if raw.isEmpty { raw = info.currentVersion }
+        guard !raw.isEmpty else { return "unknown" }
+        return raw.hasPrefix("v") ? raw : "v\(raw)"
     }
 
     private func percentShort(_ v: Double?) -> String {

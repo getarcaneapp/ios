@@ -50,6 +50,7 @@ struct GetDashboardTool: Tool {
         case .imageUpdates: return "\(item.count) image update(s) available"
         case .actionableVulnerabilities: return "\(item.count) actionable vulnerabilit(ies)"
         case .expiringKeys: return "\(item.count) API key(s) expiring soon"
+        case .unknown(let kind): return "\(item.count) \(kind.replacingOccurrences(of: "_", with: " "))"
         }
     }
 }

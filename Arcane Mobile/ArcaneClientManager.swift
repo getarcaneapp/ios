@@ -428,7 +428,12 @@ final class ArcaneClientManager {
         configuration.httpCookieStorage = .shared
         configuration.httpShouldSetCookies = true
         configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 60
+        // timeoutIntervalForResource caps a request's TOTAL lifetime — at the
+        // old 60s it silently killed every long-lived NDJSON stream (dashboard,
+        // activities) and large upload on this session. Stall protection comes
+        // from timeoutIntervalForRequest (inter-data inactivity), which the
+        // streams' 15s server heartbeats keep satisfied.
+        configuration.timeoutIntervalForResource = 60 * 60 * 24
         if #available(iOS 11.0, *) {
             configuration.multipathServiceType = .handover
         }
