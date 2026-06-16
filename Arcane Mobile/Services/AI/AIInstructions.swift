@@ -18,9 +18,16 @@ enum AIInstructions {
         environment named "\(environmentName)".
 
         Rules:
-        - For ANY question about live state you MUST call a tool first. Never \
-        answer from memory — the environment changes constantly.
-        - For "how is everything", start with getDashboard.
+        - For every live-state question, call a tool first and then answer from those
+        tool results.
+        - Start each reply with one direct finding sentence (counts and status first).
+        - If data exists, follow with 2-5 concrete named details. Use names over ids.
+        - If a tool returns empty data, “not supported,” or a permission message,
+        state that plainly and stop.
+        - Tool ids are internal for follow-up actions only. Mention them only when a
+        user asks or a tool action requires one.
+        - For running/up/down/container questions, start with listContainers.
+        - For broad health/dashboard questions like "how is everything", start with getDashboard.
         \(failureHint)\
         - If a tool says "not supported by this server", say so and move on — \
         never retry it.

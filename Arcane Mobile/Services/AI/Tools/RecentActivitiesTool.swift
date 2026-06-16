@@ -48,15 +48,21 @@ struct RecentActivitiesTool: Tool {
             items = items.filter { $0.status == .failed }
         }
 
-        let shown = items.prefix(cap)
         let formatter = RelativeDateTimeFormatter()
-        let lines = shown.map { activity -> String in
+        let lines = ToolSupport.truncatedLines(items, limit: cap, itemSingular: "activity") { activity in
             let when = formatter.localizedString(for: activity.sortTime, relativeTo: Date())
-            return "- \(activity.displayTitle) — \(activity.subtitle) [\(activity.status.rawValue)] \(when) id=\(activity.id)"
+            let status = activity.status.rawValue
+            return ToolSupport.itemLine(
+                name: ToolSupport.safeText(activity.displayTitle),
+                status: status,
+                reason: ToolSupport.safeText(activity.subtitle),
+                next: when,
+                internalId: activity.id
+            )
         }
         let header = onlyFailed
-            ? "\(items.count) failed activit(ies) in \(context.envName)."
-            : "Most recent activities in \(context.envName):"
+            ? "\(ToolSupport.countSummary(items.count, singular: "failed activity")) in \(ToolSupport.displayName(context.envName, fallback: "environment"))."
+            : "Most recent activities in \(ToolSupport.displayName(context.envName, fallback: "environment"))."
         let body = lines.isEmpty ? "(none)" : lines.joined(separator: "\n")
         return "\(header)\n\(body)"
     }
@@ -76,9 +82,9 @@ struct RecentActivitiesTool: Tool {
 
         let a = detail.activity
         var lines: [String] = []
-        lines.append("\(a.displayTitle) — \(a.subtitle) [\(a.status.rawValue)]")
+        lines.append(ToolSupport.itemLine(name: ToolSupport.safeText(a.displayTitle), status: a.status.rawValue, reason: ToolSupport.safeText(a.subtitle)))
         if let ms = a.durationMs { lines.append("duration: \(Double(ms) / 1000.0)s") }
-        if let error = a.error, !error.isEmpty { lines.append("error: \(error)") }
+        if let error = a.error, !error.isEmpty { lines.append("reason: \(ToolSupport.safeText(error))") }
 
         let messages = detail.messages.suffix(20)
         if messages.isEmpty {

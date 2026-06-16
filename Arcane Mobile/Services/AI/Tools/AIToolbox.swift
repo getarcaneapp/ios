@@ -14,8 +14,8 @@ import FoundationModels
 enum AIToolbox {
     static func make(context: ArcaneToolContext, sink: AIPendingActionSink) -> [any Tool] {
         var tools: [any Tool] = [
-            GetDashboardTool(context: context),
             ListContainersTool(context: context),
+            GetDashboardTool(context: context),
             InspectContainerTool(context: context),     // details / logs / stats
             ListProjectsTool(context: context),
             ProjectStatusTool(context: context),        // status / compose / logs

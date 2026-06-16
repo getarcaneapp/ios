@@ -63,7 +63,7 @@ struct ListVolumesTool: Tool {
         // Totals before filtering so a zero-match filter can't read as "no volumes exist".
         let total = items.count
         let unusedTotal = items.count { $0.inUse != true }
-        let header = "\(total) volume(s) in \(context.envName) (\(unusedTotal) unused)."
+        let header = "\(ToolSupport.countSummary(total, singular: "volume")) in \(context.envName): \(ToolSupport.countSummary(unusedTotal, singular: "unused volume"))."
 
         if !filter.isEmpty {
             items = items.filter { $0.name.localizedCaseInsensitiveContains(filter) }
@@ -72,21 +72,22 @@ struct ListVolumesTool: Tool {
             items = items.filter { $0.inUse != true }
         }
 
-        let shown = items.prefix(25)
-        let lines = shown.map { volume -> String in
-            let usage = volume.inUse == true ? "in use" : "unused"
-            return "- \(volume.name) [\(usage)] driver=\(volume.driver)"
+        let lines = ToolSupport.truncatedLines(items, limit: 25, itemSingular: "volume") { volume in
+            let status = volume.inUse == true ? "in use" : "unused"
+            return ToolSupport.itemLine(
+                name: ToolSupport.displayName(volume.name),
+                status: status,
+                reason: ToolSupport.safeText(volume.driver),
+                next: "browse files or backups with this name",
+                internalId: volume.name
+            )
         }
-        let more = items.count > shown.count ? "\n(+\(items.count - shown.count) more not shown)" : ""
-        let body: String
-        if lines.isEmpty {
-            body = onlyUnused
+        let body = lines.isEmpty
+            ? (onlyUnused
                 ? "(no unused volumes — all are in use)"
-                : "(no volumes match that filter)"
-        } else {
-            body = lines.joined(separator: "\n")
-        }
-        return "\(header)\n\(body)\(more)"
+                : "(no matching volumes found in \(ToolSupport.displayName(context.envName, fallback: "environment")))")
+            : lines.joined(separator: "\n")
+        return "\(header)\n\(body)"
     }
 
     private func detailsText(name: String) async -> String {
@@ -97,16 +98,17 @@ struct ListVolumesTool: Tool {
             return ToolSupport.friendlyFailure(error, reading: "volume “\(name)”")
         }
         var lines: [String] = []
-        lines.append("volume: \(v.name)")
-        lines.append("driver: \(v.driver), scope: \(v.scope)")
-        lines.append("mountpoint: \(v.mountpoint)")
+        lines.append(ToolSupport.itemLine(name: ToolSupport.displayName(v.name), status: v.inUse == true ? "in use" : "unused"))
+        lines.append("driver: \(ToolSupport.safeText(v.driver)), scope: \(ToolSupport.safeText(v.scope))")
+        lines.append("mountpoint: \(ToolSupport.safeText(v.mountpoint))")
         if v.size > 0 { lines.append("size: \(ByteCountFormatter.string(fromByteCount: v.size, countStyle: .file))") }
-        if !v.createdAt.isEmpty { lines.append("created: \(v.createdAt)") }
+        if !v.createdAt.isEmpty { lines.append("created: \(ToolSupport.safeText(v.createdAt))") }
         if v.inUse {
             let users = v.containers.prefix(8).joined(separator: ", ")
-            lines.append("in use by: \(users.isEmpty ? "\(v.containers.count) container(s)" : users)")
+            let usingText = users.isEmpty ? ToolSupport.countSummary(v.containers.count, singular: "container") : users
+            lines.append("in use by: \(usingText)")
         } else {
-            lines.append("in use: no")
+            lines.append("in use by: none")
         }
         return lines.joined(separator: "\n")
     }
@@ -120,16 +122,16 @@ struct ListVolumesTool: Tool {
             return ToolSupport.friendlyFailure(error, reading: "files in volume “\(name)” at \(path)")
         }
         if entries.isEmpty { return "(no files at \(path) in volume “\(name)”)" }
-        let shown = entries.prefix(25)
-        var lines = ["\(entries.count) entr(ies) at \(path) in “\(name)”:"]
-        for e in shown {
+        let lineCount = entries.count
+        var lines = ["\(lineCount) entries at \(ToolSupport.safeText(path)) in “\(ToolSupport.displayName(name))”:"]
+        for e in entries.prefix(25) {
             if e.isDirectory {
-                lines.append("- \(e.name)/")
+                lines.append("- dir: \(ToolSupport.safeText(e.name))/")
             } else {
-                lines.append("- \(e.name) [\(ByteCountFormatter.string(fromByteCount: e.size, countStyle: .file))]")
+                lines.append(ToolSupport.itemLine(name: ToolSupport.safeText(e.name), status: "file", health: ByteCountFormatter.string(fromByteCount: e.size, countStyle: .file)))
             }
         }
-        if entries.count > shown.count { lines.append("(+\(entries.count - shown.count) more not shown)") }
+        if entries.count > 25 { lines.append("next: +\(ToolSupport.countSummary(entries.count - 25, singular: "entry")) not shown") }
         return lines.joined(separator: "\n")
     }
 
@@ -145,10 +147,19 @@ struct ListVolumesTool: Tool {
             return ToolSupport.friendlyFailure(error, reading: "backups for volume “\(name)”")
         }
         if backups.isEmpty { return "No backups exist for volume “\(name)”." }
-        var lines = ["\(backups.count) backup(s) for “\(name)” (most recent first):"]
-        for b in backups {
-            lines.append("- \(b.createdAt) [\(ByteCountFormatter.string(fromByteCount: b.size, countStyle: .file))] id=\(b.id)")
+        let lines = ToolSupport.truncatedLines(
+            backups,
+            limit: 10,
+            itemSingular: "backup",
+            itemPlural: "backups"
+        ) { backup in
+            ToolSupport.itemLine(
+                name: backup.createdAt,
+                status: "backup",
+                reason: ByteCountFormatter.string(fromByteCount: backup.size, countStyle: .file),
+                internalId: backup.id
+            )
         }
-        return lines.joined(separator: "\n")
+        return "\(ToolSupport.countSummary(backups.count, singular: "backup")) for “\(ToolSupport.displayName(name))”.\n\(lines.joined(separator: "\n"))"
     }
 }

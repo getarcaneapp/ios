@@ -11,7 +11,7 @@ struct ListContainersTool: Tool {
     let context: ArcaneToolContext
 
     let name = "listContainers"
-    let description = "List containers with status and image. Use to find a container or get an overview."
+    let description = "List containers with status and image. Use first for running/up/down/container questions."
 
     @Generable
     struct Arguments {
@@ -41,7 +41,12 @@ struct ListContainersTool: Tool {
         // model as "zero containers exist".
         let total = items.count
         let runningTotal = items.count { $0.state.lowercased() == "running" }
-        let header = "\(total) container(s) in \(context.envName): \(runningTotal) running, \(total - runningTotal) not running."
+        let stoppedTotal = total - runningTotal
+        let header = """
+        \(ToolSupport.countSummary(total, singular: "container")) in \(context.envName): \
+        \(ToolSupport.countSummary(runningTotal, singular: "running container")), \
+        \(ToolSupport.countSummary(stoppedTotal, singular: "stopped container")).
+        """.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let filter = arguments.filter?.trimmingCharacters(in: .whitespacesAndNewlines), !filter.isEmpty {
             items = items.filter { c in
@@ -53,21 +58,31 @@ struct ListContainersTool: Tool {
             items = items.filter { $0.state.lowercased() != "running" }
         }
 
-        let shown = items.prefix(25)
-        let lines = shown.map { c -> String in
-            let raw = c.names.first?.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ?? ""
+        let lines = ToolSupport.truncatedLines(items, limit: 25, itemSingular: "container") { c -> String in
+            let raw = c.names.first ?? ""
+            let name = ToolSupport.displayName(raw)
+            let status = ToolSupport.safeText(c.state)
+            let health = status.lowercased() == "running" ? "healthy" : "unhealthy"
+            let reason = status.lowercased() == "running" ? nil : ToolSupport.safeText(status)
             let displayName = raw.isEmpty ? String(c.id.prefix(12)) : raw
-            return "- \(displayName) [\(c.state)] image=\(c.image) id=\(String(c.id.prefix(12)))"
+            return ToolSupport.itemLine(
+                name: name.isEmpty ? displayName : name,
+                status: status,
+                reason: reason,
+                image: ToolSupport.safeText(c.image),
+                health: health,
+                internalId: c.id
+            )
         }
-        let more = items.count > shown.count ? "\n(+\(items.count - shown.count) more not shown)" : ""
         let body: String
         if lines.isEmpty {
             body = arguments.onlyProblematic == true
-                ? "(no problematic containers — every container is running)"
-                : "(no containers match that filter)"
-        } else {
+                ? "(no stopped containers in \(ToolSupport.displayName(context.envName, fallback: "environment")) — every container is running)"
+                : "(no matching containers found in \(ToolSupport.displayName(context.envName, fallback: "environment")))"
+        }
+        else {
             body = lines.joined(separator: "\n")
         }
-        return "\(header)\n\(body)\(more)"
+        return "\(header)\n\(body)"
     }
 }

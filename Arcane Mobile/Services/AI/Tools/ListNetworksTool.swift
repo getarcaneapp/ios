@@ -56,14 +56,18 @@ struct ListNetworksTool: Tool {
             }
         }
 
-        let shown = items.prefix(25)
-        let lines = shown.map { network -> String in
-            "- \(network.name) driver=\(network.driver) scope=\(network.scope)"
+        let lines = ToolSupport.truncatedLines(items, limit: 25, itemSingular: "network") { network in
+            return ToolSupport.itemLine(
+                name: ToolSupport.displayName(network.name),
+                status: ToolSupport.safeText(network.scope),
+                reason: ToolSupport.safeText(network.driver),
+                next: "inspect for container list",
+                internalId: network.id
+            )
         }
-        let header = "\(items.count) network(s) in \(context.envName)."
-        let more = items.count > shown.count ? "\n(+\(items.count - shown.count) more not shown)" : ""
-        let body = lines.isEmpty ? "(no matching networks)" : lines.joined(separator: "\n")
-        return "\(header)\n\(body)\(more)"
+        let header = "\(ToolSupport.countSummary(items.count, singular: "network")) in \(context.envName)."
+        let body = lines.isEmpty ? "(no matching networks found in \(ToolSupport.displayName(context.envName, fallback: "environment")))" : lines.joined(separator: "\n")
+        return "\(header)\n\(body)"
     }
 
     private func topologyText() async -> String {
@@ -81,14 +85,16 @@ struct ListNetworksTool: Tool {
                 .filter { $0.source == net.id }
                 .compactMap { names[$0.target] }
             if attached.isEmpty {
-                lines.append("- \(net.name): (no containers)")
+                lines.append(ToolSupport.itemLine(name: ToolSupport.safeText(net.name), status: "no containers", reason: "topology"))
             } else {
                 let shown = attached.prefix(8).joined(separator: ", ")
                 let more = attached.count > 8 ? " (+\(attached.count - 8) more)" : ""
-                lines.append("- \(net.name): \(shown)\(more)")
+                lines.append(ToolSupport.itemLine(name: ToolSupport.safeText(net.name), status: "connected", reason: shown, health: "topology", next: more.isEmpty ? nil : more.trimmingCharacters(in: .whitespacesAndNewlines)))
             }
         }
-        if networks.count > 20 { lines.append("(+\(networks.count - 20) more networks)") }
+        if networks.count > 20 {
+            lines.append("next: +\(ToolSupport.countSummary(networks.count - 20, singular: "network")) not shown")
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -118,8 +124,8 @@ struct ListNetworksTool: Tool {
             return ToolSupport.friendlyFailure(error, reading: "network “\(name)”")
         }
         var lines: [String] = []
-        lines.append("network: \(n.name)")
-        lines.append("driver: \(n.driver), scope: \(n.scope)")
+        lines.append(ToolSupport.itemLine(name: ToolSupport.safeText(n.name), status: ToolSupport.safeText(n.scope), reason: ToolSupport.safeText(n.driver)))
+        lines.append("driver: \(ToolSupport.safeText(n.driver)), scope: \(ToolSupport.safeText(n.scope))")
         if let config = n.ipam.config?.first {
             if let subnet = config.subnet { lines.append("subnet: \(subnet)") }
             if let gateway = config.gateway { lines.append("gateway: \(gateway)") }
@@ -151,16 +157,13 @@ struct ListNetworksTool: Tool {
             }
         }
 
-        let shown = items.prefix(25)
-        var lines = ["\(total) port mapping(s) in \(context.envName)."]
-        if shown.isEmpty {
-            lines.append("(no ports match that filter)")
+        let header = "\(ToolSupport.countSummary(total, singular: "port mapping")) in \(context.envName)."
+        let lines = ToolSupport.truncatedLines(items, limit: 25, itemSingular: "port mapping") { p in
+            let host = p.hostPort.map { String($0) } ?? "internal"
+            let reason = "\(host) → \(p.containerPort)/\(p.protocolName) \(ToolSupport.safeText(p.containerName))"
+            return ToolSupport.itemLine(name: ToolSupport.safeText(p.containerName), status: "mapped", reason: reason, next: p.hostPort == nil ? "internal" : host)
         }
-        for p in shown {
-            let host = p.hostPort.map { "\($0)→" } ?? "(internal) "
-            lines.append("- \(host)\(p.containerPort)/\(p.protocolName) \(p.containerName)")
-        }
-        if items.count > shown.count { lines.append("(+\(items.count - shown.count) more not shown)") }
-        return lines.joined(separator: "\n")
+        if lines.isEmpty { return "\(header)\n(no ports match that filter)" }
+        return "\(header)\n\(lines.joined(separator: "\n"))"
     }
 }

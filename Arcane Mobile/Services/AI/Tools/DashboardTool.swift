@@ -10,7 +10,7 @@ struct GetDashboardTool: Tool {
     let context: ArcaneToolContext
 
     let name = "getDashboard"
-    let description = "Health overview: counts plus items needing attention. Best first call for general questions."
+    let description = "Broad health overview: counts plus items needing attention. Use for dashboard/how-is-everything questions."
 
     @Generable
     struct Arguments {}
@@ -19,7 +19,11 @@ struct GetDashboardTool: Tool {
         context.status.report("Checking the dashboard…")
         let snapshot: DashboardSnapshot
         do {
-            snapshot = try await context.client.dashboard.snapshot(envID: context.envID)
+            snapshot = try await ToolSupport.withTimeout(seconds: 8) {
+                try await context.client.dashboard.snapshot(envID: context.envID)
+            }
+        } catch is ToolSupport.TimeoutError {
+            return "(the dashboard did not respond quickly enough; ask for containers, projects, or images to check a narrower area)"
         } catch {
             return ToolSupport.friendlyFailure(error, reading: "the dashboard")
         }
@@ -28,17 +32,17 @@ struct GetDashboardTool: Tool {
         let i = snapshot.imageUsageCounts
         var lines: [String] = []
         lines.append("Overview of \(context.envName):")
-        lines.append("Containers: \(c.runningContainers) running, \(c.stoppedContainers) stopped (\(c.totalContainers) total)")
+        lines.append("containers: \(ToolSupport.countSummary(c.totalContainers, singular: "container")), \(ToolSupport.countSummary(c.runningContainers, singular: "running container")), \(ToolSupport.countSummary(c.stoppedContainers, singular: "stopped container"))")
         let size = ByteCountFormatter.string(fromByteCount: i.totalImageSize, countStyle: .file)
-        lines.append("Images: \(i.totalImages) total, \(i.imagesUnused) unused, \(size)")
+        lines.append("images: \(ToolSupport.countSummary(i.totalImages, singular: "image")), \(ToolSupport.countSummary(i.imagesUnused, singular: "unused image")), size \(size)")
 
         let items = snapshot.actionItems.items
         if items.isEmpty {
-            lines.append("Nothing needs attention.")
+            lines.append("no items needing attention.")
         } else {
-            lines.append("Needs attention:")
+            lines.append("attention items:")
             for item in items.prefix(10) {
-                lines.append("- [\(item.severity.rawValue)] \(Self.describe(item))")
+                lines.append(ToolSupport.itemLine(name: Self.describe(item), status: item.severity.rawValue, reason: ToolSupport.countSummary(item.count, singular: "issue")))
             }
         }
         return lines.joined(separator: "\n")
@@ -46,11 +50,16 @@ struct GetDashboardTool: Tool {
 
     private nonisolated static func describe(_ item: ActionItem) -> String {
         switch item.kind {
-        case .stoppedContainers: return "\(item.count) stopped container(s)"
-        case .imageUpdates: return "\(item.count) image update(s) available"
-        case .actionableVulnerabilities: return "\(item.count) actionable vulnerabilit(ies)"
-        case .expiringKeys: return "\(item.count) API key(s) expiring soon"
-        case .unknown(let kind): return "\(item.count) \(kind.replacingOccurrences(of: "_", with: " "))"
+        case .stoppedContainers:
+            return "stopped containers"
+        case .imageUpdates:
+            return "image updates available"
+        case .actionableVulnerabilities:
+            return "actionable vulnerabilities"
+        case .expiringKeys:
+            return "API keys expiring soon"
+        case .unknown(let kind):
+            return kind.replacingOccurrences(of: "_", with: " ")
         }
     }
 }

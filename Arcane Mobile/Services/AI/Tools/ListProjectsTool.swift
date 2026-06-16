@@ -31,13 +31,19 @@ struct ListProjectsTool: Tool {
             items = items.filter { $0.name.localizedCaseInsensitiveContains(filter) }
         }
 
-        let shown = items.prefix(25)
-        let lines = shown.map { p in
-            "- \(p.name) [\(p.status)] \(p.runningCount)/\(p.serviceCount) running id=\(p.id)"
+        let header = "\(ToolSupport.countSummary(items.count, singular: "project")) in \(ToolSupport.displayName(context.envName, fallback: "environment"))."
+        let lines = ToolSupport.truncatedLines(items, limit: 25, itemSingular: "project") { p in
+            let reason = "\(p.runningCount)/\(p.serviceCount) services running"
+            return ToolSupport.itemLine(
+                name: ToolSupport.displayName(p.name),
+                status: ToolSupport.safeText(p.status),
+                reason: reason,
+                internalId: p.id
+            )
         }
-        let header = "\(items.count) project(s) in \(context.envName)."
-        let more = items.count > shown.count ? "\n(+\(items.count - shown.count) more not shown)" : ""
-        let body = lines.isEmpty ? "(no matching projects)" : lines.joined(separator: "\n")
-        return "\(header)\n\(body)\(more)"
+        let body = lines.isEmpty
+            ? "(no matching projects found in \(ToolSupport.displayName(context.envName, fallback: "environment")))"
+            : lines.joined(separator: "\n")
+        return "\(header)\n\(body)"
     }
 }

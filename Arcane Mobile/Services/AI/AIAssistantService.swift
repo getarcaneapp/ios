@@ -182,7 +182,7 @@ final class AIAssistantService {
         if let idx = messages.firstIndex(where: { $0.id == assistantID }) {
             messages[idx].isStreaming = false
             if messages[idx].text.isEmpty {
-                messages[idx].text = "Done."
+                messages[idx].text = "I checked, but couldn't produce a useful summary. Try asking for a specific container, project, or issue."
             }
         }
         isResponding = false

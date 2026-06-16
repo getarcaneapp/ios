@@ -42,14 +42,14 @@ struct ListImagesTool: Tool {
         // Totals before filtering so a zero-match filter can't read as "no images exist".
         let total = items.count
         let danglingTotal = items.count(where: isDangling)
-        var header = "\(total) image(s) in \(context.envName) (\(danglingTotal) dangling)."
+        var header = "\(ToolSupport.countSummary(total, singular: "image")) in \(context.envName), \(ToolSupport.countSummary(danglingTotal, singular: "dangling image"))."
         // Update availability is garnish — never fail the list for it. Raw REST +
         // app-local ImageUpdateSummary, same recipe as DashboardView (the SDK's
         // typed updateSummary doesn't match the current server's shape).
         let summaryPath = context.client.rest.environmentPath(context.envID, "image-updates/summary")
         if let updates: ImageUpdateSummary = try? await context.client.rest.get(summaryPath),
            updates.imagesWithUpdates > 0 {
-            header += " \(updates.imagesWithUpdates) have update(s) available."
+            header += " \(ToolSupport.countSummary(updates.imagesWithUpdates, singular: "image update")) available."
         }
 
         if let filter = arguments.filter?.trimmingCharacters(in: .whitespacesAndNewlines), !filter.isEmpty {
@@ -60,18 +60,25 @@ struct ListImagesTool: Tool {
         }
 
         let formatter = ByteCountFormatter()
-        let shown = items.prefix(25)
-        let lines = shown.map { image -> String in
+        let lines = ToolSupport.truncatedLines(items, limit: 25, itemSingular: "image") { image -> String in
             let dangling = isDangling(image) ? " (dangling)" : ""
-            return "- \(tagOf(image)) [\(formatter.string(fromByteCount: image.size))]\(dangling) id=\(String(image.id.prefix(12)))"
+            let name = tagOf(image)
+            let status = dangling.isEmpty ? "present" : "dangling"
+            let reason = dangling.isEmpty ? "image has tags" : "no tags (dangling)"
+            return ToolSupport.itemLine(
+                name: ToolSupport.displayName(name),
+                status: status,
+                reason: reason,
+                image: formatter.string(fromByteCount: image.size),
+                internalId: image.id
+            )
         }
-        let more = items.count > shown.count ? "\n(+\(items.count - shown.count) more not shown)" : ""
         let body: String
         if lines.isEmpty {
             body = arguments.onlyDangling == true ? "(no dangling images)" : "(no images match that filter)"
         } else {
             body = lines.joined(separator: "\n")
         }
-        return "\(header)\n\(body)\(more)"
+        return "\(header)\n\(body)"
     }
 }
