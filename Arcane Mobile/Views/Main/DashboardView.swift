@@ -63,6 +63,7 @@ private struct DashboardLiveCounts: Sendable, Equatable {
 
 struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @Binding var selectedTab: String
 
     @Namespace private var heroTransition
@@ -76,6 +77,10 @@ struct DashboardView: View {
     @State private var failedActivities: [Activity] = []
     @State private var rawEnvironmentCount: Int = 0
     @State private var detailRoute: EnvironmentDetailRoute?
+    @State private var streamStore = DashboardStreamStore()
+    /// Guards the scenePhase handler — hidden tab pages also receive scene
+    /// phase changes and must not start their own stream.
+    @State private var isDashboardVisible = false
 
     @State private var isLoading = false
     @State private var hasLoadedOnce = false
@@ -184,6 +189,39 @@ struct DashboardView: View {
             .onChange(of: manager.activeEnvironmentID.rawValue) {
                 environments = dashboardEnvironments(from: allEnvironments.isEmpty ? environments : allEnvironments)
             }
+            // The aggregated dashboard stream covers all environments over one
+            // connection. v1 servers never get the endpoint, so don't attempt
+            // it there; v2 servers that predate it 404 once and the store
+            // latches into silent legacy mode.
+            .task(id: manager.client.map { ObjectIdentifier($0.transport) }) {
+                streamStore.configure(client: manager.client)
+                guard manager.supportsActivities else { return }
+                streamStore.start()
+            }
+            .onAppear { isDashboardVisible = true }
+            .onDisappear {
+                isDashboardVisible = false
+                streamStore.stop()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard manager.supportsActivities else { return }
+                switch phase {
+                case .background:
+                    streamStore.stop()
+                case .active:
+                    if isDashboardVisible { streamStore.start() }
+                default:
+                    break
+                }
+            }
+            // Capabilities can resolve after authentication when the restore
+            // request raced a transient network failure — start the stream
+            // once the server is known to be v2.
+            .onChange(of: manager.supportsActivities) { _, supported in
+                if supported, isDashboardVisible {
+                    streamStore.start()
+                }
+            }
         }
     }
 
@@ -196,11 +234,16 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
 
+            if streamStore.streamFailed, !streamStore.streamUnsupported {
+                streamFailedBanner
+            }
+
             ForEach(environments) { env in
                 let cardData = overview?.environments?.first(where: { $0.id == env.id })
                 EnvironmentDashboardCard(
                     environment: env,
                     cachedCard: cardData,
+                    streamState: streamStore.state(for: env.id),
                     isActive: env.id == manager.activeEnvironmentID.rawValue,
                     refreshToken: cardRefreshToken,
                     onSelect: {
@@ -215,6 +258,26 @@ struct DashboardView: View {
                 truncationFooter
             }
         }
+    }
+
+    /// Shown when the aggregated stream burned its whole reconnect budget;
+    /// tiles and cards keep rendering last-known/legacy data underneath.
+    private var streamFailedBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            Text("Live counts paused")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Retry") { streamStore.retry() }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.pressable)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .dashboardCardBackground(cornerRadius: 12)
     }
 
     private var truncationFooter: some View {
@@ -342,15 +405,15 @@ struct DashboardView: View {
     }
 
     private var overviewGrid: some View {
-        // Prefer live per-environment Docker counts (from `system/docker/info`,
-        // present on both v1 and v2 and not gated on reported online status);
-        // fall back to the v1-only `/dashboard/environments` summary when present.
-        // v2 removed that cross-environment endpoint, which is why these tiles
-        // showed "—" against a 2.0 server. A loaded zero now renders as "0 / 0"/"0";
-        // "—" means only "not loaded yet".
-        let running = liveCounts?.running ?? overview?.summary.containers?.runningContainers ?? 0
-        let total: Int? = liveCounts?.total ?? overview?.summary.containers?.totalContainers
-        let images: Int? = liveCounts?.images ?? overview?.summary.imageUsageCounts?.totalImages
+        // Counts source precedence: the aggregated dashboard stream (live,
+        // ~15s cadence, server-computed counts) → per-environment Docker info
+        // (works on both v1 and v2) → the v1-only `/dashboard/environments`
+        // summary. A loaded zero renders as "0 / 0"/"0"; "—" means only
+        // "not loaded yet".
+        let aggregate = streamStore.aggregate
+        let running = aggregate?.runningContainers ?? liveCounts?.running ?? overview?.summary.containers?.runningContainers ?? 0
+        let total: Int? = aggregate?.totalContainers ?? liveCounts?.total ?? overview?.summary.containers?.totalContainers
+        let images: Int? = aggregate?.totalImages ?? liveCounts?.images ?? overview?.summary.imageUsageCounts?.totalImages
 
         return Grid(horizontalSpacing: 10, verticalSpacing: 10) {
             GridRow {
@@ -409,6 +472,7 @@ struct DashboardView: View {
         allEnvironments = envs
         let bounded = dashboardEnvironments(from: envs)
         environments = bounded
+        streamStore.reconcile(environments: bounded)
         if let reqData {
             overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
                 ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
@@ -422,12 +486,21 @@ struct DashboardView: View {
         hasLoadedOnce = true
         isLoading = false
 
+        // While the aggregated stream is delivering, it owns the container/
+        // image tile counts — skip the per-environment docker-info fan-out and
+        // instead re-fetch snapshots over REST on pull-to-refresh.
+        let streamDelivering = streamStore.aggregate != nil
+
         async let volumesResult = loadVolumesTotal(envs: bounded)
         async let updatesResult = loadImageUpdatesTotal(envs: bounded)
-        async let countsResult = loadLiveCounts(envs: bounded, refresh: refresh)
+        if refresh, streamStore.isStreaming {
+            await streamStore.refresh()
+        }
+        let counts: DashboardLiveCounts? = streamDelivering
+            ? nil
+            : await loadLiveCounts(envs: bounded, refresh: refresh)
         let volumes = await volumesResult
         let updates = await updatesResult
-        let counts = await countsResult
         if !Task.isCancelled {
             volumesTotal = volumes
             imageUpdatesTotal = updates
@@ -625,6 +698,7 @@ struct DashboardView: View {
                 rawEnvironmentCount = fresh.count
                 allEnvironments = fresh
                 environments = dashboardEnvironments(from: fresh)
+                streamStore.reconcile(environments: environments)
             }
         )) ?? []
     }
