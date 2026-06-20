@@ -269,6 +269,10 @@ private struct DeleteConfirmationCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let cornerRadius: CGFloat = 40
+    /// Keep the action buttons clear of the floating bottom tab/action bar.
+    /// The card can be hosted from inside tab content so sheet presentations
+    /// still work; in that hierarchy the bar overlays this view.
+    private let bottomBarClearance: CGFloat = 96
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -281,7 +285,7 @@ private struct DeleteConfirmationCard: View {
             card
                 .frame(maxWidth: 500)
                 .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+                .padding(.bottom, bottomBarClearance)
                 .frame(maxWidth: .infinity)
                 .offset(y: shown ? 0 : offscreenOffset)
                 .opacity(shown ? 1 : 0)
