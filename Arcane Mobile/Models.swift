@@ -557,11 +557,16 @@ func friendlyErrorMessage(_ error: Error) -> String {
         case .transport(let message):
             let lower = message.lowercased()
             if lower.contains("cancel") { return "Cancelled" }
-            if lower.contains("could not connect to the server") || lower.contains("connection refused") {
+            if lower.contains("could not connect to the server")
+                || lower.contains("connection refused")
+                || lower.contains("cannot connect to host") {
                 return "Can't reach the server — check the address and that it's running."
             }
             if lower.contains("hostname could not be found")
-                || lower.contains("server with the specified hostname could not be found") {
+                || lower.contains("server with the specified hostname could not be found")
+                || lower.contains("cannot find host")
+                || lower.contains("could not find host")
+                || lower.contains("dns") {
                 return "Server not found — check the address."
             }
             if lower.contains("timed out") {

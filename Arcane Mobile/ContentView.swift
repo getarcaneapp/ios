@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @AppStorage("arcane.lastSeenReleaseVersion") private var lastSeenVersion: String = ""
     @State private var showWhatsNew = false
 
@@ -33,6 +34,10 @@ struct ContentView: View {
         }
         .task {
             await manager.checkExistingAuth()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await manager.retryConnectionBootstrapIfNeeded() }
         }
         // Single app-wide host for the animated delete/destructive confirmation
         // card. Mounted above the tab bar and navigation stacks so the card and

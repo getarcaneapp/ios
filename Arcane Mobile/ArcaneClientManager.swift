@@ -2,6 +2,7 @@ import Foundation
 import Arcane
 import ArcaneOIDC
 import AuthenticationServices
+import Darwin
 
 enum AppAuthState {
     case setup          // No server URL configured
@@ -67,6 +68,10 @@ final class ArcaneClientManager {
     // MARK: - Client
     private(set) var client: ArcaneClient?
     private var clientSession: URLSession?
+    private var needsConnectionBootstrapRetry = false
+    private var isRetryingConnectionBootstrap = false
+    private var lastBootstrapDNSAddresses: [String] = []
+    private static let bootstrapTimeout: TimeInterval = 20
 
     // MARK: - Init
     init() {
@@ -103,8 +108,11 @@ final class ArcaneClientManager {
             errorMessage = "Invalid server URL"
             return
         }
+        needsConnectionBootstrapRetry = false
+        isRetryingConnectionBootstrap = false
         serverURL = normalized
         parsedServerURL = parsed
+        lastBootstrapDNSAddresses = Self.resolvedAddresses(for: parsed)
         configureClient(for: parsed)
         authState = .login
         oidcInfo = nil
@@ -113,23 +121,35 @@ final class ArcaneClientManager {
     }
 
     func refreshOIDCStatus() async {
-        guard let client else {
+        guard client != nil else {
             oidcInfo = nil
             return
         }
         do {
-            oidcInfo = try await fetchOIDCDisplayInfo(using: client)
-        } catch {
-            if shouldRefreshNetworkSession(after: error), let parsedServerURL {
-                configureClient(for: parsedServerURL)
-                try? await Task.sleep(for: .milliseconds(500))
-                if let refreshedClient = self.client,
-                   let info = try? await fetchOIDCDisplayInfo(using: refreshedClient) {
-                    oidcInfo = info
-                    return
-                }
+            oidcInfo = try await withNetworkSessionRefreshRetry { client in
+                try await self.fetchOIDCDisplayInfo(using: client)
             }
+            needsConnectionBootstrapRetry = false
+        } catch {
+            needsConnectionBootstrapRetry = shouldRefreshNetworkSession(after: error)
             oidcInfo = nil
+        }
+    }
+
+    func retryConnectionBootstrapIfNeeded() async {
+        guard needsConnectionBootstrapRetry, !isRetryingConnectionBootstrap else { return }
+        guard let client else {
+            needsConnectionBootstrapRetry = false
+            return
+        }
+
+        isRetryingConnectionBootstrap = true
+        defer { isRetryingConnectionBootstrap = false }
+
+        if (try? await client.authManager.hasRefreshCredential()) == true {
+            await checkExistingAuth()
+        } else {
+            await refreshOIDCStatus()
         }
     }
 
@@ -143,7 +163,7 @@ final class ArcaneClientManager {
 
     // MARK: - Auth
     func login(username: String, password: String) async {
-        guard let client else {
+        guard client != nil else {
             errorMessage = "No server configured"
             return
         }
@@ -151,12 +171,16 @@ final class ArcaneClientManager {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let response = try await client.auth.login(username: username, password: password)
+            let response = try await withNetworkSessionRefreshRetry { client in
+                try await client.auth.login(username: username, password: password)
+            }
             currentUser = response.user
-            serverCapabilities = await client.serverCapabilities()
+            serverCapabilities = ServerCapabilities(mode: ServerCapabilities.detect(from: response.user))
             authState = .authenticated
+            needsConnectionBootstrapRetry = false
         } catch {
-            errorMessage = loginErrorMessage(error)
+            needsConnectionBootstrapRetry = shouldRefreshNetworkSession(after: error)
+            errorMessage = connectionAwareErrorMessage(error, passwordLogin: true)
         }
     }
 
@@ -179,6 +203,7 @@ final class ArcaneClientManager {
             currentUser = result.user
             serverCapabilities = await client.serverCapabilities()
             authState = .authenticated
+            needsConnectionBootstrapRetry = false
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             // User cancelled the system sheet — no error message needed.
             return
@@ -199,6 +224,7 @@ final class ArcaneClientManager {
         currentUser = nil
         serverCapabilities = nil
         authState = .login
+        needsConnectionBootstrapRetry = false
         await ResponseCache.shared.invalidateAll()
     }
 
@@ -232,6 +258,7 @@ final class ArcaneClientManager {
                 currentUser = response.user
                 serverCapabilities = await client.serverCapabilities()
                 authState = .authenticated
+                needsConnectionBootstrapRetry = false
                 isDemoActive = true
                 demoEndsAt = session.endsAt
                 DemoService.shared.startHeartbeat()
@@ -259,6 +286,8 @@ final class ArcaneClientManager {
         serverCapabilities = nil
         isDemoActive = false
         demoEndsAt = nil
+        needsConnectionBootstrapRetry = false
+        isRetryingConnectionBootstrap = false
         serverURL = ""
         client = nil
         authState = .setup
@@ -309,9 +338,13 @@ final class ArcaneClientManager {
         }
 
         do {
-            currentUser = try await client.auth.me()
-            serverCapabilities = await client.serverCapabilities()
+            let user = try await withNetworkSessionRefreshRetry { client in
+                try await client.auth.me()
+            }
+            currentUser = user
+            serverCapabilities = ServerCapabilities(mode: ServerCapabilities.detect(from: user))
             authState = .authenticated
+            needsConnectionBootstrapRetry = false
         } catch let error as ArcaneError {
             switch error {
             case .unauthorized, .forbidden:
@@ -321,35 +354,37 @@ final class ArcaneClientManager {
                 signOutLocally()
                 await refreshOIDCStatus()
             default:
-                // Transient failure (offline, timeout, server unreachable, 5xx).
-                // Never bounce the user to login for these — keep them signed in
-                // as long as the stored credential survives. user/capabilities
-                // load on the next successful request.
-                await keepSignedInIfCredentialPresent(client)
+                // Transient bootstrap failures keep credentials intact but fall
+                // back to login until a real user payload can be loaded.
+                await keepSignedInIfCredentialPresent(client, after: error)
             }
         } catch {
             // Non-ArcaneError (URLError, cancellation, etc.) is also transient.
-            await keepSignedInIfCredentialPresent(client)
+            await keepSignedInIfCredentialPresent(client, after: error)
         }
     }
 
-    /// Stay authenticated after a transient failure as long as a refresh
-    /// credential is still in the keychain. If a credential is genuinely gone we
-    /// fall back to login (there's nothing left to retry with) rather than show a
-    /// broken signed-in state.
-    private func keepSignedInIfCredentialPresent(_ client: ArcaneClient) async {
-        if (try? await client.authManager.hasRefreshCredential()) == true {
-            authState = .authenticated
-        } else {
+    /// Preserve stored credentials after transient bootstrap failures without
+    /// showing the signed-in UI until `auth/me` loads a real user.
+    private func keepSignedInIfCredentialPresent(_ client: ArcaneClient, after error: Error) async {
+        guard (try? await client.authManager.hasRefreshCredential()) == true else {
             signOutLocally()
             await refreshOIDCStatus()
+            return
         }
+
+        currentUser = nil
+        serverCapabilities = nil
+        authState = .login
+        errorMessage = connectionAwareErrorMessage(error)
+        needsConnectionBootstrapRetry = shouldRefreshNetworkSession(after: error)
     }
 
     private func signOutLocally() {
         authState = .login
         currentUser = nil
         serverCapabilities = nil
+        needsConnectionBootstrapRetry = false
     }
 
     // MARK: - Image fetching
@@ -394,13 +429,196 @@ final class ArcaneClientManager {
         )
     }
 
+    private func withNetworkSessionRefreshRetry<T: Sendable>(
+        _ operation: @escaping @Sendable (ArcaneClient) async throws -> T
+    ) async throws -> T {
+        guard let parsedServerURL else {
+            throw ArcaneError.transport("No client")
+        }
+
+        lastBootstrapDNSAddresses = Self.resolvedAddresses(for: parsedServerURL)
+        do {
+            let result = try await runBootstrapOperation(for: parsedServerURL, operation)
+            configureClient(for: parsedServerURL)
+            return result
+        } catch {
+            guard shouldRefreshNetworkSession(after: error) else {
+                throw error
+            }
+            configureClient(for: parsedServerURL)
+            try? await Task.sleep(for: .milliseconds(500))
+            let result = try await runBootstrapOperation(for: parsedServerURL, operation)
+            configureClient(for: parsedServerURL)
+            return result
+        }
+    }
+
+    private func runBootstrapOperation<T: Sendable>(
+        for url: URL,
+        _ operation: @escaping @Sendable (ArcaneClient) async throws -> T
+    ) async throws -> T {
+        let bundle = Self.makeClient(url: url, bootstrap: true)
+        defer { bundle.session.invalidateAndCancel() }
+        return try await operation(bundle.client)
+    }
+
+    private static func resolvedAddresses(for url: URL) -> [String] {
+        guard let host = url.host(percentEncoded: false), !host.isEmpty else { return [] }
+        return resolveAddresses(for: host)
+    }
+
+    private static func resolveAddresses(for host: String) -> [String] {
+        var hints = addrinfo()
+        hints.ai_family = AF_UNSPEC
+        hints.ai_socktype = SOCK_STREAM
+
+        var result: UnsafeMutablePointer<addrinfo>?
+        let status = getaddrinfo(host, nil, &hints, &result)
+        guard status == 0, let first = result else {
+            return ["getaddrinfo failed \(status): \(String(cString: gai_strerror(status)))"]
+        }
+        defer { freeaddrinfo(first) }
+
+        var addresses: [String] = []
+        var pointer: UnsafeMutablePointer<addrinfo>? = first
+        while let current = pointer {
+            let info = current.pointee
+            if let socketAddress = info.ai_addr {
+                var hostBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                let nameStatus = getnameinfo(
+                    socketAddress,
+                    info.ai_addrlen,
+                    &hostBuffer,
+                    socklen_t(hostBuffer.count),
+                    nil,
+                    0,
+                    NI_NUMERICHOST
+                )
+                if nameStatus == 0 {
+                    let endIndex = hostBuffer.firstIndex(of: 0) ?? hostBuffer.count
+                    let bytes = hostBuffer[..<endIndex].map { UInt8(bitPattern: $0) }
+                    addresses.append(String(decoding: bytes, as: UTF8.self))
+                }
+            }
+            pointer = info.ai_next
+        }
+
+        return Array(Set(addresses)).sorted()
+    }
+
     private func shouldRefreshNetworkSession(after error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            return Self.isTransientNetworkError(urlError)
+        }
         guard case ArcaneError.transport(let message) = error else { return false }
         let lower = message.lowercased()
-        return lower.contains("could not connect to the server")
-            || lower.contains("connection refused")
-            || lower.contains("network connection was lost")
-            || lower.contains("timed out")
+        let transientPhrases = [
+            "could not connect to the server",
+            "connection refused",
+            "network connection was lost",
+            "timed out",
+            "hostname could not be found",
+            "server with the specified hostname could not be found",
+            "cannot find host",
+            "could not find host",
+            "cannot connect to host",
+            "no route to host",
+            "network is unreachable",
+            "network unreachable",
+            "not connected to the internet",
+            "internet connection appears to be offline",
+            "offline",
+            "dns"
+        ]
+        return transientPhrases.contains { lower.contains($0) }
+    }
+
+    private static func isTransientNetworkError(_ error: URLError) -> Bool {
+        switch error.code {
+        case .cannotFindHost,
+             .cannotConnectToHost,
+             .dnsLookupFailed,
+             .networkConnectionLost,
+             .notConnectedToInternet,
+             .timedOut,
+             .dataNotAllowed,
+             .callIsActive:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func connectionAwareErrorMessage(_ error: Error, passwordLogin: Bool = false) -> String {
+        if passwordLogin, case ArcaneError.unauthorized = error {
+            return "Invalid username or password"
+        }
+
+        let base = friendlyErrorMessage(error)
+        guard shouldSuggestPrivateRelayWorkaround(for: error) else {
+            return base
+        }
+        return "\(base) If this is your local Arcane server, iCloud Private Relay or Limit IP Address Tracking may be bypassing local DNS. Turn it off for this Wi-Fi network, then try again."
+    }
+
+    private func shouldSuggestPrivateRelayWorkaround(for error: Error) -> Bool {
+        guard shouldRefreshNetworkSession(after: error),
+              let host = parsedServerURL?.host(percentEncoded: false),
+              !Self.isIPAddress(host),
+              !lastBootstrapDNSAddresses.isEmpty else {
+            return false
+        }
+        return lastBootstrapDNSAddresses.allSatisfy(Self.isPublicIPAddress)
+    }
+
+    private static func isIPAddress(_ value: String) -> Bool {
+        ipv4Octets(value) != nil || isIPv6Address(value)
+    }
+
+    private static func isPublicIPAddress(_ value: String) -> Bool {
+        if let octets = ipv4Octets(value) {
+            return !isPrivateIPv4(octets)
+        }
+        if isIPv6Address(value) {
+            return !isPrivateIPv6(value)
+        }
+        return false
+    }
+
+    private static func ipv4Octets(_ value: String) -> [Int]? {
+        let parts = value.split(separator: ".")
+        guard parts.count == 4 else { return nil }
+        let octets = parts.compactMap { Int($0) }
+        guard octets.count == 4, octets.allSatisfy({ (0...255).contains($0) }) else { return nil }
+        return octets
+    }
+
+    private static func isPrivateIPv4(_ octets: [Int]) -> Bool {
+        guard octets.count == 4 else { return false }
+        switch (octets[0], octets[1]) {
+        case (10, _), (127, _), (169, 254), (192, 168):
+            return true
+        case (172, 16...31), (100, 64...127):
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isIPv6Address(_ value: String) -> Bool {
+        var address = in6_addr()
+        return value.withCString { inet_pton(AF_INET6, $0, &address) == 1 }
+    }
+
+    private static func isPrivateIPv6(_ value: String) -> Bool {
+        var address = in6_addr()
+        guard value.withCString({ inet_pton(AF_INET6, $0, &address) == 1 }) else { return false }
+        let bytes = withUnsafeBytes(of: address) { Array($0) }
+        guard let first = bytes.first else { return false }
+        return value == "::1"
+            || first == 0xfc
+            || first == 0xfd
+            || (first == 0xfe && (bytes.dropFirst().first ?? 0) & 0xc0 == 0x80)
     }
 
     private struct ClientBundle {
@@ -408,40 +626,41 @@ final class ArcaneClientManager {
         let session: URLSession
     }
 
-    private static func makeClient(url: URL) -> ClientBundle {
-        let session = makeURLSession()
+    private static func makeClient(url: URL, bootstrap: Bool = false) -> ClientBundle {
+        let session = makeURLSession(bootstrap: bootstrap)
         let client = ArcaneClient(configuration: .init(
             baseURL: url,
             tokenStore: KeychainTokenStore(service: "com.arcane.mobile.tokens"),
             defaultEnvironmentID: .localDocker,
             urlSession: session,
-            retryPolicy: .init(maxAttempts: 5, baseBackoff: .milliseconds(300), maxBackoff: .seconds(3))
+            retryPolicy: bootstrap
+                ? .init(maxAttempts: 1, baseBackoff: .milliseconds(300), maxBackoff: .milliseconds(300))
+                : .init(maxAttempts: 5, baseBackoff: .milliseconds(300), maxBackoff: .seconds(3))
         ))
         return ClientBundle(client: client, session: session)
     }
 
-    private static func makeURLSession() -> URLSession {
+    private static func makeURLSession(bootstrap: Bool = false) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.waitsForConnectivity = true
+        configuration.waitsForConnectivity = !bootstrap
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         configuration.urlCache = nil
         configuration.httpCookieStorage = .shared
         configuration.httpShouldSetCookies = true
-        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForRequest = bootstrap ? bootstrapTimeout : 30
         // timeoutIntervalForResource caps a request's TOTAL lifetime — at the
         // old 60s it silently killed every long-lived NDJSON stream (dashboard,
         // activities) and large upload on this session. Stall protection comes
         // from timeoutIntervalForRequest (inter-data inactivity), which the
         // streams' 15s server heartbeats keep satisfied.
-        configuration.timeoutIntervalForResource = 60 * 60 * 24
+        configuration.timeoutIntervalForResource = bootstrap ? bootstrapTimeout : 60 * 60 * 24
         if #available(iOS 11.0, *) {
-            configuration.multipathServiceType = .handover
+            configuration.multipathServiceType = .none
         }
         return URLSession(configuration: configuration)
     }
 
     private func loginErrorMessage(_ error: Error) -> String {
-        if case ArcaneError.unauthorized = error { return "Invalid username or password" }
-        return friendlyErrorMessage(error)
+        connectionAwareErrorMessage(error, passwordLogin: true)
     }
 }
