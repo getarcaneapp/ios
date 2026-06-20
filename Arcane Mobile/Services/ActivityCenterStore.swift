@@ -6,6 +6,10 @@ import Arcane
 @Observable
 final class ActivityCenterStore {
     private static let pageSize = 50
+    private static let maxReconnectAttempts = 20
+    private static let maxReconnectDelaySeconds: Double = 15
+    /// Reset the retry budget after a stream survives long enough to be useful.
+    private static let stableConnectionSeconds: TimeInterval = 5
 
     private(set) var activities: [Activity] = []
     private(set) var isLoading = false
@@ -26,8 +30,10 @@ final class ActivityCenterStore {
     private var activityBuckets: [String: [Activity]] = [:]
     private var environmentNames: [String: String] = [:]
     private var streamTasks: [String: Task<Void, Never>] = [:]
-    /// Bumped on every startStream() so a finishing task from a previous
-    /// stream generation can't evict its replacement from `streamTasks`.
+    private var failedStreamEnvironmentIDs: Set<String> = []
+    private var streamWarning: StreamWarning?
+    /// Bumped on every stream start/stop so a finishing task from a previous
+    /// stream generation can't mutate the current state.
     private var streamGeneration = 0
 
     var filteredActivities: [Activity] {
@@ -60,7 +66,7 @@ final class ActivityCenterStore {
             limit = Self.pageSize
             hasMore = false
             errorMessage = nil
-            streamErrorMessage = nil
+            clearStreamWarning()
         }
     }
 
@@ -111,7 +117,7 @@ final class ActivityCenterStore {
         hasMore = anyHasMore
         rebuildActivities()
         if failures > 0 {
-            streamErrorMessage = "Some environments could not load. Pull to refresh."
+            setStreamWarning(.loadPartial)
         }
     }
 
@@ -126,7 +132,7 @@ final class ActivityCenterStore {
     func startStream() {
         guard let client else { return }
         stopStream()
-        streamErrorMessage = nil
+        clearStreamWarning()
 
         let environments = environmentIDs.map { id in
             ActivityEnvironment(
@@ -146,7 +152,15 @@ final class ActivityCenterStore {
         }
     }
 
+    func retryLiveUpdates() async {
+        stopStream()
+        clearStreamWarning()
+        await load(refresh: true)
+        startStream()
+    }
+
     func stopStream() {
+        streamGeneration += 1
         streamTasks.values.forEach { $0.cancel() }
         streamTasks = [:]
         isStreaming = false
@@ -210,14 +224,39 @@ final class ActivityCenterStore {
             }
         }
 
-        do {
-            for try await event in client.activities.stream(envID: environment.id, limit: Self.pageSize) {
-                if Task.isCancelled { return }
-                apply(event, environment: environment)
+        var attempt = 0
+        while !Task.isCancelled, generation == streamGeneration {
+            let connectedAt = Date()
+            var receivedFirstEvent = false
+            do {
+                for try await event in client.activities.stream(envID: environment.id, limit: Self.pageSize) {
+                    guard generation == streamGeneration, !Task.isCancelled else { return }
+                    if !receivedFirstEvent {
+                        receivedFirstEvent = true
+                        markStreamConnected(environment)
+                    }
+                    apply(event, environment: environment)
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                // Transport drops, server restarts, and NDJSON decode failures
+                // are retried below. The user-facing warning is only shown when
+                // this environment exhausts the reconnect budget.
             }
-        } catch {
-            if Task.isCancelled { return }
-            streamErrorMessage = "Live updates paused. Pull to refresh."
+
+            guard generation == streamGeneration, !Task.isCancelled else { return }
+
+            if receivedFirstEvent, Date().timeIntervalSince(connectedAt) >= Self.stableConnectionSeconds {
+                attempt = 0
+            }
+            if attempt >= Self.maxReconnectAttempts {
+                markStreamFailed(environment)
+                return
+            }
+            let delay = min(pow(2, Double(attempt)), Self.maxReconnectDelaySeconds)
+            attempt += 1
+            try? await Task.sleep(for: .seconds(delay))
         }
     }
 
@@ -234,10 +273,56 @@ final class ActivityCenterStore {
                 apply(message)
             }
         case .missed:
-            streamErrorMessage = "Some activity updates were missed. Pull to refresh."
+            setStreamWarning(.missed)
         case .unknown:
             break
         }
+    }
+
+    private func markStreamConnected(_ environment: ActivityEnvironment) {
+        failedStreamEnvironmentIDs.remove(environment.id.rawValue)
+        if streamWarning == .persistentFailure {
+            updatePersistentStreamWarning()
+        }
+    }
+
+    private func markStreamFailed(_ environment: ActivityEnvironment) {
+        failedStreamEnvironmentIDs.insert(environment.id.rawValue)
+        updatePersistentStreamWarning()
+    }
+
+    private func updatePersistentStreamWarning() {
+        guard !failedStreamEnvironmentIDs.isEmpty else {
+            if streamWarning == .persistentFailure {
+                clearStreamWarning()
+            }
+            return
+        }
+
+        streamWarning = .persistentFailure
+        if !environmentIDs.isEmpty, failedStreamEnvironmentIDs.count >= environmentIDs.count {
+            streamErrorMessage = "Live updates paused. Pull to refresh."
+        } else {
+            streamErrorMessage = "Some live updates paused. Pull to refresh."
+        }
+    }
+
+    private func setStreamWarning(_ warning: StreamWarning) {
+        streamWarning = warning
+        switch warning {
+        case .loadPartial:
+            streamErrorMessage = "Some environments could not load. Pull to refresh."
+        case .missed:
+            streamErrorMessage = "Some activity updates were missed. Pull to refresh."
+        case .persistentFailure:
+            updatePersistentStreamWarning()
+        }
+    }
+
+    private func clearStreamWarning() {
+        streamWarning = nil
+        streamErrorMessage = nil
+        failedStreamEnvironmentIDs = []
     }
 
     private func replaceSnapshot(_ snapshot: [Activity], environment: ActivityEnvironment) {
@@ -324,6 +409,12 @@ final class ActivityCenterStore {
             return lhs.sortTime > rhs.sortTime
         }
     }
+}
+
+private enum StreamWarning {
+    case loadPartial
+    case missed
+    case persistentFailure
 }
 
 private struct ActivityEnvironment: Hashable, Sendable {

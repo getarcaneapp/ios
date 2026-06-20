@@ -55,6 +55,10 @@ enum ReleaseNotes {
             version: "0.3.1",
             new: [
                 .init("Add New Application Icon Variants"),
+            ],
+            fixed: [
+                .init("Delete confirmation dialogs now stay clear of the floating bottom bar so action buttons remain tappable."),
+                .init("Activity Center live updates now reconnect after transient stream drops instead of immediately showing a paused warning."),
             ]
         ),
         ReleaseNote(

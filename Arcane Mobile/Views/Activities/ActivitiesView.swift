@@ -54,8 +54,7 @@ struct ActivitiesView: View {
                                 severity: .warning,
                                 retry: {
                                     Task {
-                                        await store.load(refresh: true)
-                                        store.startStream()
+                                        await store.retryLiveUpdates()
                                     }
                                 }
                             )
@@ -104,8 +103,7 @@ struct ActivitiesView: View {
                 }
                 .listStyle(.insetGrouped)
                 .refreshable {
-                    await store.load(refresh: true)
-                    store.startStream()
+                    await store.retryLiveUpdates()
                 }
             }
         }
@@ -121,7 +119,7 @@ struct ActivitiesView: View {
                     filterMenu
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await store.load(refresh: true) } } label: {
+                    Button { Task { await store.retryLiveUpdates() } } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh")
@@ -142,8 +140,7 @@ struct ActivitiesView: View {
         .task(id: taskID) {
             guard manager.supportsActivities else { return }
             store.configure(client: manager.client)
-            await store.load(refresh: true)
-            store.startStream()
+            await store.retryLiveUpdates()
         }
         .onDisappear {
             store.stopStream()
