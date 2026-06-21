@@ -20,25 +20,17 @@ struct ProjectDetailView: View {
     @State private var streamingAction: StreamingAction?
     @State private var errorMessage: String?
     @State private var runningActionID: String?
-    @State private var selectedTab: DetailTab = .services
     @State private var projectContainers: [ContainerSummary] = []
     @State private var servicesLoading = false
+    @State private var fileBrowserFiles: [ProjectFile]?
+    @State private var fileBrowserLoading = false
+    @State private var fileBrowserErrorMessage: String?
 
     private var currentProject: ProjectDetails { refreshedProject ?? project }
     private var isRunning: Bool { currentProject.status.lowercased() == "running" }
     private var hasBuild: Bool { currentProject.hasBuildDirective == true }
     private var containerMutationVersion: Int { mutationStore.version(kind: .containers, envID: environmentID) }
-
-    private enum DetailTab: String, CaseIterable, Identifiable {
-        case services, configuration
-        var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .services: return "Services"
-            case .configuration: return "Configuration"
-            }
-        }
-    }
+    private var projectMutationVersion: Int { mutationStore.version(kind: .projects, envID: environmentID) }
 
     struct StreamingAction: Identifiable {
         let id = UUID()
@@ -49,42 +41,7 @@ struct ProjectDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("Section", selection: $selectedTab) {
-                ForEach(DetailTab.allCases) { tab in
-                    Text(tab.title).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-
-            // Both tabs stay mounted (crossfade rather than insert/remove) so the
-            // editor keeps unsaved edits when the user flips to Services and back.
-            ZStack {
-                servicesTab
-                    .opacity(selectedTab == .services ? 1 : 0)
-                    .allowsHitTesting(selectedTab == .services)
-                    .accessibilityHidden(selectedTab != .services)
-
-                ProjectConfigurationTab(
-                    projectID: project.id,
-                    projectName: currentProject.name,
-                    environmentID: environmentID,
-                    isActive: selectedTab == .configuration
-                ) {
-                    await invalidateProjectCaches()
-                    mutationStore.markChanged(kind: .projects, envID: environmentID)
-                    await loadProject(refresh: true)
-                    await loadServices(refresh: true)
-                }
-                .opacity(selectedTab == .configuration ? 1 : 0)
-                .allowsHitTesting(selectedTab == .configuration)
-                .accessibilityHidden(selectedTab != .configuration)
-            }
-            .motionAwareAnimation(Motion.state, value: selectedTab)
-        }
+        servicesTab
         .morphingActions(
             primary: morphPrimary,
             inline: morphInline,
@@ -97,12 +54,21 @@ struct ProjectDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadProject() }
         .task { await loadServices() }
+        .task { await loadProjectFiles() }
         .refreshable {
             await loadProject(refresh: true)
             await loadServices(refresh: true)
+            await loadProjectFiles(refresh: true)
         }
         .onChange(of: containerMutationVersion) { _, _ in
             Task { await loadServices(refresh: true) }
+        }
+        .onChange(of: projectMutationVersion) { _, _ in
+            Task {
+                await loadProject(refresh: true)
+                await loadServices(refresh: true)
+                await loadProjectFiles(refresh: true)
+            }
         }
         .navigationDestination(for: ContainerSummary.self) { container in
             ContainerDetailView(container: container, environmentID: environmentID)
@@ -186,6 +152,8 @@ struct ProjectDetailView: View {
                 }
             }
 
+            projectFilesSection
+
             Section("Services") {
                 if servicesLoading && projectContainers.isEmpty {
                     HStack(spacing: 10) {
@@ -213,35 +181,138 @@ struct ProjectDetailView: View {
     }
 
     private var projectHeader: some View {
-        HStack(spacing: 14) {
-            CachedAsyncImage(url: currentProject.themedIconUrl(for: colorScheme), size: 56) {
-                Image(systemName: "square.stack.3d.up.fill")
-                    .font(.title)
-                    .foregroundStyle(.indigo)
-                    .frame(width: 56, height: 56)
-                    .glassEffectCompat(in: .circle)
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                CachedAsyncImage(url: currentProject.themedIconUrl(for: colorScheme), size: 56) {
+                    Image(systemName: "square.stack.3d.up.fill")
+                        .font(.title)
+                        .foregroundStyle(.indigo)
+                        .frame(width: 56, height: 56)
+                        .glassEffectCompat(in: .circle)
+                }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(currentProject.displayName)
-                    .font(.headline)
-                let count = currentProject.serviceCount
-                Text("\(count) service\(count == 1 ? "" : "s") · \(currentProject.runningCount) running")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(headerDate(currentProject.createdAt))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                if let version = currentProject.composeVersion {
-                    Text("Compose \(version)")
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(currentProject.displayName)
+                        .font(.headline)
+                    let count = currentProject.serviceCount
+                    Text("\(count) service\(count == 1 ? "" : "s") · \(currentProject.runningCount) running")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                    Text(headerDate(currentProject.createdAt))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    if let version = currentProject.composeVersion {
+                        Text("Compose \(version)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    StatusBadge(status: currentProject.status)
+                        .padding(.top, 2)
                 }
-                StatusBadge(status: currentProject.status)
-                    .padding(.top, 2)
             }
+
         }
         .padding(.vertical, 4)
+    }
+
+    private var projectFilesSection: some View {
+        Section("Files") {
+            NavigationLink {
+                ProjectFilesWorkspaceView(
+                    project: currentProject,
+                    environmentID: environmentID,
+                    initialSelection: .compose
+                )
+            } label: {
+                ProjectFileBrowserRow(
+                    name: projectComposeFileName,
+                    detail: "Compose definition",
+                    systemImage: "doc.text",
+                    isDirectory: false,
+                    showsDisclosure: false
+                )
+            }
+
+            NavigationLink {
+                ProjectFilesWorkspaceView(
+                    project: currentProject,
+                    environmentID: environmentID,
+                    initialSelection: .env
+                )
+            } label: {
+                ProjectFileBrowserRow(
+                    name: ".env",
+                    detail: "Environment variables",
+                    systemImage: "key.horizontal",
+                    isDirectory: false,
+                    showsDisclosure: false
+                )
+            }
+
+            if fileBrowserLoading && fileBrowserFiles == nil {
+                HStack(spacing: 10) {
+                    ProgressView().scaleEffect(0.8)
+                    Text("Loading files...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let fileBrowserErrorMessage {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(fileBrowserErrorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Button {
+                        Task { await loadProjectFiles(refresh: true) }
+                    } label: {
+                        Label("Reload files", systemImage: "arrow.clockwise")
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+            } else {
+                let entries = fileBrowserEntries
+                if entries.isEmpty {
+                    NavigationLink {
+                        ProjectFilesWorkspaceView(
+                            project: currentProject,
+                            environmentID: environmentID,
+                            initialSelection: .files
+                        )
+                    } label: {
+                        ProjectFileBrowserRow(
+                            name: "Project root",
+                            detail: "Browse or create custom files",
+                            systemImage: "folder",
+                            isDirectory: true,
+                            showsDisclosure: false
+                        )
+                    }
+                } else {
+                    ForEach(entries) { entry in
+                        NavigationLink {
+                            ProjectFilesWorkspaceView(
+                                project: currentProject,
+                                environmentID: environmentID,
+                                initialSelection: entry.isDirectory ? .folder(entry.relativePath) : .managedFile(entry.relativePath)
+                            )
+                        } label: {
+                            ProjectFileBrowserRow(entry: entry, showsDisclosure: false)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var projectComposeFileName: String {
+        guard let value = currentProject.composeFileName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return "compose.yml"
+        }
+        return value
+    }
+
+    private var fileBrowserEntries: [ManagedProjectFileEntry] {
+        ProjectFileWorkspaceHelpers.apply(projectFiles: fileBrowserFiles ?? currentProject.projectFiles ?? [], changes: [])
     }
 
     /// Formats the project's ISO-8601 `createdAt`, tolerating both fractional and
@@ -428,6 +499,21 @@ struct ProjectDetailView: View {
         }
     }
 
+    private func loadProjectFiles(refresh: Bool = false) async {
+        guard let client = manager.client else { return }
+        if fileBrowserFiles == nil { fileBrowserLoading = true }
+        fileBrowserErrorMessage = nil
+        defer { fileBrowserLoading = false }
+        do {
+            let files = try await client.projects.files(envID: environmentID, projectID: project.id)
+            fileBrowserFiles = files.projectFiles ?? []
+        } catch {
+            if refresh || fileBrowserFiles == nil {
+                fileBrowserErrorMessage = friendlyErrorMessage(error)
+            }
+        }
+    }
+
     /// Loads the project's containers for the Services tab. The project `runtime`
     /// endpoint is the authoritative source of which container IDs belong to this
     /// project; we intersect that set with the (cache-warm) environment container
@@ -476,159 +562,6 @@ struct ProjectDetailView: View {
             client.rest.environmentPath(environmentID, "containers"),
             client.rest.environmentPath(environmentID, "containers/*")
         ])
-    }
-}
-
-/// The project's compose / `.env` editor, embedded as the "Configuration" tab of
-/// `ProjectDetailView`. `isActive` drives a lazy first load and gates the Save
-/// toolbar item so it only appears while this tab is showing; the view stays
-/// mounted across tab switches so in-progress edits are preserved.
-struct ProjectConfigurationTab: View {
-    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    let projectID: String
-    let projectName: String
-    let environmentID: EnvironmentID
-    let isActive: Bool
-    var onSaved: () async -> Void = {}
-
-    @State private var name: String = ""
-    @State private var composeContent: String = ""
-    @State private var envContent: String = ""
-    @State private var originalCompose: String = ""
-    @State private var originalEnv: String = ""
-    @State private var selectedFile: Int = 0
-    @State private var hasLoaded = false
-    @State private var isLoading = false
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-    @State private var showRender = false
-
-    private var hasChanges: Bool {
-        composeContent != originalCompose || envContent != originalEnv
-    }
-
-    var body: some View {
-        Group {
-            if isLoading {
-                ProgressView("Loading files...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                VStack(spacing: 0) {
-                    Picker("File", selection: $selectedFile) {
-                        Text("compose.yml").tag(0)
-                        Text(".env").tag(1)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-
-                    Divider()
-
-                    ZStack(alignment: .bottomTrailing) {
-                        if selectedFile == 0 {
-                            CodeEditorView(text: $composeContent, language: .yaml)
-                        } else {
-                            CodeEditorView(text: $envContent, language: .env)
-                        }
-
-                        if selectedFile == 0 && !composeContent.isEmpty {
-                            Button {
-                                showRender = true
-                            } label: {
-                                Image(systemName: "curlybraces")
-                                    .font(.title3.weight(.semibold))
-                                    .foregroundStyle(.indigo)
-                                    .frame(width: 52, height: 52)
-                                    .glassEffectCompat(in: .circle)
-                            }
-                            .padding(.trailing, 16)
-                            .padding(.bottom, 16)
-                            .accessibilityLabel("Resolve Variables")
-                        }
-                    }
-
-                    if let errorMessage {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
-                            Text(errorMessage)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(.red.opacity(0.1))
-                    }
-                }
-            }
-        }
-        .toolbar {
-            if isActive {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        Task { await saveFiles() }
-                    } label: {
-                        if isSaving { ProgressView().scaleEffect(0.8) }
-                        else { Text("Save") }
-                    }
-                    .disabled(isSaving || !hasChanges)
-                }
-            }
-        }
-        .sheet(isPresented: $showRender) {
-            RenderComposeView(
-                initialCompose: composeContent,
-                initialEnv: envContent,
-                environmentID: environmentID
-            ) { resolved in
-                composeContent = resolved
-            }
-            .presentationDragIndicator(.visible)
-        }
-        .task(id: isActive) {
-            if isActive && !hasLoaded {
-                hasLoaded = true
-                await loadFiles()
-            }
-        }
-    }
-
-    private func loadFiles() async {
-        guard let client = manager.client else { return }
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        do {
-            let details = try await client.projects.compose(envID: environmentID, projectID: projectID)
-            name = details.name
-            let loadedCompose = details.composeContent ?? ""
-            let loadedEnv = details.envContent ?? ""
-            composeContent = loadedCompose
-            envContent = loadedEnv
-            originalCompose = loadedCompose
-            originalEnv = loadedEnv
-        } catch {
-            errorMessage = friendlyErrorMessage(error)
-        }
-    }
-
-    private func saveFiles() async {
-        guard let client = manager.client else { return }
-        isSaving = true
-        errorMessage = nil
-        defer { isSaving = false }
-        do {
-            let resolvedName = name.isEmpty ? projectName : name
-            let request = UpdateProject(name: resolvedName, composeContent: composeContent, envContent: envContent)
-            _ = try await client.projects.update(envID: environmentID, projectID: projectID, request: request)
-            originalCompose = composeContent
-            originalEnv = envContent
-            showToast(.success("Saved"))
-            await onSaved()
-        } catch {
-            errorMessage = friendlyErrorMessage(error)
-            showToast(.error("Couldn't save"))
-        }
     }
 }
 

@@ -55,6 +55,7 @@ enum ReleaseNotes {
             version: "0.3.1",
             new: [
                 .init("Add New Application Icon Variants"),
+                .init("Browse and edit custom project files from project details with a Files-style browser."),
             ],
             fixed: [
                 .init("Delete confirmation dialogs now stay clear of the floating bottom bar so action buttons remain tappable."),

@@ -4,6 +4,7 @@ import UIKit
 enum EditorLanguage: Equatable {
     case yaml
     case env
+    case plaintext
 }
 
 // MARK: - Editor View
@@ -11,6 +12,7 @@ enum EditorLanguage: Equatable {
 struct CodeEditorView: UIViewRepresentable {
     @Binding var text: String
     var language: EditorLanguage = .yaml
+    var readOnly = false
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -24,6 +26,8 @@ struct CodeEditorView: UIViewRepresentable {
         tv.smartQuotesType = .no
         tv.smartInsertDeleteType = .no
         tv.spellCheckingType = .no
+        tv.isEditable = !readOnly
+        tv.isSelectable = true
         tv.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 32, right: 8)
         // Quick-keys bar styled like the system predictive bar: a UIInputView
         // (keyboard material) hosting a horizontally scrollable SwiftUI strip.
@@ -37,6 +41,7 @@ struct CodeEditorView: UIViewRepresentable {
 
     func updateUIView(_ tv: UITextView, context: Context) {
         let coord = context.coordinator
+        tv.isEditable = !readOnly
         guard tv.text != text || coord.appliedLanguage != language else { return }
         let sel = tv.selectedRange
         applyHighlighting(to: tv, text: text)
@@ -47,9 +52,18 @@ struct CodeEditorView: UIViewRepresentable {
 
     private func applyHighlighting(to tv: UITextView, text: String) {
         let font = UIFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
-        tv.attributedText = language == .yaml
-            ? YAMLHighlighter.highlight(text, font: font)
-            : EnvHighlighter.highlight(text, font: font)
+        tv.attributedText = highlight(text, language: language, font: font)
+    }
+
+    private func highlight(_ text: String, language: EditorLanguage, font: UIFont) -> NSAttributedString {
+        switch language {
+        case .yaml:
+            return YAMLHighlighter.highlight(text, font: font)
+        case .env:
+            return EnvHighlighter.highlight(text, font: font)
+        case .plaintext:
+            return PlainTextHighlighter.highlight(text, font: font)
+        }
     }
 
     // MARK: - Quick keys bar
@@ -96,9 +110,7 @@ struct CodeEditorView: UIViewRepresentable {
             let text = tv.text ?? ""
             parent.text = text
             let font = UIFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
-            let attr = parent.language == .yaml
-                ? YAMLHighlighter.highlight(text, font: font)
-                : EnvHighlighter.highlight(text, font: font)
+            let attr = parent.highlight(text, language: parent.language, font: font)
             let sel = tv.selectedRange
             tv.attributedText = attr
             let safeLoc = min(sel.location, text.utf16.count)
@@ -194,6 +206,11 @@ struct EditorQuickKeysBar: View {
         case .env:
             return [
                 ("=", coordinator.equals),
+                ("\u{201C}\u{201D}", coordinator.quotes),
+                ("#", coordinator.hash),
+            ]
+        case .plaintext:
+            return [
                 ("\u{201C}\u{201D}", coordinator.quotes),
                 ("#", coordinator.hash),
             ]
@@ -294,6 +311,17 @@ private enum EnvHighlighter {
                 out.addAttribute(.foregroundColor, value: color, range: m.range)
             }
         }
+        return out
+    }
+}
+
+// MARK: - Plain Text Highlighting
+
+private enum PlainTextHighlighter {
+    static func highlight(_ text: String, font: UIFont) -> NSAttributedString {
+        let out = NSMutableAttributedString(string: text)
+        let full = NSRange(text.startIndex..., in: text)
+        out.addAttributes([.foregroundColor: UIColor.label, .font: font], range: full)
         return out
     }
 }
