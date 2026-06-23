@@ -470,21 +470,12 @@ struct VolumeRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if #available(iOS 26, *) {
-                Image(systemName: "externaldrive.fill")
-                    .font(.title3)
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .glassEffect(.regular.tint(.teal), in: .circle)
-                    .accessibilityHidden(true)
-            } else {
-                Image(systemName: "externaldrive.fill")
-                    .font(.title3)
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.teal, in: .circle)
-                    .accessibilityHidden(true)
-            }
+            Image(systemName: "externaldrive.fill")
+                .font(.title3)
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(Color.teal, in: .circle)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {

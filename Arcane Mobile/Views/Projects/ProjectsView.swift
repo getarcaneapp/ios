@@ -471,19 +471,11 @@ struct ProjectRow: View {
     var body: some View {
         HStack(spacing: 12) {
             CachedAsyncImage(url: project.themedIconUrl(for: colorScheme), size: 36) {
-                if #available(iOS 26, *) {
-                    Image(systemName: "square.stack.3d.up.fill")
-                        .font(.title3)
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .glassEffect(.regular.tint(.orange), in: .circle)
-                } else {
-                    Image(systemName: "square.stack.3d.up.fill")
-                        .font(.title3)
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .background(Color.orange, in: .circle)
-                }
+                Image(systemName: "square.stack.3d.up.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.orange, in: .circle)
             }
             .accessibilityHidden(true)
 

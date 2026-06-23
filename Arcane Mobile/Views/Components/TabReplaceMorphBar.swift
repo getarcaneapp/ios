@@ -58,7 +58,7 @@ struct TabReplaceMorphBar: View {
         // this, so it stays interactive.
         .allowsHitTesting(swapTarget == nil)
         .overlay(alignment: .bottom) {
-            if let target = swapTarget {
+            if let target = swapTarget, panelWidth > 0, barSize.height > 0 {
                 TabReplaceCallout(
                     current: target,
                     panelWidth: panelWidth,
