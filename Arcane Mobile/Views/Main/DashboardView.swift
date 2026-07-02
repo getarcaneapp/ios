@@ -277,7 +277,7 @@ struct DashboardView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .dashboardCardBackground(cornerRadius: 12)
+        .dashboardCardBackground(cornerRadius: Radius.nested)
     }
 
     private var truncationFooter: some View {
@@ -361,7 +361,7 @@ struct DashboardView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground(cornerRadius: 16)
+        .dashboardCardBackground(cornerRadius: Radius.card)
     }
 
     private var skeletonEnvironmentCard: some View {
@@ -401,7 +401,8 @@ struct DashboardView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground(cornerRadius: 20)
+        // Matches the loaded env card (Radius.card) so corners don't snap on load.
+        .dashboardCardBackground(cornerRadius: Radius.card)
     }
 
     private var overviewGrid: some View {
@@ -805,7 +806,7 @@ struct DashboardGlassTile: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .dashboardCardBackground(cornerRadius: 16)
+            .dashboardCardBackground(cornerRadius: Radius.card)
         }
         .buttonStyle(.pressable)
         .accessibilityElement(children: .ignore)
@@ -844,6 +845,7 @@ struct DashboardMiniMetric: View {
     let title: String
     let value: String
     let color: Color
+    var cornerRadius: CGFloat = Radius.nested
 
     var body: some View {
         VStack(spacing: 2) {
@@ -858,7 +860,16 @@ struct DashboardMiniMetric: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .background(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+        // Raised chip: a lighter grouped tone lifts it off the card in dark mode,
+        // and a tight drop shadow on the fill does the lifting in light mode. The
+        // old 0.5-opacity same-tone fill read as flat. Restrained — no glow.
+        .background(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    Color(uiColor: .tertiarySystemGroupedBackground)
+                        .shadow(.drop(color: .black.opacity(0.15), radius: 3, y: 1))
+                )
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(value)")
     }
@@ -871,7 +882,7 @@ struct DashboardInfoGroup<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline).padding(.leading, 4)
             VStack(spacing: 0) { content }
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
         }
     }
 }
@@ -940,27 +951,54 @@ struct SectionHeader: View {
 // MARK: - View Modifiers
 
 extension View {
-    func dashboardCardBackground(cornerRadius: CGFloat = 12) -> some View {
+    func dashboardCardBackground(cornerRadius: CGFloat = Radius.card) -> some View {
         self.modifier(DashboardCardBackgroundModifier(cornerRadius: cornerRadius))
     }
 }
 
 struct DashboardCardBackgroundModifier: ViewModifier {
     let cornerRadius: CGFloat
+    // Arcane ships its own `Environment` model, which shadows SwiftUI's property
+    // wrapper — reach for the fully-qualified one.
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
+
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
+            // Liquid Glass already supplies depth; this path is a plain fill and
+            // only inherits the larger radius.
             content
                 .background(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 )
         } else {
+            // iOS 18 fallback — the "soft depth" pillow cue. The drop shadow
+            // rides on the fill (via `ShapeStyle.shadow`) so it hugs the shape
+            // rather than the whole subtree, and a 1pt top-edge highlight fakes
+            // "light from above" convexity. Restrained — no glow.
             content
                 .background(
-                    Color(uiColor: .secondarySystemGroupedBackground),
-                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(
+                            Color(uiColor: .secondarySystemGroupedBackground)
+                                .shadow(.drop(color: .black.opacity(0.06), radius: 8, y: 3))
+                        )
                 )
-                .shadow(color: .black.opacity(0.04), radius: 3, y: 1)
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    .white.opacity(colorScheme == .dark ? 0.07 : 0.35),
+                                    .clear
+                                ],
+                                startPoint: .top,
+                                endPoint: .center
+                            ),
+                            lineWidth: 1
+                        )
+                        .allowsHitTesting(false)
+                )
         }
     }
 }

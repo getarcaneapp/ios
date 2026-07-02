@@ -15,7 +15,7 @@ struct AIComposerBar: View {
 
     @State private var draft = ""
 
-    private var pillShape: RoundedRectangle { .rect(cornerRadius: 22, style: .continuous) }
+    private var pillShape: RoundedRectangle { .rect(cornerRadius: Radius.card, style: .continuous) }
 
     private var canSend: Bool {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -72,7 +72,7 @@ struct AIComposerBar: View {
                 border: .purple,
                 beam: [.indigo, .purple, .pink],
                 beamBlur: 12,
-                cornerRadius: 22,
+                cornerRadius: Radius.card,
                 isEnabled: isResponding
             )
             .animation(Motion.state, value: isResponding)

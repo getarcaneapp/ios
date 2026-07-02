@@ -43,6 +43,6 @@ struct AIActionConfirmationCard: View {
             .font(.subheadline.weight(.medium))
         }
         .padding(16)
-        .glassEffectCompat(in: .rect(cornerRadius: 20, style: .continuous))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card, style: .continuous))
     }
 }

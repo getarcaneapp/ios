@@ -121,9 +121,10 @@ struct EnvironmentDashboardCard: View {
                     ?? Int(dockerInfo?.images ?? 0)
                 let hasAnyData = streamSnapshot != nil || hasCachedCounts || dockerInfo != nil
                 HStack(spacing: 12) {
-                    DashboardMiniMetric(title: "Running", value: hasAnyData ? "\(running)" : "--", color: .green)
-                    DashboardMiniMetric(title: "Stopped", value: hasAnyData ? "\(stopped)" : "--", color: .secondary)
-                    DashboardMiniMetric(title: "Images", value: hasAnyData ? "\(images)" : "--", color: .purple)
+                    let miniRadius = Radius.concentric(outer: Radius.card, inset: 10)
+                    DashboardMiniMetric(title: "Running", value: hasAnyData ? "\(running)" : "--", color: .green, cornerRadius: miniRadius)
+                    DashboardMiniMetric(title: "Stopped", value: hasAnyData ? "\(stopped)" : "--", color: .secondary, cornerRadius: miniRadius)
+                    DashboardMiniMetric(title: "Images", value: hasAnyData ? "\(images)" : "--", color: .purple, cornerRadius: miniRadius)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -142,9 +143,9 @@ struct EnvironmentDashboardCard: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .dashboardCardBackground(cornerRadius: 20)
+            .dashboardCardBackground(cornerRadius: Radius.card)
             .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                     .stroke(isActive ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 2)
             )
         }
@@ -152,6 +153,9 @@ struct EnvironmentDashboardCard: View {
         // source, so it must not change geometry on press (a scale would disturb
         // the zoom snapshot). Feedback without breaking the push transition.
         .buttonStyle(.pressable(scales: false))
+        // Round the context-menu preview to match the card; the default
+        // square-cornered preview reads noticeably boxy against it.
+        .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .contextMenu {
             if !isActive {
                 Button {

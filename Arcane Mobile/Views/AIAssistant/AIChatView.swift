@@ -141,7 +141,7 @@ struct AIChatView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
-                    .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16, style: .continuous))
+                    .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: Radius.standard, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }

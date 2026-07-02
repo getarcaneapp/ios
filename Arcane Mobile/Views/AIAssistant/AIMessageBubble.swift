@@ -26,7 +26,7 @@ struct AIMessageBubble: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
-                .background(.tint, in: .rect(cornerRadius: 20, style: .continuous))
+                .background(.tint, in: .rect(cornerRadius: Radius.card, style: .continuous))
                 .textSelection(.enabled)
         }
     }
@@ -61,7 +61,7 @@ struct AIMessageBubble: View {
                 .padding(.vertical, 9)
                 .background(
                     Color(.secondarySystemGroupedBackground),
-                    in: .rect(cornerRadius: 20, style: .continuous)
+                    in: .rect(cornerRadius: Radius.card, style: .continuous)
                 )
 
                 Spacer(minLength: 56)

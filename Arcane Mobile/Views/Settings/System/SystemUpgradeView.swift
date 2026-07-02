@@ -102,7 +102,7 @@ struct SystemUpgradeView: View {
         .frame(maxWidth: .infinity, minHeight: 200)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
     private func readyContent(result: UpgradeCheckResultData) -> some View {
@@ -163,7 +163,7 @@ struct SystemUpgradeView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
     private func triggeredCard(message: String) -> some View {
@@ -221,7 +221,7 @@ struct SystemUpgradeView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
     private func infoCard(icon: String, tint: Color, title: String, body: String) -> some View {
@@ -240,7 +240,7 @@ struct SystemUpgradeView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffectCompat(in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
     // MARK: - Network

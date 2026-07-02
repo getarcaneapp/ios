@@ -85,7 +85,7 @@ struct UpdaterRunView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
     private var runningHero: some View {
@@ -124,7 +124,7 @@ struct UpdaterRunView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
     private func completedHero(result: UpdaterResult) -> some View {
@@ -163,7 +163,7 @@ struct UpdaterRunView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
         .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: 24))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
     // MARK: - Counter cards
@@ -178,7 +178,7 @@ struct UpdaterRunView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffectCompat(in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
     private func resultCountersCard(result: UpdaterResult) -> some View {
@@ -195,7 +195,7 @@ struct UpdaterRunView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffectCompat(in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
     private func counterTile(label: String, value: Int, icon: String, tint: Color) -> some View {
@@ -216,7 +216,7 @@ struct UpdaterRunView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(tint.opacity(0.10), in: .rect(cornerRadius: 14))
+        .background(tint.opacity(0.10), in: .rect(cornerRadius: Radius.standard))
     }
 
     private func idListCard(title: String, icon: String, tint: Color, ids: [String]) -> some View {
@@ -247,7 +247,7 @@ struct UpdaterRunView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffectCompat(in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
     // MARK: - Result item list
@@ -267,7 +267,7 @@ struct UpdaterRunView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffectCompat(in: .rect(cornerRadius: 20))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
     // MARK: - Header

@@ -69,7 +69,7 @@ struct LiveResourcesCard: View {
             )
         }
         .padding(16)
-        .dashboardCardBackground(cornerRadius: 18)
+        .dashboardCardBackground(cornerRadius: Radius.card)
         .onChange(of: environmentID) { _, _ in
             restartStream()
         }

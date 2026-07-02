@@ -81,7 +81,7 @@ private struct ReleaseNoteCard: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 20))
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: Radius.card))
     }
 
     @ViewBuilder

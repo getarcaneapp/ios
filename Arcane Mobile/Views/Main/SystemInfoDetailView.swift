@@ -80,7 +80,7 @@ struct SystemInfoDetailView: View {
             StatusBadge(status: staticError != nil ? "error" : "online")
         }
         .padding(16)
-        .dashboardCardBackground(cornerRadius: 18)
+        .dashboardCardBackground(cornerRadius: Radius.card)
     }
 
     // MARK: - Docker Info tab

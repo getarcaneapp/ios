@@ -63,7 +63,7 @@ struct InstallStreamSheet: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .glassEffectCompat(in: .rect(cornerRadius: 22))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
     private var iconBadge: some View {
@@ -167,9 +167,9 @@ struct InstallStreamSheet: View {
 
     private var terminal: some View {
         ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .fill(.clear)
-                .glassEffectCompat(in: .rect(cornerRadius: 20))
+                .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
 
             VStack(spacing: 0) {
                 ScrollViewReader { proxy in

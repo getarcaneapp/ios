@@ -129,9 +129,9 @@ struct LoginView: View {
                 .scaledToFit()
                 .frame(width: 72, height: 72)
                 .padding(20)
-                .glassEffectCompat(in: .rect(cornerRadius: 24))
+                .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 24)
+                    RoundedRectangle(cornerRadius: Radius.hero, style: .continuous)
                         .stroke(.white.opacity(0.12), lineWidth: 1)
                 )
                 .shadow(color: brandColor.opacity(0.12), radius: 28, y: 10)
@@ -211,7 +211,7 @@ struct LoginView: View {
                     }
                 }
             }
-            .glassEffectCompat(in: .rect(cornerRadius: 18))
+            .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
 
             Text("For a local server, include the scheme — e.g. http://192.168.1.50:3000")
                 .font(.caption)
@@ -268,7 +268,7 @@ struct LoginView: View {
                 }
             }
         }
-        .glassEffectCompat(in: .rect(cornerRadius: 18))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
     private func infoBanner(_ message: String) -> some View {
@@ -290,7 +290,7 @@ struct LoginView: View {
             .buttonStyle(.plain)
         }
         .padding(12)
-        .background(.blue.opacity(0.12), in: .rect(cornerRadius: 12))
+        .background(.blue.opacity(0.12), in: .rect(cornerRadius: Radius.nested))
         .transition(.scale(scale: 0.95).combined(with: .opacity))
     }
 
@@ -440,9 +440,9 @@ struct LoginView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .glassEffectCompat(in: .rect(cornerRadius: 18))
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
         .overlay(
-            RoundedRectangle(cornerRadius: 18)
+            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .stroke(brandColor.opacity(0.22), lineWidth: 1)
         )
         .disabled(manager.isLoading)

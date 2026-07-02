@@ -51,7 +51,7 @@ struct DemoBanner: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .glassEffectCompat(in: .rect(cornerRadius: 22))
+            .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
             .padding(.horizontal, 12)
             .padding(.top, 6)
             .padding(.bottom, 4)

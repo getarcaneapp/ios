@@ -32,9 +32,9 @@ struct ErrorBanner: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tintColor.opacity(0.12), in: .rect(cornerRadius: 12))
+        .background(tintColor.opacity(0.12), in: .rect(cornerRadius: Radius.nested))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.nested, style: .continuous)
                 .stroke(tintColor.opacity(0.18), lineWidth: 1)
         }
         .transition(.scale(scale: 0.95).combined(with: .opacity))
