@@ -39,6 +39,21 @@ enum Motion {
     /// Progress bars and the dashboard stat ring.
     static let gauge: Animation = .spring(response: 0.55, dampingFraction: 0.85)
 
+    /// Login logo one-shot "pop" on first appear. Softer, springier entrance
+    /// than `entrance` — a lower damping fraction gives it a little more bounce
+    /// for the single hero moment on the sign-in screen.
+    static let logoEntrance: Animation = .spring(response: 0.55, dampingFraction: 0.62)
+
+    /// Autoscroll tracking that must stay glued to live-appended output
+    /// (terminal). Deliberately linear and short — a smooth/spring token would
+    /// lag behind streaming text and read as rubber-banding.
+    static let follow: Animation = .linear(duration: 0.1)
+
+    /// Ambient, self-reversing gradient drift (assistant icon). The one token
+    /// that loops forever — reserved for slow background shimmer, never for
+    /// state changes. Always gate behind Reduce Motion at the call site.
+    static let shimmer: Animation = .easeInOut(duration: 3.5).repeatForever(autoreverses: true)
+
     /// A quick fade used as the Reduce-Motion fallback where *some* motion is
     /// still wanted (transient overlays — toast, delete card) instead of an
     /// instant cut.

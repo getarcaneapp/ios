@@ -59,7 +59,7 @@ struct AIComposerBar: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!isResponding && !canSend)
-                .animation(.easeInOut(duration: 0.15), value: canSend)
+                .animation(Motion.state, value: canSend)
                 .padding(.trailing, 5)
                 .padding(.bottom, 4)
                 .accessibilityLabel(isResponding ? "Stop" : "Send")
@@ -75,7 +75,7 @@ struct AIComposerBar: View {
                 cornerRadius: 22,
                 isEnabled: isResponding
             )
-            .animation(.easeInOut(duration: 0.4), value: isResponding)
+            .animation(Motion.state, value: isResponding)
             .shadow(color: .black.opacity(0.1), radius: 8, y: 2)
             .padding(.horizontal, 16)
             .padding(.top, 4)

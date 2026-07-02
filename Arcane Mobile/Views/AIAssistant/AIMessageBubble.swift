@@ -97,7 +97,7 @@ private struct ThinkingDots: View {
                     .scaleEffect(reduceMotion ? 1 : (phase == i ? 1.2 : 0.8))
             }
         }
-        .animation(.spring(duration: 0.3), value: phase)
+        .animation(Motion.state, value: phase)
         .task {
             guard !reduceMotion else { return }
             while !Task.isCancelled {

@@ -346,13 +346,16 @@ struct CreateWebhookView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Webhook Details") {
+                Section {
                     FormTextField(
                         title: "Name",
                         placeholder: "Restart API container",
-                        text: $name,
-                        helper: "Use a name that explains what this webhook will trigger."
+                        text: $name
                     )
+                } header: {
+                    Text("Webhook Details")
+                } footer: {
+                    Text("Use a name that explains what this webhook will trigger.")
                 }
 
                 Section("Target") {

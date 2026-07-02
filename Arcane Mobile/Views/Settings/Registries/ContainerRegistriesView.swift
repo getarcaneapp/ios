@@ -26,7 +26,7 @@ struct ContainerRegistriesView: View {
                     Button("Try Again") { Task { await loadRegistries(refresh: true) } }
                 }
             } else if registries.isEmpty {
-                ContentUnavailableView("No Container Registries", systemImage: "shippingbox.slash", description: nil)
+                ContentUnavailableView("No Container Registries", systemImage: "shippingbox", description: nil)
             } else {
                 List {
                     ForEach(registries) { registry in
@@ -139,15 +139,40 @@ struct ContainerRegistriesView: View {
 
 struct RegistryRow: View {
     let registry: ContainerRegistry
+
+    // Prefer a friendly name; fall back to the URL. Avoids showing the URL twice
+    // when the registry's name is just its URL.
+    private var title: String {
+        let name = registry.name?.trimmingCharacters(in: .whitespaces) ?? ""
+        if !name.isEmpty, name != registry.url { return name }
+        if !registry.url.isEmpty { return registry.url }
+        return name.isEmpty ? registry.id : name
+    }
+
+    // When the title already is the URL, show the registry type instead of
+    // repeating it.
+    private var subtitle: String {
+        if title != registry.url, !registry.url.isEmpty { return registry.url }
+        return typeLabel
+    }
+
+    private var typeLabel: String {
+        registry.registryType == "ecr" ? "AWS ECR" : "Generic"
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "shippingbox.fill")
                 .font(.title3).foregroundStyle(Color.accentColor)
                 .frame(width: 36, height: 36)
-                .glassEffectCompat(in: .circle)
+                // A frosted (non-glass) chip: a standalone .glassEffect per row
+                // re-lays-out inside the List and triggers SwiftUI's "glassEffect
+                // tried to update multiple times per frame" warning. Material gives
+                // the same look without the per-row glass pass.
+                .background(.regularMaterial, in: .circle)
             VStack(alignment: .leading, spacing: 3) {
-                Text(registry.name ?? registry.id).font(.headline)
-                Text(registry.url).font(.caption).foregroundStyle(.secondary)
+                Text(title).font(.headline)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             if !registry.enabled {
@@ -155,6 +180,9 @@ struct RegistryRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
     }
@@ -168,6 +196,10 @@ private struct PressableRegistryRow: View {
     var body: some View {
         Button(action: onEdit) {
             RegistryRow(registry: registry)
+                // Without this, a plain-style button in a List only registers taps
+                // on the opaque text/icon — the rest of the row (and its padding)
+                // is dead, so users had to long-press. Make the whole row tappable.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .contextMenu {

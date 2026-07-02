@@ -41,7 +41,7 @@ struct ContainerTerminalView: View {
                     }
                     .background(Color(.systemBackground))
                     .onChange(of: output) { _, _ in
-                        withAnimation(.linear(duration: 0.1)) {
+                        withAnimation(Motion.follow) {
                             proxy.scrollTo("bottom", anchor: .bottom)
                         }
                     }

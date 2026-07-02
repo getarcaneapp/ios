@@ -54,7 +54,7 @@ struct RegistryFormView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Registry Details") {
+                Section {
                     FormTextField(
                         title: "Registry URL",
                         placeholder: "registry.example.com",
@@ -73,14 +73,17 @@ struct RegistryFormView: View {
                     )
                     FormPicker(
                         title: "Type",
-                        selection: typeBinding,
-                        helper: "Choose AWS ECR only for registries that need AWS credentials."
+                        selection: typeBinding
                     ) {
                         Text("Generic").tag("generic")
                         Text("AWS ECR").tag("ecr")
                     }
                     Toggle("Enabled", isOn: $enabled)
                     Toggle("Insecure", isOn: $insecure)
+                } header: {
+                    Text("Registry Details")
+                } footer: {
+                    Text("Choose AWS ECR only for registries that need AWS credentials.")
                 }
 
                 if !isAWS {

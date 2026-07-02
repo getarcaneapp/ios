@@ -206,7 +206,7 @@ struct ArcaneAssistantIcon: View {
         }
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 3.5).repeatForever(autoreverses: true)) {
+            withAnimation(Motion.shimmer) {
                 shifted = true
             }
         }

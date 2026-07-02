@@ -25,6 +25,15 @@ struct ProjectDetailView: View {
     @State private var fileBrowserFiles: [ProjectFile]?
     @State private var fileBrowserLoading = false
     @State private var fileBrowserErrorMessage: String?
+    /// Drives the Project Files workspace as a modal sheet (over the tab bar)
+    /// rather than a push (which leaves the tab bar visible). The UUID gives each
+    /// tap a fresh identity so re-opening always re-presents.
+    @State private var filesSheet: FilesSheetRequest?
+
+    private struct FilesSheetRequest: Identifiable {
+        let id = UUID()
+        let selection: ProjectFilesWorkspaceDestination
+    }
 
     private var currentProject: ProjectDetails { refreshedProject ?? project }
     private var isRunning: Bool { currentProject.status.lowercased() == "running" }
@@ -92,6 +101,15 @@ struct ProjectDetailView: View {
                         }
                 }
                 .presentationDragIndicator(.visible)
+            }
+        }
+        .sheet(item: $filesSheet) { request in
+            NavigationStack {
+                ProjectFilesWorkspaceView(
+                    project: currentProject,
+                    environmentID: environmentID,
+                    initialSelection: request.selection
+                )
             }
         }
         .sheet(item: $streamingAction) { action in
@@ -217,37 +235,31 @@ struct ProjectDetailView: View {
 
     private var projectFilesSection: some View {
         Section("Files") {
-            NavigationLink {
-                ProjectFilesWorkspaceView(
-                    project: currentProject,
-                    environmentID: environmentID,
-                    initialSelection: .compose
-                )
+            Button {
+                filesSheet = FilesSheetRequest(selection: .compose)
             } label: {
                 ProjectFileBrowserRow(
                     name: projectComposeFileName,
                     detail: "Compose definition",
                     systemImage: "doc.text",
                     isDirectory: false,
-                    showsDisclosure: false
+                    showsDisclosure: true
                 )
             }
+            .buttonStyle(.plain)
 
-            NavigationLink {
-                ProjectFilesWorkspaceView(
-                    project: currentProject,
-                    environmentID: environmentID,
-                    initialSelection: .env
-                )
+            Button {
+                filesSheet = FilesSheetRequest(selection: .env)
             } label: {
                 ProjectFileBrowserRow(
                     name: ".env",
                     detail: "Environment variables",
                     systemImage: "key.horizontal",
                     isDirectory: false,
-                    showsDisclosure: false
+                    showsDisclosure: true
                 )
             }
+            .buttonStyle(.plain)
 
             if fileBrowserLoading && fileBrowserFiles == nil {
                 HStack(spacing: 10) {
@@ -271,32 +283,28 @@ struct ProjectDetailView: View {
             } else {
                 let entries = fileBrowserEntries
                 if entries.isEmpty {
-                    NavigationLink {
-                        ProjectFilesWorkspaceView(
-                            project: currentProject,
-                            environmentID: environmentID,
-                            initialSelection: .files
-                        )
+                    Button {
+                        filesSheet = FilesSheetRequest(selection: .files)
                     } label: {
                         ProjectFileBrowserRow(
                             name: "Project root",
                             detail: "Browse or create custom files",
                             systemImage: "folder",
                             isDirectory: true,
-                            showsDisclosure: false
+                            showsDisclosure: true
                         )
                     }
+                    .buttonStyle(.plain)
                 } else {
                     ForEach(entries) { entry in
-                        NavigationLink {
-                            ProjectFilesWorkspaceView(
-                                project: currentProject,
-                                environmentID: environmentID,
-                                initialSelection: entry.isDirectory ? .folder(entry.relativePath) : .managedFile(entry.relativePath)
+                        Button {
+                            filesSheet = FilesSheetRequest(
+                                selection: entry.isDirectory ? .folder(entry.relativePath) : .managedFile(entry.relativePath)
                             )
                         } label: {
-                            ProjectFileBrowserRow(entry: entry, showsDisclosure: false)
+                            ProjectFileBrowserRow(entry: entry, showsDisclosure: true)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }

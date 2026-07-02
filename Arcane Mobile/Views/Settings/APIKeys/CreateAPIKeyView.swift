@@ -67,12 +67,11 @@ struct CreateAPIKeyView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Key Details") {
+                Section {
                     FormTextField(
                         title: "Name",
                         placeholder: "CI deploy key",
-                        text: $name,
-                        helper: "Use a name that identifies where this key will be used."
+                        text: $name
                     )
                     FormTextField(
                         title: "Description",
@@ -81,6 +80,10 @@ struct CreateAPIKeyView: View {
                         axis: .vertical,
                         lineLimit: 2...4
                     )
+                } header: {
+                    Text("Key Details")
+                } footer: {
+                    Text("Use a name that identifies where this key will be used.")
                 }
                 if let error = errorMessage {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }

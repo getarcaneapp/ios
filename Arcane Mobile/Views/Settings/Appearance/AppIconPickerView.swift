@@ -110,8 +110,7 @@ struct AppIconPickerView: View {
                 if let error {
                     errorMessage = error.localizedDescription
                 } else {
-                    let animation: Animation? = reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.75)
-                    withAnimation(animation) {
+                    withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
                         currentIconName = option.alternateName
                     }
                     showToast(.success("App icon changed"))

@@ -227,7 +227,7 @@ struct RoleDetailView: View {
 
     var body: some View {
         Form {
-            Section("Role Info") {
+            Section {
                 if isReadOnly {
                     FormValueRow(title: "Name", value: name)
                     if !description.isEmpty {
@@ -237,8 +237,7 @@ struct RoleDetailView: View {
                     FormTextField(
                         title: "Name",
                         placeholder: "Deploy Operator",
-                        text: $name,
-                        helper: "Use a short name that explains who this role is for."
+                        text: $name
                     )
                     FormTextField(
                         title: "Description",
@@ -247,6 +246,12 @@ struct RoleDetailView: View {
                         axis: .vertical,
                         lineLimit: 2...4
                     )
+                }
+            } header: {
+                Text("Role Info")
+            } footer: {
+                if !isReadOnly {
+                    Text("Use a short name that explains who this role is for.")
                 }
             }
             if let manifest {

@@ -238,15 +238,18 @@ private struct OIDCMappingFormSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Claim Value") {
+                Section {
                     FormTextField(
                         title: "Claim Value",
                         placeholder: "docker-admins",
                         text: $claimValue,
                         autocapitalization: .never,
-                        autocorrectionDisabled: true,
-                        helper: "Enter the exact value from the configured OIDC claim."
+                        autocorrectionDisabled: true
                     )
+                } header: {
+                    Text("Claim Value")
+                } footer: {
+                    Text("Enter the exact value from the configured OIDC claim.")
                 }
                 Section("Role") {
                     Picker("Role", selection: $roleId) {

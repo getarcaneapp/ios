@@ -12,6 +12,7 @@ enum ProjectFilesWorkspaceDestination: Hashable {
 struct ProjectFilesWorkspaceView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.dismiss) private var dismiss
 
     let projectID: String
     let initialProjectName: String
@@ -103,6 +104,14 @@ struct ProjectFilesWorkspaceView: View {
         }
         .navigationDestination(for: ProjectFilesWorkspaceDestination.self) { destination in
             workspaceContent(for: destination)
+        }
+        // Presented as a sheet, so the root needs an explicit dismiss. Pushed
+        // drill-downs keep the NavigationStack's automatic back button; this
+        // leading item shows only on the workspace root.
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Done") { dismiss() }
+            }
         }
         .sheet(isPresented: $showRender) {
             RenderComposeView(

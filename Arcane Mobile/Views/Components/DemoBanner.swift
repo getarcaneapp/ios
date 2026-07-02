@@ -71,7 +71,7 @@ private struct DemoCountdownText: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(isLowTime ? .orange : .secondary)
                 .contentTransition(.numericText(countsDown: true))
-                .animation(.smooth(duration: 0.4), value: isLowTime)
+                .animation(Motion.state, value: isLowTime)
         }
     }
 

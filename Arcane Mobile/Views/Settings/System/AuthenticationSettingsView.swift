@@ -34,46 +34,25 @@ struct AuthenticationSettingsView: View {
         Form {
             Section {
                 Toggle("Local Auth Enabled", isOn: $authLocalEnabled)
-            } header: {
-                Label("Local Authentication", systemImage: "person.badge.key")
-            }
-
-            Section {
-                FormTextField(
+                FormNumberField(
                     title: "Session Timeout",
                     placeholder: "1440",
                     text: $authSessionTimeout,
-                    keyboardType: .numberPad,
-                    helper: "Session length in minutes (15–1440)."
+                    minValue: 15,
+                    maxValue: 1440
                 )
                 FormPicker(
                     title: "Password Policy",
-                    selection: $authPasswordPolicy,
-                    helper: "Stronger policies require more complex local passwords."
+                    selection: $authPasswordPolicy
                 ) {
                     Text("Basic").tag("basic")
                     Text("Standard").tag("standard")
                     Text("Strong").tag("strong")
                 }
             } header: {
-                Label("Session", systemImage: "clock")
-            }
-
-            if oidcEnvForced {
-                Section {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "lock.fill")
-                            .foregroundStyle(.orange)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Configured by Environment Variables")
-                                .font(.subheadline.weight(.semibold))
-                            Text("OIDC settings are managed via OS environment variables on the server and cannot be modified here.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
+                Label("Local Authentication", systemImage: "person.badge.key")
+            } footer: {
+                Text("Session length in minutes (15–1440). Stronger policies require more complex local passwords.")
             }
 
             Section {
@@ -116,10 +95,15 @@ struct AuthenticationSettingsView: View {
                     placeholder: "openid email profile",
                     text: $oidcScopes,
                     autocapitalization: .never,
-                    autocorrectionDisabled: true
+                    autocorrectionDisabled: true,
+                    layout: .stacked
                 )
             } header: {
                 Label("OIDC Provider", systemImage: "lock.shield")
+            } footer: {
+                if oidcEnvForced {
+                    Label("OIDC is managed by server environment variables and can't be edited here.", systemImage: "lock.fill")
+                }
             }
             .disabled(oidcEnvForced)
 
@@ -129,14 +113,15 @@ struct AuthenticationSettingsView: View {
                     placeholder: "groups",
                     text: $oidcGroupsClaim,
                     autocapitalization: .never,
-                    autocorrectionDisabled: true,
-                    helper: "Token claim read for group memberships. Map groups to roles in the Arcane web app."
+                    autocorrectionDisabled: true
                 )
                 Toggle("Skip TLS Verify", isOn: $oidcSkipTlsVerify)
                 Toggle("Auto-Redirect to Provider", isOn: $oidcAutoRedirectToProvider)
                 Toggle("Merge Accounts", isOn: $oidcMergeAccounts)
             } header: {
                 Text("OIDC Options")
+            } footer: {
+                Text("Groups Claim is the token claim read for group memberships. Map groups to roles in the Arcane web app.")
             }
             .disabled(oidcEnvForced)
 

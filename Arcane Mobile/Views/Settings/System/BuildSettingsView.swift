@@ -19,23 +19,24 @@ struct BuildSettingsView: View {
             Section {
                 FormPicker(
                     title: "Build Provider",
-                    selection: $buildProvider,
-                    helper: "Choose where Arcane should run image builds."
+                    selection: $buildProvider
                 ) {
                     Text("Local").tag("local")
                     Text("Depot").tag("depot")
                 }
             } header: {
                 Label("Provider", systemImage: "hammer")
+            } footer: {
+                Text("Choose where Arcane should run image builds.")
             }
 
-            Section("Configuration") {
-                FormTextField(
+            Section {
+                FormNumberField(
                     title: "Build Timeout",
                     placeholder: "1800",
                     text: $buildTimeout,
-                    keyboardType: .numberPad,
-                    helper: "Build duration in seconds (60–14400)."
+                    minValue: 60,
+                    maxValue: 14400
                 )
                 FormTextField(
                     title: "Builds Directory",
@@ -43,8 +44,13 @@ struct BuildSettingsView: View {
                     text: $buildsDirectory,
                     autocapitalization: .never,
                     autocorrectionDisabled: true,
-                    monospaced: true
+                    monospaced: true,
+                    layout: .stacked
                 )
+            } header: {
+                Text("Configuration")
+            } footer: {
+                Text("Build duration in seconds (60–14400).")
             }
 
             if buildProvider == "depot" {

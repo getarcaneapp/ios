@@ -102,7 +102,7 @@ struct LoginView: View {
         .animation(Motion.entrance, value: isSetupMode)
         .animation(Motion.entrance, value: manager.errorMessage)
         .animation(Motion.entrance, value: manager.isStartingDemo)
-        .animation(.spring(response: 0.3), value: manager.isLoading)
+        .animation(Motion.state, value: manager.isLoading)
         .onAppear {
             serverURL = manager.serverURL
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -143,7 +143,7 @@ struct LoginView: View {
                         logoAppeared = true
                         return
                     }
-                    withAnimation(.spring(response: 0.55, dampingFraction: 0.62).delay(0.08)) {
+                    withAnimation(Motion.logoEntrance.delay(0.08)) {
                         logoAppeared = true
                     }
                 }
@@ -447,7 +447,7 @@ struct LoginView: View {
         )
         .disabled(manager.isLoading)
         .opacity(manager.isLoading && !manager.isStartingDemo ? 0.5 : 1)
-        .animation(.spring(response: 0.3), value: manager.isStartingDemo)
+        .animation(Motion.state, value: manager.isStartingDemo)
     }
 
     // MARK: - Intent

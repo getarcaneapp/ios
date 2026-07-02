@@ -3,14 +3,14 @@
 //  Arcane Mobile
 //
 //  A reusable destructive-confirmation surface used app-wide in place of
-//  `.alert` / `.confirmationDialog`. It shows a bottom "card" with a dark scrim
-//  and Cancel / action capsule buttons that rises and fades in.
+//  `.alert` / `.confirmationDialog`. It shows a centered "card" with a dark scrim
+//  and Cancel / action capsule buttons that scales and fades in.
 //
 //  The card design + spring timing are adapted from Balaji Venkatesh's
 //  `AnimatedDeleteButton` sample. The original morphs out of the tapped button;
 //  because most of this app's confirmations fire from swipe actions, context
 //  menus, toolbar buttons and `.alert` state (none of which leave a persistent
-//  source button), we present the same card as a unified bottom sheet instead.
+//  source button), we present the same card as a unified centered dialog instead.
 //
 //  IMPORTANT: the card is rendered by a SINGLE host (`.deleteConfirmationHost()`,
 //  mounted once near the app root) as a plain ZStack overlay — NOT via
@@ -269,29 +269,27 @@ private struct DeleteConfirmationCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let cornerRadius: CGFloat = 40
-    /// Keep the action buttons clear of the floating bottom tab/action bar.
-    /// The card can be hosted from inside tab content so sheet presentations
-    /// still work; in that hierarchy the bar overlays this view.
-    private let bottomBarClearance: CGFloat = 96
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             Rectangle()
                 .fill(.black.opacity(shown ? 0.4 : 0))
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { resolve(nil) }
 
+            // Centered in the screen so it clears the floating tab / action bar
+            // on every page — including the compact custom nav bar, where a
+            // bottom-anchored card was being clipped.
             card
                 .frame(maxWidth: 500)
-                .padding(.horizontal, 12)
-                .padding(.bottom, bottomBarClearance)
+                .padding(.horizontal, 24)
                 .frame(maxWidth: .infinity)
-                .offset(y: shown ? 0 : offscreenOffset)
+                .scaleEffect(shown ? 1 : entranceScale)
                 .opacity(shown ? 1 : 0)
                 .blur(radius: shown ? 0 : entranceBlur)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onAppear {
             HapticsManager.warning()
@@ -423,6 +421,6 @@ private struct DeleteConfirmationCard: View {
         reduceMotion ? Motion.reducedFallback : Motion.overlay
     }
 
-    private var offscreenOffset: CGFloat { reduceMotion ? 0 : 28 }
+    private var entranceScale: CGFloat { reduceMotion ? 1 : 0.94 }
     private var entranceBlur: CGFloat { reduceMotion ? 0 : 12 }
 }
