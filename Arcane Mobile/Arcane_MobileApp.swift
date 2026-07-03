@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import TipKit
+import Arcane
 
 @main
 struct Arcane_MobileApp: App {
@@ -26,19 +27,38 @@ struct Arcane_MobileApp: App {
                 .environment(resourceMutationStore)
                 .tint(accentColorHex.isEmpty ? nil : accentColor)
                 .task {
-                    await ImageCache.shared.trimDiskCache()
+                    Task.detached(priority: .background) { ImageCache.shared.trimDiskCache() }
                     try? Tips.configure([.displayFrequency(.immediate), .datastoreLocation(.applicationDefault)])
                 }
                 .onOpenURL { url in
                     if url.scheme == "arcane-mobile", url.host == "end-demo" {
                         Task { await clientManager.endDemo(reason: .userInitiated) }
+                        return
                     }
+                    if QuickActionRouter.shared.handle(url: url) {
+                        // Widget deep links can carry a target environment —
+                        // switch the active context before the tab shows.
+                        if let envID = QuickActionRouter.shared.pendingDeepLink?.environmentID,
+                           envID != clientManager.activeEnvironmentID.rawValue {
+                            clientManager.setActiveEnvironment(
+                                id: EnvironmentID(rawValue: envID),
+                                name: envID
+                            )
+                        }
+                    }
+                }
+                .onChange(of: accentColorHex) { _, newValue in
+                    AppGroup.defaults?.set(newValue, forKey: AppGroup.Keys.accentColorHex)
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
                         Task { @MainActor in
                             ReviewPrompter.shared.maybePromptIfDue()
                         }
+                    }
+                    if newPhase == .background {
+                        // Land any queued widget snapshot before suspension.
+                        WidgetSnapshotPublisher.shared.flush()
                     }
                 }
         }

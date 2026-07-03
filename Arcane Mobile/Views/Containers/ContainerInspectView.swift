@@ -8,6 +8,11 @@ struct ContainerInspectView: View {
     let environmentID: EnvironmentID
 
     @State private var rawJSON: String = ""
+    /// Pre-split lines of `rawJSON`, computed once at load so keystroke
+    /// filtering doesn't re-split the (potentially large) document each time.
+    @State private var jsonLines: [String] = []
+    /// The string body actually renders; updated by the debounced filter task.
+    @State private var displayedJSON: String = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
@@ -32,7 +37,7 @@ struct ContainerInspectView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    Text(filteredJSON)
+                    Text(displayedJSON)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -63,15 +68,25 @@ struct ContainerInspectView: View {
         }
         .task { await load() }
         .refreshable { await load() }
-    }
-
-    private var filteredJSON: String {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return rawJSON }
-        return rawJSON
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { $0.localizedCaseInsensitiveContains(trimmed) }
-            .joined(separator: "\n")
+        // Debounced, off-main filtering: typing in the search field used to
+        // re-split and re-filter the entire JSON document per keystroke in body.
+        .task(id: searchText) {
+            let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                displayedJSON = rawJSON
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            let lines = jsonLines
+            let filtered = await Task.detached(priority: .userInitiated) {
+                lines
+                    .filter { $0.localizedCaseInsensitiveContains(trimmed) }
+                    .joined(separator: "\n")
+            }.value
+            guard !Task.isCancelled else { return }
+            displayedJSON = filtered
+        }
     }
 
     private func load() async {
@@ -83,7 +98,12 @@ struct ContainerInspectView: View {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             let data = try encoder.encode(details)
-            rawJSON = String(decoding: data, as: UTF8.self)
+            let json = String(decoding: data, as: UTF8.self)
+            rawJSON = json
+            jsonLines = json.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                displayedJSON = json
+            }
             errorMessage = nil
         } catch {
             errorMessage = friendlyErrorMessage(error)

@@ -26,7 +26,14 @@ struct ContainerRegistriesView: View {
                     Button("Try Again") { Task { await loadRegistries(refresh: true) } }
                 }
             } else if registries.isEmpty {
-                ContentUnavailableView("No Container Registries", systemImage: "shippingbox", description: nil)
+                ContentUnavailableView {
+                    Label("No Container Registries", systemImage: "shippingbox")
+                } description: {
+                    Text("Add a registry to pull private images and check for updates behind authentication.")
+                } actions: {
+                    Button("Add Registry") { showCreateRegistrySheet = true }
+                        .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     ForEach(registries) { registry in

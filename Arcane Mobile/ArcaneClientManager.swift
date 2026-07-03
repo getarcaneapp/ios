@@ -60,6 +60,7 @@ final class ArcaneClientManager {
         activeEnvironmentName = name
         UserDefaults.standard.set(id.rawValue, forKey: "arcane.activeEnvironmentID")
         UserDefaults.standard.set(name, forKey: "arcane.activeEnvironmentName")
+        mirrorToAppGroup()
         if previous != id {
             Task { await ResponseCache.shared.invalidateEnvironment(previous.rawValue) }
         }
@@ -68,6 +69,9 @@ final class ArcaneClientManager {
     // MARK: - Client
     private(set) var client: ArcaneClient?
     private var clientSession: URLSession?
+    /// URL the current `client`/`clientSession` were built for; lets
+    /// `configureClient` skip needless session rebuilds.
+    private var configuredClientURL: URL?
     private var needsConnectionBootstrapRetry = false
     private var isRetryingConnectionBootstrap = false
     private var lastBootstrapDNSAddresses: [String] = []
@@ -112,10 +116,13 @@ final class ArcaneClientManager {
         isRetryingConnectionBootstrap = false
         serverURL = normalized
         parsedServerURL = parsed
-        lastBootstrapDNSAddresses = Self.resolvedAddresses(for: parsed)
-        configureClient(for: parsed)
+        lastBootstrapDNSAddresses = []
+        Task { lastBootstrapDNSAddresses = await Self.resolveAddressesDetached(for: parsed) }
+        // Explicit (re)configuration — always rebuild, even for the same URL.
+        configureClient(for: parsed, force: true)
         authState = .login
         oidcInfo = nil
+        mirrorToAppGroup()
         Task { await ResponseCache.shared.invalidateAll() }
         Task { await refreshOIDCStatus() }
     }
@@ -225,7 +232,21 @@ final class ArcaneClientManager {
         serverCapabilities = nil
         authState = .login
         needsConnectionBootstrapRetry = false
+        WidgetSnapshotPublisher.shared.publishSignedOut()
         await ResponseCache.shared.invalidateAll()
+    }
+
+    /// Mirror the widget-relevant defaults into the shared App Group so the
+    /// widget extension and intents can read them (they can't see
+    /// UserDefaults.standard). No-op until the App Groups capability exists.
+    func mirrorToAppGroup() {
+        guard let shared = AppGroup.defaults else { return }
+        shared.set(serverURL, forKey: AppGroup.Keys.serverURL)
+        shared.set(activeEnvironmentID.rawValue, forKey: AppGroup.Keys.activeEnvironmentID)
+        shared.set(activeEnvironmentName, forKey: AppGroup.Keys.activeEnvironmentName)
+        if let accent = UserDefaults.standard.string(forKey: "accentColorHex") {
+            shared.set(accent, forKey: AppGroup.Keys.accentColorHex)
+        }
     }
 
     // MARK: - Demo
@@ -291,6 +312,7 @@ final class ArcaneClientManager {
         serverURL = ""
         client = nil
         authState = .setup
+        WidgetSnapshotPublisher.shared.publishSignedOut()
         if reason == .expired {
             demoExpiredMessage = "Your demo ended. Start a new one or connect to your own server."
         }
@@ -405,11 +427,16 @@ final class ArcaneClientManager {
     }
 
     // MARK: - Private
-    private func configureClient(for url: URL) {
+    private func configureClient(for url: URL, force: Bool = false) {
+        // Reuse the live client when it already points at this URL: every
+        // bootstrap round-trip (OIDC probe, login, session restore) used to
+        // tear the session down and rebuild it, killing in-flight streams.
+        if !force, client != nil, configuredClientURL == url { return }
         clientSession?.finishTasksAndInvalidate()
         let bundle = Self.makeClient(url: url)
         client = bundle.client
         clientSession = bundle.session
+        configuredClientURL = url
     }
 
     private func fetchOIDCDisplayInfo(using client: ArcaneClient) async throws -> OIDCDisplayInfo {
@@ -436,7 +463,7 @@ final class ArcaneClientManager {
             throw ArcaneError.transport("No client")
         }
 
-        lastBootstrapDNSAddresses = Self.resolvedAddresses(for: parsedServerURL)
+        lastBootstrapDNSAddresses = await Self.resolveAddressesDetached(for: parsedServerURL)
         do {
             let result = try await runBootstrapOperation(for: parsedServerURL, operation)
             configureClient(for: parsedServerURL)
@@ -445,7 +472,8 @@ final class ArcaneClientManager {
             guard shouldRefreshNetworkSession(after: error) else {
                 throw error
             }
-            configureClient(for: parsedServerURL)
+            // The transient failure may be a wedged session — force a rebuild.
+            configureClient(for: parsedServerURL, force: true)
             try? await Task.sleep(for: .milliseconds(500))
             let result = try await runBootstrapOperation(for: parsedServerURL, operation)
             configureClient(for: parsedServerURL)
@@ -462,12 +490,22 @@ final class ArcaneClientManager {
         return try await operation(bundle.client)
     }
 
-    private static func resolvedAddresses(for url: URL) -> [String] {
+    /// Blocking `getaddrinfo` — never call on the main actor; use
+    /// `resolveAddressesDetached(for:)` instead.
+    private nonisolated static func resolvedAddresses(for url: URL) -> [String] {
         guard let host = url.host(percentEncoded: false), !host.isEmpty else { return [] }
         return resolveAddresses(for: host)
     }
 
-    private static func resolveAddresses(for host: String) -> [String] {
+    /// Runs the blocking DNS resolve off the main actor so slow/unreachable
+    /// DNS can't freeze the UI during server setup.
+    private static func resolveAddressesDetached(for url: URL) async -> [String] {
+        await Task.detached(priority: .userInitiated) {
+            Self.resolvedAddresses(for: url)
+        }.value
+    }
+
+    private nonisolated static func resolveAddresses(for host: String) -> [String] {
         var hints = addrinfo()
         hints.ai_family = AF_UNSPEC
         hints.ai_socktype = SOCK_STREAM
@@ -630,7 +668,11 @@ final class ArcaneClientManager {
         let session = makeURLSession(bootstrap: bootstrap)
         let client = ArcaneClient(configuration: .init(
             baseURL: url,
-            tokenStore: KeychainTokenStore(service: "com.arcane.mobile.tokens"),
+            // Migrates the session into the shared keychain group so widget
+            // buttons and Shortcuts intents can authenticate. Falls back to
+            // (and keeps writing) the original private item — see
+            // MigratingTokenStore for the sign-out-safety invariants.
+            tokenStore: MigratingTokenStore(),
             defaultEnvironmentID: .localDocker,
             urlSession: session,
             retryPolicy: bootstrap

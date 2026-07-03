@@ -27,7 +27,14 @@ struct TemplateRegistriesView: View {
                     Button("Try Again") { Task { await loadRegistries(refresh: true) } }
                 }
             } else if registries.isEmpty {
-                ContentUnavailableView("No Template Registries", systemImage: "doc.text", description: nil)
+                ContentUnavailableView {
+                    Label("No Template Registries", systemImage: "doc.text")
+                } description: {
+                    Text("Add a registry to browse and deploy ready-made project templates.")
+                } actions: {
+                    Button("Add Template Registry") { showCreateSheet = true }
+                        .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     ForEach(registries) { registry in

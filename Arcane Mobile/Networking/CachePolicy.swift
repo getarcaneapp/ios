@@ -7,6 +7,11 @@ import Foundation
 struct CachePolicy: Sendable {
     let ttl: TimeInterval
 
+    /// Minimum age before a cache hit triggers a background revalidation.
+    /// Below this the cached value is served as-is — rapid tab switching used
+    /// to fire a refetch for every visible row on every appear.
+    var revalidateAfter: TimeInterval { min(30, ttl / 4) }
+
     static let projects         = CachePolicy(ttl: 5 * 60)
     static let environments     = CachePolicy(ttl: 5 * 60)
     static let containersList   = CachePolicy(ttl: 30)

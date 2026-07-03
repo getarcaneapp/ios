@@ -4,7 +4,7 @@ import Arcane
 /// Every destination that can live in the bottom nav bar.
 /// Pure data — no view types. Use `appTabDestination(_:manager:selectedTab:)`
 /// to render the destination view for a tab.
-enum AppTab: String, CaseIterable, Identifiable, Hashable {
+nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case dashboard, containers, images, projects
     case volumes, networks, ports, updates, activities, events
     case gitRepositories, gitOps, swarm

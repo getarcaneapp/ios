@@ -48,6 +48,10 @@ actor ResponseCache {
     private let hotCapacity = 128
     private var accessTick: UInt64 = 0
     private var inFlight: [CacheKey: Task<any Sendable, Error>] = [:]
+    // Disk tier bounds — trimmed lazily on first use per launch (LRU by mtime).
+    private let diskByteCap = 50 * 1024 * 1024        // 50 MB
+    private let diskMaxAge: TimeInterval = 7 * 24 * 60 * 60  // 7 days
+    private var didTrim = false
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let ioQueue = DispatchQueue(label: "com.arcane.response-cache.io", qos: .utility)
@@ -123,21 +127,78 @@ actor ResponseCache {
     // MARK: - Read
 
     func get<T: Codable & Sendable>(_ key: CacheKey, as type: T.Type, ttl: TimeInterval) async -> T? {
+        await getEntry(key, as: type, ttl: ttl)?.value
+    }
+
+    /// Like `get`, but also reports the entry's age so callers can decide
+    /// whether a background revalidation is worth the network round-trip.
+    func getEntry<T: Codable & Sendable>(
+        _ key: CacheKey, as type: T.Type, ttl: TimeInterval
+    ) async -> (value: T, age: TimeInterval)? {
+        trimDiskIfNeeded()
         let now = Date()
         if let entry = hot[key] {
-            if now.timeIntervalSince(entry.storedAt) > ttl { return nil }
+            let age = now.timeIntervalSince(entry.storedAt)
+            if age > ttl { return nil }
             hot[key]?.lastAccess = nextTick()
-            return entry.value as? T
+            guard let value = entry.value as? T else { return nil }
+            return (value, age)
         }
         let url = diskURL(for: key)
         guard let data = await readDisk(at: url) else { return nil }
         // Cheap header parse first to avoid decoding the full payload on collision/expiry.
         guard let header = try? decoder.decode(EnvelopeHeader.self, from: data),
               header.key == key else { return nil }
-        if now.timeIntervalSince(header.storedAt) > ttl { return nil }
+        let age = now.timeIntervalSince(header.storedAt)
+        if age > ttl { return nil }
         guard let env = try? decoder.decode(ValueEnvelope<T>.self, from: data) else { return nil }
         insertHot(key, value: env.value, storedAt: env.storedAt)
-        return env.value
+        // Touch mtime so LRU-by-mtime trim keeps recently-read entries alive.
+        ioQueue.async {
+            try? FileManager.default.setAttributes(
+                [.modificationDate: Date()], ofItemAtPath: url.path
+            )
+        }
+        return (env.value, age)
+    }
+
+    /// Bounds the disk tier: entries older than `diskMaxAge` are removed, then
+    /// the oldest-by-mtime entries go until the total is under `diskByteCap`.
+    /// Runs once per launch, entirely on the IO queue.
+    private func trimDiskIfNeeded() {
+        guard !didTrim else { return }
+        didTrim = true
+        let directory = diskDirectory
+        let byteCap = diskByteCap
+        let maxAge = diskMaxAge
+        ioQueue.async {
+            let fm = FileManager.default
+            let keys: [URLResourceKey] = [.contentModificationDateKey, .totalFileAllocatedSizeKey]
+            guard let entries = try? fm.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: keys,
+                options: [.skipsHiddenFiles]
+            ) else { return }
+            let now = Date()
+            var alive: [(url: URL, mtime: Date, size: Int)] = []
+            for url in entries {
+                let v = try? url.resourceValues(forKeys: Set(keys))
+                let mtime = v?.contentModificationDate ?? .distantPast
+                let size = v?.totalFileAllocatedSize ?? 0
+                if now.timeIntervalSince(mtime) > maxAge {
+                    try? fm.removeItem(at: url)
+                    continue
+                }
+                alive.append((url, mtime, size))
+            }
+            var total = alive.reduce(0) { $0 + $1.size }
+            guard total > byteCap else { return }
+            for entry in alive.sorted(by: { $0.mtime < $1.mtime }) {
+                try? fm.removeItem(at: entry.url)
+                total -= entry.size
+                if total <= byteCap { break }
+            }
+        }
     }
 
     // MARK: - Write

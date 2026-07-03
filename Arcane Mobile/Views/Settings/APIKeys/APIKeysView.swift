@@ -24,7 +24,14 @@ struct APIKeysView: View {
                     Button("Try Again") { Task { await loadKeys(refresh: true) } }
                 }
             } else if apiKeys.isEmpty {
-                ContentUnavailableView("No API Keys", systemImage: "key.slash", description: nil)
+                ContentUnavailableView {
+                    Label("No API Keys", systemImage: "key.slash")
+                } description: {
+                    Text("Create a key to access the Arcane API from scripts and integrations.")
+                } actions: {
+                    Button("Create API Key") { showCreateSheet = true }
+                        .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     ForEach(apiKeys) { key in

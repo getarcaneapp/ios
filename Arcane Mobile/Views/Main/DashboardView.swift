@@ -77,13 +77,21 @@ struct DashboardView: View {
     @State private var failedActivities: [Activity] = []
     @State private var rawEnvironmentCount: Int = 0
     @State private var detailRoute: EnvironmentDetailRoute?
+    /// Pushes AllVulnerabilitiesView for the environment named in the route.
+    @State private var vulnerabilityRoute: EnvironmentDetailRoute?
+    @State private var showAPIKeys = false
     @State private var streamStore = DashboardStreamStore()
+    @State private var statsHistory = SystemStatsHistoryStore()
     /// Guards the scenePhase handler — hidden tab pages also receive scene
     /// phase changes and must not start their own stream.
     @State private var isDashboardVisible = false
 
     @State private var isLoading = false
     @State private var hasLoadedOnce = false
+    /// True only after an environments fetch actually succeeded — gates the
+    /// "No Environments" empty state so a cancelled/failed first load can't
+    /// flash it before data arrives.
+    @State private var hasLoadedEnvironments = false
     /// Bumped on pull-to-refresh so per-environment cards force-refetch their own
     /// `system/docker/info` — their `.task` does not re-run on a parent refresh.
     @State private var cardRefreshToken = 0
@@ -104,12 +112,32 @@ struct DashboardView: View {
                     dashboardHeader
                     if !hasLoadedOnce && isLoading {
                         skeletonView
+                    } else if environments.isEmpty && hasLoadedEnvironments {
+                        ContentUnavailableView {
+                            Label("No Environments", systemImage: "server.rack")
+                        } description: {
+                            Text("Connect an environment to see live container, image, and system stats here.")
+                        } actions: {
+                            NavigationLink("Manage Environments") {
+                                EnvironmentsView()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .padding(.top, 48)
                     } else {
                         overviewGrid
                             .cardEntrance()
 
+                        let attention = needsAttentionItems
+                        if !attention.isEmpty {
+                            NeedsAttentionSection(items: attention)
+                                .padding(.top, 8)
+                                .transition(.opacity)
+                        }
+
                         environmentsSection
                             .padding(.top, 8)
+                            .motionAwareAnimation(Motion.reflow, value: needsAttentionItems.map(\.id))
                     }
                 }
                 .padding(.horizontal)
@@ -184,10 +212,19 @@ struct DashboardView: View {
                 )
                 .pageEntranceFromTop()
             }
+            .navigationDestination(item: $vulnerabilityRoute) { route in
+                AllVulnerabilitiesView(environmentID: EnvironmentID(rawValue: route.id))
+            }
+            .navigationDestination(isPresented: $showAPIKeys) {
+                APIKeysView()
+            }
             .task { await loadData() }
             .refreshable { await loadData(refresh: true) }
             .onChange(of: manager.activeEnvironmentID.rawValue) {
                 environments = dashboardEnvironments(from: allEnvironments.isEmpty ? environments : allEnvironments)
+                // The active environment moved to the front, which can change
+                // which environments fall inside the history-stream cap.
+                statsHistory.reconcile(environments: environments)
             }
             // The aggregated dashboard stream covers all environments over one
             // connection. v1 servers never get the endpoint, so don't attempt
@@ -195,6 +232,11 @@ struct DashboardView: View {
             // latches into silent legacy mode.
             .task(id: manager.client.map { ObjectIdentifier($0.transport) }) {
                 streamStore.configure(client: manager.client)
+                // Stats history streams work on both v1 and v2 servers (the
+                // per-env stats endpoint predates the aggregated dashboard
+                // stream), so it starts unconditionally.
+                statsHistory.configure(client: manager.client)
+                statsHistory.start()
                 guard manager.supportsActivities else { return }
                 streamStore.start()
             }
@@ -202,14 +244,23 @@ struct DashboardView: View {
             .onDisappear {
                 isDashboardVisible = false
                 streamStore.stop()
+                statsHistory.stop()
+            }
+            .onChange(of: streamStore.aggregate) { _, _ in
+                publishWidgetSnapshot()
             }
             .onChange(of: scenePhase) { _, phase in
-                guard manager.supportsActivities else { return }
                 switch phase {
                 case .background:
-                    streamStore.stop()
+                    statsHistory.stop()
+                    if manager.supportsActivities { streamStore.stop() }
+                    publishWidgetSnapshot()
+                    WidgetSnapshotPublisher.shared.flush()
                 case .active:
-                    if isDashboardVisible { streamStore.start() }
+                    if isDashboardVisible {
+                        statsHistory.start()
+                        if manager.supportsActivities { streamStore.start() }
+                    }
                 default:
                     break
                 }
@@ -245,6 +296,7 @@ struct DashboardView: View {
                     cachedCard: cardData,
                     streamState: streamStore.state(for: env.id),
                     isActive: env.id == manager.activeEnvironmentID.rawValue,
+                    series: statsHistory.series(for: env.id),
                     refreshToken: cardRefreshToken,
                     onSelect: {
                         detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
@@ -302,8 +354,138 @@ struct DashboardView: View {
             Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if let fleetSubtitle {
+                Text(fleetSubtitle)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                    .motionAwareAnimation(Motion.state, value: fleetSubtitle)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Live fleet summary under the date: "N of M environments online ·
+    /// R containers running". Nil until any source has real data.
+    private var fleetSubtitle: String? {
+        let total = environments.count
+        guard total > 0 else { return nil }
+        let online: Int? = {
+            let states = streamStore.statesByEnvironmentID.values
+            if states.contains(where: { $0.hasLoaded || $0.streamError }) {
+                return states.count(where: { $0.hasLoaded && !$0.streamError })
+            }
+            return overview?.summary.onlineEnvironments
+        }()
+        let running = streamStore.aggregate?.runningContainers
+            ?? liveCounts?.running
+            ?? overview?.summary.containers?.runningContainers
+        var parts: [String] = []
+        if let online { parts.append("\(online) of \(total) environment\(total == 1 ? "" : "s") online") }
+        if let running { parts.append("\(running) container\(running == 1 ? "" : "s") running") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Triage rows for the Needs Attention card, folded from data the
+    /// dashboard already holds — no extra fetches. Empty means all clear
+    /// (the card simply doesn't render).
+    private var needsAttentionItems: [NeedsAttentionItem] {
+        var items: [NeedsAttentionItem] = []
+
+        // Offline / erroring environments from the live stream states.
+        let erroring = environments.filter { streamStore.state(for: $0.id)?.streamError == true }
+        if let first = erroring.first {
+            items.append(NeedsAttentionItem(
+                id: "offline-environments",
+                severity: .critical,
+                icon: "wifi.exclamationmark",
+                title: erroring.count == 1
+                    ? "\(first.name ?? first.id) unreachable"
+                    : "Environments unreachable",
+                count: erroring.count,
+                action: {
+                    detailRoute = EnvironmentDetailRoute(id: first.id, name: first.name ?? first.id)
+                }
+            ))
+        }
+
+        // Fold server-computed action items across every environment snapshot.
+        var stopped = 0, updates = 0, expiringKeys = 0
+        var vulnerabilities = 0
+        var vulnerabilityEnv: (id: String, name: String, count: Int)?
+        var criticalVulns = false
+        for env in environments {
+            guard let state = streamStore.state(for: env.id), state.hasLoaded,
+                  let snapshotItems = state.snapshot?.actionItems.items else { continue }
+            for item in snapshotItems {
+                switch item.kind {
+                case .stoppedContainers: stopped += item.count
+                case .imageUpdates: updates += item.count
+                case .expiringKeys: expiringKeys += item.count
+                case .actionableVulnerabilities:
+                    vulnerabilities += item.count
+                    if item.severity == .critical { criticalVulns = true }
+                    if item.count > (vulnerabilityEnv?.count ?? 0) {
+                        vulnerabilityEnv = (env.id, env.name ?? env.id, item.count)
+                    }
+                case .unknown: break
+                }
+            }
+        }
+
+        if vulnerabilities > 0, let target = vulnerabilityEnv {
+            items.append(NeedsAttentionItem(
+                id: "vulnerabilities",
+                severity: criticalVulns ? .critical : .warning,
+                icon: "exclamationmark.shield.fill",
+                title: "Actionable vulnerabilities",
+                count: vulnerabilities,
+                action: {
+                    vulnerabilityRoute = EnvironmentDetailRoute(id: target.id, name: target.name)
+                }
+            ))
+        }
+        if stopped > 0 {
+            items.append(NeedsAttentionItem(
+                id: "stopped-containers",
+                severity: .warning,
+                icon: "stop.fill",
+                title: "Stopped containers",
+                count: stopped,
+                action: { selectedTab = AppTab.containers.id }
+            ))
+        }
+        if updates > 0 {
+            items.append(NeedsAttentionItem(
+                id: "image-updates",
+                severity: .warning,
+                icon: "arrow.triangle.2.circlepath",
+                title: "Image updates available",
+                count: updates,
+                action: { showImageUpdates = true }
+            ))
+        }
+        if expiringKeys > 0 {
+            items.append(NeedsAttentionItem(
+                id: "expiring-keys",
+                severity: .warning,
+                icon: "key.fill",
+                title: "API keys expiring soon",
+                count: expiringKeys,
+                action: { showAPIKeys = true }
+            ))
+        }
+        if !failedActivities.isEmpty {
+            items.append(NeedsAttentionItem(
+                id: "failed-activities",
+                severity: .critical,
+                icon: "exclamationmark.triangle.fill",
+                title: "Failed activities",
+                count: failedActivities.count,
+                action: { showActivities = true }
+            ))
+        }
+        return items
     }
 
     private var failedActivityBadgeCount: Int {
@@ -376,16 +558,14 @@ struct DashboardView: View {
                     .frame(width: 56, height: 20)
             }
 
-            HStack(spacing: 0) {
-                ForEach(0..<3, id: \.self) { _ in
-                    Spacer(minLength: 0)
-                    VStack(spacing: 8) {
-                        SkeletonCircle(size: 62)
-                        SkeletonRect(width: 36, height: 10, cornerRadius: 2)
-                    }
-                    Spacer(minLength: 0)
+            // Metric chip stand-ins — same fixed heights as the loaded
+            // sparkline/disk chips so the card frame doesn't jump on load.
+            HStack(spacing: 12) {
+                ForEach(0..<2, id: \.self) { _ in
+                    SkeletonRect(height: 69, cornerRadius: Radius.concentric(outer: Radius.card, inset: 10))
                 }
             }
+            SkeletonRect(height: 41, cornerRadius: Radius.concentric(outer: Radius.card, inset: 10))
 
             Divider()
 
@@ -458,22 +638,28 @@ struct DashboardView: View {
         if !hasLoadedOnce { isLoading = true }
         defer {
             isLoading = false
-            hasLoadedOnce = true
+            // A cancelled first load (auth/env restore racing the task) must
+            // not latch "loaded" — the empty/loaded branches would render
+            // with no data until the next appear.
+            if !Task.isCancelled { hasLoadedOnce = true }
         }
 
-        async let envTask: [Arcane.Environment] = loadEnvironmentsCached(refresh: refresh)
+        async let envTask: [Arcane.Environment]? = loadEnvironmentsCached(refresh: refresh)
         let path = "dashboard/environments"
         async let rawReq = client.transport.rawRequest(path, body: Optional<String>.none)
 
-        let envs = await envTask
+        let envResult = await envTask
         let reqData = try? await rawReq
 
         if Task.isCancelled { return }
+        let envs = envResult ?? []
+        if envResult != nil { hasLoadedEnvironments = true }
         rawEnvironmentCount = envs.count
         allEnvironments = envs
         let bounded = dashboardEnvironments(from: envs)
         environments = bounded
         streamStore.reconcile(environments: bounded)
+        statsHistory.reconcile(environments: bounded)
         if let reqData {
             overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
                 ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
@@ -512,6 +698,47 @@ struct DashboardView: View {
         if !Task.isCancelled {
             failedActivities = activities
         }
+        publishWidgetSnapshot()
+    }
+
+    /// Fold the dashboard's current knowledge into the App-Group widget
+    /// snapshot. Cheap to call; the publisher debounces the actual write.
+    private func publishWidgetSnapshot() {
+        guard manager.client != nil else { return }
+        let summaries: [WidgetSnapshot.EnvSummary] = environments.map { env in
+            let state = streamStore.state(for: env.id)
+            let snapshot = (state?.hasLoaded == true) ? state?.snapshot : nil
+            let updates = snapshot?.actionItems.items
+                .first(where: {
+                    if case .imageUpdates = $0.kind { return true }
+                    return false
+                })?.count ?? 0
+            let vulnerabilities = snapshot?.actionItems.items
+                .first(where: {
+                    if case .actionableVulnerabilities = $0.kind { return true }
+                    return false
+                })?.count ?? 0
+            return WidgetSnapshot.EnvSummary(
+                id: env.id,
+                name: env.name ?? env.id,
+                online: state.map { $0.hasLoaded && !$0.streamError } ?? false,
+                running: snapshot?.containers.counts.runningContainers ?? 0,
+                stopped: snapshot?.containers.counts.stoppedContainers ?? 0,
+                total: snapshot?.containers.counts.totalContainers ?? 0,
+                images: snapshot?.imageUsageCounts.totalImages ?? 0,
+                updatesAvailable: updates,
+                actionableVulnerabilities: vulnerabilities
+            )
+        }
+        WidgetSnapshotPublisher.shared.schedule(WidgetSnapshot(
+            generatedAt: Date(),
+            serverConfigured: true,
+            isDemo: manager.isDemoActive,
+            accentHex: UserDefaults.standard.string(forKey: "accentColorHex"),
+            activeEnvironmentID: manager.activeEnvironmentID.rawValue,
+            environments: summaries,
+            suggestedContainers: []
+        ))
     }
 
     private func loadFailedWork() async -> [Activity] {
@@ -690,18 +917,22 @@ struct DashboardView: View {
         )
     }
 
-    private func loadEnvironmentsCached(refresh: Bool) async -> [Arcane.Environment] {
-        guard let cached = manager.cached else { return [] }
-        return (try? await cached.getListGlobal(
+    /// Nil means the fetch failed (or no client yet) — distinct from a
+    /// successful load of zero environments.
+    private func loadEnvironmentsCached(refresh: Bool) async -> [Arcane.Environment]? {
+        guard let cached = manager.cached else { return nil }
+        return try? await cached.getListGlobal(
             "environments", elementType: Arcane.Environment.self,
             policy: .environments, refresh: refresh,
             onFresh: { fresh in
+                hasLoadedEnvironments = true
                 rawEnvironmentCount = fresh.count
                 allEnvironments = fresh
                 environments = dashboardEnvironments(from: fresh)
                 streamStore.reconcile(environments: environments)
+                statsHistory.reconcile(environments: environments)
             }
-        )) ?? []
+        )
     }
 
     private func dashboardEnvironments(from envs: [Arcane.Environment]) -> [Arcane.Environment] {
@@ -727,8 +958,6 @@ struct StatRing: View {
     var size: CGFloat = 78
     var lineWidth: CGFloat = 9
     var errorMessage: String?
-
-    @State private var animatedValue: Double = 0.0
 
     private var hasError: Bool {
         errorMessage?.isEmpty == false

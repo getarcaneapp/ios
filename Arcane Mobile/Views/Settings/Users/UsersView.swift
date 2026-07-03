@@ -15,7 +15,14 @@ struct UsersView: View {
             if isLoading && users.isEmpty {
                 ProgressView("Loading users...").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if users.isEmpty {
-                ContentUnavailableView("No Users", systemImage: "person.slash", description: Text("No users found"))
+                ContentUnavailableView {
+                    Label("No Users", systemImage: "person.slash")
+                } description: {
+                    Text("Add a user to give someone else access to this Arcane server.")
+                } actions: {
+                    Button("Add User") { showCreateSheet = true }
+                        .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     ForEach(users) { user in

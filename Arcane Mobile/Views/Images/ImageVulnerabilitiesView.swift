@@ -341,13 +341,13 @@ struct SeveritySummaryRow: View {
                     .foregroundStyle(.red)
             }
             if let summary {
-                HStack(spacing: 12) {
-                    sevPill("Critical", count: summary.critical, color: .red)
-                    sevPill("High", count: summary.high, color: .orange)
-                    sevPill("Med", count: summary.medium, color: .yellow)
-                    sevPill("Low", count: summary.low, color: .blue)
-                    sevPill("?", count: summary.unknown, color: .gray)
-                }
+                SeverityBar(
+                    critical: summary.critical,
+                    high: summary.high,
+                    medium: summary.medium,
+                    low: summary.low,
+                    unknown: summary.unknown
+                )
             }
             HStack {
                 Text("Status: \(status.capitalized)").font(.caption2).foregroundStyle(.secondary)
@@ -358,14 +358,6 @@ struct SeveritySummaryRow: View {
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private func sevPill(_ label: String, count: Int, color: Color) -> some View {
-        VStack(spacing: 1) {
-            Text("\(count)").font(.caption.bold()).foregroundStyle(color)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 

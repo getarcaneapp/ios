@@ -15,18 +15,11 @@
 			</array>
 		</dict>
 	</array>
-	<!-- ATS exception (App Review justification): Arcane connects to user-controlled,
-	     self-hosted servers that are frequently reachable only over plain HTTP —
-	     LAN IPs, VPN/Tailscale addresses, and other private hosts where TLS is not
-	     available. NSAllowsLocalNetworking alone would break VPN/remote-HTTP setups,
-	     so arbitrary loads is required. The app never talks to third-party services. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Arcane needs local network access to connect to self-hosted Arcane servers on your network.</string>
 	<key>UIApplicationShortcutItems</key>
 	<array>
 		<dict>

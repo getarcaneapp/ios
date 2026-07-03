@@ -585,9 +585,20 @@ func friendlyErrorMessage(_ error: Error) -> String {
         }
     }
     if (error as NSError).domain == NSURLErrorDomain,
-       let urlError = error as? URLError,
-       urlError.code == .cancelled {
-        return "Cancelled"
+       let urlError = error as? URLError {
+        switch urlError.code {
+        case .cancelled:
+            return "Cancelled"
+        case .badServerResponse:
+            // WebSocket handshake got a non-101 response (server restart,
+            // proxy hiccup, or an env with no reachable agent). Treat as a
+            // transient blip — the stream store reconnects with backoff.
+            return "The server rejected the connection — retrying."
+        case .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet:
+            return "Connection lost — check your network and that the server is reachable."
+        default:
+            break
+        }
     }
     return error.localizedDescription
 }

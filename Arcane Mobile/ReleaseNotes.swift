@@ -52,6 +52,31 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.4.0",
+            new: [
+                .init("Home and Lock Screen widgets: Status (configurable, with refresh button), Environments, and Updates & Vulnerabilities."),
+                .init("Siri & Shortcuts: open tabs, containers, and projects; restart containers; start/stop projects (with confirmation)."),
+                .init("Environment cards show live CPU and memory sparklines with a rolling minute of history."),
+                .init("New Needs Attention card on the dashboard — offline environments, vulnerabilities, stopped containers, updates, expiring keys, and failed activities in one place."),
+                .init("Dashboard header shows a live fleet summary (environments online, containers running)."),
+                .init("Vulnerability summaries use a proportional severity bar instead of plain numbers."),
+            ],
+            changed: [
+                .init("Environment card stats survive scrolling and use fewer connections."),
+                .init("Container Stats matches the app's card styling and loads with skeletons."),
+                .init("Empty screens now explain themselves and offer a create action."),
+                .init("Smarter caching: fewer refetches on tab switches, and the disk cache cleans itself up."),
+            ],
+            fixed: [
+                .init("Log tailing no longer drops frames on busy containers."),
+                .init("Container Stats uses much less CPU and battery."),
+                .init("Slow DNS no longer freezes the UI during server setup."),
+                .init("Signing in no longer interrupts live dashboard streams."),
+                .init("Icons load in parallel again in long lists."),
+                .init("Inspect view search no longer lags on large containers."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.3.2",
             changed: [
                 .init("Cleaned up alot of areas of the UI to more consistient with native iOS styling"),

@@ -7,15 +7,53 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BFAB10022FF7410000EF7E76 /* Arcane in Frameworks */ = {isa = PBXBuildFile; productRef = BFAB10032FF7410000EF7E76 /* Arcane */; };
+		BFD5111F2FF73F4100EF7E76 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BFD5111E2FF73F4100EF7E76 /* WidgetKit.framework */; };
+		BFD511212FF73F4100EF7E76 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BFD511202FF73F4100EF7E76 /* SwiftUI.framework */; };
+		BFD5112C2FF73F4200EF7E76 /* ArcaneWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BFD5111C2FF73F4100EF7E76 /* ArcaneWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EA2FAC44530016681B /* Arcane */; };
 		FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EE2FAC44530016681B /* ArcaneOIDC */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		BFD5112A2FF73F4200EF7E76 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FD6FF5D12FAC434D0016681B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BFD5111B2FF73F4100EF7E76;
+			remoteInfo = ArcaneWidgetsExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		BFD511312FF73F4200EF7E76 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				BFD5112C2FF73F4200EF7E76 /* ArcaneWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		BFD5111C2FF73F4100EF7E76 /* ArcaneWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ArcaneWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BFD5111E2FF73F4100EF7E76 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		BFD511202FF73F4100EF7E76 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		FD6FF5D92FAC434D0016681B /* Arcane Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Arcane Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BFD511302FF73F4200EF7E76 /* Exceptions for "ArcaneWidgets" folder in "ArcaneWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = BFD5111B2FF73F4100EF7E76 /* ArcaneWidgetsExtension */;
+		};
 		FD6FF6352FAD1F970016681B /* Exceptions for "Arcane Mobile" folder in "Arcane Mobile" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -26,6 +64,19 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		BFAB10012FF7410000EF7E76 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		BFD511222FF73F4100EF7E76 /* ArcaneWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BFD511302FF73F4200EF7E76 /* Exceptions for "ArcaneWidgets" folder in "ArcaneWidgetsExtension" target */,
+			);
+			path = ArcaneWidgets;
+			sourceTree = "<group>";
+		};
 		FD6FF5DB2FAC434D0016681B /* Arcane Mobile */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -37,6 +88,16 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		BFD511192FF73F4100EF7E76 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BFAB10022FF7410000EF7E76 /* Arcane in Frameworks */,
+				BFD511212FF73F4100EF7E76 /* SwiftUI.framework in Frameworks */,
+				BFD5111F2FF73F4100EF7E76 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FD6FF5D62FAC434D0016681B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -49,10 +110,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		BFD5111D2FF73F4100EF7E76 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				BFD5111E2FF73F4100EF7E76 /* WidgetKit.framework */,
+				BFD511202FF73F4100EF7E76 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		FD6FF5D02FAC434D0016681B = {
 			isa = PBXGroup;
 			children = (
 				FD6FF5DB2FAC434D0016681B /* Arcane Mobile */,
+				BFD511222FF73F4100EF7E76 /* ArcaneWidgets */,
+				BFAB10012FF7410000EF7E76 /* Shared */,
+				BFD5111D2FF73F4100EF7E76 /* Frameworks */,
 				FD6FF5DA2FAC434D0016681B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,6 +134,7 @@
 			isa = PBXGroup;
 			children = (
 				FD6FF5D92FAC434D0016681B /* Arcane Mobile.app */,
+				BFD5111C2FF73F4100EF7E76 /* ArcaneWidgetsExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -68,6 +142,30 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		BFD5111B2FF73F4100EF7E76 /* ArcaneWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BFD5112D2FF73F4200EF7E76 /* Build configuration list for PBXNativeTarget "ArcaneWidgetsExtension" */;
+			buildPhases = (
+				BFD511182FF73F4100EF7E76 /* Sources */,
+				BFD511192FF73F4100EF7E76 /* Frameworks */,
+				BFD5111A2FF73F4100EF7E76 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BFAB10012FF7410000EF7E76 /* Shared */,
+				BFD511222FF73F4100EF7E76 /* ArcaneWidgets */,
+			);
+			name = ArcaneWidgetsExtension;
+			packageProductDependencies = (
+				BFAB10032FF7410000EF7E76 /* Arcane */,
+			);
+			productName = ArcaneWidgetsExtension;
+			productReference = BFD5111C2FF73F4100EF7E76 /* ArcaneWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		FD6FF5D82FAC434D0016681B /* Arcane Mobile */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = FD6FF5E62FAC434E0016681B /* Build configuration list for PBXNativeTarget "Arcane Mobile" */;
@@ -75,12 +173,15 @@
 				FD6FF5D52FAC434D0016681B /* Sources */,
 				FD6FF5D62FAC434D0016681B /* Frameworks */,
 				FD6FF5D72FAC434D0016681B /* Resources */,
+				BFD511312FF73F4200EF7E76 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				BFD5112B2FF73F4200EF7E76 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				BFAB10012FF7410000EF7E76 /* Shared */,
 				FD6FF5DB2FAC434D0016681B /* Arcane Mobile */,
 			);
 			name = "Arcane Mobile";
@@ -99,9 +200,12 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2650;
+				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					BFD5111B2FF73F4100EF7E76 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					FD6FF5D82FAC434D0016681B = {
 						CreatedOnToolsVersion = 26.5;
 					};
@@ -125,11 +229,19 @@
 			projectRoot = "";
 			targets = (
 				FD6FF5D82FAC434D0016681B /* Arcane Mobile */,
+				BFD5111B2FF73F4100EF7E76 /* ArcaneWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		BFD5111A2FF73F4100EF7E76 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FD6FF5D72FAC434D0016681B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -140,6 +252,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		BFD511182FF73F4100EF7E76 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FD6FF5D52FAC434D0016681B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -149,7 +268,85 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		BFD5112B2FF73F4200EF7E76 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BFD5111B2FF73F4100EF7E76 /* ArcaneWidgetsExtension */;
+			targetProxy = BFD5112A2FF73F4200EF7E76 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		BFD5112E2FF73F4200EF7E76 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = FD6FF5DB2FAC434D0016681B /* Arcane Mobile */;
+			baseConfigurationReferenceRelativePath = BuildNumber.xcconfig;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = ArcaneWidgets/ArcaneWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = 4L6GXKX423;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ArcaneWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ArcaneWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile.ArcaneWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BFD5112F2FF73F4200EF7E76 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = FD6FF5DB2FAC434D0016681B /* Arcane Mobile */;
+			baseConfigurationReferenceRelativePath = BuildNumber.xcconfig;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = ArcaneWidgets/ArcaneWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = 4L6GXKX423;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ArcaneWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ArcaneWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.4.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile.ArcaneWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		FD6FF5E42FAC434E0016681B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = FD6FF5DB2FAC434D0016681B /* Arcane Mobile */;
@@ -288,6 +485,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = "Arcane Mobile/Arcane Mobile.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				DEVELOPMENT_TEAM = 4L6GXKX423;
@@ -297,9 +495,11 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Arcane;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Arcane needs local network access to connect to self-hosted Arcane servers on your network.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -307,7 +507,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.3.2;
+				MARKETING_VERSION = 0.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -333,6 +533,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = "Arcane Mobile/Arcane Mobile.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
 				DEVELOPMENT_TEAM = 4L6GXKX423;
@@ -342,9 +543,11 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Arcane;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Arcane needs local network access to connect to self-hosted Arcane servers on your network.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = "";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -352,7 +555,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.3.2;
+				MARKETING_VERSION = 0.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -372,6 +575,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		BFD5112D2FF73F4200EF7E76 /* Build configuration list for PBXNativeTarget "ArcaneWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BFD5112E2FF73F4200EF7E76 /* Debug */,
+				BFD5112F2FF73F4200EF7E76 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		FD6FF5D42FAC434D0016681B /* Build configuration list for PBXProject "Arcane Mobile" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -404,6 +616,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		BFAB10032FF7410000EF7E76 /* Arcane */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
+			productName = Arcane;
+		};
 		FD6FF5EA2FAC44530016681B /* Arcane */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;

@@ -15,7 +15,14 @@ struct WebhooksView: View {
             if isLoading && webhooks.isEmpty {
                 ProgressView("Loading webhooks…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if webhooks.isEmpty {
-                ContentUnavailableView("No Webhooks", systemImage: "link.badge.plus", description: Text("Create a webhook to trigger actions via HTTP."))
+                ContentUnavailableView {
+                    Label("No Webhooks", systemImage: "link.badge.plus")
+                } description: {
+                    Text("Create a webhook to trigger actions via HTTP.")
+                } actions: {
+                    Button("Create Webhook") { showCreateSheet = true }
+                        .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     ForEach(webhooks) { webhook in

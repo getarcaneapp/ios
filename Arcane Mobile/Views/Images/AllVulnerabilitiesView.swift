@@ -86,13 +86,13 @@ struct AllVulnerabilitiesView: View {
                     }
                 }
                 if let s = summary.summary {
-                    HStack(spacing: 12) {
-                        sevPill("Critical", count: s.critical, color: .red)
-                        sevPill("High", count: s.high, color: .orange)
-                        sevPill("Med", count: s.medium, color: .yellow)
-                        sevPill("Low", count: s.low, color: .blue)
-                        sevPill("?", count: s.unknown, color: .gray)
-                    }
+                    SeverityBar(
+                        critical: s.critical,
+                        high: s.high,
+                        medium: s.medium,
+                        low: s.low,
+                        unknown: s.unknown
+                    )
                 }
             }
             .padding(.vertical, 4)
@@ -106,14 +106,6 @@ struct AllVulnerabilitiesView: View {
             Text(value).font(.title3.bold()).foregroundStyle(color)
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }
-    }
-
-    private func sevPill(_ label: String, count: Int, color: Color) -> some View {
-        VStack(spacing: 1) {
-            Text("\(count)").font(.caption.bold()).foregroundStyle(color)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private var filterSheet: some View {

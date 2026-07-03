@@ -12,13 +12,15 @@ struct EnvironmentDashboardCard: View {
     /// here — a body read would make every card track the manager and
     /// re-render on any manager change, not just environment switches.
     var isActive: Bool = false
+    /// Live stats history owned by DashboardView's SystemStatsHistoryStore —
+    /// value-passed like `streamState` so only touched cards re-evaluate, and
+    /// so history survives this card scrolling out of the LazyVStack.
+    var series: SystemStatsHistoryStore.Series?
     var refreshToken: Int = 0
     var onSelect: () -> Void = {}
 
     @State private var dockerInfo: DockerInfo?
-    @State private var latestStats: SystemStatsFrame?
     @State private var dockerError: String?
-    @State private var statsError: String?
     @State private var selectionPulse = false
     @State private var showPruneSheet = false
     @State private var showUpgradeSheet = false
@@ -60,41 +62,28 @@ struct EnvironmentDashboardCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
 
-                // Stats Rings
-                HStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    StatRing(
-                        value: clampedPercent(latestStats?.cpuPercent) / 100,
+                // Live metrics: sparkline chips carry both the current value
+                // and a rolling minute of history (replaces the old rings —
+                // they duplicated the same numbers). Fixed-height sparklines
+                // (hairline placeholder until 2 samples) so data arrival never
+                // changes the card frame (Liquid Glass caches the shape).
+                HStack(spacing: 12) {
+                    sparklineChip(
+                        title: "CPU",
                         valueText: percentShort(latestStats?.cpuPercent),
-                        label: "CPU",
-                        tint: .blue,
-                        size: 62,
-                        lineWidth: 7,
-                        errorMessage: statsError
+                        samples: series?.cpu ?? [],
+                        tint: .blue
                     )
-                    Spacer(minLength: 0)
-                    StatRing(
-                        value: clampedPercent(memoryPercent) / 100,
+                    sparklineChip(
+                        title: "Memory",
                         valueText: percentShort(memoryPercent),
-                        label: "Memory",
-                        tint: .purple,
-                        size: 62,
-                        lineWidth: 7,
-                        errorMessage: statsError
+                        samples: series?.memory ?? [],
+                        tint: .purple
                     )
-                    Spacer(minLength: 0)
-                    StatRing(
-                        value: clampedPercent(diskPercent) / 100,
-                        valueText: percentShort(diskPercent),
-                        label: "Disk",
-                        tint: .teal,
-                        size: 62,
-                        lineWidth: 7,
-                        errorMessage: statsError
-                    )
-                    Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity)
+
+                diskChip
 
                 if let statsError {
                     Label(statsError, systemImage: "exclamationmark.triangle.fill")
@@ -210,21 +199,80 @@ struct EnvironmentDashboardCard: View {
         .onChange(of: refreshToken) { _, _ in
             Task { await loadDockerInfo(refresh: true) }
         }
-        .task {
-            try? await Task.sleep(for: .milliseconds(150))
-            guard !Task.isCancelled, let client = manager.client else { return }
-            let stream = client.system.statsStream(envID: envID)
-            do {
-                for try await frame in stream {
-                    latestStats = frame
-                    statsError = nil
-                }
-            } catch is CancellationError {
-            } catch {
-                latestStats = nil
-                statsError = "Live stats unavailable: \(friendlyErrorMessage(error))"
+    }
+
+    /// Latest live stats frame from the shared history store.
+    private var latestStats: SystemStatsFrame? { series?.latest }
+
+    private var statsError: String? { series?.error }
+
+    /// Current value + rolling-history chip in the same raised-chip
+    /// vocabulary as `DashboardMiniMetric`. Restrained — solid line + soft
+    /// fill, no glow.
+    private func sparklineChip(title: String, valueText: String, samples: [SparklineSample], tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                Text(valueText)
+                    .font(.caption.bold())
+                    .monospacedDigit()
+                    .foregroundStyle(tint)
+                    .contentTransition(.numericText())
+                    .motionAwareAnimation(Motion.state, value: valueText)
             }
+            Sparkline(samples: samples, tint: tint)
         }
+        .padding(8)
+        .frame(maxWidth: .infinity)
+        .background(chipBackground)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title): \(valueText), with usage history for the last minute")
+    }
+
+    /// Disk has no meaningful minute-scale history, so it gets a capsule
+    /// progress bar (the app's linear-progress vocabulary) instead.
+    private var diskChip: some View {
+        let percent = clampedPercent(diskPercent)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Disk")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                Text(percentShort(diskPercent))
+                    .font(.caption.bold())
+                    .monospacedDigit()
+                    .foregroundStyle(.teal)
+                    .contentTransition(.numericText())
+                    .motionAwareAnimation(Motion.state, value: percentShort(diskPercent))
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.secondary.opacity(0.15))
+                    Capsule()
+                        .fill(.teal)
+                        .frame(width: max(6, geo.size.width * percent / 100))
+                        .animation(Motion.gauge, value: percent)
+                }
+            }
+            .frame(height: 8)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity)
+        .background(chipBackground)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Disk: \(percentShort(diskPercent))")
+    }
+
+    private var chipBackground: some View {
+        RoundedRectangle(cornerRadius: Radius.concentric(outer: Radius.card, inset: 10), style: .continuous)
+            .fill(
+                Color(uiColor: .tertiarySystemGroupedBackground)
+                    .shadow(.drop(color: .black.opacity(0.15), radius: 3, y: 1))
+            )
     }
 
     /// Latest stream snapshot, gated on the one-way loaded latch so an

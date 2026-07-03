@@ -24,26 +24,10 @@ struct ContainerStatsView: View {
                     }
                 }
 
-                if frames.isEmpty {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text(isStreaming ? "Waiting for stats…" : "Connecting…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 200)
-                } else {
-                    summaryTiles
-                    chartCard(title: "CPU", color: Color.accentColor, unit: "%") { frame in
-                        frame.cpuPercent
-                    }
-                    memoryCard
-                    chartCard(title: "Network I/O", colors: [.green, .orange], legend: ["RX", "TX"], unit: "B/s") { frame in
-                        [frame.netRxPerSec, frame.netTxPerSec]
-                    }
-                    chartCard(title: "Block I/O", colors: [Color.accentColor, Color.accentColor.opacity(0.5)], legend: ["Read", "Write"], unit: "B/s") { frame in
-                        [frame.blockReadPerSec, frame.blockWritePerSec]
-                    }
+                LoadingCrossfade(showSkeleton: frames.isEmpty && errorMessage == nil) {
+                    skeletonStats
+                } content: {
+                    loadedStats
                 }
             }
             .padding()
@@ -54,6 +38,82 @@ struct ContainerStatsView: View {
             streamTask?.cancel()
             streamTask = nil
             isStreaming = false
+        }
+    }
+
+    /// Skeleton mirroring the loaded layout (tile grid + chart cards) so the
+    /// first frame's arrival doesn't reflow the page.
+    private var skeletonStats: some View {
+        VStack(spacing: 16) {
+            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    skeletonTile
+                    skeletonTile
+                }
+                GridRow {
+                    skeletonTile
+                    skeletonTile
+                }
+            }
+            ForEach(0..<4, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 8) {
+                    SkeletonRect(width: 90, height: 16)
+                    SkeletonRect(height: 140, cornerRadius: Radius.nested)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .dashboardCardBackground(cornerRadius: Radius.standard)
+            }
+        }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+        .skeletonShimmer()
+    }
+
+    private var skeletonTile: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SkeletonRect(width: 70, height: 12)
+            SkeletonRect(width: 90, height: 18)
+            SkeletonRect(width: 60, height: 10)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .dashboardCardBackground(cornerRadius: Radius.standard)
+    }
+
+    @ViewBuilder
+    private var loadedStats: some View {
+        if frames.isEmpty {
+            EmptyView()
+        } else {
+            VStack(spacing: 16) {
+                    summaryTiles
+                    StatsChartCard(
+                        title: "CPU",
+                        colors: [Color.accentColor],
+                        legend: nil,
+                        unit: "%",
+                        series: [frames.map(\.cpuPercent)]
+                    )
+                    .equatable()
+                    memoryCard
+                    StatsChartCard(
+                        title: "Network I/O",
+                        colors: [.green, .orange],
+                        legend: ["RX", "TX"],
+                        unit: "B/s",
+                        series: [frames.map(\.netRxPerSec), frames.map(\.netTxPerSec)]
+                    )
+                    .equatable()
+                    StatsChartCard(
+                        title: "Block I/O",
+                        colors: [Color.accentColor, Color.accentColor.opacity(0.5)],
+                        legend: ["Read", "Write"],
+                        unit: "B/s",
+                        series: [frames.map(\.blockReadPerSec), frames.map(\.blockWritePerSec)]
+                    )
+                    .equatable()
+            }
         }
     }
 
@@ -109,58 +169,7 @@ struct ContainerStatsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(.regularMaterial, in: .rect(cornerRadius: 12))
-    }
-
-    private func chartCard(title: String, color: Color, unit: String, value: @escaping (ContainerStatsFrame) -> Double) -> some View {
-        chartCard(title: title, colors: [color], legend: nil, unit: unit) { frame in [value(frame)] }
-    }
-
-    private func chartCard(
-        title: String,
-        colors: [Color],
-        legend: [String]?,
-        unit: String,
-        values: @escaping (ContainerStatsFrame) -> [Double]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title).font(.headline)
-                Spacer()
-                if let legend {
-                    HStack(spacing: 10) {
-                        ForEach(Array(legend.enumerated()), id: \.offset) { idx, name in
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(colors[idx % colors.count])
-                                    .frame(width: 8, height: 8)
-                                Text(name).font(.caption2).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-            }
-            Chart {
-                ForEach(Array(frames.enumerated()), id: \.element.id) { idx, frame in
-                    let series = values(frame)
-                    ForEach(Array(series.enumerated()), id: \.offset) { sIdx, v in
-                        LineMark(
-                            x: .value("t", idx),
-                            y: .value(unit, v)
-                        )
-                        .foregroundStyle(colors[sIdx % colors.count])
-                        .interpolationMethod(.monotone)
-                    }
-                }
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis {
-                AxisMarks(position: .leading)
-            }
-            .frame(height: 140)
-        }
-        .padding(12)
-        .background(.regularMaterial, in: .rect(cornerRadius: 12))
+        .dashboardCardBackground(cornerRadius: Radius.standard)
     }
 
     private var memoryCard: some View {
@@ -174,30 +183,11 @@ struct ContainerStatsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Chart {
-                ForEach(Array(frames.enumerated()), id: \.element.id) { idx, frame in
-                    AreaMark(
-                        x: .value("t", idx),
-                        y: .value("MB", Double(frame.memoryUsed) / 1_048_576)
-                    )
-                    .foregroundStyle(.indigo.opacity(0.25))
-                    .interpolationMethod(.monotone)
-                    LineMark(
-                        x: .value("t", idx),
-                        y: .value("MB", Double(frame.memoryUsed) / 1_048_576)
-                    )
-                    .foregroundStyle(.indigo)
-                    .interpolationMethod(.monotone)
-                }
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis {
-                AxisMarks(position: .leading)
-            }
-            .frame(height: 140)
+            MemoryChart(points: frames.map { Double($0.memoryUsed) / 1_048_576 })
+                .equatable()
         }
         .padding(12)
-        .background(.regularMaterial, in: .rect(cornerRadius: 12))
+        .dashboardCardBackground(cornerRadius: Radius.standard)
     }
 
     private func startStreaming() async {
@@ -268,5 +258,93 @@ struct ContainerStatsView: View {
         previous: ContainerStatsFrame?
     ) -> ContainerStatsFrame? {
         ContainerStatsFrame.from(json: .object(raw), previous: previous)
+    }
+}
+
+/// One chart card, isolated from the parent view and fed flat, precomputed
+/// value arrays. `Equatable` + `.equatable()` lets SwiftUI skip re-rendering a
+/// chart whose series didn't change (e.g. an idle Block I/O chart), and the
+/// parent's body no longer walks `frames` with per-mark closures on every
+/// streamed frame.
+private struct StatsChartCard: View, Equatable {
+    let title: String
+    let colors: [Color]
+    let legend: [String]?
+    let unit: String
+    /// One inner array per series, each `frames.count` long.
+    let series: [[Double]]
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.title == rhs.title && lhs.series == rhs.series
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title).font(.headline)
+                Spacer()
+                if let legend {
+                    HStack(spacing: 10) {
+                        ForEach(Array(legend.enumerated()), id: \.offset) { idx, name in
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(colors[idx % colors.count])
+                                    .frame(width: 8, height: 8)
+                                Text(name).font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+            Chart {
+                ForEach(Array(series.enumerated()), id: \.offset) { sIdx, values in
+                    ForEach(Array(values.enumerated()), id: \.offset) { idx, v in
+                        LineMark(
+                            x: .value("t", idx),
+                            y: .value(unit, v),
+                            series: .value("series", sIdx)
+                        )
+                        .foregroundStyle(colors[sIdx % colors.count])
+                        .interpolationMethod(.monotone)
+                    }
+                }
+            }
+            .chartXAxis(.hidden)
+            .chartYAxis {
+                AxisMarks(position: .leading)
+            }
+            .frame(height: 140)
+        }
+        .padding(12)
+        .dashboardCardBackground(cornerRadius: Radius.standard)
+    }
+}
+
+private struct MemoryChart: View, Equatable {
+    /// Memory used per frame, in MB.
+    let points: [Double]
+
+    var body: some View {
+        Chart {
+            ForEach(Array(points.enumerated()), id: \.offset) { idx, v in
+                AreaMark(
+                    x: .value("t", idx),
+                    y: .value("MB", v)
+                )
+                .foregroundStyle(.indigo.opacity(0.25))
+                .interpolationMethod(.monotone)
+                LineMark(
+                    x: .value("t", idx),
+                    y: .value("MB", v)
+                )
+                .foregroundStyle(.indigo)
+                .interpolationMethod(.monotone)
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis {
+            AxisMarks(position: .leading)
+        }
+        .frame(height: 140)
     }
 }

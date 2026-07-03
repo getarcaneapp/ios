@@ -7,6 +7,11 @@ struct LogsView: View {
     var embedded: Bool = false
 
     @State private var lines: [IdentifiedLogLine] = []
+    /// Incrementally-maintained filter result. Recomputing `lines.filter` in a
+    /// computed property was O(n) per access, and body read it three times per
+    /// streamed line — the hottest path in the app. New lines are appended here
+    /// when they match; only a search-text change triggers a full refilter.
+    @State private var filteredLines: [IdentifiedLogLine] = []
     @State private var nextLineID: UInt64 = 0
     @State private var isStreaming = false
     @State private var autoScroll = true
@@ -15,9 +20,12 @@ struct LogsView: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var filteredLines: [IdentifiedLogLine] {
-        guard !searchText.isEmpty else { return lines }
-        return lines.filter { $0.line.text.localizedCaseInsensitiveContains(searchText) }
+    private func matchesFilter(_ entry: IdentifiedLogLine) -> Bool {
+        searchText.isEmpty || entry.line.text.localizedCaseInsensitiveContains(searchText)
+    }
+
+    private func refilter() {
+        filteredLines = searchText.isEmpty ? lines : lines.filter(matchesFilter)
     }
 
     var body: some View {
@@ -30,6 +38,7 @@ struct LogsView: View {
                     .navigationTitle(title)
                     .navigationBarTitleDisplayMode(.inline)
                     .searchable(text: $searchText, prompt: "Filter logs")
+                    .onChange(of: searchText) { _, _ in refilter() }
                     .toolbar {
                         ToolbarItem(placement: .navigationBarLeading) {
                             Button("Done") { dismiss() }
@@ -44,6 +53,7 @@ struct LogsView: View {
                                     }
                                     Button(role: .destructive) {
                                         lines.removeAll()
+                                        filteredLines.removeAll()
                                     } label: {
                                         Image(systemName: "trash")
                                             .foregroundStyle(.red)
@@ -147,10 +157,20 @@ struct LogsView: View {
         do {
             for try await line in stream {
                 await MainActor.run {
-                    lines.append(IdentifiedLogLine(id: nextLineID, line: line))
+                    let entry = IdentifiedLogLine(id: nextLineID, line: line)
+                    lines.append(entry)
                     nextLineID &+= 1
+                    if matchesFilter(entry) {
+                        filteredLines.append(entry)
+                    }
                     if lines.count > 5000 {
                         lines.removeFirst(100)
+                        // Both arrays are id-ordered; drop the filtered prefix
+                        // that fell out of the retained window.
+                        if let minID = lines.first?.id {
+                            let dropCount = filteredLines.prefix(while: { $0.id < minID }).count
+                            if dropCount > 0 { filteredLines.removeFirst(dropCount) }
+                        }
                     }
                     if !autoScroll {
                         newLinesWhilePaused += 1

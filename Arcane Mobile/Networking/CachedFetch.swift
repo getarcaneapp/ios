@@ -39,27 +39,31 @@ struct CachedClient: Sendable {
         )
 
         if !refresh,
-           let hit = await ResponseCache.shared.get(key, as: T.self, ttl: policy.ttl) {
-            // Background revalidate. Don't propagate errors — we already have a usable value.
-            let captured = client
-            let onFreshCopy = onFresh
-            Task.detached(priority: .utility) {
-                let fresh: T?
-                do {
-                    fresh = try await ResponseCache.shared.coalesce(key) {
-                        try await captured.rest.get(path) as T
+           let hit = await ResponseCache.shared.getEntry(key, as: T.self, ttl: policy.ttl) {
+            // Background revalidate — but only when the entry is old enough to
+            // be worth the round-trip; fresh hits (rapid tab switches) are
+            // served as-is. Errors don't propagate — we have a usable value.
+            if hit.age >= policy.revalidateAfter {
+                let captured = client
+                let onFreshCopy = onFresh
+                Task.detached(priority: .utility) {
+                    let fresh: T?
+                    do {
+                        fresh = try await ResponseCache.shared.coalesce(key) {
+                            try await captured.rest.get(path) as T
+                        }
+                    } catch {
+                        fresh = nil
                     }
-                } catch {
-                    fresh = nil
-                }
-                if let fresh {
-                    await ResponseCache.shared.set(key, value: fresh)
-                    if let onFreshCopy {
-                        await MainActor.run { onFreshCopy(fresh) }
+                    if let fresh {
+                        await ResponseCache.shared.set(key, value: fresh)
+                        if let onFreshCopy {
+                            await MainActor.run { onFreshCopy(fresh) }
+                        }
                     }
                 }
             }
-            return hit
+            return hit.value
         }
 
         // Miss or forced refresh. Fetch through coalesce so two concurrent callers share.
@@ -182,23 +186,25 @@ struct CachedClient: Sendable {
             envID: envID.rawValue, pathWithQuery: path
         )
         if !refresh,
-           let hit = await ResponseCache.shared.get(key, as: T.self, ttl: policy.ttl) {
-            let onFreshCopy = onFresh
-            Task.detached(priority: .utility) {
-                let fresh: T?
-                do {
-                    fresh = try await ResponseCache.shared.coalesce(key, work: fetcher)
-                } catch {
-                    fresh = nil
-                }
-                if let fresh {
-                    await ResponseCache.shared.set(key, value: fresh)
-                    if let onFreshCopy {
-                        await MainActor.run { onFreshCopy(fresh) }
+           let hit = await ResponseCache.shared.getEntry(key, as: T.self, ttl: policy.ttl) {
+            if hit.age >= policy.revalidateAfter {
+                let onFreshCopy = onFresh
+                Task.detached(priority: .utility) {
+                    let fresh: T?
+                    do {
+                        fresh = try await ResponseCache.shared.coalesce(key, work: fetcher)
+                    } catch {
+                        fresh = nil
+                    }
+                    if let fresh {
+                        await ResponseCache.shared.set(key, value: fresh)
+                        if let onFreshCopy {
+                            await MainActor.run { onFreshCopy(fresh) }
+                        }
                     }
                 }
             }
-            return hit
+            return hit.value
         }
         let fresh: T = try await ResponseCache.shared.coalesce(key, work: fetcher)
         await ResponseCache.shared.set(key, value: fresh)

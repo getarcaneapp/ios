@@ -57,32 +57,34 @@ actor ImageCache {
         NotificationCenter.default.post(name: .imageCacheDidClear, object: nil)
     }
 
-    func load(_ urlString: String, maxPixelSize: Int = 0, using fetcher: @escaping (String) async -> Data?) async -> UIImage? {
-        let memKey = Self.memoryKey(url: urlString, maxPixel: maxPixelSize) as NSString
-        if let cached = cache.object(forKey: memKey) { return cached }
-        if let existing = inFlight[memKey as String] { return await existing.value }
+    func load(_ urlString: String, maxPixelSize: Int = 0, using fetcher: @escaping @Sendable (String) async -> Data?) async -> UIImage? {
+        let keyString = Self.memoryKey(url: urlString, maxPixel: maxPixelSize)
+        if let cached = cache.object(forKey: keyString as NSString) { return cached }
+        if let existing = inFlight[keyString] { return await existing.value }
 
         if !didTrim {
             didTrim = true
-            Task.detached(priority: .background) { [weak self] in await self?.trimDiskCache() }
+            Task.detached(priority: .background) { [weak self] in self?.trimDiskCache() }
         }
 
-        if let (img, cost) = loadFromDisk(urlString, maxPixelSize: maxPixelSize) {
-            cache.setObject(img, forKey: memKey, cost: cost)
-            return img
-        }
-
-        let task = Task<UIImage?, Never> {
+        // Disk read, network fetch, and decode all run detached: doing them on
+        // the actor executor serialized every concurrent image load behind
+        // synchronous disk I/O. The actor only coordinates in-flight dedup.
+        let task = Task.detached(priority: .userInitiated) { () -> UIImage? in
+            if let (img, cost) = self.loadFromDisk(urlString, maxPixelSize: maxPixelSize) {
+                self.cache.setObject(img, forKey: keyString as NSString, cost: cost)
+                return img
+            }
             guard let data = await fetcher(urlString) else { return nil }
             self.writeToDisk(urlString, data: data)
             guard let img = Self.decode(data: data, maxPixelSize: maxPixelSize) else { return nil }
             let cost = Self.approximateCost(of: img)
-            self.cache.setObject(img, forKey: memKey, cost: cost)
+            self.cache.setObject(img, forKey: keyString as NSString, cost: cost)
             return img
         }
-        inFlight[memKey as String] = task
+        inFlight[keyString] = task
         let result = await task.value
-        inFlight.removeValue(forKey: memKey as String)
+        inFlight.removeValue(forKey: keyString)
         return result
     }
 
@@ -110,13 +112,13 @@ actor ImageCache {
 
     // MARK: - Disk tier
 
-    private func diskURL(for key: String) -> URL {
+    private nonisolated func diskURL(for key: String) -> URL {
         let digest = SHA256.hash(data: Data(key.utf8))
         let name = digest.map { String(format: "%02x", $0) }.joined()
         return diskDirectory.appendingPathComponent(name)
     }
 
-    private func loadFromDisk(_ key: String, maxPixelSize: Int) -> (UIImage, Int)? {
+    private nonisolated func loadFromDisk(_ key: String, maxPixelSize: Int) -> (UIImage, Int)? {
         let url = diskURL(for: key)
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
               let img = Self.decode(data: data, maxPixelSize: maxPixelSize) else { return nil }
@@ -127,7 +129,7 @@ actor ImageCache {
         return (img, Self.approximateCost(of: img))
     }
 
-    private func writeToDisk(_ key: String, data: Data) {
+    private nonisolated func writeToDisk(_ key: String, data: Data) {
         try? data.write(to: diskURL(for: key), options: .atomic)
     }
 
@@ -148,7 +150,7 @@ actor ImageCache {
         return total
     }
 
-    func trimDiskCache() {
+    nonisolated func trimDiskCache() {
         let fm = FileManager.default
         let keys: [URLResourceKey] = [.contentModificationDateKey, .totalFileAllocatedSizeKey]
         guard let entries = try? fm.contentsOfDirectory(
