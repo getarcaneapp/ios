@@ -20,6 +20,15 @@ struct SettingsView: View {
 
         NavigationStack(path: $navPath) {
             List {
+                Section {
+                    NavigationLink {
+                        ProfileView()
+                    } label: {
+                        accountRow
+                    }
+                    .accessibilityLabel("Account")
+                }
+
                 SettingsTabSection(
                     title: "Management",
                     tabs: Self.visibleTabs(.management, pinned: pinned, isAdmin: isAdmin, supportsV2: supportsV2)
@@ -92,6 +101,30 @@ struct SettingsView: View {
                 Task { await manager.logout() }
             }
             .aiAssistantToolbar()
+        }
+    }
+
+    /// Web-parity account row: initials avatar + name, pushes ProfileView.
+    private var accountRow: some View {
+        let name = manager.currentUser?.displayName?.isEmpty == false
+            ? manager.currentUser?.displayName
+            : manager.currentUser?.username
+        return HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.gradient)
+                    .frame(width: 36, height: 36)
+                Text(String((name ?? "?").prefix(1)).uppercased())
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.white)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name ?? "Account")
+                    .font(.subheadline.weight(.medium))
+                Text("Profile, email & password")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

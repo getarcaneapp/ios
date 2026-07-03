@@ -43,25 +43,24 @@ struct LogsView: View {
                         ToolbarItem(placement: .navigationBarLeading) {
                             Button("Done") { dismiss() }
                         }
+                        // Plain toolbar items — the nav bar supplies its own
+                        // glass; a nested GlassContainerCompat here rendered
+                        // the spinner and trash button overlapping.
                         ToolbarItem(placement: .navigationBarTrailing) {
-                            GlassContainerCompat(spacing: 8) {
-                                HStack(spacing: 8) {
-                                    if isStreaming {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                            .glassEffectCompat()
-                                    }
-                                    Button(role: .destructive) {
-                                        lines.removeAll()
-                                        filteredLines.removeAll()
-                                    } label: {
-                                        Image(systemName: "trash")
-                                            .foregroundStyle(.red)
-                                    }
-                                    .accessibilityLabel("Clear logs")
-                                    .glassEffectCompat()
-                                }
+                            if isStreaming {
+                                ProgressView()
+                                    .scaleEffect(0.8)
                             }
+                        }
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button(role: .destructive) {
+                                lines.removeAll()
+                                filteredLines.removeAll()
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundStyle(.red)
+                            }
+                            .accessibilityLabel("Clear logs")
                         }
                     }
                     .task { await startStreaming() }

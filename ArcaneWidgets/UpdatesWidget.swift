@@ -63,67 +63,81 @@ struct UpdatesWidgetView: View {
                     .foregroundStyle(.secondary)
             }
         default:
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 14) {
+                // Totals column fills the widget height, stats spread evenly.
+                VStack(alignment: .leading, spacing: 0) {
                     totalBlock(
                         count: updates,
                         label: "Updates",
                         icon: "arrow.triangle.2.circlepath",
                         tint: accent
                     )
+                    .frame(maxHeight: .infinity, alignment: .leading)
                     totalBlock(
                         count: vulnerabilities,
                         label: "Vulnerabilities",
                         icon: "exclamationmark.shield.fill",
                         tint: vulnerabilities > 0 ? .orange : .secondary
                     )
+                    .frame(maxHeight: .infinity, alignment: .leading)
                 }
+                .frame(width: 108, alignment: .leading)
+
                 Divider()
-                VStack(alignment: .leading, spacing: 5) {
-                    if interesting.isEmpty {
-                        Label("All up to date", systemImage: "checkmark.circle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxHeight: .infinity)
-                    } else {
+
+                // Environment breakdown, rows spread to fill.
+                if interesting.isEmpty {
+                    Label("All up to date", systemImage: "checkmark.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    VStack(spacing: 0) {
                         ForEach(Array(interesting.prefix(4))) { env in
-                            HStack(spacing: 6) {
+                            HStack(spacing: 8) {
                                 Text(env.name)
-                                    .font(.caption2.weight(.medium))
+                                    .font(.footnote.weight(.medium))
                                     .lineLimit(1)
-                                Spacer(minLength: 4)
+                                Spacer(minLength: 6)
                                 if env.updatesAvailable > 0 {
-                                    Text("\(env.updatesAvailable)↑")
-                                        .font(.caption2.weight(.semibold))
-                                        .monospacedDigit()
-                                        .foregroundStyle(accent)
-                                        .widgetAccentable()
+                                    WidgetCountChip(
+                                        count: env.updatesAvailable,
+                                        systemImage: "arrow.triangle.2.circlepath",
+                                        tint: accent
+                                    )
+                                    .widgetAccentable()
                                 }
                                 if let vulns = env.actionableVulnerabilities, vulns > 0 {
-                                    Text("\(vulns)⚠︎")
-                                        .font(.caption2.weight(.semibold))
-                                        .monospacedDigit()
-                                        .foregroundStyle(.orange)
+                                    WidgetCountChip(
+                                        count: vulns,
+                                        systemImage: "exclamationmark.shield.fill",
+                                        tint: .orange
+                                    )
                                 }
                             }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     private func totalBlock(count: Int, label: String, icon: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.caption2.weight(.semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(tint)
                 Text("\(count)")
-                    .font(.system(.title3, design: .rounded).weight(.bold))
+                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .monospacedDigit()
                     .foregroundStyle(tint)
                     .widgetAccentable()
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
             }
             Text(label)
                 .font(.caption2)

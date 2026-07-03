@@ -60,6 +60,7 @@ struct DynamicResourceListView: View {
                                 } label: {
                                     Label(action.title, systemImage: action.systemImage)
                                 }
+                                .tint(action.destructive ? Color.red : nil)
                             }
                         }
                     }
@@ -94,6 +95,7 @@ struct DynamicResourceListView: View {
                             } label: {
                                 Label(action.title, systemImage: action.systemImage)
                             }
+                            .tint(action.destructive ? Color.red : nil)
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -253,6 +255,7 @@ struct DynamicResourceDetailView: View {
                             } label: {
                                 Label(action.title, systemImage: action.systemImage)
                             }
+                            .tint(action.destructive ? Color.red : nil)
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")

@@ -56,31 +56,46 @@ struct AppearanceSettingsView: View {
         return AccentColorOption.allCases.first { $0.hex.lowercased() == normalized }
     }
 
+    /// A 26pt swatch inside a fixed 36pt slot; the selected one earns a 2pt
+    /// ring in its own color. Fixed slot size = no layout shift on selection.
+    private func accentSwatch(_ option: AccentColorOption) -> some View {
+        let isSelected = selectedOption == option
+        return Button {
+            accentColorHex = option.hex
+        } label: {
+            Circle()
+                .fill(option.color)
+                .frame(width: 26, height: 26)
+                .overlay {
+                    Circle()
+                        .strokeBorder(option.color, lineWidth: 2)
+                        .frame(width: 36, height: 36)
+                        .opacity(isSelected ? 1 : 0)
+                        .scaleEffect(isSelected ? 1 : 0.7)
+                }
+                .frame(width: 36, height: 36)
+                .motionAwareAnimation(Motion.state, value: isSelected)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(option.displayName))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
     var body: some View {
         Form {
             Section {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48), spacing: 12)], spacing: 12) {
-                    ForEach(AccentColorOption.allCases) { option in
-                        Button {
-                            accentColorHex = option.hex
-                        } label: {
-                            Circle()
-                                .fill(option.color)
-                                .frame(width: 48, height: 48)
-                                .overlay {
-                                    if selectedOption == option {
-                                        Image(systemName: "checkmark")
-                                            .font(.headline.bold())
-                                            .foregroundStyle(.white)
-                                    }
-                                }
+                // Compact single-row picker (like the system accent picker):
+                // small swatches, selection shown as a concentric ring in the
+                // swatch's own color rather than a checkmark.
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(AccentColorOption.allCases) { option in
+                            accentSwatch(option)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Text(option.rawValue.capitalized))
-                        .accessibilityAddTraits(selectedOption == option ? .isSelected : [])
                     }
+                    .padding(.vertical, 2)
                 }
-                .padding(.vertical, 8)
+                .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
             } header: {
                 Text("Accent Color")
             } footer: {

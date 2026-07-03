@@ -579,7 +579,15 @@ func friendlyErrorMessage(_ error: Error) -> String {
                 return "Blocked an insecure connection — check the server URL."
             }
             return "Connection error: \(message)"
-        case .decoding(let message): return "Response error: \(message)"
+        case .decoding(let message):
+            // "Unexpected character '<'" = the server answered with an HTML
+            // page (proxy login screen, wrong port, or a web app in front of
+            // Arcane) instead of the JSON API.
+            if message.contains("Unexpected character '<'")
+                || message.lowercased().contains("not valid json") {
+                return "The server replied with a webpage instead of the Arcane API. Check that the address points directly at your Arcane server (including the right port), with no login portal or other site in front of it."
+            }
+            return "Response error: \(message)"
         case .unknown(let code, _):
             return "Something went wrong (\(code))"
         }

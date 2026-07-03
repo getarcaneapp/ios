@@ -58,13 +58,17 @@ enum ReleaseNotes {
                 .init("Siri & Shortcuts: open tabs, containers, and projects; restart containers; start/stop projects (with confirmation)."),
                 .init("Environment cards show live CPU and memory sparklines with a rolling minute of history."),
                 .init("New Needs Attention card on the dashboard — offline environments, vulnerabilities, stopped containers, updates, expiring keys, and failed activities in one place."),
-                .init("Dashboard header shows a live fleet summary (environments online, containers running)."),
                 .init("Vulnerability summaries use a proportional severity bar instead of plain numbers."),
+                .init("New Account page in Settings: edit your display name and email, and change your password."),
             ],
             changed: [
+                .init("Tapping the current tab again returns to its root page, like the native tab bar."),
+                .init("System Prune options start from your server's configured prune defaults."),
+                .init("Updater actions now live in the floating tab bar instead of a separate button row."),
                 .init("Environment card stats survive scrolling and use fewer connections."),
                 .init("Container Stats matches the app's card styling and loads with skeletons."),
                 .init("Empty screens now explain themselves and offer a create action."),
+                .init("Slimmer accent color picker."),
                 .init("Smarter caching: fewer refetches on tab switches, and the disk cache cleans itself up."),
             ],
             fixed: [
@@ -74,6 +78,11 @@ enum ReleaseNotes {
                 .init("Signing in no longer interrupts live dashboard streams."),
                 .init("Icons load in parallel again in long lists."),
                 .init("Inspect view search no longer lags on large containers."),
+                .init("Confirmation dialog buttons no longer balloon with long titles."),
+                .init("Delete dialogs opened from a detail page's bottom bar render full-width instead of squeezed."),
+                .init("Signing in to a URL that serves a webpage (proxy portal, wrong port) now explains the problem instead of showing a raw JSON error."),
+                .init("Destructive menu actions now show a red icon to match their red text."),
+                .init("Cleaned up overlapping buttons in the log viewer's top bar."),
             ]
         ),
         ReleaseNote(

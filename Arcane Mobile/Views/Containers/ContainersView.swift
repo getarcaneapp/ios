@@ -278,11 +278,12 @@ struct ContainersView: View {
     @ViewBuilder
     private func containerMenuActions(for container: ContainerSummary) -> some View {
         if container.isRunning {
-            Button {
+            Button(role: .destructive) {
                 Task { await stopContainer(container) }
             } label: {
                 Label("Stop", systemImage: "stop.fill")
             }
+            .tint(.red)
             Button {
                 Task { await restartContainer(container) }
             } label: {

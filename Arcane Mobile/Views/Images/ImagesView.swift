@@ -205,6 +205,7 @@ struct ImagesView: View {
                     } label: {
                         Label("Quick Prune (Dangling)", systemImage: "trash")
                     }
+                    .tint(.red)
                     Button {
                         showPruneSheet = true
                     } label: {

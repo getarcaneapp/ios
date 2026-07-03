@@ -40,22 +40,36 @@ struct MorphingTabBar: View {
         tabs.firstIndex { $0.id == selectedID } ?? 0
     }
 
+    private var rootActions: [ActionButtonItem] { store.activeRootActions }
+
     var body: some View {
-        GlassContainerCompat(spacing: 10) {
-            let layout = isMorphed
-                ? AnyLayout(HStackLayout(spacing: 10))
-                : AnyLayout(ZStackLayout())
+        HStack(spacing: 10) {
+            GlassContainerCompat(spacing: 10) {
+                let layout = isMorphed
+                    ? AnyLayout(HStackLayout(spacing: 10))
+                    : AnyLayout(ZStackLayout())
 
-            layout {
-                primaryCapsule
+                layout {
+                    primaryCapsule
 
-                if isMorphed, let payload {
-                    ForEach(payload.inline) { item in
-                        secondaryPill(item)
+                    if isMorphed, let payload {
+                        ForEach(payload.inline) { item in
+                            secondaryPill(item)
+                        }
+                        if !payload.overflow.isEmpty {
+                            overflowPill(payload.overflow)
+                        }
                     }
-                    if !payload.overflow.isEmpty {
-                        overflowPill(payload.overflow)
-                    }
+                }
+            }
+
+            // Root-page accessory pills (e.g. Updates: Run Updater / History).
+            // Rendered OUTSIDE the glass container as their own glass circles —
+            // inside it, Liquid Glass merges them with the tab capsule into
+            // one lumpy shape.
+            if !isMorphed {
+                ForEach(rootActions) { item in
+                    rootPill(item)
                 }
             }
         }
@@ -63,21 +77,13 @@ struct MorphingTabBar: View {
         // navigation path returning to root, so this is just the visual reshape.
         .motionAwareAnimation(.smooth(duration: 0.38), value: isMorphed)
         .motionAwareAnimation(Motion.state, value: payload?.runningItemID)
+        .motionAwareAnimation(.smooth(duration: 0.38), value: rootActions.map(\.id))
         .padding(.horizontal, 15)
         .padding(.vertical, 6)
-        .deleteConfirmation(
-            item: Binding(
-                get: { store.pendingDestructive },
-                set: { store.pendingDestructive = $0 }
-            )
-        ) { item in
-            DeleteConfirmationConfig(
-                title: destructiveTitle(for: item),
-                message: item.confirmationMessage ?? defaultConfirmMessage(for: item),
-                icon: item.systemImage,
-                actions: [DeleteConfirmationAction(title: item.title, action: item.action)]
-            )
-        }
+        // NOTE: the destructive confirmation for `store.pendingDestructive` is
+        // mounted by MainTabView (full-screen ancestor) — attaching it here
+        // constrained the dialog's overlay host to the bar capsule's tiny
+        // frame and rendered the card smooshed.
     }
 
     // MARK: - Primary (the morphing capsule)
@@ -97,7 +103,11 @@ struct MorphingTabBar: View {
             ),
             selectedTint: accentColor,
             longPressEnabled: !isMorphed,
-            onLongPress: onLongPressTab
+            onLongPress: onLongPressTab,
+            onReselect: { idx in
+                guard idx >= 0, idx < tabs.count else { return }
+                store.requestPopToRoot(tabID: tabs[idx].id)
+            }
         )
         .opacity(isMorphed ? 0 : 1)
         .allowsHitTesting(!isMorphed)
@@ -169,6 +179,25 @@ struct MorphingTabBar: View {
         .transition(.blurReplace.combined(with: .opacity))
     }
 
+    /// Accessory pill for a root page's action — same look as `secondaryPill`,
+    /// but enabled while the bar is showing tabs (secondary pills only exist
+    /// morphed).
+    private func rootPill(_ item: ActionButtonItem) -> some View {
+        Button {
+            handleTap(item)
+        } label: {
+            Image(systemName: item.systemImage)
+                .font(.title3)
+                .foregroundStyle(item.tint)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.title)
+        .frame(width: pillSize, height: pillSize)
+        .contentShape(.circle)
+        .glassEffectCompat(interactive: true, in: .circle)
+        .transition(.blurReplace.combined(with: .opacity))
+    }
+
     // MARK: - Overflow menu
 
     private func overflowPill(_ items: [ActionButtonItem]) -> some View {
@@ -179,6 +208,10 @@ struct MorphingTabBar: View {
                 } label: {
                     Label(item.title, systemImage: item.systemImage)
                 }
+                // The app's global accent tint overrides the destructive-role
+                // icon color in menus (title goes red, icon stays accent);
+                // re-tint so the icon matches the text.
+                .tint(menuRole(item) == .destructive ? .red : nil)
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -219,15 +252,20 @@ struct MorphingTabBar: View {
         return nil
     }
 
-    private func destructiveTitle(for item: ActionButtonItem) -> String {
-        if let name = store.activePayload?.resourceName {
+}
+
+extension TabBarMorphStore {
+    /// Confirmation title/message for a destructive morph-bar action, shared
+    /// by whichever full-screen view hosts the dialog.
+    func destructiveTitle(for item: ActionButtonItem) -> String {
+        if let name = activePayload?.resourceName {
             return "\(item.title) \(name)?"
         }
         return "\(item.title)?"
     }
 
-    private func defaultConfirmMessage(for item: ActionButtonItem) -> String {
-        if let name = store.activePayload?.resourceName {
+    func defaultConfirmMessage(for item: ActionButtonItem) -> String {
+        if let name = activePayload?.resourceName {
             return "Are you sure you want to \(item.title.lowercased()) \(name)?"
         }
         return "Are you sure you want to \(item.title.lowercased())?"
@@ -266,6 +304,9 @@ private struct CustomTabBar: UIViewRepresentable {
     var selectedTint: Color
     var longPressEnabled: Bool
     var onLongPress: (Int) -> Void
+    /// Fires when the already-selected tab is tapped again (`valueChanged`
+    /// never fires for that) — used for the native pop-to-root behavior.
+    var onReselect: (Int) -> Void = { _ in }
 
     func makeUIView(context: Context) -> UISegmentedControl {
         let control = UISegmentedControl()
@@ -295,6 +336,16 @@ private struct CustomTabBar: UIViewRepresentable {
         lp.delegate = context.coordinator
         control.addGestureRecognizer(lp)
         context.coordinator.longPress = lp
+
+        // Re-tap of the selected segment: the segmented control emits no
+        // valueChanged for it, so a passive tap recognizer detects it.
+        let tap = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleTap(_:))
+        )
+        tap.cancelsTouchesInView = false
+        tap.delegate = context.coordinator
+        control.addGestureRecognizer(tap)
 
         return control
     }
@@ -363,6 +414,20 @@ private struct CustomTabBar: UIViewRepresentable {
             let idx = control.selectedSegmentIndex
             guard idx >= 0, idx < parent.tabs.count else { return }
             parent.activeIndex = idx
+        }
+
+        @objc func handleTap(_ gr: UITapGestureRecognizer) {
+            guard gr.state == .ended,
+                  let control = gr.view as? UISegmentedControl,
+                  control.bounds.width > 0,
+                  control.numberOfSegments > 0 else { return }
+            let slotWidth = control.bounds.width / CGFloat(control.numberOfSegments)
+            let x = gr.location(in: control).x
+            let idx = min(max(Int(x / slotWidth), 0), control.numberOfSegments - 1)
+            // Only a tap on the segment that was ALREADY selected counts as a
+            // re-select; ordinary tab switches go through valueChanged.
+            guard idx == control.selectedSegmentIndex, idx == parent.activeIndex else { return }
+            parent.onReselect(idx)
         }
 
         @objc func handleLongPress(_ gr: UILongPressGestureRecognizer) {

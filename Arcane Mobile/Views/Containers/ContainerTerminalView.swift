@@ -77,6 +77,7 @@ struct ContainerTerminalView: View {
                         } label: {
                             Label("Clear Output", systemImage: "trash")
                         }
+                        .tint(.red)
                     } label: {
                         Image(systemName: "terminal")
                     }

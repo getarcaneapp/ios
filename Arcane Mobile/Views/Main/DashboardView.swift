@@ -354,36 +354,8 @@ struct DashboardView: View {
             Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            if let fleetSubtitle {
-                Text(fleetSubtitle)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
-                    .motionAwareAnimation(Motion.state, value: fleetSubtitle)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Live fleet summary under the date: "N of M environments online ·
-    /// R containers running". Nil until any source has real data.
-    private var fleetSubtitle: String? {
-        let total = environments.count
-        guard total > 0 else { return nil }
-        let online: Int? = {
-            let states = streamStore.statesByEnvironmentID.values
-            if states.contains(where: { $0.hasLoaded || $0.streamError }) {
-                return states.count(where: { $0.hasLoaded && !$0.streamError })
-            }
-            return overview?.summary.onlineEnvironments
-        }()
-        let running = streamStore.aggregate?.runningContainers
-            ?? liveCounts?.running
-            ?? overview?.summary.containers?.runningContainers
-        var parts: [String] = []
-        if let online { parts.append("\(online) of \(total) environment\(total == 1 ? "" : "s") online") }
-        if let running { parts.append("\(running) container\(running == 1 ? "" : "s") running") }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// Triage rows for the Needs Attention card, folded from data the
@@ -1252,6 +1224,7 @@ struct SystemPruneView: View {
 
     @State private var isPruning = false
     @State private var errorMessage: String?
+    @State private var hasLoadedServerDefaults = false
 
     private var selectedCount: Int {
         var count = 0
@@ -1339,8 +1312,47 @@ struct SystemPruneView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .task { await loadServerDefaults() }
         }
     }
+
+    /// Seeds the pickers from the server's configured prune defaults — the
+    /// same `prune*Mode`/`prune*Until` settings the web dialog uses. Best
+    /// effort: on failure (older server, missing permission) the pickers just
+    /// stay at "None".
+    private func loadServerDefaults() async {
+        guard !hasLoadedServerDefaults, let client = manager.client else { return }
+        hasLoadedServerDefaults = true
+        let path = client.rest.environmentPath(environmentID, "settings")
+        guard let raw = try? await client.transport.rawRequest(path, body: Optional<String>.none),
+              let dtos = try? JSONDecoder().decode([PublicSetting].self, from: raw) else { return }
+        var dict: [String: String] = [:]
+        for dto in dtos { dict[dto.key] = dto.value }
+
+        // Server values use the same raw strings as the SDK enums
+        // ("none" / "stopped" / "olderThan" / ...).
+        if let mode = dict["pruneContainerMode"].flatMap(PruneContainerMode.init(rawValue:)) {
+            containerMode = mode
+        }
+        if let until = dict["pruneContainerUntil"], !until.isEmpty { containerAge = until }
+        if let mode = dict["pruneImageMode"].flatMap(PruneImageMode.init(rawValue:)) {
+            imageMode = mode
+        }
+        if let until = dict["pruneImageUntil"], !until.isEmpty { imageAge = until }
+        if let mode = dict["pruneVolumeMode"].flatMap(PruneVolumeMode.init(rawValue:)) {
+            volumeMode = mode
+        }
+        if let mode = dict["pruneNetworkMode"].flatMap(PruneNetworkMode.init(rawValue:)) {
+            networkMode = mode
+        }
+        if let until = dict["pruneNetworkUntil"], !until.isEmpty { networkAge = until }
+        if let mode = dict["pruneBuildCacheMode"].flatMap(PruneBuildCacheMode.init(rawValue:)) {
+            buildCacheMode = mode
+        }
+        if let until = dict["pruneBuildCacheUntil"], !until.isEmpty { buildCacheAge = until }
+    }
+
+    // MARK: - Form rows
 
     private func ageRow(_ binding: Binding<String>) -> some View {
         FormTextField(

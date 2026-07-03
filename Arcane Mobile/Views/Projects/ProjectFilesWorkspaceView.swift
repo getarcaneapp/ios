@@ -422,6 +422,7 @@ struct ProjectFilesWorkspaceView: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+            .tint(.red)
         } else {
             Label("Read Only", systemImage: "lock")
         }

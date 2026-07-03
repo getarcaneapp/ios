@@ -178,6 +178,7 @@ struct EnvironmentDashboardCard: View {
             } label: {
                 Label("System Prune", systemImage: "trash")
             }
+            .tint(.red)
         }
         .sheet(isPresented: $showPruneSheet) {
             SystemPruneView(environmentID: envID)

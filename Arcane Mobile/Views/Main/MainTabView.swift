@@ -133,6 +133,22 @@ struct MainTabView: View {
             .overlay(alignment: .bottom) {
                 bottomBarOverlay
             }
+            // Destructive-action confirmation for the morph bar's controls.
+            // Mounted here (full-screen) rather than on the bar itself so the
+            // dialog's overlay host isn't constrained to the bar capsule.
+            .deleteConfirmation(
+                item: Binding(
+                    get: { morphStore.pendingDestructive },
+                    set: { morphStore.pendingDestructive = $0 }
+                )
+            ) { item in
+                DeleteConfirmationConfig(
+                    title: morphStore.destructiveTitle(for: item),
+                    message: item.confirmationMessage ?? morphStore.defaultConfirmMessage(for: item),
+                    icon: item.systemImage,
+                    actions: [DeleteConfirmationAction(title: item.title, action: item.action)]
+                )
+            }
             // iOS 18 keeps the modal `TabSwapSheet`; on iOS 26 the morph
             // (`TabReplaceMorphBar`) owns long-press replace, so the sheet is
             // suppressed there.
@@ -141,6 +157,16 @@ struct MainTabView: View {
                 manager: manager,
                 onPick: { performSwap(current: $0, replacement: $1) }
             ))
+            // Re-tap of the selected tab: pop to root. Tabs push through their
+            // own inner NavigationStacks (item-driven destinations), so the
+            // reliable route is popping the backing UINavigationControllers —
+            // SwiftUI syncs its bindings the same way it does for the
+            // interactive swipe-back.
+            .onChange(of: morphStore.popToRootToken) { _, _ in
+                guard let tabID = morphStore.popToRootTabID, tabID == selectedTab || tabID == "settings" else { return }
+                popVisibleNavigationStacksToRoot()
+                morphStore.clearTab(tabID)
+            }
             .onChange(of: selectedTab) { _, newValue in
                 morphStore.activeTabID = newValue
                 UserDefaults.standard.set(newValue, forKey: "arcane.lastSelectedTabID")
@@ -251,7 +277,51 @@ private struct TabNavigationContainer<Content: View>: View {
         .onChange(of: path.isEmpty) { _, isEmpty in
             if isEmpty { morphStore.clearTab(tabID) }
         }
+        // Re-tapping the selected tab in the floating bar pops this tab's
+        // stack to root — the native tab bar behavior the custom bar replaces.
+        .onChange(of: morphStore.popToRootToken) { _, _ in
+            if morphStore.popToRootTabID == tabID, !path.isEmpty {
+                path = NavigationPath()
+            }
+        }
     }
+}
+
+// MARK: - Pop to root (UIKit)
+
+/// Pops every navigation stack under the selected tab back to its root.
+/// Presented sheets are left alone (only child hierarchy is walked).
+@MainActor
+private func popVisibleNavigationStacksToRoot() {
+    let windows = UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap(\.windows)
+    guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first,
+          let tabController = findTabBarController(window.rootViewController),
+          let selected = tabController.selectedViewController else { return }
+    for nav in navigationControllers(under: selected) where nav.viewControllers.count > 1 {
+        nav.popToRootViewController(animated: true)
+    }
+}
+
+@MainActor
+private func findTabBarController(_ viewController: UIViewController?) -> UITabBarController? {
+    guard let viewController else { return nil }
+    if let tab = viewController as? UITabBarController { return tab }
+    for child in viewController.children {
+        if let found = findTabBarController(child) { return found }
+    }
+    return nil
+}
+
+@MainActor
+private func navigationControllers(under viewController: UIViewController) -> [UINavigationController] {
+    var result: [UINavigationController] = []
+    if let nav = viewController as? UINavigationController { result.append(nav) }
+    for child in viewController.children {
+        result.append(contentsOf: navigationControllers(under: child))
+    }
+    return result
 }
 
 // MARK: - Global bottom inset for the floating bar

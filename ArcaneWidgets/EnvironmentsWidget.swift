@@ -1,9 +1,12 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 struct EnvironmentsEntry: TimelineEntry {
     let date: Date
     let snapshot: WidgetSnapshot?
+    /// User-picked environment IDs (ordered); nil/empty = first 4.
+    var selectedIDs: [String] = []
 }
 
 struct EnvironmentsProvider: TimelineProvider {
@@ -25,11 +28,45 @@ struct EnvironmentsProvider: TimelineProvider {
     }
 }
 
+// MARK: - Configuration (pick up to 4 environments)
+
+struct EnvironmentsWidgetConfigurationIntent: WidgetConfigurationIntent {
+    static let title: LocalizedStringResource = "Environments"
+    static let description = IntentDescription("Pick up to 4 environments to show; leave empty for the first 4.")
+
+    @Parameter(title: "Environments", size: 4)
+    var environments: [EnvironmentEntity]?
+}
+
+struct ConfiguredEnvironmentsProvider: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> EnvironmentsEntry {
+        EnvironmentsEntry(date: Date(), snapshot: StatusEntry.placeholderEntry().snapshot)
+    }
+
+    func snapshot(for configuration: EnvironmentsWidgetConfigurationIntent, in context: Context) async -> EnvironmentsEntry {
+        if context.isPreview { return placeholder(in: context) }
+        return entry(for: configuration)
+    }
+
+    func timeline(for configuration: EnvironmentsWidgetConfigurationIntent, in context: Context) async -> Timeline<EnvironmentsEntry> {
+        Timeline(entries: [entry(for: configuration)], policy: .after(Date().addingTimeInterval(30 * 60)))
+    }
+
+    private func entry(for configuration: EnvironmentsWidgetConfigurationIntent) -> EnvironmentsEntry {
+        EnvironmentsEntry(
+            date: Date(),
+            snapshot: WidgetSnapshotStore.load(),
+            selectedIDs: (configuration.environments ?? []).map(\.id)
+        )
+    }
+}
+
 struct EnvironmentsWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(
+        AppIntentConfiguration(
             kind: "com.getarcaneapp.ios.mobile.environments",
-            provider: EnvironmentsProvider()
+            intent: EnvironmentsWidgetConfigurationIntent.self,
+            provider: ConfiguredEnvironmentsProvider()
         ) { entry in
             EnvironmentsWidgetView(entry: entry)
         }
@@ -43,8 +80,13 @@ struct EnvironmentsWidgetView: View {
     let entry: EnvironmentsEntry
 
     private var accent: Color { WidgetTheme.accent(from: entry.snapshot) }
+
+    /// The user's picked environments in their picked order, capped at 4;
+    /// no selection = the snapshot's first 4.
     private var environments: [WidgetSnapshot.EnvSummary] {
-        Array((entry.snapshot?.environments ?? []).prefix(4))
+        let all = entry.snapshot?.environments ?? []
+        guard !entry.selectedIDs.isEmpty else { return Array(all.prefix(4)) }
+        return Array(entry.selectedIDs.compactMap { id in all.first(where: { $0.id == id }) }.prefix(4))
     }
 
     var body: some View {
@@ -55,14 +97,17 @@ struct EnvironmentsWidgetView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    VStack(alignment: .leading, spacing: 6) {
+                    // Rows spread evenly so the widget is filled no matter
+                    // how many environments exist.
+                    VStack(spacing: 0) {
                         ForEach(environments) { env in
                             Link(destination: deepLink(for: env)) {
                                 row(env)
                             }
+                            .frame(maxHeight: .infinity)
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
                 WidgetUnconfiguredView()
@@ -77,22 +122,25 @@ struct EnvironmentsWidgetView: View {
     }
 
     private func row(_ env: WidgetSnapshot.EnvSummary) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             StatusDot(online: env.online)
             Text(env.name)
-                .font(.caption.weight(.medium))
+                .font(.footnote.weight(.medium))
                 .lineLimit(1)
             Spacer(minLength: 8)
             if env.updatesAvailable > 0 {
-                Label("\(env.updatesAvailable)", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                WidgetCountChip(
+                    count: env.updatesAvailable,
+                    systemImage: "arrow.triangle.2.circlepath",
+                    tint: .secondary
+                )
             }
             Text(env.online ? "\(env.running)/\(env.total)" : "offline")
-                .font(.caption2.weight(.semibold))
+                .font(.system(.footnote, design: .rounded).weight(.bold))
                 .monospacedDigit()
                 .foregroundStyle(env.online ? AnyShapeStyle(accent) : AnyShapeStyle(.secondary))
                 .widgetAccentable()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

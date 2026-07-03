@@ -181,8 +181,8 @@ struct StatusWidgetView: View {
                 }
             }
         default:
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 5) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
                     StatusDot(online: online)
                     Text(title)
                         .font(.caption.weight(.semibold))
@@ -196,19 +196,32 @@ struct StatusWidgetView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
                 Spacer(minLength: 0)
+
                 Text("\(running)")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: 40, weight: .bold, design: .rounded))
+                    .monospacedDigit()
                     .foregroundStyle(accent)
                     .widgetAccentable()
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
                 Text("of \(total) running")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+
+                Spacer(minLength: 0)
+
                 if updates > 0 {
-                    Label("\(updates) updates", systemImage: "arrow.triangle.2.circlepath")
+                    WidgetCountChip(
+                        count: updates,
+                        systemImage: "arrow.triangle.2.circlepath",
+                        tint: .secondary
+                    )
+                } else {
+                    Label("Up to date", systemImage: "checkmark.circle")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .labelStyle(.titleAndIcon)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

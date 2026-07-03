@@ -354,6 +354,8 @@ private struct DeleteConfirmationCard: View {
             // Liquid Glass neutral button.
             Button { resolve(nil) } label: {
                 Text(config.cancelTitle)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
             }
@@ -362,6 +364,8 @@ private struct DeleteConfirmationCard: View {
         } else {
             Button { resolve(nil) } label: {
                 Text(config.cancelTitle)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -378,6 +382,8 @@ private struct DeleteConfirmationCard: View {
             // Prominent Liquid Glass tinted with the action's color.
             Button { resolve(action.action) } label: {
                 Text(action.title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
             }
@@ -387,6 +393,8 @@ private struct DeleteConfirmationCard: View {
         } else {
             Button { resolve(action.action) } label: {
                 Text(action.title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)

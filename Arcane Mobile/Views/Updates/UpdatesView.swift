@@ -3,10 +3,36 @@ import Arcane
 
 struct UpdatesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(\.currentTabID) private var currentTabID
 
     @State private var environments: [Arcane.Environment] = []
     @State private var pickerMode: PickerMode?
     @State private var navTarget: NavTarget?
+
+    /// True when this page is PUSHED inside another tab's stack (e.g. from
+    /// Settings) — there's a back button, so the bar can fully morph like the
+    /// container/image detail pages. When Updates is itself a pinned root tab
+    /// there is no way back, so the tabs stay and the actions render as
+    /// accessory pills instead.
+    private var isPushedDetail: Bool { currentTabID != AppTab.updates.id }
+
+    private var runUpdaterItem: ActionButtonItem {
+        ActionButtonItem(
+            id: "run-updater",
+            title: "Run Updater",
+            systemImage: "play.fill",
+            tint: .orange
+        ) { launch(.runUpdater) }
+    }
+
+    private var historyItem: ActionButtonItem {
+        ActionButtonItem(
+            id: "updater-history",
+            title: "Updater History",
+            systemImage: "clock.arrow.circlepath",
+            tint: .accentColor
+        ) { launch(.history) }
+    }
 
     var body: some View {
         AllEnvironmentsImageUpdatesView()
@@ -28,23 +54,11 @@ struct UpdatesView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
-            .actionToolbar(
-                items: [
-                    ActionButtonItem(
-                        id: "run-updater",
-                        title: "Run Updater",
-                        systemImage: "play.fill",
-                        tint: .orange
-                    ) { launch(.runUpdater) },
-                    ActionButtonItem(
-                        id: "updater-history",
-                        title: "Updater History",
-                        systemImage: "clock.arrow.circlepath",
-                        tint: .accentColor
-                    ) { launch(.history) }
-                ],
-                isDisabled: environments.isEmpty
-            )
+            .modifier(UpdatesBarActions(
+                isPushedDetail: isPushedDetail,
+                primary: runUpdaterItem,
+                secondary: historyItem
+            ))
             .task { await loadEnvironments() }
     }
 
@@ -65,6 +79,22 @@ struct UpdatesView: View {
             onFresh: { fresh in environments = fresh }
         )) ?? []
         environments = envs
+    }
+}
+
+/// Pushed inside another tab → full morph (identical to detail pages).
+/// Root tab → accessory pills so the tabs stay reachable.
+private struct UpdatesBarActions: ViewModifier {
+    let isPushedDetail: Bool
+    let primary: ActionButtonItem
+    let secondary: ActionButtonItem
+
+    func body(content: Content) -> some View {
+        if isPushedDetail {
+            content.morphingActions(primary: primary, inline: [secondary])
+        } else {
+            content.rootBarActions([primary, secondary])
+        }
     }
 }
 

@@ -1,0 +1,228 @@
+import SwiftUI
+import Arcane
+
+/// Account/profile page mirroring the web's Account view: identity header,
+/// editable display name + email, password change, and a disabled language
+/// row until localization ships. Follows the app's form conventions —
+/// toolbar Save with an in-flight spinner, `FormTextField`/`FormSecureField`
+/// rows, toast feedback.
+struct ProfileView: View {
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+
+    @State private var displayName = ""
+    @State private var email = ""
+    @State private var hasSeededFields = false
+
+    @State private var currentPassword = ""
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private var user: User? { manager.currentUser }
+    private var isOIDCUser: Bool { user?.oidcSubjectId?.isEmpty == false }
+
+    private var profileChanged: Bool {
+        guard let user else { return false }
+        return displayName.trimmingCharacters(in: .whitespacesAndNewlines) != (user.displayName ?? "")
+            || email.trimmingCharacters(in: .whitespacesAndNewlines) != (user.email ?? "")
+    }
+
+    private var wantsPasswordChange: Bool {
+        !currentPassword.isEmpty || !newPassword.isEmpty || !confirmPassword.isEmpty
+    }
+
+    private var passwordValid: Bool {
+        !currentPassword.isEmpty && newPassword.count >= 8 && newPassword == confirmPassword
+    }
+
+    private var canSave: Bool {
+        profileChanged || (wantsPasswordChange && passwordValid)
+    }
+
+    var body: some View {
+        Form {
+            identitySection
+
+            Section("Profile") {
+                FormTextField(
+                    title: "Display Name",
+                    placeholder: "Your name",
+                    text: $displayName
+                )
+                FormTextField(
+                    title: "Email",
+                    placeholder: "you@example.com",
+                    text: $email,
+                    keyboardType: .emailAddress,
+                    autocapitalization: .never,
+                    autocorrectionDisabled: true
+                )
+            }
+
+            if !isOIDCUser {
+                passwordSection
+            }
+
+            Section {
+                LabeledContent("Language") {
+                    Text("English")
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Language")
+            } footer: {
+                Text("Language selection is coming in a future update.")
+            }
+
+            if let errorMessage {
+                Section {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .navigationTitle("Account")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                if isSaving {
+                    ProgressView().scaleEffect(0.8)
+                } else {
+                    Button("Save") { Task { await save() } }
+                        .disabled(!canSave)
+                }
+            }
+        }
+        .onAppear { seedFields() }
+    }
+
+    // MARK: - Sections
+
+    private var identitySection: some View {
+        Section {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.gradient)
+                        .frame(width: 56, height: 56)
+                    Text(initials)
+                        .font(.title3.bold())
+                        .foregroundStyle(.white)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(user?.displayName?.isEmpty == false ? user!.displayName! : (user?.username ?? "—"))
+                        .font(.headline)
+                    Text("@\(user?.username ?? "—")")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        if user?.isAdmin == true {
+                            pill("Admin", color: .indigo)
+                        }
+                        if isOIDCUser {
+                            pill("SSO", color: .teal)
+                        }
+                    }
+                }
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private var passwordSection: some View {
+        Section {
+            FormSecureField(
+                title: "Current",
+                placeholder: "Current password",
+                text: $currentPassword,
+                textContentType: .password
+            )
+            FormSecureField(
+                title: "New",
+                placeholder: "At least 8 characters",
+                text: $newPassword,
+                textContentType: .newPassword
+            )
+            FormSecureField(
+                title: "Confirm",
+                placeholder: "Repeat new password",
+                text: $confirmPassword,
+                textContentType: .newPassword
+            )
+        } header: {
+            Text("Change Password")
+        } footer: {
+            if !newPassword.isEmpty && newPassword.count < 8 {
+                Text("New password must be at least 8 characters.")
+            } else if !confirmPassword.isEmpty && newPassword != confirmPassword {
+                Text("Passwords don't match.")
+            } else {
+                Text("Leave blank to keep your current password.")
+            }
+        }
+    }
+
+    private func pill(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(color, in: Capsule())
+    }
+
+    private var initials: String {
+        let source = user?.displayName?.isEmpty == false ? user!.displayName! : (user?.username ?? "?")
+        return String(source.prefix(1)).uppercased()
+    }
+
+    // MARK: - Actions
+
+    private func seedFields() {
+        guard !hasSeededFields, let user else { return }
+        hasSeededFields = true
+        displayName = user.displayName ?? ""
+        email = user.email ?? ""
+    }
+
+    /// One Save applies whatever changed: profile fields, password, or both.
+    private func save() async {
+        guard let client = manager.client, let user else { return }
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            var savedSomething = false
+            if profileChanged {
+                let updated = try await client.users.update(
+                    id: user.id,
+                    body: UpdateUser(
+                        displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+                        email: email.trimmingCharacters(in: .whitespacesAndNewlines)
+                    )
+                )
+                manager.currentUser = updated
+                savedSomething = true
+            }
+            if wantsPasswordChange && passwordValid {
+                try await client.users.changePassword(
+                    PasswordChange(currentPassword: currentPassword, newPassword: newPassword)
+                )
+                currentPassword = ""
+                newPassword = ""
+                confirmPassword = ""
+                savedSomething = true
+            }
+            if savedSomething {
+                showToast(.success("Account updated"))
+            }
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+}

@@ -64,6 +64,24 @@ struct StatusDot: View {
     }
 }
 
+/// Small trailing icon+count chip used consistently across widget rows.
+struct WidgetCountChip: View {
+    let count: Int
+    let systemImage: String
+    var tint: Color = .secondary
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: systemImage)
+                .font(.system(size: 9, weight: .semibold))
+            Text("\(count)")
+                .font(.system(.caption2, design: .rounded).weight(.semibold))
+                .monospacedDigit()
+        }
+        .foregroundStyle(tint)
+    }
+}
+
 /// Shared empty state when no server is configured.
 struct WidgetUnconfiguredView: View {
     var body: some View {
