@@ -115,7 +115,6 @@ struct ContainersView: View {
                     Button("Refresh") {
                         Task { await loadContainers(refresh: true) }
                     }
-                    .buttonStyle(.borderedProminent)
                 }
             } else {
                 List {

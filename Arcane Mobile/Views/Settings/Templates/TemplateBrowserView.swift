@@ -2,11 +2,18 @@ import SwiftUI
 import Arcane
 
 struct TemplateBrowserView: View {
+    /// True when pushed inside an existing NavigationStack (e.g. from the
+    /// Projects page): skips the owned stack + Done button and offers a
+    /// Settings button into registry management instead.
+    var embedded: Bool = false
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @State private var templates: [Template] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+
+    private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
 
     private var groupedTemplates: [(String, [Template])] {
         let groups = Dictionary(grouping: templates) { template in
@@ -21,7 +28,16 @@ struct TemplateBrowserView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        if embedded {
+            content
+        } else {
+            NavigationStack {
+                content
+            }
+        }
+    }
+
+    private var content: some View {
             Group {
                 if isLoading && templates.isEmpty {
                     ProgressView("Loading templates...")
@@ -48,8 +64,20 @@ struct TemplateBrowserView: View {
             .navigationTitle("Templates")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                if !embedded {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+                if embedded && isAdmin {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        NavigationLink {
+                            TemplateRegistriesView()
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        .accessibilityLabel("Manage Template Registries")
+                    }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { Task { await loadTemplates() } } label: {
@@ -59,7 +87,6 @@ struct TemplateBrowserView: View {
             }
             .task { await loadTemplates() }
             .refreshable { await loadTemplates() }
-        }
     }
 
     private func loadTemplates() async {

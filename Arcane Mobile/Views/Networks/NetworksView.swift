@@ -110,7 +110,6 @@ struct NetworksView: View {
                     Text("No networks found in this environment.")
                 } actions: {
                     Button("Create Network") { showCreateSheet = true }
-                        .buttonStyle(.borderedProminent)
                 }
             } else {
                 List {

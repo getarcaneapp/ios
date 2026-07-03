@@ -30,7 +30,6 @@ struct APIKeysView: View {
                     Text("Create a key to access the Arcane API from scripts and integrations.")
                 } actions: {
                     Button("Create API Key") { showCreateSheet = true }
-                        .buttonStyle(.borderedProminent)
                 }
             } else {
                 List {

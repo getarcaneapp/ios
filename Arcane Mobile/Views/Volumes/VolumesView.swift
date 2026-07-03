@@ -118,7 +118,6 @@ struct VolumesView: View {
                     Text("No volumes found in this environment.")
                 } actions: {
                     Button("Create Volume") { showCreateSheet = true }
-                        .buttonStyle(.borderedProminent)
                 }
             } else {
                 List {

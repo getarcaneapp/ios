@@ -21,7 +21,6 @@ struct WebhooksView: View {
                     Text("Create a webhook to trigger actions via HTTP.")
                 } actions: {
                     Button("Create Webhook") { showCreateSheet = true }
-                        .buttonStyle(.borderedProminent)
                 }
             } else {
                 List {

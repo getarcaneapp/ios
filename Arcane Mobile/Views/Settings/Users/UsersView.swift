@@ -21,7 +21,6 @@ struct UsersView: View {
                     Text("Add a user to give someone else access to this Arcane server.")
                 } actions: {
                     Button("Add User") { showCreateSheet = true }
-                        .buttonStyle(.borderedProminent)
                 }
             } else {
                 List {

@@ -7,10 +7,17 @@ struct TemplateRegistriesView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showCreateSheet = false
-    @State private var showBrowser = false
     @State private var editingRegistry: TemplateRegistry?
     @State private var actionErrorMessage: String?
     @State private var pendingDeleteRegistry: TemplateRegistry?
+    @State private var isAddingCommunity = false
+
+    /// The official community registry the web UI also offers one-tap setup for.
+    private static let communityRegistryURL = "https://registry.getarcane.app/registry.json"
+
+    private var hasCommunityRegistry: Bool {
+        registries.contains { $0.url.lowercased() == Self.communityRegistryURL.lowercased() }
+    }
 
     var body: some View {
         Group {
@@ -32,8 +39,17 @@ struct TemplateRegistriesView: View {
                 } description: {
                     Text("Add a registry to browse and deploy ready-made project templates.")
                 } actions: {
-                    Button("Add Template Registry") { showCreateSheet = true }
-                        .buttonStyle(.borderedProminent)
+                    Button {
+                        Task { await addCommunityRegistry() }
+                    } label: {
+                        if isAddingCommunity {
+                            ProgressView()
+                        } else {
+                            Text("Add Community Registry")
+                        }
+                    }
+                    .disabled(isAddingCommunity)
+                    Button("Add Custom Registry") { showCreateSheet = true }
                 }
             } else {
                 List {
@@ -52,6 +68,25 @@ struct TemplateRegistriesView: View {
                             .tint(.red)
                         }
                     }
+
+                    // One-tap add for the official community registry when it
+                    // isn't configured yet (mirrors the web's suggestion card).
+                    if !hasCommunityRegistry {
+                        Section {
+                            Button {
+                                Task { await addCommunityRegistry() }
+                            } label: {
+                                HStack {
+                                    Label("Add Community Registry", systemImage: "person.2")
+                                    Spacer()
+                                    if isAddingCommunity { ProgressView() }
+                                }
+                            }
+                            .disabled(isAddingCommunity)
+                        } footer: {
+                            Text("Official Arcane community templates (\(Self.communityRegistryURL)).")
+                        }
+                    }
                 }
                 .listStyle(.insetGrouped)
             }
@@ -68,9 +103,6 @@ struct TemplateRegistriesView: View {
         }
         .toolbar {
             if manager.currentUser?.isAdmin == true {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showBrowser = true } label: { Image(systemName: "doc.text.magnifyingglass") }.accessibilityLabel("Browse Templates")
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Template Registry")
                 }
@@ -91,9 +123,6 @@ struct TemplateRegistriesView: View {
                 }
                 await loadRegistries(refresh: true)
             }
-        }
-        .sheet(isPresented: $showBrowser) {
-            TemplateBrowserView()
         }
         .sheet(item: $editingRegistry) { registry in
             TemplateRegistryFormView(registry: registry) {
@@ -132,6 +161,28 @@ struct TemplateRegistriesView: View {
             errorMessage = nil
         } catch {
             errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    private func addCommunityRegistry() async {
+        guard manager.currentUser?.isAdmin == true, let client = manager.client else { return }
+        isAddingCommunity = true
+        defer { isAddingCommunity = false }
+        do {
+            let body = CreateTemplateRegistryRequest(
+                name: "Arcane Community Templates",
+                url: Self.communityRegistryURL,
+                description: "Official Arcane community template registry",
+                enabled: true
+            )
+            let _: TemplateRegistry = try await client.rest.post("templates/registries", body: body)
+            if let cached = manager.cached {
+                await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
+            }
+            await loadRegistries(refresh: true)
+            showToast(.success("Community registry added"))
+        } catch {
+            actionErrorMessage = friendlyErrorMessage(error)
         }
     }
 

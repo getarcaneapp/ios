@@ -126,7 +126,6 @@ struct ImagesView: View {
                     Text("No images pulled to this environment yet.")
                 } actions: {
                     Button("Pull Image") { showPullSheet = true }
-                        .buttonStyle(.borderedProminent)
                 }
             } else {
                 List {

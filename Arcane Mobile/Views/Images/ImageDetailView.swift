@@ -49,6 +49,7 @@ struct ImageDetailView: View {
                 }
 
                 imageConfigSection(details.config)
+                attestationsSection
 
                 vulnerabilitiesSection
             }
@@ -203,6 +204,20 @@ struct ImageDetailView: View {
                 NavigationLink(destination: ImageVulnerabilitiesView(imageID: image.id, imageDisplayName: image.displayName, environmentID: environmentID)) {
                     Label("Not scanned yet — open to scan", systemImage: "shield")
                 }
+            }
+        }
+    }
+
+    private var attestationsSection: some View {
+        Section("Supply Chain") {
+            NavigationLink(
+                destination: ImageAttestationsView(
+                    imageID: image.id,
+                    imageDisplayName: image.displayName,
+                    environmentID: environmentID
+                )
+            ) {
+                Label("Attestations", systemImage: "checkmark.seal")
             }
         }
     }

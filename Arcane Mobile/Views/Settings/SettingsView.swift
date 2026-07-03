@@ -3,7 +3,6 @@ import Arcane
 
 struct SettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @State private var showLogoutConfirm = false
     @State private var volumeSizeBytes: Int64? = nil
     @State private var loadingVolumeSize = false
     @State private var navPath = NavigationPath()
@@ -75,30 +74,9 @@ struct SettingsView: View {
                     }
                     .accessibilityLabel("App Settings")
                 }
-                if #available(iOS 26, *) {
-                    ToolbarSpacer(.fixed, placement: .navigationBarTrailing)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(role: .destructive) {
-                        showLogoutConfirm = true
-                    } label: {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .foregroundStyle(.red)
-                    }
-                    .accessibilityLabel("Sign Out")
-                }
             }
             .task {
                 await loadVolumeSize()
-            }
-            .deleteConfirmation(
-                isPresented: $showLogoutConfirm,
-                title: "Sign Out",
-                message: "You'll be signed out of this server.",
-                icon: "rectangle.portrait.and.arrow.right",
-                confirmTitle: "Sign Out"
-            ) {
-                Task { await manager.logout() }
             }
             .aiAssistantToolbar()
         }

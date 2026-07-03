@@ -132,7 +132,6 @@ struct ProjectsView: View {
                 Text("No Compose projects found in this environment.")
             } actions: {
                 Button("Create Project") { showCreateSheet = true }
-                    .buttonStyle(.borderedProminent)
             }
         } else {
             projectsList
@@ -162,10 +161,12 @@ struct ProjectsView: View {
     private var toolbarContent: some ToolbarContent {
         if isAdmin {
             ToolbarItem(placement: .navigationBarLeading) {
-                NavigationLink(destination: TemplateRegistriesView()) {
+                // Straight into the template browser; registry management is
+                // behind its Settings (gear) button.
+                NavigationLink(destination: TemplateBrowserView(embedded: true)) {
                     Image(systemName: "doc.text.magnifyingglass")
                 }
-                .accessibilityLabel("Template registries")
+                .accessibilityLabel("Browse Templates")
             }
         }
         ToolbarItem(placement: .navigationBarTrailing) {

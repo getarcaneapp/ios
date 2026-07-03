@@ -121,7 +121,6 @@ struct DashboardView: View {
                             NavigationLink("Manage Environments") {
                                 EnvironmentsView()
                             }
-                            .buttonStyle(.borderedProminent)
                         }
                         .padding(.top, 48)
                     } else {

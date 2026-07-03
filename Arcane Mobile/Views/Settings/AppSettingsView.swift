@@ -13,7 +13,6 @@ struct AppSettingsView: View {
     /// `.deleteConfirmation` cover (only one full-screen cover can be active per
     /// view), distinguished by this case.
     private enum PendingDestructive {
-        case changeServer
         case clearCache
     }
 
@@ -37,9 +36,10 @@ struct AppSettingsView: View {
         List {
             generalSection
             serverSection
-            storageSection
             aboutSection
             supportSection
+            // Danger zone — destructive actions stay at the very bottom.
+            storageSection
         }
         .listStyle(.insetGrouped)
         .navigationTitle("App Settings")
@@ -50,15 +50,6 @@ struct AppSettingsView: View {
         }
         .deleteConfirmation(item: $pendingDestructive) { action in
             switch action {
-            case .changeServer:
-                return DeleteConfirmationConfig(
-                    title: "Change Server?",
-                    message: "You'll be signed out and asked for a new server URL.",
-                    icon: "link",
-                    actions: [DeleteConfirmationAction(title: "Change Server") {
-                        Task { await manager.logout() }
-                    }]
-                )
             case .clearCache:
                 return DeleteConfirmationConfig(
                     title: "Clear Cache?",
@@ -107,28 +98,10 @@ struct AppSettingsView: View {
                     color: .teal
                 )
             }
-            Button {
-                pendingDestructive = .changeServer
-            } label: {
-                HStack {
-                    SettingsRow(
-                        title: "Change Server",
-                        systemImage: "link",
-                        color: .blue,
-                        titleColor: .primary
-                    )
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
         } header: {
             Text("Server")
         } footer: {
-            Text("Changing the server signs you out.")
+            Text("To change servers, sign out from your Account page.")
         }
     }
 
@@ -152,7 +125,7 @@ struct AppSettingsView: View {
                 }
             }
         } header: {
-            Text("Storage")
+            Text("Danger Zone")
         } footer: {
             Text("Cached images and API responses are re-fetched as needed.")
         }

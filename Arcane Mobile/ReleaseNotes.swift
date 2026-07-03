@@ -52,6 +52,17 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.4.1",
+            new: [
+                .init("One-tap setup for the Arcane Community Templates registry."),
+            ],
+            changed: [
+                .init("Sign out moved to the Account page, with a combined Sign Out / Sign Out & Change Server menu."),
+                .init("Clear Cache moved to a Danger Zone at the bottom of App Settings."),
+                .init("The templates button on Projects now opens the template browser directly; registry management moved behind its Settings button."),
+            ]
+        ),
+        ReleaseNote(
             version: "0.4.0",
             new: [
                 .init("Home and Lock Screen widgets: Status (configurable, with refresh button), Environments, and Updates & Vulnerabilities."),

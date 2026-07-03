@@ -32,7 +32,6 @@ struct ContainerRegistriesView: View {
                     Text("Add a registry to pull private images and check for updates behind authentication.")
                 } actions: {
                     Button("Add Registry") { showCreateRegistrySheet = true }
-                        .buttonStyle(.borderedProminent)
                 }
             } else {
                 List {
