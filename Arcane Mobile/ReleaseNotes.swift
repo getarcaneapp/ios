@@ -55,11 +55,16 @@ enum ReleaseNotes {
             version: "0.4.1",
             new: [
                 .init("One-tap setup for the Arcane Community Templates registry."),
+                .init("Your profile picture now syncs from the server and shows on the Account page and in Settings."),
             ],
             changed: [
                 .init("Sign out moved to the Account page, with a combined Sign Out / Sign Out & Change Server menu."),
                 .init("Clear Cache moved to a Danger Zone at the bottom of App Settings."),
                 .init("The templates button on Projects now opens the template browser directly; registry management moved behind its Settings button."),
+                .init("Profile name and email are now read-only for SSO accounts — they're managed by your identity provider."),
+            ],
+            fixed: [
+                .init("Fixed getting signed out when launching the app after an update — a widget refresh could invalidate the app's session at the worst moment."),
             ]
         ),
         ReleaseNote(

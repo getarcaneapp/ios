@@ -405,8 +405,33 @@ final class ArcaneClientManager {
     private func signOutLocally() {
         authState = .login
         currentUser = nil
+        currentUserAvatarData = nil
+        avatarFetchKey = nil
         serverCapabilities = nil
         needsConnectionBootstrapRetry = false
+    }
+
+    // MARK: - Current user avatar
+
+    /// Raw image bytes of the signed-in user's server-side profile picture,
+    /// or `nil` when the user has no custom avatar (the server 404s).
+    private(set) var currentUserAvatarData: Data?
+    /// De-dupes fetches: user id + updatedAt, so profile edits re-sync it.
+    private var avatarFetchKey: String?
+
+    /// Sync the profile picture from the server. Safe to call from every
+    /// view that renders the avatar — it only hits the network when the
+    /// user (or their updatedAt) changed since the last fetch.
+    func refreshCurrentUserAvatar() async {
+        guard let client, let user = currentUser else {
+            currentUserAvatarData = nil
+            avatarFetchKey = nil
+            return
+        }
+        let key = "\(user.id)|\(user.updatedAt ?? "")"
+        guard key != avatarFetchKey else { return }
+        avatarFetchKey = key
+        currentUserAvatarData = try? await client.users.getAvatar(userId: user.id)
     }
 
     // MARK: - Image fetching

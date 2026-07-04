@@ -31,7 +31,9 @@ struct ProfileView: View {
     private var isOIDCUser: Bool { user?.oidcSubjectId?.isEmpty == false }
 
     private var profileChanged: Bool {
-        guard let user else { return false }
+        guard let user, !isOIDCUser else { return false }
+        // SSO profiles are owned by the identity provider — name and email
+        // are read-only, matching the web UI.
         return displayName.trimmingCharacters(in: .whitespacesAndNewlines) != (user.displayName ?? "")
             || email.trimmingCharacters(in: .whitespacesAndNewlines) != (user.email ?? "")
     }
@@ -52,20 +54,37 @@ struct ProfileView: View {
         Form {
             identitySection
 
-            Section("Profile") {
-                FormTextField(
-                    title: "Display Name",
-                    placeholder: "Your name",
-                    text: $displayName
-                )
-                FormTextField(
-                    title: "Email",
-                    placeholder: "you@example.com",
-                    text: $email,
-                    keyboardType: .emailAddress,
-                    autocapitalization: .never,
-                    autocorrectionDisabled: true
-                )
+            Section {
+                if isOIDCUser {
+                    LabeledContent("Display Name") {
+                        Text(user?.displayName?.isEmpty == false ? user!.displayName! : "—")
+                            .foregroundStyle(.secondary)
+                    }
+                    LabeledContent("Email") {
+                        Text(user?.email?.isEmpty == false ? user!.email! : "—")
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    FormTextField(
+                        title: "Display Name",
+                        placeholder: "Your name",
+                        text: $displayName
+                    )
+                    FormTextField(
+                        title: "Email",
+                        placeholder: "you@example.com",
+                        text: $email,
+                        keyboardType: .emailAddress,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true
+                    )
+                }
+            } header: {
+                Text("Profile")
+            } footer: {
+                if isOIDCUser {
+                    Text("Your profile is managed by your identity provider.")
+                }
             }
 
             if !isOIDCUser {
@@ -160,14 +179,7 @@ struct ProfileView: View {
     private var identitySection: some View {
         Section {
             HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor.gradient)
-                        .frame(width: 56, height: 56)
-                    Text(initials)
-                        .font(.title3.bold())
-                        .foregroundStyle(.white)
-                }
+                UserAvatarCircle(size: 56, font: .title3.bold())
                 VStack(alignment: .leading, spacing: 3) {
                     Text(user?.displayName?.isEmpty == false ? user!.displayName! : (user?.username ?? "—"))
                         .font(.headline)
@@ -230,11 +242,6 @@ struct ProfileView: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(color, in: Capsule())
-    }
-
-    private var initials: String {
-        let source = user?.displayName?.isEmpty == false ? user!.displayName! : (user?.username ?? "?")
-        return String(source.prefix(1)).uppercased()
     }
 
     // MARK: - Actions

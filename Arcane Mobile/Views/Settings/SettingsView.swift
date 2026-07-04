@@ -88,14 +88,7 @@ struct SettingsView: View {
             ? manager.currentUser?.displayName
             : manager.currentUser?.username
         return HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.gradient)
-                    .frame(width: 36, height: 36)
-                Text(String((name ?? "?").prefix(1)).uppercased())
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.white)
-            }
+            UserAvatarCircle(size: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(name ?? "Account")
                     .font(.subheadline.weight(.medium))
