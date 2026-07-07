@@ -67,6 +67,8 @@ enum ReleaseNotes {
                 .init("Clear Cache moved to a Danger Zone at the bottom of App Settings."),
                 .init("The templates button on Projects now opens the template browser directly; registry management moved behind its Settings button."),
                 .init("Profile name and email are now read-only for SSO accounts — they're managed by your identity provider."),
+                .init("The project Files section now pins only the compose file, .env, and compose override files, with a Browse Files row for everything else — so you can always add new files even when custom files exist."),
+                .init("The project file browser now works more like the Files app: a + button for new files and folders, one flat file list, and folder item counts and file sizes on each row."),
             ],
             fixed: [
                 .init("A deployment that failed on the server no longer shows as complete just because the progress stream ended cleanly — the outcome is now confirmed against the server."),
