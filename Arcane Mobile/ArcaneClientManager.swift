@@ -2,6 +2,7 @@ import Foundation
 import Arcane
 import ArcaneOIDC
 import AuthenticationServices
+import CryptoKit
 import Darwin
 
 enum AppAuthState {
@@ -232,6 +233,7 @@ final class ArcaneClientManager {
         serverCapabilities = nil
         authState = .login
         needsConnectionBootstrapRetry = false
+        DeploymentActivityStore.shared.sessionDidEnd()
         WidgetSnapshotPublisher.shared.publishSignedOut()
         await ResponseCache.shared.invalidateAll()
     }
@@ -312,6 +314,7 @@ final class ArcaneClientManager {
         serverURL = ""
         client = nil
         authState = .setup
+        DeploymentActivityStore.shared.sessionDidEnd()
         WidgetSnapshotPublisher.shared.publishSignedOut()
         if reason == .expired {
             demoExpiredMessage = "Your demo ended. Start a new one or connect to your own server."
@@ -422,6 +425,11 @@ final class ArcaneClientManager {
     /// Sync the profile picture from the server. Safe to call from every
     /// view that renders the avatar — it only hits the network when the
     /// user (or their updatedAt) changed since the last fetch.
+    ///
+    /// Mirrors the web's avatar sources: a custom uploaded avatar wins;
+    /// otherwise Gravatar by email when the server's `enableGravatar`
+    /// setting is on (the only picture SSO users have unless they upload
+    /// one, since the server doesn't import the OIDC picture claim).
     func refreshCurrentUserAvatar() async {
         guard let client, let user = currentUser else {
             currentUserAvatarData = nil
@@ -431,7 +439,27 @@ final class ArcaneClientManager {
         let key = "\(user.id)|\(user.updatedAt ?? "")"
         guard key != avatarFetchKey else { return }
         avatarFetchKey = key
-        currentUserAvatarData = try? await client.users.getAvatar(userId: user.id)
+        if let custom = try? await client.users.getAvatar(userId: user.id) {
+            currentUserAvatarData = custom
+            return
+        }
+        currentUserAvatarData = await fetchGravatar(for: user, using: client)
+    }
+
+    private func fetchGravatar(for user: User, using client: ArcaneClient) async -> Data? {
+        guard let email = user.email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !email.isEmpty else { return nil }
+        // Only reach out to Gravatar when the server has it enabled, like
+        // the web UI — don't leak email hashes to a third party otherwise.
+        guard let settings = try? await client.settings.getSettings(),
+              settings.first(where: { $0.key == "enableGravatar" })?.value.lowercased() == "true"
+        else { return nil }
+        let hash = SHA256.hash(data: Data(email.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        // d=404 keeps Gravatar's generated placeholders out — no image
+        // means we show our own initials fallback.
+        return await fetchImageData(urlString: "https://www.gravatar.com/avatar/\(hash)?s=160&d=404")
     }
 
     // MARK: - Image fetching

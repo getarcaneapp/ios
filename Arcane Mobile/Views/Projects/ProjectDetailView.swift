@@ -17,7 +17,6 @@ struct ProjectDetailView: View {
     @State private var showLogs = false
     @State private var showDeleteConfirm = false
     @State private var showAskAI = false
-    @State private var streamingAction: StreamingAction?
     @State private var errorMessage: String?
     @State private var runningActionID: String?
     @State private var projectContainers: [ContainerSummary] = []
@@ -40,14 +39,6 @@ struct ProjectDetailView: View {
     private var hasBuild: Bool { currentProject.hasBuildDirective == true }
     private var containerMutationVersion: Int { mutationStore.version(kind: .containers, envID: environmentID) }
     private var projectMutationVersion: Int { mutationStore.version(kind: .projects, envID: environmentID) }
-
-    struct StreamingAction: Identifiable {
-        let id = UUID()
-        let title: String
-        let path: String
-        let method: String
-        let body: Data?
-    }
 
     var body: some View {
         servicesTab
@@ -111,22 +102,6 @@ struct ProjectDetailView: View {
                     initialSelection: request.selection
                 )
             }
-        }
-        .sheet(item: $streamingAction) { action in
-            StreamingActionView(
-                title: action.title,
-                path: action.path,
-                method: action.method,
-                body: action.body
-            ) {
-                await invalidateProjectCaches()
-                mutationStore.markChanged(kind: .projects, envID: environmentID)
-                await loadProject(refresh: true)
-                await loadServices(refresh: true)
-                HapticsManager.success()
-                ReviewPrompter.shared.recordSuccess()
-            }
-            .presentationDragIndicator(.visible)
         }
         .deleteConfirmation(isPresented: $showDeleteConfirm, config: DeleteConfirmationConfig(
             title: "Delete Project",
@@ -337,7 +312,7 @@ struct ProjectDetailView: View {
             }
         } else {
             return ActionButtonItem(id: "start", title: "Deploy", systemImage: "play.fill", tint: .green) {
-                startStreamingAction(suffix: "up", title: "Deploy \(currentProject.displayName)")
+                startStreamingAction(kind: .up)
             }
         }
     }
@@ -350,10 +325,10 @@ struct ProjectDetailView: View {
             })
         }
         items.append(ActionButtonItem(id: "redeploy", title: "Redeploy", systemImage: "arrow.triangle.2.circlepath", tint: .purple) {
-            startStreamingAction(suffix: "redeploy", title: "Redeploy \(currentProject.displayName)")
+            startStreamingAction(kind: .redeploy)
         })
         items.append(ActionButtonItem(id: "pull", title: "Pull", systemImage: "arrow.down", tint: .accentColor) {
-            startStreamingAction(suffix: "pull", title: "Pull Images")
+            startStreamingAction(kind: .pull)
         })
         return items
     }
@@ -362,7 +337,7 @@ struct ProjectDetailView: View {
         var items: [ActionButtonItem] = []
         if hasBuild {
             items.append(ActionButtonItem(id: "build", title: "Build", systemImage: "hammer.fill", tint: .indigo) {
-                startStreamingAction(suffix: "build", title: "Build Images")
+                startStreamingAction(kind: .build)
             })
         }
         items.append(ActionButtonItem(id: "logs", title: "Logs", systemImage: "doc.text.fill", tint: .secondary) {
@@ -393,16 +368,21 @@ struct ProjectDetailView: View {
 
     // MARK: - Actions
 
-    private func startStreamingAction(suffix: String, title: String) {
-        guard let client = manager.client else { return }
-        let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/\(suffix)")
+    /// Hands the operation to the app-level store: it owns the stream, the
+    /// root sheet, the floating pill, and the Live Activity. Completion bumps
+    /// the projects mutation version, which this view already observes to
+    /// reload itself.
+    private func startStreamingAction(kind: DeploymentActionKind) {
         errorMessage = nil
         actionStatus = nil
-        streamingAction = StreamingAction(
-            title: title,
-            path: path,
-            method: "POST",
-            body: nil
+        DeploymentActivityStore.shared.start(
+            kind: kind,
+            envID: environmentID,
+            targetID: project.id,
+            targetName: currentProject.displayName,
+            environmentName: manager.activeEnvironmentName,
+            manager: manager,
+            mutationStore: mutationStore
         )
     }
 

@@ -54,16 +54,22 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.4.1",
             new: [
+                .init("Live Activities: deploys, redeploys, pulls, and builds now show live progress in the Dynamic Island and on the Lock Screen when you leave the app."),
+                .init("A floating progress pill tracks the running operation inside the app — tap it any time to reopen the full log."),
+                .init("Deployments are now synced with the server: if the connection drops mid-operation, the app re-attaches and picks up where the server is, and Cancel stops the operation server-side too. (Arcane v2 servers)"),
+                .init("Pulling an image from the Images tab now shows real download progress with the same pill and Live Activity treatment."),
                 .init("One-tap setup for the Arcane Community Templates registry."),
-                .init("Your profile picture now syncs from the server and shows on the Account page and in Settings."),
+                .init("Your profile picture now syncs from the server — custom avatars and Gravatar (when enabled) — on the Account page and in Settings."),
             ],
             changed: [
+                .init("The deploy log sheet can now be swiped away mid-run — the operation keeps going behind the progress pill instead of locking you in."),
                 .init("Sign out moved to the Account page, with a combined Sign Out / Sign Out & Change Server menu."),
                 .init("Clear Cache moved to a Danger Zone at the bottom of App Settings."),
                 .init("The templates button on Projects now opens the template browser directly; registry management moved behind its Settings button."),
                 .init("Profile name and email are now read-only for SSO accounts — they're managed by your identity provider."),
             ],
             fixed: [
+                .init("A deployment that failed on the server no longer shows as complete just because the progress stream ended cleanly — the outcome is now confirmed against the server."),
                 .init("Fixed getting signed out when launching the app after an update — a widget refresh could invalidate the app's session at the worst moment."),
             ]
         ),

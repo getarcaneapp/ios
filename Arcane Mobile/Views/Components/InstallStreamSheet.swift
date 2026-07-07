@@ -23,20 +23,28 @@ enum InstallStreamStatus: Equatable {
     }
 }
 
+/// Full-log detail sheet for the active deployment operation. The operation
+/// lives in `DeploymentActivityStore`, so the sheet is just a window onto it:
+/// it can be hidden (swipe or Hide button) at any time and the stream keeps
+/// running behind the floating pill and the Live Activity.
 struct InstallStreamSheet: View {
-    let title: String
-    let status: InstallStreamStatus
-    let currentPhase: String?
-    let seenPhases: [String]
-    let lines: [InstallStreamLine]
-    let onDismiss: () -> Void
+    let operation: DeploymentOperation
+    let onCancel: () -> Void
+    let onDone: () -> Void
 
     @SwiftUI.Environment(\.dismiss) private var dismiss
+
+    private var status: InstallStreamStatus { operation.status }
 
     var body: some View {
         VStack(spacing: 14) {
             header
-            if seenPhases.count >= 2 {
+            if operation.isServerSynced, !status.isTerminal {
+                Label("Reattached — following the server activity", systemImage: "antenna.radiowaves.left.and.right")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            if operation.seenPhases.count >= 2 {
                 phaseStrip
             }
             terminal
@@ -46,23 +54,34 @@ struct InstallStreamSheet: View {
         .padding(.top, 18)
         .padding(.bottom, 18)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .presentationDragIndicator(.hidden)
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
-            iconBadge
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                phasePill
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
+                iconBadge
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(operation.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    phasePill
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .padding(14)
+
+            if let fraction = operation.progressFraction, !status.isTerminal {
+                ProgressView(value: fraction)
+                    .progressViewStyle(.linear)
+                    .tint(.accentColor)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 12)
+                    .animation(Motion.gauge, value: fraction)
+            }
         }
-        .padding(14)
         .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
@@ -70,7 +89,7 @@ struct InstallStreamSheet: View {
         Group {
             switch status {
             case .running:
-                Image(systemName: "shippingbox.fill")
+                Image(systemName: operation.kind.systemImage)
                     .symbolEffect(.pulse, options: .repeating)
                     .foregroundStyle(.blue)
             case .success:
@@ -112,7 +131,7 @@ struct InstallStreamSheet: View {
 
     private var phaseLabel: String {
         switch status {
-        case .running: return currentPhase.map { "\($0)…" } ?? "Streaming…"
+        case .running: return operation.currentPhase.map { "\($0)…" } ?? "Streaming…"
         case .success: return "Complete"
         case .failure: return "Failed"
         }
@@ -131,7 +150,7 @@ struct InstallStreamSheet: View {
     private var phaseStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(Array(seenPhases.enumerated()), id: \.element) { _, phase in
+                ForEach(Array(operation.seenPhases.enumerated()), id: \.element) { _, phase in
                     phasePillRow(phase)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
@@ -142,8 +161,8 @@ struct InstallStreamSheet: View {
     }
 
     private func phasePillRow(_ phase: String) -> some View {
-        let isCurrent = (phase == currentPhase) && !status.isTerminal
-        let isDone = (phase != currentPhase) || status.isTerminal
+        let isCurrent = (phase == operation.currentPhase) && !status.isTerminal
+        let isDone = (phase != operation.currentPhase) || status.isTerminal
 
         return HStack(spacing: 4) {
             if isDone && !isCurrent {
@@ -175,10 +194,10 @@ struct InstallStreamSheet: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 3) {
-                            if lines.isEmpty {
+                            if operation.lines.isEmpty {
                                 emptyState
                             } else {
-                                ForEach(lines) { line in
+                                ForEach(operation.lines) { line in
                                     lineRow(line)
                                         .id(line.id)
                                 }
@@ -188,8 +207,8 @@ struct InstallStreamSheet: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
                     }
-                    .onChange(of: lines.count) { _, _ in
-                        if let last = lines.last {
+                    .onChange(of: operation.lines.count) { _, _ in
+                        if let last = operation.lines.last {
                             withAnimation(.none) { proxy.scrollTo(last.id, anchor: .bottom) }
                         }
                     }
@@ -254,30 +273,61 @@ struct InstallStreamSheet: View {
     // MARK: - Action row
 
     private var actionRow: some View {
-        HStack(spacing: 12) {
-            Button {
-                copyTranscript()
-            } label: {
-                Label("Copy", systemImage: "doc.on.clipboard")
-                    .labelStyle(.iconOnly)
-                    .frame(width: 44, height: 44)
-            }
-            .glassButtonStyleCompat()
-            .disabled(lines.isEmpty)
-            .accessibilityLabel("Copy log to clipboard")
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    copyTranscript()
+                } label: {
+                    Label("Copy", systemImage: "doc.on.clipboard")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 44, height: 44)
+                }
+                .glassButtonStyleCompat()
+                .disabled(operation.lines.isEmpty)
+                .accessibilityLabel("Copy log to clipboard")
 
-            Button {
-                onDismiss()
-                dismiss()
-            } label: {
-                Text(doneLabel)
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
+                if !status.isTerminal {
+                    Button {
+                        onCancel()
+                    } label: {
+                        Text("Cancel")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .glassButtonStyleCompat()
+                    .tint(.red)
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text("Hide")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .glassProminentButtonStyleCompat()
+                    .tint(.accentColor)
+                } else {
+                    Button {
+                        onDone()
+                        dismiss()
+                    } label: {
+                        Text(doneLabel)
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                    }
+                    .glassProminentButtonStyleCompat()
+                    .tint(doneTint)
+                }
             }
-            .glassProminentButtonStyleCompat()
-            .tint(doneTint)
-            .disabled(!status.isTerminal)
+
+            if !status.isTerminal {
+                Text("Hiding keeps the operation running.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -298,7 +348,7 @@ struct InstallStreamSheet: View {
     }
 
     private func copyTranscript() {
-        let joined = lines.map(\.text).joined(separator: "\n")
+        let joined = operation.lines.map(\.text).joined(separator: "\n")
         UIPasteboard.general.string = joined
         showToast(.copied("Logs copied"))
     }

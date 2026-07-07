@@ -14,5 +14,6 @@ struct ArcaneWidgetsBundle: WidgetBundle {
         StatusWidget()
         EnvironmentsWidget()
         UpdatesWidget()
+        DeployLiveActivity()
     }
 }

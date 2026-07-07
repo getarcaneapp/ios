@@ -20,6 +20,8 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationShortcutItems</key>
 	<array>
 		<dict>

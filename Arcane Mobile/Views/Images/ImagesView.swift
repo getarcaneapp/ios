@@ -285,7 +285,7 @@ struct ImagesView: View {
                 .pageEntranceFromTop()
         }
         .sheet(isPresented: $showPullSheet) {
-            PullImageView(environmentID: environmentID) {}
+            PullImageView(environmentID: environmentID)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -558,216 +558,61 @@ struct UpdateStateBadge: View {
     }
 }
 
+/// Input-only sheet: collects the image reference, then hands the pull to
+/// `DeploymentActivityStore`, which owns the floating pill, the stream sheet,
+/// and the Live Activity — the same treatment as project deploys. The pill
+/// appears as this sheet dismisses (presenting the stream sheet mid-dismissal
+/// would race the presentation), and tapping it opens the full log.
 struct PullImageView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
-    let onComplete: () async -> Void
 
     @State private var imageName = ""
-    @State private var isPulling = false
-    @State private var didComplete = false
-    @State private var statusLine = ""
-    @State private var layerOrder: [String] = []
-    @State private var layers: [String: PullProgressEvent] = [:]
-    @State private var errorMessage: String?
-    @State private var pullTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Form {
-                    Section("Pull Image") {
-                        FormTextField(
-                            title: "Image",
-                            placeholder: "nginx:latest",
-                            text: $imageName,
-                            autocapitalization: .never,
-                            autocorrectionDisabled: true,
-                            helper: "Include a tag when you do not want Docker to assume latest.",
-                            disabled: isPulling || didComplete
-                        )
-                    }
-
-                    if !statusLine.isEmpty {
-                        Section("Status") {
-                            Label(statusLine, systemImage: didComplete ? "checkmark.circle.fill" : "arrow.down.circle")
-                                .foregroundStyle(didComplete ? .green : .primary)
-                                .font(.subheadline)
-                        }
-                    }
-
-                    if let error = errorMessage {
-                        Section {
-                            Label(error, systemImage: "exclamationmark.triangle")
-                                .foregroundStyle(.red)
-                        }
-                    }
+            Form {
+                Section("Pull Image") {
+                    FormTextField(
+                        title: "Image",
+                        placeholder: "nginx:latest",
+                        text: $imageName,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true,
+                        helper: "Include a tag when you do not want Docker to assume latest."
+                    )
                 }
-                .frame(maxHeight: 280)
-
-                if !layerOrder.isEmpty {
-                    Divider()
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(layerOrder, id: \.self) { layerID in
-                                    if let event = layers[layerID] {
-                                        layerRow(event)
-                                            .id(layerID)
-                                    }
-                                }
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .onChange(of: layerOrder.count) { _, _ in
-                            if let last = layerOrder.last {
-                                withAnimation(.none) { proxy.scrollTo(last, anchor: .bottom) }
-                            }
-                        }
-                    }
-                }
-
-                Spacer(minLength: 0)
             }
             .navigationTitle("Pull Image")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if !didComplete {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(isPulling ? "Stop" : "Cancel") {
-                            if isPulling {
-                                pullTask?.cancel()
-                            } else {
-                                dismiss()
-                            }
-                        }
-                    }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if didComplete {
-                        Button("Done") { dismiss() }
-                    } else {
-                        Button(action: pullImage) {
-                            if isPulling { ProgressView().scaleEffect(0.8) }
-                            else { Text("Pull") }
-                        }
-                        .disabled(imageName.isEmpty || isPulling)
-                    }
+                    Button("Pull") { startPull() }
+                        .disabled(imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private func layerRow(_ event: PullProgressEvent) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(event.id ?? "")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(event.status ?? "")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            if let detail = event.progressDetail,
-               let total = detail.total, total > 0,
-               let current = detail.current {
-                ProgressView(value: Double(min(current, total)), total: Double(total))
-                    .tint(progressTint(for: event.status))
-            } else if event.status?.lowercased().contains("complete") == true ||
-                      event.status?.lowercased().contains("exists") == true {
-                ProgressView(value: 1, total: 1).tint(.green)
-            }
-        }
-    }
-
-    private func progressTint(for status: String?) -> Color {
-        let s = status?.lowercased() ?? ""
-        if s.contains("download") { return .blue }
-        if s.contains("extract") { return .orange }
-        if s.contains("complete") || s.contains("pull complete") { return .green }
-        return Color.accentColor
-    }
-
-    private func pullImage() {
-        guard let client = manager.client else { return }
-        let (image, tag) = parseImageNameAndTag(imageName)
-        let options = ImagePullOptions(imageName: image, tag: tag)
-
-        isPulling = true
-        didComplete = false
-        statusLine = "Connecting…"
-        layerOrder = []
-        layers = [:]
-        errorMessage = nil
-
-        pullTask = Task {
-            defer { isPulling = false; pullTask = nil }
-            do {
-                let stream = try client.images.pullStream(envID: environmentID, options: options)
-                for try await event in stream {
-                    if Task.isCancelled { break }
-                    apply(event)
-                }
-                if !Task.isCancelled, errorMessage == nil {
-                    didComplete = true
-                    statusLine = "Pull complete"
-                    if let cached = manager.cached {
-                        await cached.invalidate(envID: environmentID, paths: [
-                            client.rest.environmentPath(environmentID, "images") + "*",
-                            client.rest.environmentPath(environmentID, "images/*")
-                        ])
-                    }
-                    mutationStore.markChanged(kind: .images, envID: environmentID)
-                    await onComplete()
-                }
-            } catch is CancellationError {
-                statusLine = "Cancelled"
-            } catch {
-                errorMessage = friendlyErrorMessage(error)
-                statusLine = ""
-            }
-        }
-    }
-
-    private func apply(_ event: PullProgressEvent) {
-        if let err = event.error, !err.isEmpty {
-            errorMessage = err
-            return
-        }
-        if let id = event.id, !id.isEmpty {
-            if layers[id] == nil { layerOrder.append(id) }
-            layers[id] = event
-        } else if let status = event.status, !status.isEmpty {
-            statusLine = status
-        }
-        // The SDK's `PullProgressEvent` doesn't expose an explicit phase, so
-        // detect the terminal status string. "Pull complete" is emitted per-layer;
-        // the overall terminal messages are "Status: Downloaded newer image..." /
-        // "Status: Image is up to date...".
-        if let status = event.status {
-            let lower = status.lowercased()
-            if lower.hasPrefix("status: ") || lower == "pull complete" {
-                statusLine = lower == "pull complete" ? "Pull complete" : status
-            }
-        }
-    }
-
-    private func parseImageNameAndTag(_ raw: String) -> (String, String?) {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Strip an optional digest (`@sha256:...`) before splitting on `:`.
-        let beforeDigest = trimmed.split(separator: "@", maxSplits: 1).first.map(String.init) ?? trimmed
-        // Find the last ':' that isn't part of the registry host:port (heuristic: tag has no '/').
-        if let colonIdx = beforeDigest.lastIndex(of: ":"),
-           !beforeDigest[colonIdx...].contains("/") {
-            let name = String(beforeDigest[..<colonIdx])
-            let tag = String(beforeDigest[beforeDigest.index(after: colonIdx)...])
-            return (name, tag.isEmpty ? nil : tag)
-        }
-        return (beforeDigest, nil)
+    private func startPull() {
+        let reference = imageName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reference.isEmpty else { return }
+        dismiss()
+        DeploymentActivityStore.shared.start(
+            kind: .imagePull,
+            envID: environmentID,
+            targetID: reference,
+            targetName: reference,
+            environmentName: manager.activeEnvironmentName,
+            manager: manager,
+            mutationStore: mutationStore,
+            presentSheet: false
+        )
     }
 }
+

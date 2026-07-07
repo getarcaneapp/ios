@@ -29,6 +29,9 @@ struct Arcane_MobileApp: App {
                 .task {
                     Task.detached(priority: .background) { ImageCache.shared.trimDiskCache() }
                     try? Tips.configure([.displayFrequency(.immediate), .datastoreLocation(.applicationDefault)])
+                    // Live Activities left behind by an app kill can never
+                    // update again — clear them on launch.
+                    await DeployLiveActivityController.endOrphans()
                 }
                 .onOpenURL { url in
                     if url.scheme == "arcane-mobile", url.host == "end-demo" {
@@ -60,6 +63,9 @@ struct Arcane_MobileApp: App {
                         // Land any queued widget snapshot before suspension.
                         WidgetSnapshotPublisher.shared.flush()
                     }
+                    // Buys a running deployment stream the background grace
+                    // period so its Live Activity can finish cleanly.
+                    DeploymentActivityStore.shared.handleScenePhase(newPhase)
                 }
         }
     }

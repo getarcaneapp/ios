@@ -33,6 +33,10 @@ struct ContainerDetailView: View {
         }
     }
 
+    private var containerMutationVersion: Int {
+        mutationStore.version(kind: .containers, envID: environmentID)
+    }
+
     private var statusString: String {
         details?.state.status ?? container.status
     }
@@ -101,6 +105,9 @@ struct ContainerDetailView: View {
         )
         .task { await loadDetails() }
         .refreshable { await loadDetails() }
+        .onChange(of: containerMutationVersion) { _, _ in
+            Task { await loadDetails() }
+        }
         .sheet(isPresented: $showInspect) {
             NavigationStack {
                 ContainerInspectView(container: container, environmentID: environmentID)
@@ -242,9 +249,27 @@ struct ContainerDetailView: View {
             })
         }
         items.append(ActionButtonItem(id: "redeploy", title: "Redeploy", systemImage: "arrow.triangle.2.circlepath", tint: .accentColor) {
-            Task { await performAction(.redeploy, actionID: "redeploy") }
+            startRedeploy()
         })
         return items
+    }
+
+    /// Container redeploy runs through the app-level deployment store so it
+    /// gets the floating pill + Live Activity treatment. The server call is a
+    /// plain POST (no stream), so the store shows an indeterminate state and
+    /// bumps the containers mutation version on completion — which this view
+    /// observes to reload itself.
+    private func startRedeploy() {
+        errorMessage = nil
+        DeploymentActivityStore.shared.start(
+            kind: .containerRedeploy,
+            envID: environmentID,
+            targetID: container.id,
+            targetName: displayedName,
+            environmentName: manager.activeEnvironmentName,
+            manager: manager,
+            mutationStore: mutationStore
+        )
     }
 
     private var morphOverflow: [ActionButtonItem] {
@@ -364,7 +389,7 @@ struct ContainerDetailView: View {
 
     // MARK: - Actions
 
-    private enum ContainerAction { case start, stop, restart, pause, unpause, redeploy }
+    private enum ContainerAction { case start, stop, restart, pause, unpause }
 
     private func performAction(_ action: ContainerAction, actionID: String? = nil) async {
         guard let client = manager.client else { return }
@@ -381,9 +406,6 @@ struct ContainerDetailView: View {
             case .restart: try await client.containers.restart(envID: environmentID, id: container.id)
             case .pause: try await client.containers.pause(envID: environmentID, id: container.id)
             case .unpause: try await client.containers.unpause(envID: environmentID, id: container.id)
-            case .redeploy:
-                let path = client.rest.environmentPath(environmentID, "containers/\(container.id)/redeploy")
-                let _: ContainerSummary = try await client.rest.post(path, body: String?.none)
             }
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
