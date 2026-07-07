@@ -230,12 +230,6 @@ struct ProjectFilesWorkspaceView: View {
     private func projectFileMenu(folderPath: String) -> some View {
         Menu {
             Button {
-                Task { await loadFiles(refresh: true) }
-            } label: {
-                Label("Reload", systemImage: "arrow.clockwise")
-            }
-            Divider()
-            Button {
                 fileDialog = .createFile(parentPath: folderPath)
             } label: {
                 Label("New File", systemImage: "doc.badge.plus")
@@ -247,10 +241,16 @@ struct ProjectFilesWorkspaceView: View {
                 Label("New Folder", systemImage: "folder.badge.plus")
             }
             .disabled(!canEdit)
+            Divider()
+            Button {
+                Task { await loadFiles(refresh: true) }
+            } label: {
+                Label("Reload", systemImage: "arrow.clockwise")
+            }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: "plus")
         }
-        .accessibilityLabel("Project file options")
+        .accessibilityLabel("Add file or folder")
     }
 
     private var saveButton: some View {
@@ -276,8 +276,8 @@ struct ProjectFilesWorkspaceView: View {
                 }
             }
 
-            if folderPath.isEmpty {
-                Section("Project") {
+            Section {
+                if folderPath.isEmpty {
                     NavigationLink(value: ProjectFilesWorkspaceDestination.compose) {
                         ProjectCoreFileRow(
                             title: composeFileName,
@@ -293,50 +293,43 @@ struct ProjectFilesWorkspaceView: View {
                         )
                     }
                 }
-            }
 
-            Section(folderPath.isEmpty ? "Files" : "Contents") {
                 let children = childEntries(in: folderPath)
-                if children.isEmpty {
-                    ContentUnavailableView(
-                        folderPath.isEmpty ? "No Custom Files" : "Empty Folder",
-                        systemImage: "folder",
-                        description: Text(folderPath.isEmpty
-                            ? "Add project files used by compose includes, configs, secrets, or runtime configuration."
-                            : "Add files or folders here from the menu.")
-                    )
+                if children.isEmpty && !folderPath.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "folder")
+                            .font(.largeTitle)
+                            .foregroundStyle(.secondary)
+                        Text("Empty Folder")
+                            .font(.headline)
+                        Text(emptyStateMessage(folderPath: folderPath))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
                     .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
                     .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
                 } else {
                     ForEach(children) { entry in
-                        if entry.isDirectory {
-                            NavigationLink(value: ProjectFilesWorkspaceDestination.folder(entry.relativePath)) {
-                                ProjectFileBrowserRow(
-                                    entry: entry,
-                                    hasChanges: fileHasUnsavedContent(entry.relativePath),
-                                    isLoading: managedFileLoading.contains(entry.relativePath),
-                                    showsDisclosure: false,
-                                    showsDetailPath: false
-                                )
-                            }
-                            .contextMenu { managedFileContextMenu(for: entry) }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                managedFileSwipeActions(for: entry)
-                            }
-                        } else {
-                            NavigationLink(value: ProjectFilesWorkspaceDestination.managedFile(entry.relativePath)) {
-                                ProjectFileBrowserRow(
-                                    entry: entry,
-                                    hasChanges: fileHasUnsavedContent(entry.relativePath),
-                                    isLoading: managedFileLoading.contains(entry.relativePath),
-                                    showsDisclosure: false,
-                                    showsDetailPath: false
-                                )
-                            }
-                            .contextMenu { managedFileContextMenu(for: entry) }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                managedFileSwipeActions(for: entry)
-                            }
+                        NavigationLink(value: entry.isDirectory
+                            ? ProjectFilesWorkspaceDestination.folder(entry.relativePath)
+                            : ProjectFilesWorkspaceDestination.managedFile(entry.relativePath)
+                        ) {
+                            ProjectFileBrowserRow(
+                                name: entry.name,
+                                detail: browserRowDetail(for: entry),
+                                systemImage: entry.isDirectory ? "folder.fill" : "doc.text",
+                                isDirectory: entry.isDirectory,
+                                isProtected: entry.isProtected,
+                                hasChanges: entry.pending || fileHasUnsavedContent(entry.relativePath),
+                                isLoading: managedFileLoading.contains(entry.relativePath),
+                                showsDisclosure: false
+                            )
+                        }
+                        .contextMenu { managedFileContextMenu(for: entry) }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            managedFileSwipeActions(for: entry)
                         }
                     }
                 }
@@ -368,6 +361,22 @@ struct ProjectFilesWorkspaceView: View {
         displayedFiles.filter { entry in
             ProjectFileWorkspaceHelpers.parentPath(entry.relativePath) == folderPath
         }
+    }
+
+    private func emptyStateMessage(folderPath: String) -> String {
+        canEdit ? "Add files or folders here with the + button." : "This folder is empty."
+    }
+
+    /// Files-app-style subtitle: item count for folders, size for files.
+    private func browserRowDetail(for entry: ManagedProjectFileEntry) -> String? {
+        if entry.isDirectory {
+            let count = childEntries(in: entry.relativePath).count
+            return count == 1 ? "1 item" : "\(count) items"
+        }
+        if entry.pending && originalManagedFileContents[entry.relativePath] == nil {
+            return "New file"
+        }
+        return ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file)
     }
 
     @ViewBuilder
@@ -738,6 +747,7 @@ private struct ProjectCoreFileRow: View {
     let hasChanges: Bool
 
     var body: some View {
+        // Rendered inside a NavigationLink, which supplies its own chevron.
         ProjectFileBrowserRow(
             name: title,
             detail: nil,
@@ -746,7 +756,7 @@ private struct ProjectCoreFileRow: View {
             isProtected: false,
             hasChanges: hasChanges,
             depth: 0,
-            showsDisclosure: true
+            showsDisclosure: false
         )
     }
 }

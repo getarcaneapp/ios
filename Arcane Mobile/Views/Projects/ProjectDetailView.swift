@@ -256,32 +256,33 @@ struct ProjectDetailView: View {
                     .font(.caption.weight(.semibold))
                 }
             } else {
-                let entries = fileBrowserEntries
-                if entries.isEmpty {
+                ForEach(pinnedFileBrowserEntries) { entry in
                     Button {
-                        filesSheet = FilesSheetRequest(selection: .files)
+                        filesSheet = FilesSheetRequest(selection: .managedFile(entry.relativePath))
                     } label: {
                         ProjectFileBrowserRow(
-                            name: "Project root",
-                            detail: "Browse or create custom files",
-                            systemImage: "folder",
-                            isDirectory: true,
+                            name: entry.name,
+                            detail: "Compose override",
+                            systemImage: "doc.text",
+                            isDirectory: false,
                             showsDisclosure: true
                         )
                     }
                     .buttonStyle(.plain)
-                } else {
-                    ForEach(entries) { entry in
-                        Button {
-                            filesSheet = FilesSheetRequest(
-                                selection: entry.isDirectory ? .folder(entry.relativePath) : .managedFile(entry.relativePath)
-                            )
-                        } label: {
-                            ProjectFileBrowserRow(entry: entry, showsDisclosure: true)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
+
+                Button {
+                    filesSheet = FilesSheetRequest(selection: .files)
+                } label: {
+                    ProjectFileBrowserRow(
+                        name: "Browse Files",
+                        detail: "Add or manage custom files",
+                        systemImage: "folder.badge.plus",
+                        isDirectory: true,
+                        showsDisclosure: true
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -296,6 +297,22 @@ struct ProjectDetailView: View {
 
     private var fileBrowserEntries: [ManagedProjectFileEntry] {
         ProjectFileWorkspaceHelpers.apply(projectFiles: fileBrowserFiles ?? currentProject.projectFiles ?? [], changes: [])
+    }
+
+    /// Only compose override files earn a pinned row next to compose/.env;
+    /// everything else is reached through Browse Files.
+    private var pinnedFileBrowserEntries: [ManagedProjectFileEntry] {
+        let overrideNames: Set<String> = [
+            "compose.override.yaml",
+            "compose.override.yml",
+            "docker-compose.override.yaml",
+            "docker-compose.override.yml"
+        ]
+        return fileBrowserEntries.filter { entry in
+            ProjectFileWorkspaceHelpers.parentPath(entry.relativePath).isEmpty
+                && !entry.isDirectory
+                && overrideNames.contains(entry.name.lowercased())
+        }
     }
 
     /// Formats the project's ISO-8601 `createdAt`, tolerating both fractional and
