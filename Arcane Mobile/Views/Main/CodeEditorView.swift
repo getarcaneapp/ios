@@ -28,6 +28,8 @@ struct CodeEditorView: UIViewRepresentable {
         tv.spellCheckingType = .no
         tv.isEditable = !readOnly
         tv.isSelectable = true
+        tv.alwaysBounceVertical = true
+        tv.keyboardDismissMode = .interactive
         tv.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 32, right: 8)
         // Quick-keys bar styled like the system predictive bar: a UIInputView
         // (keyboard material) hosting a horizontally scrollable SwiftUI strip.
@@ -35,6 +37,7 @@ struct CodeEditorView: UIViewRepresentable {
         // pills that collide with the keyboard's own controls.
         tv.inputAccessoryView = makeQuickKeysBar(coordinator: context.coordinator)
         context.coordinator.textView = tv
+        context.coordinator.startObservingKeyboard()
         applyHighlighting(to: tv, text: text)
         return tv
     }
@@ -78,7 +81,7 @@ struct CodeEditorView: UIViewRepresentable {
         coordinator.quickKeysHost = host
 
         let bar = UIInputView(
-            frame: CGRect(x: 0, y: 0, width: 0, height: 48),
+            frame: CGRect(x: 0, y: 0, width: 0, height: CodeEditorView.quickKeysBarHeight),
             inputViewStyle: .keyboard
         )
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -100,10 +103,34 @@ struct CodeEditorView: UIViewRepresentable {
         var appliedLanguage: EditorLanguage
         /// Retains the quick-keys bar's hosting controller (see makeQuickKeysBar).
         var quickKeysHost: UIHostingController<EditorQuickKeysBar>?
+        private var keyboardFrame: CGRect?
+        private var isObservingKeyboard = false
 
         init(_ parent: CodeEditorView) {
             self.parent = parent
             self.appliedLanguage = parent.language
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        func startObservingKeyboard() {
+            guard !isObservingKeyboard else { return }
+            isObservingKeyboard = true
+            let center = NotificationCenter.default
+            center.addObserver(
+                self,
+                selector: #selector(keyboardWillChangeFrame(_:)),
+                name: UIResponder.keyboardWillChangeFrameNotification,
+                object: nil
+            )
+            center.addObserver(
+                self,
+                selector: #selector(keyboardWillHide(_:)),
+                name: UIResponder.keyboardWillHideNotification,
+                object: nil
+            )
         }
 
         func textViewDidChange(_ tv: UITextView) {
@@ -115,6 +142,58 @@ struct CodeEditorView: UIViewRepresentable {
             tv.attributedText = attr
             let safeLoc = min(sel.location, text.utf16.count)
             tv.selectedRange = NSRange(location: safeLoc, length: 0)
+        }
+
+        func textViewDidBeginEditing(_ tv: UITextView) {
+            updateKeyboardInset(for: tv)
+        }
+
+        func textViewDidEndEditing(_ tv: UITextView) {
+            keyboardFrame = nil
+            updateKeyboardInset(for: tv)
+        }
+
+        @objc private func keyboardWillChangeFrame(_ notification: Notification) {
+            keyboardFrame = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+            applyKeyboardInset(notification: notification)
+        }
+
+        @objc private func keyboardWillHide(_ notification: Notification) {
+            keyboardFrame = nil
+            applyKeyboardInset(notification: notification)
+        }
+
+        private func applyKeyboardInset(notification: Notification) {
+            guard let tv = textView else { return }
+            let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
+            let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 0
+            let options = UIView.AnimationOptions(rawValue: curve << 16)
+
+            let updates = {
+                self.updateKeyboardInset(for: tv)
+                tv.layoutIfNeeded()
+            }
+
+            if duration > 0 {
+                UIView.animate(withDuration: duration, delay: 0, options: options, animations: updates)
+            } else {
+                updates()
+            }
+        }
+
+        private func updateKeyboardInset(for tv: UITextView) {
+            let overlap: CGFloat
+            if let keyboardFrame {
+                let frame = tv.convert(keyboardFrame, from: nil)
+                overlap = max(0, tv.bounds.maxY - frame.minY)
+            } else {
+                overlap = 0
+            }
+
+            let accessoryInset = tv.isFirstResponder ? parent.accessoryInset(for: tv) : 0
+            let bottomInset = max(overlap, accessoryInset)
+            tv.contentInset.bottom = bottomInset
+            tv.verticalScrollIndicatorInsets.bottom = bottomInset
         }
 
         func textView(_ tv: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
@@ -178,6 +257,16 @@ struct CodeEditorView: UIViewRepresentable {
         func hash() { textView?.insertText("# ") }
 
         func dismissKeyboard() { textView?.resignFirstResponder() }
+    }
+}
+
+private extension CodeEditorView {
+    static let quickKeysBarHeight: CGFloat = 48
+    static let quickKeysScrollGap: CGFloat = 12
+
+    func accessoryInset(for textView: UITextView) -> CGFloat {
+        let accessoryHeight = textView.inputAccessoryView?.bounds.height ?? Self.quickKeysBarHeight
+        return accessoryHeight + Self.quickKeysScrollGap
     }
 }
 
@@ -248,7 +337,7 @@ struct EditorQuickKeysBar: View {
             .accessibilityLabel("Dismiss Keyboard")
             .padding(.trailing, 8)
         }
-        .frame(height: 48)
+        .frame(height: CodeEditorView.quickKeysBarHeight)
     }
 }
 
