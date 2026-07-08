@@ -97,7 +97,7 @@
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
             <ActionContent
                title = "Run Script"
-               scriptText = "# Type a s#!/bin/sh&#10;BUILD_NUMBER=`date &apos;+%y%m%d.%H%M&apos;`&#10;&#10;PROJECT_NAME=$(basename &quot;$PROJECT_FILE_PATH&quot; .xcodeproj)&#10;echo &quot;CURRENT_PROJECT_VERSION = $BUILD_NUMBER&quot; &gt; &quot;${PROJECT_DIR}/${PROJECT_NAME}/BuildNumber.xcconfig&quot;&#10;&#10;echo &quot;Updated build number to: $BUILD_NUMBER&quot;&#10;ript or drag a script file from your workspace to insert its path.&#10;">
+               scriptText = "# Type a script or drag a script file from your workspace to insert its path.&#10;#!/bin/sh&#10;BUILD_NUMBER=`date &apos;+%y%m%d.%H%M&apos;`&#10;&#10;PROJECT_NAME=$(basename &quot;$PROJECT_FILE_PATH&quot; .xcodeproj)&#10;echo &quot;CURRENT_PROJECT_VERSION = $BUILD_NUMBER&quot; &gt; &quot;${PROJECT_DIR}/${PROJECT_NAME}/BuildNumber.xcconfig&quot;&#10;&#10;echo &quot;Updated build number to: $BUILD_NUMBER&quot;&#10;">
                <EnvironmentBuildable>
                   <BuildableReference
                      BuildableIdentifier = "primary"
