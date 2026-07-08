@@ -95,6 +95,13 @@ final class SystemStatsHistoryStore {
         // Series are intentionally kept: last-known data keeps rendering.
     }
 
+    /// Force the dashboard stats streams to open fresh websocket channels.
+    func reconnect() {
+        guard isRunning else { return }
+        stop()
+        start()
+    }
+
     // MARK: - Stream tasks
 
     private var streamedIDs: ArraySlice<String> {

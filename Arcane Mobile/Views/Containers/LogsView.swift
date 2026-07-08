@@ -1,9 +1,10 @@
 import SwiftUI
+import UIKit
 import Arcane
 
 struct LogsView: View {
     let title: String
-    let logStream: LogStream?
+    let logStream: (Bool) -> LogStream?
     var embedded: Bool = false
 
     @State private var lines: [IdentifiedLogLine] = []
@@ -17,8 +18,22 @@ struct LogsView: View {
     @State private var autoScroll = true
     @State private var newLinesWhilePaused = 0
     @State private var searchText = ""
+    @State private var shareFile: LogShareFile?
+    @AppStorage("arcane.logs.showTimestamps") private var showTimestamps = false
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var exportLines: [IdentifiedLogLine] {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? lines : filteredLines
+    }
+
+    private var exportText: String {
+        exportLines.map { $0.line.exportText }.joined(separator: "\n")
+    }
+
+    private var hasExportText: Bool {
+        !exportLines.isEmpty
+    }
 
     private func matchesFilter(_ entry: IdentifiedLogLine) -> Bool {
         searchText.isEmpty || entry.line.text.localizedCaseInsensitiveContains(searchText)
@@ -31,7 +46,10 @@ struct LogsView: View {
     var body: some View {
         if embedded {
             content
-                .task { await startStreaming() }
+                .task(id: showTimestamps) { await startStreaming() }
+                .sheet(item: $shareFile) { file in
+                    LogActivityShareSheet(url: file.url)
+                }
         } else {
             NavigationStack {
                 content
@@ -53,17 +71,13 @@ struct LogsView: View {
                             }
                         }
                         ToolbarItem(placement: .navigationBarTrailing) {
-                            Button(role: .destructive) {
-                                lines.removeAll()
-                                filteredLines.removeAll()
-                            } label: {
-                                Image(systemName: "trash")
-                                    .foregroundStyle(.red)
-                            }
-                            .accessibilityLabel("Clear logs")
+                            optionsMenu
                         }
                     }
-                    .task { await startStreaming() }
+                    .task(id: showTimestamps) { await startStreaming() }
+                    .sheet(item: $shareFile) { file in
+                        LogActivityShareSheet(url: file.url)
+                    }
             }
         }
     }
@@ -102,13 +116,21 @@ struct LogsView: View {
 
             HStack {
                 Spacer()
+                if embedded {
+                    optionsMenu
+                        .frame(width: 42, height: 42)
+                        .glassEffectCompat(interactive: true, in: .circle)
+                }
                 Button {
                     withAnimation {
                         autoScroll.toggle()
                         if autoScroll { newLinesWhilePaused = 0 }
                     }
                 } label: {
-                    Label(autoScroll ? "Live" : "Paused", systemImage: autoScroll ? "arrow.down.circle.fill" : "pause.circle.fill")
+                    Label(
+                        autoScroll ? "Live" : "Paused",
+                        systemImage: autoScroll ? "arrow.down.circle.fill" : "pause.circle.fill"
+                    )
                         .font(.caption.bold())
                         .contentTransition(.symbolEffect(.replace))
                 }
@@ -117,6 +139,37 @@ struct LogsView: View {
             }
         }
         .background(Color(.systemBackground))
+    }
+
+    private var optionsMenu: some View {
+        Menu {
+            Toggle(isOn: $showTimestamps) {
+                Label("Timestamps", systemImage: "clock")
+            }
+            Button {
+                copyAllLogs()
+            } label: {
+                Label("Copy All", systemImage: "doc.on.doc")
+            }
+            .disabled(!hasExportText)
+            Button {
+                shareLogs()
+            } label: {
+                Label("Share…", systemImage: "square.and.arrow.up")
+            }
+            .disabled(!hasExportText)
+            Divider()
+            Button(role: .destructive) {
+                clearLogs()
+            } label: {
+                Label("Clear", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.title3)
+                .foregroundStyle(.primary)
+        }
+        .accessibilityLabel("Log options")
     }
 
     private func newLinesPill(action: @escaping () -> Void) -> some View {
@@ -150,36 +203,124 @@ struct LogsView: View {
         }
     }
 
-    private func startStreaming() async {
-        guard let stream = logStream else { return }
-        isStreaming = true
+}
+
+private extension LogsView {
+    func startStreaming() async {
+        guard let stream = logStream(showTimestamps) else { return }
+        await MainActor.run {
+            clearLogs()
+            isStreaming = true
+        }
         do {
             for try await line in stream {
+                guard !Task.isCancelled else { break }
                 await MainActor.run {
-                    let entry = IdentifiedLogLine(id: nextLineID, line: line)
-                    lines.append(entry)
-                    nextLineID &+= 1
-                    if matchesFilter(entry) {
-                        filteredLines.append(entry)
-                    }
-                    if lines.count > 5000 {
-                        lines.removeFirst(100)
-                        // Both arrays are id-ordered; drop the filtered prefix
-                        // that fell out of the retained window.
-                        if let minID = lines.first?.id {
-                            let dropCount = filteredLines.prefix(while: { $0.id < minID }).count
-                            if dropCount > 0 { filteredLines.removeFirst(dropCount) }
-                        }
-                    }
-                    if !autoScroll {
-                        newLinesWhilePaused += 1
-                    }
+                    guard !Task.isCancelled else { return }
+                    appendStreamedLine(line)
                 }
             }
         } catch {
             // Stream ended or error
         }
-        isStreaming = false
+        await MainActor.run {
+            if !Task.isCancelled {
+                isStreaming = false
+            }
+        }
+    }
+
+    func appendStreamedLine(_ line: LogLine) {
+        let entry = IdentifiedLogLine(id: nextLineID, line: line)
+        lines.append(entry)
+        nextLineID &+= 1
+        if matchesFilter(entry) {
+            filteredLines.append(entry)
+        }
+        trimRetainedWindowIfNeeded()
+        if !autoScroll {
+            newLinesWhilePaused += 1
+        }
+    }
+
+    func trimRetainedWindowIfNeeded() {
+        guard lines.count > 5000 else { return }
+        lines.removeFirst(100)
+        // Both arrays are id-ordered; drop the filtered prefix that fell out of
+        // the retained window.
+        if let minID = lines.first?.id {
+            let dropCount = filteredLines.prefix(while: { $0.id < minID }).count
+            if dropCount > 0 { filteredLines.removeFirst(dropCount) }
+        }
+    }
+
+    func clearLogs() {
+        lines.removeAll()
+        filteredLines.removeAll()
+        nextLineID = 0
+        newLinesWhilePaused = 0
+    }
+
+    func copyAllLogs() {
+        let text = exportText
+        guard !text.isEmpty else { return }
+        UIPasteboard.general.string = text
+        showToast(.copied())
+    }
+
+    func shareLogs() {
+        let text = exportText
+        guard !text.isEmpty else { return }
+        do {
+            let url = try writeExportFile(text: text)
+            shareFile = LogShareFile(url: url)
+        } catch {
+            showToast(.error("Couldn't export logs"))
+        }
+    }
+
+    func writeExportFile(text: String) throws -> URL {
+        let filename = "\(sanitizedFilename(title))-\(Self.exportDateFormatter.string(from: Date())).log"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    func sanitizedFilename(_ value: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let scalars = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        let collapsed = String(scalars).split(separator: "-").joined(separator: "-")
+        return collapsed.isEmpty ? "logs" : collapsed
+    }
+
+    static let exportDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+}
+
+private struct LogShareFile: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct LogActivityShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+private extension LogLine {
+    var exportText: String {
+        if let timestamp, !timestamp.isEmpty {
+            return "[\(timestamp)] \(text)"
+        }
+        return text
     }
 }
 
@@ -197,8 +338,8 @@ struct LogLineView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            if let ts = line.timestamp {
-                Text(ts.logTimestamp)
+            if let timestamp = line.timestamp {
+                Text(timestamp.logTimestamp)
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .frame(width: 70, alignment: .leading)

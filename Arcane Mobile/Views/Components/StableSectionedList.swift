@@ -27,6 +27,7 @@ struct StableSectionedList<SectionID: Hashable, Item: Identifiable, RowContent: 
             Section {
                 ForEach(section.items) { item in
                     rowContent(item)
+                        .tag(item.id)
                 }
             } header: {
                 if let title = section.title {

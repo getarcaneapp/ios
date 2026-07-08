@@ -63,6 +63,7 @@ private struct DashboardLiveCounts: Sendable, Equatable {
 
 struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @Binding var selectedTab: String
 
@@ -77,6 +78,8 @@ struct DashboardView: View {
     @State private var failedActivities: [Activity] = []
     @State private var rawEnvironmentCount: Int = 0
     @State private var detailRoute: EnvironmentDetailRoute?
+    @State private var containerRoute: ContainerSummary?
+    @State private var projectRoute: ProjectDetails?
     /// Pushes AllVulnerabilitiesView for the environment named in the route.
     @State private var vulnerabilityRoute: EnvironmentDetailRoute?
     @State private var showAPIKeys = false
@@ -132,6 +135,16 @@ struct DashboardView: View {
                             NeedsAttentionSection(items: attention)
                                 .padding(.top, 8)
                                 .transition(.opacity)
+                        }
+
+                        if hasPinnedDashboardResources {
+                            DashboardPinnedSection(
+                                refreshToken: cardRefreshToken,
+                                onOpenContainer: { containerRoute = $0 },
+                                onOpenProject: { projectRoute = $0 }
+                            )
+                            .padding(.top, 8)
+                            .transition(.opacity)
                         }
 
                         environmentsSection
@@ -221,6 +234,14 @@ struct DashboardView: View {
                 )
                 .pageEntranceFromTop()
             }
+            .navigationDestination(item: $containerRoute) { container in
+                ContainerDetailView(container: container, environmentID: manager.activeEnvironmentID)
+                    .pageEntranceFromTop()
+            }
+            .navigationDestination(item: $projectRoute) { project in
+                ProjectDetailView(project: project, environmentID: manager.activeEnvironmentID)
+                    .pageEntranceFromTop()
+            }
             .navigationDestination(item: $vulnerabilityRoute) { route in
                 AllVulnerabilitiesView(environmentID: EnvironmentID(rawValue: route.id))
             }
@@ -228,7 +249,7 @@ struct DashboardView: View {
                 APIKeysView()
             }
             .task { await loadData() }
-            .refreshable { await loadData(refresh: true) }
+            .refreshable { await refreshDashboard() }
             .onChange(of: manager.activeEnvironmentID.rawValue) {
                 environments = dashboardEnvironments(from: allEnvironments.isEmpty ? environments : allEnvironments)
                 // The active environment moved to the front, which can change
@@ -287,30 +308,37 @@ struct DashboardView: View {
 
     // MARK: - Subviews
 
+    private var hasPinnedDashboardResources: Bool {
+        !pinnedStore.pinnedIDs(kind: .container, envID: envID).isEmpty ||
+            !pinnedStore.pinnedIDs(kind: .project, envID: envID).isEmpty
+    }
+
     private var environmentsSection: some View {
         LazyVStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 12) {
                 Text("Environments")
                     .font(.headline)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if manager.currentUser?.isAdmin == true {
-                    Button {
-                        showUpdateAll = true
-                    } label: {
-                        Label("Update All", systemImage: "arrow.up.circle")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .buttonStyle(.pressable)
-                }
                 Button {
                     showAddEnvironment = true
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "plus.circle")
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.pressable)
                 .accessibilityLabel("Add Environment")
+
+                if manager.currentUser?.isAdmin == true {
+                    Button {
+                        showUpdateAll = true
+                    } label: {
+                        Label("Update All", systemImage: "arrow.up.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.pressable)
+                    .accessibilityLabel("Update All")
+                }
             }
             .padding(.horizontal, 4)
 
@@ -627,6 +655,12 @@ struct DashboardView: View {
     }
 
     // MARK: - Data loading
+
+    private func refreshDashboard() async {
+        streamStore.reconnect()
+        statsHistory.reconnect()
+        await loadData(refresh: true)
+    }
 
     private func loadData(refresh: Bool = false) async {
         guard let client = manager.client else { return }

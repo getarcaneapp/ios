@@ -85,7 +85,13 @@ struct ContainerDetailView: View {
                 case .logs:
                     LogsView(
                         title: displayedName,
-                        logStream: manager.client?.containers.logs(envID: environmentID, id: container.id),
+                        logStream: { timestamps in
+                            manager.client?.containers.logs(
+                                envID: environmentID,
+                                id: container.id,
+                                timestamps: timestamps
+                            )
+                        },
                         embedded: true
                     )
                     .transition(.motionAware(edge: .trailing, reduceMotion: reduceMotion))

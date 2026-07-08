@@ -42,6 +42,9 @@ final class DashboardStreamStore {
     private var client: ArcaneClient?
     private var clientIdentity: ObjectIdentifier?
     private var streamTask: Task<Void, Never>?
+    /// Desired lifecycle state. The task can be nil after retry budget
+    /// exhaustion while the visible dashboard still wants the stream running.
+    private var shouldRun = false
     /// Bumped on every stop()/start() so events and one-shot fetches from a
     /// previous stream generation can't mutate the current one's state.
     private var generation = 0
@@ -98,6 +101,7 @@ final class DashboardStreamStore {
 
     /// Idempotent: a live stream task is left alone (scenePhase re-entry).
     func start() {
+        shouldRun = true
         guard let client, !streamUnsupported, streamTask == nil else { return }
         generation += 1
         let generation = generation
@@ -107,6 +111,7 @@ final class DashboardStreamStore {
     }
 
     func stop() {
+        shouldRun = false
         generation += 1
         streamTask?.cancel()
         streamTask = nil
@@ -116,9 +121,16 @@ final class DashboardStreamStore {
     }
 
     func retry() {
+        guard shouldRun else { return }
         stop()
         clearAllStreamErrors()
         start()
+    }
+
+    /// Force the aggregated dashboard stream to open a fresh connection.
+    /// Pull-to-refresh uses this as an explicit retry/reconnect gesture.
+    func reconnect() {
+        retry()
     }
 
     // MARK: - Environment tracking

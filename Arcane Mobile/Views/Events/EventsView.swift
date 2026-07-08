@@ -3,6 +3,8 @@ import Arcane
 
 struct EventsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let pageSize = 50
 
@@ -14,6 +16,7 @@ struct EventsView: View {
     @State private var errorMessage: String?
     @State private var searchText = ""
     @State private var severityFilter: EventSeverity = .all
+    @State private var isLive = true
 
     private var filtered: [Event] {
         let bySeverity: [Event]
@@ -38,7 +41,11 @@ struct EventsView: View {
                 ProgressView("Loading events…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, events.isEmpty {
-                ContentUnavailableView("Couldn't Load Events", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+                ContentUnavailableView(
+                    "Couldn't Load Events",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(errorMessage)
+                )
             } else if events.isEmpty {
                 ContentUnavailableView("No Events", systemImage: "clock.badge.exclamationmark")
             } else {
@@ -83,25 +90,36 @@ struct EventsView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: severityFilter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                    Image(
+                        systemName: severityFilter == .all
+                            ? "line.3.horizontal.decrease.circle"
+                            : "line.3.horizontal.decrease.circle.fill"
+                    )
                 }
                 .accessibilityLabel("Filter")
             }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await load(refresh: true) } } label: {
-                    Image(systemName: "arrow.clockwise")
+                Button {
+                    isLive.toggle()
+                } label: {
+                    Image(systemName: isLive ? "dot.radiowaves.left.and.right" : "pause.circle")
+                        .contentTransition(.symbolEffect(.replace))
                 }
-                .accessibilityLabel("Refresh")
-                .disabled(isLoading)
+                .accessibilityLabel(isLive ? "Pause live events" : "Resume live events")
             }
         }
         .task { await load() }
+        .task(id: liveTaskKey) { await liveLoop() }
         .refreshable { await load(refresh: true) }
+    }
+
+    private var liveTaskKey: String {
+        "\(isLive)-\(scenePhase == .active)"
     }
 
     private func load(refresh: Bool = false) async {
         guard let client = manager.client else { return }
-        if events.isEmpty { isLoading = true }
+        if events.isEmpty || refresh { isLoading = true }
         if refresh {
             limit = Self.pageSize
             errorMessage = nil
@@ -129,6 +147,36 @@ struct EventsView: View {
             hasMore = response.data.count >= newLimit
         } catch {
             errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    private func liveLoop() async {
+        guard isLive, scenePhase == .active else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, isLive, scenePhase == .active, !isLoading, !isLoadingMore else { continue }
+            await pollForNewEvents()
+        }
+    }
+
+    private func pollForNewEvents() async {
+        guard let client = manager.client else { return }
+        do {
+            let response = try await client.events.listPaginated(start: 0, limit: Self.pageSize)
+            guard !Task.isCancelled, !isLoading, !isLoadingMore else { return }
+            let currentIDs = Set(events.map(\.id))
+            let incoming = response.data
+                .filter { !currentIDs.contains($0.id) }
+                .sorted { $0.timestamp > $1.timestamp }
+            guard !incoming.isEmpty else { return }
+            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
+                events.insert(contentsOf: incoming, at: 0)
+            }
+            errorMessage = nil
+        } catch {
+            if events.isEmpty {
+                errorMessage = friendlyErrorMessage(error)
+            }
         }
     }
 }

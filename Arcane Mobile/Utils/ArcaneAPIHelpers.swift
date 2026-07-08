@@ -7,7 +7,9 @@ enum ArcaneAPIHelpers {
     }
 
     static func escapedPathComponent(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? value
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 
     static func queryPath(_ path: String, items: [URLQueryItem]) -> String {
@@ -17,21 +19,21 @@ enum ArcaneAPIHelpers {
         return path + (components.percentEncodedQuery.map { "?\($0)" } ?? "")
     }
 
-    static func isSameOrigin(_ a: URL, _ b: URL) -> Bool {
-        guard let aC = URLComponents(url: a, resolvingAgainstBaseURL: false),
-              let bC = URLComponents(url: b, resolvingAgainstBaseURL: false),
-              let aScheme = aC.scheme?.lowercased(),
-              let bScheme = bC.scheme?.lowercased(),
-              var aHost = aC.host?.lowercased(),
-              var bHost = bC.host?.lowercased(),
-              aScheme == bScheme
+    static func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+        guard let lhsComponents = URLComponents(url: lhs, resolvingAgainstBaseURL: false),
+              let rhsComponents = URLComponents(url: rhs, resolvingAgainstBaseURL: false),
+              let lhsScheme = lhsComponents.scheme?.lowercased(),
+              let rhsScheme = rhsComponents.scheme?.lowercased(),
+              var lhsHost = lhsComponents.host?.lowercased(),
+              var rhsHost = rhsComponents.host?.lowercased(),
+              lhsScheme == rhsScheme
         else { return false }
-        if aHost.hasSuffix(".") { aHost.removeLast() }
-        if bHost.hasSuffix(".") { bHost.removeLast() }
-        guard aHost == bHost else { return false }
-        let aPort = aC.port ?? Self.defaultPort(for: aScheme)
-        let bPort = bC.port ?? Self.defaultPort(for: bScheme)
-        return aPort == bPort
+        if lhsHost.hasSuffix(".") { lhsHost.removeLast() }
+        if rhsHost.hasSuffix(".") { rhsHost.removeLast() }
+        guard lhsHost == rhsHost else { return false }
+        let lhsPort = lhsComponents.port ?? Self.defaultPort(for: lhsScheme)
+        let rhsPort = rhsComponents.port ?? Self.defaultPort(for: rhsScheme)
+        return lhsPort == rhsPort
     }
 
     private static func defaultPort(for scheme: String) -> Int? {
@@ -56,7 +58,12 @@ enum ArcaneAPIHelpers {
         return envelope.items.first ?? DynamicResource(id: "response", values: [:])
     }
 
-    static func send(client: ArcaneClient, path: String, method: BackendListAction.Method, body: Data? = nil) async throws -> Data {
+    static func send(
+        client: ArcaneClient,
+        path: String,
+        method: BackendListAction.Method,
+        body: Data? = nil
+    ) async throws -> Data {
         switch method {
         case .get:
             return try await client.transport.rawRequest(path, body: Optional<String>.none)

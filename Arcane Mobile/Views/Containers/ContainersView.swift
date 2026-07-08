@@ -21,6 +21,12 @@ struct ContainersView: View {
     @State private var updateFilter = ResourceUpdateFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ContainerSummary>] = []
+    @State private var logsTarget: ContainerSummary?
+    @State private var terminalTarget: ContainerSummary?
+    @State private var isSelecting = false
+    @State private var selection = Set<String>()
+    @State private var isBulkRunning = false
+    @State private var bulkRunningActionID: String?
 
     private enum ContainerStateFilter: String, CaseIterable {
         case all = "All", running = "Running", stopped = "Stopped"
@@ -31,6 +37,60 @@ struct ContainersView: View {
     private enum ContainerDestructive {
         case prune
         case remove(ContainerSummary)
+        case bulkRemove([String])
+    }
+
+    private enum ContainerBulkAction {
+        case start
+        case stop
+        case restart
+
+        var id: String {
+            switch self {
+            case .start: return "bulk-start"
+            case .stop: return "bulk-stop"
+            case .restart: return "bulk-restart"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .start: return "Start"
+            case .stop: return "Stop"
+            case .restart: return "Restart"
+            }
+        }
+
+        var summaryVerb: String {
+            switch self {
+            case .start: return "Started"
+            case .stop: return "Stopped"
+            case .restart: return "Restarted"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .start: return "play.fill"
+            case .stop: return "stop.fill"
+            case .restart: return "arrow.clockwise"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .start: return .green
+            case .stop: return .red
+            case .restart: return .orange
+            }
+        }
+
+        func applies(to container: ContainerSummary) -> Bool {
+            switch self {
+            case .start: return !container.isRunning
+            case .stop, .restart: return container.isRunning
+            }
+        }
     }
 
     private var activeFilterCount: Int {
@@ -47,14 +107,14 @@ struct ContainersView: View {
     /// current inputs and returns the grouped sections without touching state.
     private func computeSections() -> [StableListSection<String, ContainerSummary>] {
         let query = debouncedSearchText
-        let filtered = containers.filter { c in
+        let filtered = containers.filter { container in
             let matchesSearch = query.isEmpty ||
-                c.names.contains(where: { $0.localizedCaseInsensitiveContains(query) }) ||
-                c.image.localizedCaseInsensitiveContains(query)
+                container.names.contains(where: { $0.localizedCaseInsensitiveContains(query) }) ||
+                container.image.localizedCaseInsensitiveContains(query)
             let matchesState = stateFilter == .all
-                || (stateFilter == .running && c.isRunning)
-                || (stateFilter == .stopped && !c.isRunning)
-            let matchesUpdate = updateFilter.matches(hasUpdate: c.hasAvailableUpdate)
+                || (stateFilter == .running && container.isRunning)
+                || (stateFilter == .stopped && !container.isRunning)
+            let matchesUpdate = updateFilter.matches(hasUpdate: container.hasAvailableUpdate)
             return matchesSearch && matchesState && matchesUpdate
         }
         .sorted {
@@ -90,6 +150,7 @@ struct ContainersView: View {
         } else {
             sections = new
         }
+        pruneSelection(validIDs: Set(containers.map(\.id)))
     }
 
     private var mutationVersion: Int {
@@ -99,6 +160,53 @@ struct ContainersView: View {
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove (start/stop/remove/prune) animates too.
     private var sectionCounts: [Int] { sections.map(\.items.count) }
+
+    private var selectedContainers: [ContainerSummary] {
+        containers.filter { selection.contains($0.id) }
+    }
+
+    private var selectedContainerIDs: [String] {
+        selectedContainers.map(\.id)
+    }
+
+    private var bulkPrimaryAction: ContainerBulkAction? {
+        let selected = selectedContainers
+        guard !selected.isEmpty else { return nil }
+        if selected.allSatisfy({ !$0.isRunning }) { return .start }
+        if selected.allSatisfy(\.isRunning) { return .stop }
+        return .restart
+    }
+
+    private var bulkInlineActions: [ContainerBulkAction] {
+        let selected = selectedContainers
+        guard !selected.isEmpty, let primary = bulkPrimaryAction else { return [] }
+        return [ContainerBulkAction.start, .stop, .restart].filter { action in
+            action.id != primary.id && selected.contains(where: action.applies)
+        }
+    }
+
+    private var bulkPrimaryItem: ActionButtonItem? {
+        guard let action = bulkPrimaryAction else { return nil }
+        return bulkActionItem(action)
+    }
+
+    private var bulkInlineItems: [ActionButtonItem] {
+        bulkInlineActions.map(bulkActionItem)
+    }
+
+    private var bulkOverflowItems: [ActionButtonItem] {
+        guard !selectedContainerIDs.isEmpty else { return [] }
+        return [
+            ActionButtonItem(
+                id: "bulk-delete",
+                title: "Remove",
+                systemImage: "trash",
+                tint: .red
+            ) {
+                pendingDestructive = .bulkRemove(selectedContainerIDs)
+            }
+        ]
+    }
 
     var body: some View {
         LoadingCrossfade(showSkeleton: isLoading && containers.isEmpty) {
@@ -117,21 +225,34 @@ struct ContainersView: View {
                     }
                 }
             } else {
-                List {
+                List(selection: $selection) {
                     StableSectionedList(sections) { container in
                         containerLink(container)
                     }
                 }
                 .listStyle(.insetGrouped)
+                .environment(\.editMode, .constant(isSelecting ? EditMode.active : EditMode.inactive))
                 .motionAwareAnimation(Motion.reflow, value: sectionCounts)
             }
         }
         .navigationTitle("Containers")
         .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search containers")
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search containers"
+        )
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
+                    if !isSelecting {
+                        Button {
+                            enterSelectionMode()
+                        } label: {
+                            Label("Select", systemImage: "checklist")
+                        }
+                        Divider()
+                    }
                     Picker("Sort", selection: $sortOrder) {
                         ForEach(ListSortOrder.allCases) { order in
                             Label(order.title, systemImage: order.systemImage).tag(order)
@@ -140,19 +261,31 @@ struct ContainersView: View {
                     Button {
                         showFilterSheet = true
                     } label: {
-                        Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                        Label(
+                            activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
+                            systemImage: "line.3.horizontal.decrease.circle"
+                        )
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel("More options")
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(role: .destructive) { pendingDestructive = .prune } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
+            if isSelecting {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        exitSelectionMode()
+                    }
                 }
-                .accessibilityLabel("Prune stopped containers")
+            }
+            if !isSelecting {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(role: .destructive) { pendingDestructive = .prune } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.red)
+                    }
+                    .accessibilityLabel("Prune stopped containers")
+                }
             }
         }
         .deleteConfirmation(item: $pendingDestructive) { action in
@@ -175,6 +308,16 @@ struct ContainersView: View {
                         Task { await removeContainer(container) }
                     }]
                 )
+            case .bulkRemove(let ids):
+                return DeleteConfirmationConfig(
+                    title: "Remove Containers",
+                    message: "Remove \(ids.count) selected container" +
+                        "\(ids.count == 1 ? "" : "s")? This cannot be undone.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Remove") {
+                        Task { await bulkRemoveContainers(ids: ids) }
+                    }]
+                )
             }
         }
         .sheet(isPresented: $showFilterSheet) {
@@ -182,8 +325,8 @@ struct ContainersView: View {
                 Form {
                     Section("State") {
                         Picker("State", selection: $stateFilter) {
-                            ForEach(ContainerStateFilter.allCases, id: \.self) { f in
-                                Text(f.rawValue).tag(f)
+                            ForEach(ContainerStateFilter.allCases, id: \.self) { filter in
+                                Text(filter.rawValue).tag(filter)
                             }
                         }
                         .pickerStyle(.inline)
@@ -210,6 +353,22 @@ struct ContainersView: View {
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
+        .sheet(item: $logsTarget) { container in
+            LogsView(
+                title: container.displayName,
+                logStream: { timestamps in
+                    manager.client?.containers.logs(
+                        envID: environmentID,
+                        id: container.id,
+                        timestamps: timestamps
+                    )
+                }
+            )
+            .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(item: $terminalTarget) { container in
+            ContainerTerminalView(container: container, environmentID: environmentID)
+        }
         .task { await loadContainers() }
         .refreshable { await loadContainers(refresh: true) }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
@@ -225,6 +384,15 @@ struct ContainersView: View {
         .onChange(of: updateFilter) { rebuildSections(animated: true) }
         .onChange(of: sortOrder) { rebuildSections(animated: true) }
         .onChange(of: pinnedIDs) { rebuildSections() }
+        .morphingActions(
+            primary: bulkPrimaryItem,
+            inline: bulkInlineItems,
+            overflow: bulkOverflowItems,
+            runningItemID: bulkRunningActionID,
+            isDisabled: isBulkRunning,
+            resourceName: "\(selection.count) selected",
+            active: isSelecting && !selection.isEmpty
+        )
     }
 
     private func containerLink(_ container: ContainerSummary) -> some View {
@@ -234,28 +402,67 @@ struct ContainersView: View {
         }
         .matchedTransitionSource(id: container.id, in: heroTransition)
         .contextMenu {
-            Button {
-                togglePin(container)
-            } label: {
-                Label(isPinned ? "Unpin" : "Pin",
-                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            if !isSelecting {
+                Button {
+                    togglePin(container)
+                } label: {
+                    Label(isPinned ? "Unpin" : "Pin",
+                          systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                }
+                containerMenuActions(for: container)
             }
-            containerMenuActions(for: container)
         } preview: {
-            containerPreview(container)
+            if !isSelecting {
+                containerPreview(container)
+            }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                togglePinAfterSwipe(container)
-            } label: {
-                Label(isPinned ? "Unpin" : "Pin",
-                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            if !isSelecting {
+                Button {
+                    togglePinAfterSwipe(container)
+                } label: {
+                    Label(isPinned ? "Unpin" : "Pin",
+                          systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                }
+                .tint(.yellow)
+                Button {
+                    logsTarget = container
+                } label: {
+                    Label("Logs", systemImage: "text.alignleft")
+                }
+                .tint(.blue)
             }
-            .tint(.yellow)
         }
         .swipeActions(edge: .trailing) {
-            containerSwipeActions(for: container)
+            if !isSelecting {
+                containerSwipeActions(for: container)
+            }
         }
+    }
+
+    private func bulkActionItem(_ action: ContainerBulkAction) -> ActionButtonItem {
+        ActionButtonItem(
+            id: action.id,
+            title: action.title,
+            systemImage: action.systemImage,
+            tint: action.tint
+        ) {
+            Task { await runBulkAction(action) }
+        }
+    }
+
+    private func enterSelectionMode() {
+        HapticsManager.light()
+        isSelecting = true
+    }
+
+    private func exitSelectionMode() {
+        isSelecting = false
+        selection.removeAll()
+    }
+
+    private func pruneSelection(validIDs: Set<String>) {
+        selection.formIntersection(validIDs)
     }
 
     private func togglePinAfterSwipe(_ container: ContainerSummary) {
@@ -276,6 +483,18 @@ struct ContainersView: View {
 
     @ViewBuilder
     private func containerMenuActions(for container: ContainerSummary) -> some View {
+        Button {
+            logsTarget = container
+        } label: {
+            Label("Logs", systemImage: "text.alignleft")
+        }
+        if container.isRunning {
+            Button {
+                terminalTarget = container
+            } label: {
+                Label("Terminal", systemImage: "terminal")
+            }
+        }
         if container.isRunning {
             Button(role: .destructive) {
                 Task { await stopContainer(container) }
@@ -353,8 +572,7 @@ struct ContainersView: View {
     private func removeContainer(_ container: ContainerSummary) async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "containers/\(container.id)")
-            let _: DataResponse<String> = try await client.rest.delete(path)
+            try await client.containers.delete(envID: environmentID, id: container.id)
             containers.removeAll { $0.id == container.id }
             rebuildSections()
             await invalidateContainerCaches()
@@ -439,6 +657,70 @@ struct ContainersView: View {
         }
     }
 
+    private func runBulkAction(_ action: ContainerBulkAction) async {
+        guard let client = manager.client else { return }
+        let ids = selectedContainers.filter(action.applies).map(\.id)
+        guard !ids.isEmpty else {
+            showToast(.info("No matching containers selected"))
+            return
+        }
+        isBulkRunning = true
+        bulkRunningActionID = action.id
+        defer {
+            isBulkRunning = false
+            bulkRunningActionID = nil
+        }
+        let result = await BulkActionRunner.run(ids: ids) { id in
+            switch action {
+            case .start:
+                try await client.containers.start(envID: environmentID, id: id)
+            case .stop:
+                try await client.containers.stop(envID: environmentID, id: id)
+            case .restart:
+                try await client.containers.restart(envID: environmentID, id: id)
+            }
+        }
+        await finishBulkOperation(result, total: ids.count, successTitle: { count in
+            "\(action.summaryVerb) \(count) container\(count == 1 ? "" : "s")"
+        })
+    }
+
+    private func bulkRemoveContainers(ids: [String]) async {
+        guard let client = manager.client else { return }
+        isBulkRunning = true
+        bulkRunningActionID = "bulk-delete"
+        defer {
+            isBulkRunning = false
+            bulkRunningActionID = nil
+        }
+        let result = await BulkActionRunner.run(ids: ids) { id in
+            try await client.containers.delete(envID: environmentID, id: id)
+        }
+        let failedIDs = Set(result.failed.map(\.id))
+        let removedIDs = Set(ids.filter { !failedIDs.contains($0) })
+        containers.removeAll { removedIDs.contains($0.id) }
+        await finishBulkOperation(result, total: ids.count, successTitle: { count in
+            "Removed \(count) container\(count == 1 ? "" : "s")"
+        })
+    }
+
+    private func finishBulkOperation(
+        _ result: BulkResult,
+        total: Int,
+        successTitle: (Int) -> String
+    ) async {
+        await invalidateContainerCaches()
+        mutationStore.markChanged(kind: .containers, envID: environmentID)
+        rebuildSections(animated: true)
+        exitSelectionMode()
+        if result.failed.isEmpty {
+            showToast(.success(successTitle(result.succeeded)))
+            ReviewPrompter.shared.recordSuccess()
+        } else {
+            showToast(.error("\(result.failed.count) of \(total) failed"))
+        }
+    }
+
     private func invalidateContainerCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
         await cached.invalidate(envID: environmentID, paths: [
@@ -492,7 +774,11 @@ struct ResourceSearchControls: View {
             .glassEffectCompat(in: .circle)
 
             Button(action: onFilter) {
-                Image(systemName: filterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                Image(
+                    systemName: filterActive
+                        ? "line.3.horizontal.decrease.circle.fill"
+                        : "line.3.horizontal.decrease.circle"
+                )
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
@@ -512,21 +798,21 @@ struct ContainerRow: View {
     // Docker reports health inside the status string, e.g.
     // "Up 3 hours (healthy)" / "(unhealthy)" / "(health: starting)".
     private var health: (icon: String, color: Color, label: String)? {
-        let s = container.status.lowercased()
-        if s.contains("unhealthy") { return ("heart.slash.fill", .red, "Unhealthy") }
-        if s.contains("health: starting") { return ("heart.fill", .yellow, "Health starting") }
-        if s.contains("(healthy)") { return ("heart.fill", .green, "Healthy") }
+        let status = container.status.lowercased()
+        if status.contains("unhealthy") { return ("heart.slash.fill", .red, "Unhealthy") }
+        if status.contains("health: starting") { return ("heart.fill", .yellow, "Health starting") }
+        if status.contains("(healthy)") { return ("heart.fill", .green, "Healthy") }
         return nil
     }
 
     // The status string with the health parenthetical stripped, leaving the
     // uptime/downtime (e.g. "Up 3 hours", "Exited (0) 2 hours ago").
     private var statusText: String {
-        var s = container.status
+        var status = container.status
         for token in ["(healthy)", "(unhealthy)", "(health: starting)"] {
-            s = s.replacingOccurrences(of: token, with: "", options: [.caseInsensitive])
+            status = status.replacingOccurrences(of: token, with: "", options: [.caseInsensitive])
         }
-        return s.trimmingCharacters(in: .whitespaces)
+        return status.trimmingCharacters(in: .whitespaces)
     }
 
     var body: some View {

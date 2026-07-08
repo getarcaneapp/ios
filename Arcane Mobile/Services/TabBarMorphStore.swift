@@ -133,7 +133,8 @@ extension View {
         overflow: [ActionButtonItem] = [],
         runningItemID: String? = nil,
         isDisabled: Bool = false,
-        resourceName: String? = nil
+        resourceName: String? = nil,
+        active: Bool = true
     ) -> some View {
         modifier(MorphingActionsModifier(payload: TabBarMorphStore.Payload(
             primary: primary,
@@ -142,7 +143,7 @@ extension View {
             runningItemID: runningItemID,
             isDisabled: isDisabled,
             resourceName: resourceName
-        )))
+        ), active: active))
     }
 }
 
@@ -186,6 +187,7 @@ private struct RootBarActionsModifier: ViewModifier {
 
 private struct MorphingActionsModifier: ViewModifier {
     let payload: TabBarMorphStore.Payload
+    let active: Bool
     @SwiftUI.Environment(\.currentTabID) private var tabID
     @State private var token = UUID()
 
@@ -197,19 +199,27 @@ private struct MorphingActionsModifier: ViewModifier {
         let ids = (([payload.primary?.id].compactMap { $0 })
                    + payload.inline.map(\.id)
                    + payload.overflow.map(\.id)).joined(separator: "|")
-        return "\(ids)#\(payload.runningItemID ?? "")#\(payload.isDisabled)#\(tabID)"
+        return "\(ids)#\(payload.runningItemID ?? "")#\(payload.isDisabled)#\(payload.resourceName ?? "")#\(active)#\(tabID)"
     }
 
     func body(content: Content) -> some View {
         content
             .onAppear {
-                TabBarMorphStore.shared.register(id: token, tabID: tabID, payload: payload)
+                updateRegistration()
             }
             .onChange(of: signature) {
-                TabBarMorphStore.shared.register(id: token, tabID: tabID, payload: payload)
+                updateRegistration()
             }
             .onDisappear {
                 TabBarMorphStore.shared.unregister(id: token)
             }
+    }
+
+    private func updateRegistration() {
+        if active {
+            TabBarMorphStore.shared.register(id: token, tabID: tabID, payload: payload)
+        } else {
+            TabBarMorphStore.shared.unregister(id: token)
+        }
     }
 }

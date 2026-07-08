@@ -77,7 +77,13 @@ struct ProjectDetailView: View {
         .sheet(isPresented: $showLogs) {
             LogsView(
                 title: currentProject.displayName,
-                logStream: manager.client?.projects.logs(envID: environmentID, projectID: project.id)
+                logStream: { timestamps in
+                    manager.client?.projects.logs(
+                        envID: environmentID,
+                        projectID: project.id,
+                        timestamps: timestamps
+                    )
+                }
             )
             .presentationDragIndicator(.visible)
         }

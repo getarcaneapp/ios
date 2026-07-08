@@ -30,6 +30,10 @@ struct VolumesView: View {
     @State private var isLoadingMore = false
     @State private var loadGeneration = 0
     @State private var sections: [StableListSection<String, Volume>] = []
+    @State private var isSelecting = false
+    @State private var selection = Set<String>()
+    @State private var isBulkRunning = false
+    @State private var bulkRunningActionID: String?
 
     private enum VolumeScopeFilter: String, CaseIterable {
         case all = "All", local = "Local", global = "Global"
@@ -40,6 +44,7 @@ struct VolumesView: View {
     private enum VolumeDestructive {
         case prune
         case delete(Volume)
+        case bulkDelete([String])
     }
 
     private var activeFilterCount: Int { scopeFilter != .all ? 1 : 0 }
@@ -95,6 +100,7 @@ struct VolumesView: View {
         } else {
             sections = new
         }
+        pruneSelection(validIDs: Set(volumes.map(\.id)))
     }
 
     private var mutationVersion: Int {
@@ -104,6 +110,26 @@ struct VolumesView: View {
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove animates too.
     private var sectionCounts: [Int] { sections.map(\.items.count) }
+
+    private var selectedVolumes: [Volume] {
+        volumes.filter { selection.contains($0.id) }
+    }
+
+    private var selectedVolumeNames: [String] {
+        selectedVolumes.map(\.name)
+    }
+
+    private var bulkPrimaryItem: ActionButtonItem? {
+        guard !selection.isEmpty else { return nil }
+        return ActionButtonItem(
+            id: "bulk-delete",
+            title: "Delete",
+            systemImage: "trash",
+            tint: .red
+        ) {
+            pendingDestructive = .bulkDelete(selectedVolumeNames)
+        }
+    }
 
     var body: some View {
         LoadingCrossfade(showSkeleton: isLoading && volumes.isEmpty) {
@@ -120,7 +146,7 @@ struct VolumesView: View {
                     Button("Create Volume") { showCreateSheet = true }
                 }
             } else {
-                List {
+                List(selection: $selection) {
                     StableSectionedList(sections) { volume in
                         volumeLink(volume)
                     }
@@ -134,6 +160,7 @@ struct VolumesView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .environment(\.editMode, .constant(isSelecting ? EditMode.active : EditMode.inactive))
                 .motionAwareAnimation(Motion.reflow, value: sectionCounts)
             }
         }
@@ -143,6 +170,14 @@ struct VolumesView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
+                    if !isSelecting {
+                        Button {
+                            enterSelectionMode()
+                        } label: {
+                            Label("Select", systemImage: "checklist")
+                        }
+                        Divider()
+                    }
                     Picker("Sort", selection: $sortOrder) {
                         ForEach(ListSortOrder.allCases) { order in
                             Label(order.title, systemImage: order.systemImage).tag(order)
@@ -151,25 +186,37 @@ struct VolumesView: View {
                     Button {
                         showFilterSheet = true
                     } label: {
-                        Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                        Label(
+                            activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
+                            systemImage: "line.3.horizontal.decrease.circle"
+                        )
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel("More options")
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showCreateSheet = true } label: {
-                    Image(systemName: "plus")
+            if isSelecting {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        exitSelectionMode()
+                    }
                 }
-                .accessibilityLabel("Create volume")
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(role: .destructive) { pendingDestructive = .prune } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
+            if !isSelecting {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showCreateSheet = true } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Create volume")
                 }
-                .accessibilityLabel("Prune unused volumes")
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(role: .destructive) { pendingDestructive = .prune } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.red)
+                    }
+                    .accessibilityLabel("Prune unused volumes")
+                }
             }
         }
         .task { await loadVolumes(reset: true) }
@@ -204,6 +251,16 @@ struct VolumesView: View {
                         Task { await deleteVolume(volume) }
                     }]
                 )
+            case .bulkDelete(let names):
+                return DeleteConfirmationConfig(
+                    title: "Delete Volumes",
+                    message: "Delete \(names.count) selected volume" +
+                        "\(names.count == 1 ? "" : "s")? This cannot be undone.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Delete") {
+                        Task { await bulkDeleteVolumes(names: names) }
+                    }]
+                )
             }
         }
         .alert(
@@ -222,8 +279,8 @@ struct VolumesView: View {
                 Form {
                     Section("Scope") {
                         Picker("Scope", selection: $scopeFilter) {
-                            ForEach(VolumeScopeFilter.allCases, id: \.self) { f in
-                                Text(f.rawValue).tag(f)
+                            ForEach(VolumeScopeFilter.allCases, id: \.self) { filter in
+                                Text(filter.rawValue).tag(filter)
                             }
                         }
                         .pickerStyle(.inline)
@@ -248,6 +305,13 @@ struct VolumesView: View {
         .onChange(of: scopeFilter) { rebuildSections() }
         .onChange(of: sortOrder) { rebuildSections(animated: true) }
         .onChange(of: pinnedIDs) { rebuildSections() }
+        .morphingActions(
+            primary: bulkPrimaryItem,
+            runningItemID: bulkRunningActionID,
+            isDisabled: isBulkRunning,
+            resourceName: "\(selection.count) selected",
+            active: isSelecting && !selection.isEmpty
+        )
     }
 
     private func volumeLink(_ volume: Volume) -> some View {
@@ -257,38 +321,60 @@ struct VolumesView: View {
         }
         .matchedTransitionSource(id: volume.id, in: heroTransition)
         .contextMenu {
-            Button {
-                togglePin(volume)
-            } label: {
-                Label(isPinned ? "Unpin" : "Pin",
-                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            if !isSelecting {
+                Button {
+                    togglePin(volume)
+                } label: {
+                    Label(isPinned ? "Unpin" : "Pin",
+                          systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                }
+                Button(role: .destructive) {
+                    pendingDestructive = .delete(volume)
+                } label: {
+                    DestructiveLabel(text: "Delete")
+                }
+                .tint(.red)
             }
-            Button(role: .destructive) {
-                pendingDestructive = .delete(volume)
-            } label: {
-                DestructiveLabel(text: "Delete")
-            }
-            .tint(.red)
         } preview: {
-            volumePreview(volume)
+            if !isSelecting {
+                volumePreview(volume)
+            }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                togglePinAfterSwipe(volume)
-            } label: {
-                Label(isPinned ? "Unpin" : "Pin",
-                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+            if !isSelecting {
+                Button {
+                    togglePinAfterSwipe(volume)
+                } label: {
+                    Label(isPinned ? "Unpin" : "Pin",
+                          systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                }
+                .tint(.yellow)
             }
-            .tint(.yellow)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button {
-                pendingDestructive = .delete(volume)
-            } label: {
-                Label("Delete", systemImage: "trash")
+            if !isSelecting {
+                Button {
+                    pendingDestructive = .delete(volume)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .tint(.red)
             }
-            .tint(.red)
         }
+    }
+
+    private func enterSelectionMode() {
+        HapticsManager.light()
+        isSelecting = true
+    }
+
+    private func exitSelectionMode() {
+        isSelecting = false
+        selection.removeAll()
+    }
+
+    private func pruneSelection(validIDs: Set<String>) {
+        selection.formIntersection(validIDs)
     }
 
     private func togglePinAfterSwipe(_ volume: Volume) {
@@ -398,12 +484,10 @@ struct VolumesView: View {
         await loadVolumes(reset: false)
     }
 
-
     private func deleteVolume(_ volume: Volume) async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "volumes/\(volume.name)")
-            let _: DataResponse<String> = try await client.rest.delete(path)
+            try await client.volumes.remove(envID: environmentID, name: volume.name)
             withAnimation {
                 volumes.removeAll { $0.name == volume.name }
                 rebuildSections()
@@ -424,6 +508,37 @@ struct VolumesView: View {
             mutationStore.markChanged(kind: .volumes, envID: environmentID)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    private func bulkDeleteVolumes(names: [String]) async {
+        guard let client = manager.client else { return }
+        isBulkRunning = true
+        bulkRunningActionID = "bulk-delete"
+        defer {
+            isBulkRunning = false
+            bulkRunningActionID = nil
+        }
+        let result = await BulkActionRunner.run(ids: names) { name in
+            try await client.volumes.remove(envID: environmentID, name: name)
+        }
+        let failedNames = Set(result.failed.map(\.id))
+        let removedNames = Set(names.filter { !failedNames.contains($0) })
+        withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
+            volumes.removeAll { removedNames.contains($0.name) }
+            for name in removedNames {
+                sizes.removeValue(forKey: name)
+            }
+            rebuildSections()
+        }
+        await invalidateVolumeCaches()
+        mutationStore.markChanged(kind: .volumes, envID: environmentID)
+        exitSelectionMode()
+        if result.failed.isEmpty {
+            showToast(.success("Deleted \(result.succeeded) volume\(result.succeeded == 1 ? "" : "s")"))
+            ReviewPrompter.shared.recordSuccess()
+        } else {
+            showToast(.error("\(result.failed.count) of \(names.count) failed"))
         }
     }
 
@@ -453,7 +568,7 @@ struct UsageBadge: View {
 
 struct VolumeRow: View {
     let volume: Volume
-    var size: Int64? = nil
+    var size: Int64?
     var isPinned: Bool = false
 
     private var subtitleParts: [String] {
@@ -511,8 +626,11 @@ struct VolumeRow: View {
     private var accessibilityDescription: String {
         var parts: [String] = [volume.name]
         if isPinned { parts.append("pinned") }
-        if volume.inUse == true { parts.append("in use") }
-        else if volume.inUse == false { parts.append("unused") }
+        if volume.inUse == true {
+            parts.append("in use")
+        } else if volume.inUse == false {
+            parts.append("unused")
+        }
         if !subtitleParts.isEmpty { parts.append(subtitleParts.joined(separator: ", ")) }
         return parts.joined(separator: ", ")
     }
@@ -525,7 +643,7 @@ struct VolumeDetailView: View {
     let volume: Volume
     let environmentID: EnvironmentID
 
-    @State private var sizeBytes: Int64? = nil
+    @State private var sizeBytes: Int64?
     @State private var loadingSize = false
     @State private var errorMessage: String?
     @State private var route: VolumeRoute?
@@ -669,8 +787,7 @@ struct VolumeDetailView: View {
     private func deleteVolume() async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "volumes/\(volume.name)")
-            let _: DataResponse<String> = try await client.rest.delete(path)
+            try await client.volumes.remove(envID: environmentID, name: volume.name)
             if let cached = manager.cached {
                 await cached.invalidate(envID: environmentID, paths: [
                     client.rest.environmentPath(environmentID, "volumes"),

@@ -31,6 +31,10 @@ struct ImagesView: View {
     @State private var tagsFilter = ImageTagsFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ImageRowModel>] = []
+    @State private var isSelecting = false
+    @State private var selection = Set<String>()
+    @State private var isBulkRunning = false
+    @State private var bulkRunningActionID: String?
 
     private enum ImageTagsFilter: String, CaseIterable {
         case all = "All", tagged = "Tagged", untagged = "Untagged"
@@ -41,6 +45,7 @@ struct ImagesView: View {
     private enum ImageDestructive {
         case prune
         case delete(ImageSummary)
+        case bulkDelete([String])
     }
 
     private var activeFilterCount: Int { tagsFilter != .all ? 1 : 0 }
@@ -93,6 +98,7 @@ struct ImagesView: View {
         } else {
             sections = new
         }
+        pruneSelection(validIDs: Set(images.map(\.id)))
     }
 
     private var isAdmin: Bool {
@@ -106,6 +112,22 @@ struct ImagesView: View {
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove animates too.
     private var sectionCounts: [Int] { sections.map(\.items.count) }
+
+    private var selectedImageIDs: [String] {
+        images.filter { selection.contains($0.id) }.map(\.id)
+    }
+
+    private var bulkPrimaryItem: ActionButtonItem? {
+        guard !selection.isEmpty else { return nil }
+        return ActionButtonItem(
+            id: "bulk-delete",
+            title: "Delete",
+            systemImage: "trash",
+            tint: .red
+        ) {
+            pendingDestructive = .bulkDelete(selectedImageIDs)
+        }
+    }
 
     var body: some View {
         LoadingCrossfade(showSkeleton: isLoading && images.isEmpty) {
@@ -128,7 +150,7 @@ struct ImagesView: View {
                     Button("Pull Image") { showPullSheet = true }
                 }
             } else {
-                List {
+                List(selection: $selection) {
                     StableSectionedList(sections) { image in
                         imageLink(image)
                     }
@@ -142,6 +164,7 @@ struct ImagesView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
+                .environment(\.editMode, .constant(isSelecting ? EditMode.active : EditMode.inactive))
                 .motionAwareAnimation(Motion.reflow, value: sectionCounts)
             }
         }
@@ -164,6 +187,14 @@ struct ImagesView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
+                    if !isSelecting {
+                        Button {
+                            enterSelectionMode()
+                        } label: {
+                            Label("Select", systemImage: "checklist")
+                        }
+                        Divider()
+                    }
                     Picker("Sort", selection: $sortOrder) {
                         ForEach(ListSortOrder.allCases) { order in
                             Label(order.title, systemImage: order.systemImage).tag(order)
@@ -172,49 +203,63 @@ struct ImagesView: View {
                     Button {
                         showFilterSheet = true
                     } label: {
-                        Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                        Label(
+                            activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
+                            systemImage: "line.3.horizontal.decrease.circle"
+                        )
                     }
-                    Divider()
-                    NavigationLink(destination: ImageUpdatesView(environmentID: environmentID, images: images)) {
-                        Label("Updates", systemImage: "arrow.up.arrow.down.circle")
-                    }
-                    NavigationLink(destination: AllVulnerabilitiesView(environmentID: environmentID)) {
-                        Label("Vulnerabilities", systemImage: "shield")
-                    }
-                    Button {
-                        showUploadSheet = true
-                    } label: {
-                        Label("Upload tarball…", systemImage: "square.and.arrow.up")
+                    if !isSelecting {
+                        Divider()
+                        NavigationLink(destination: ImageUpdatesView(environmentID: environmentID, images: images)) {
+                            Label("Updates", systemImage: "arrow.up.arrow.down.circle")
+                        }
+                        NavigationLink(destination: AllVulnerabilitiesView(environmentID: environmentID)) {
+                            Label("Vulnerabilities", systemImage: "shield")
+                        }
+                        Button {
+                            showUploadSheet = true
+                        } label: {
+                            Label("Upload tarball…", systemImage: "square.and.arrow.up")
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel("More options")
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showPullSheet = true } label: {
-                    Image(systemName: "arrow.down.circle")
+            if isSelecting {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        exitSelectionMode()
+                    }
                 }
-                .accessibilityLabel("Pull image")
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button(role: .destructive) {
-                        pendingDestructive = .prune
-                    } label: {
-                        Label("Quick Prune (Dangling)", systemImage: "trash")
+            if !isSelecting {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button { showPullSheet = true } label: {
+                        Image(systemName: "arrow.down.circle")
                     }
-                    .tint(.red)
-                    Button {
-                        showPruneSheet = true
-                    } label: {
-                        Label("Prune Options…", systemImage: "slider.horizontal.3")
-                    }
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red)
+                    .accessibilityLabel("Pull image")
                 }
-                .accessibilityLabel("Prune images")
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Button(role: .destructive) {
+                            pendingDestructive = .prune
+                        } label: {
+                            Label("Quick Prune (Dangling)", systemImage: "trash")
+                        }
+                        .tint(.red)
+                        Button {
+                            showPruneSheet = true
+                        } label: {
+                            Label("Prune Options…", systemImage: "slider.horizontal.3")
+                        }
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.red)
+                    }
+                    .accessibilityLabel("Prune images")
+                }
             }
         }
         .deleteConfirmation(item: $pendingDestructive) { action in
@@ -235,6 +280,15 @@ struct ImagesView: View {
                     icon: "trash",
                     actions: [DeleteConfirmationAction(title: "Delete") {
                         Task { await removeImage(image) }
+                    }]
+                )
+            case .bulkDelete(let ids):
+                return DeleteConfirmationConfig(
+                    title: "Delete Images",
+                    message: "Delete \(ids.count) selected image\(ids.count == 1 ? "" : "s") from the host.",
+                    icon: "trash",
+                    actions: [DeleteConfirmationAction(title: "Delete") {
+                        Task { await bulkDeleteImages(ids: ids) }
                     }]
                 )
             }
@@ -258,8 +312,8 @@ struct ImagesView: View {
                 Form {
                     Section("Tags") {
                         Picker("Tags", selection: $tagsFilter) {
-                            ForEach(ImageTagsFilter.allCases, id: \.self) { f in
-                                Text(f.rawValue).tag(f)
+                            ForEach(ImageTagsFilter.allCases, id: \.self) { filter in
+                                Text(filter.rawValue).tag(filter)
                             }
                         }
                         .pickerStyle(.inline)
@@ -300,6 +354,13 @@ struct ImagesView: View {
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: tagsFilter) { rebuildSections() }
         .onChange(of: sortOrder) { rebuildSections(animated: true) }
+        .morphingActions(
+            primary: bulkPrimaryItem,
+            runningItemID: bulkRunningActionID,
+            isDisabled: isBulkRunning,
+            resourceName: "\(selection.count) selected",
+            active: isSelecting && !selection.isEmpty
+        )
     }
 
     private func imageLink(_ row: ImageRowModel) -> some View {
@@ -309,23 +370,43 @@ struct ImagesView: View {
         }
         .matchedTransitionSource(id: image.id, in: heroTransition)
         .contextMenu {
-            Button(role: .destructive) {
-                pendingDestructive = .delete(image)
-            } label: {
-                DestructiveLabel(text: "Delete")
+            if !isSelecting {
+                Button(role: .destructive) {
+                    pendingDestructive = .delete(image)
+                } label: {
+                    DestructiveLabel(text: "Delete")
+                }
+                .tint(.red)
             }
-            .tint(.red)
         } preview: {
-            imagePreview(image, state: row.updateState)
+            if !isSelecting {
+                imagePreview(image, state: row.updateState)
+            }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button {
-                pendingDestructive = .delete(image)
-            } label: {
-                Label("Delete", systemImage: "trash")
+            if !isSelecting {
+                Button {
+                    pendingDestructive = .delete(image)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .tint(.red)
             }
-            .tint(.red)
         }
+    }
+
+    private func enterSelectionMode() {
+        HapticsManager.light()
+        isSelecting = true
+    }
+
+    private func exitSelectionMode() {
+        isSelecting = false
+        selection.removeAll()
+    }
+
+    private func pruneSelection(validIDs: Set<String>) {
+        selection.formIntersection(validIDs)
     }
 
     private func imagePreview(_ image: ImageSummary, state: ImageUpdateState) -> some View {
@@ -455,8 +536,7 @@ struct ImagesView: View {
     private func removeImage(_ image: ImageSummary) async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
-            let _: DataResponse<String> = try await client.rest.delete(path)
+            try await client.images.remove(envID: environmentID, id: image.id)
             withAnimation {
                 images.removeAll { $0.id == image.id }
                 rebuildSections()
@@ -465,6 +545,34 @@ struct ImagesView: View {
             mutationStore.markChanged(kind: .images, envID: environmentID)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    private func bulkDeleteImages(ids: [String]) async {
+        guard let client = manager.client else { return }
+        isBulkRunning = true
+        bulkRunningActionID = "bulk-delete"
+        defer {
+            isBulkRunning = false
+            bulkRunningActionID = nil
+        }
+        let result = await BulkActionRunner.run(ids: ids) { id in
+            try await client.images.remove(envID: environmentID, id: id)
+        }
+        let failedIDs = Set(result.failed.map(\.id))
+        let removedIDs = Set(ids.filter { !failedIDs.contains($0) })
+        withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
+            images.removeAll { removedIDs.contains($0.id) }
+            rebuildSections()
+        }
+        await invalidateImageCaches()
+        mutationStore.markChanged(kind: .images, envID: environmentID)
+        exitSelectionMode()
+        if result.failed.isEmpty {
+            showToast(.success("Deleted \(result.succeeded) image\(result.succeeded == 1 ? "" : "s")"))
+            ReviewPrompter.shared.recordSuccess()
+        } else {
+            showToast(.error("\(result.failed.count) of \(ids.count) failed"))
         }
     }
 }
@@ -615,4 +723,3 @@ struct PullImageView: View {
         )
     }
 }
-

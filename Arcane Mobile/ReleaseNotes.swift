@@ -52,6 +52,22 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.5.0",
+            new: [
+                .init("Update All is now available from the dashboard.")
+            ],
+            changed: [
+                .init("Bulk actions for containers, images, and volumes."),
+                .init("Logs now support timestamps, copy, share, and clear."),
+                .init("Volume browsing now has breadcrumbs and path jumping."),
+                .init("Events now update live with a pause control."),
+                .init("Pinned containers and projects now show on the dashboard.")
+            ],
+            fixed: [
+                .init("Dashboard pull-to-refresh now reconnects live streams and refreshes data.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.4.1",
             new: [
                 .init("Live Activities: deploys, redeploys, pulls, and builds now show live progress in the Dynamic Island and on the Lock Screen when you leave the app."),
