@@ -99,6 +99,8 @@ struct DashboardView: View {
     @State private var showVolumes = false
     @State private var showImageUpdates = false
     @State private var showActivities = false
+    @State private var showUpdateAll = false
+    @State private var showAddEnvironment = false
 
     private static let maxEnvironments = 50
     private static let maxConcurrentPerEnvFetches = 4
@@ -118,9 +120,7 @@ struct DashboardView: View {
                         } description: {
                             Text("Connect an environment to see live container, image, and system stats here.")
                         } actions: {
-                            NavigationLink("Manage Environments") {
-                                EnvironmentsView()
-                            }
+                            Button("Add Environment") { showAddEnvironment = true }
                         }
                         .padding(.top, 48)
                     } else {
@@ -175,6 +175,16 @@ struct DashboardView: View {
                     }
                     .accessibilityLabel("System Prune")
                 }
+            }
+            .sheet(isPresented: $showAddEnvironment) {
+                AddEnvironmentView {}
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showUpdateAll) {
+                UpdateAllEnvironmentsView(environmentCount: rawEnvironmentCount)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showPruneSheet) {
                 SystemPruneView(environmentID: envID)
@@ -279,10 +289,30 @@ struct DashboardView: View {
 
     private var environmentsSection: some View {
         LazyVStack(alignment: .leading, spacing: 12) {
-            Text("Environments")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
+            HStack {
+                Text("Environments")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if manager.currentUser?.isAdmin == true {
+                    Button {
+                        showUpdateAll = true
+                    } label: {
+                        Label("Update All", systemImage: "arrow.up.circle")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.pressable)
+                }
+                Button {
+                    showAddEnvironment = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.pressable)
+                .accessibilityLabel("Add Environment")
+            }
+            .padding(.horizontal, 4)
 
             if streamStore.streamFailed, !streamStore.streamUnsupported {
                 streamFailedBanner
@@ -332,17 +362,12 @@ struct DashboardView: View {
     }
 
     private var truncationFooter: some View {
-        NavigationLink {
-            EnvironmentsView()
-        } label: {
-            Text("Showing \(Self.maxEnvironments) of \(rawEnvironmentCount) environments. Tap to see all.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 4)
-                .padding(.top, 4)
-        }
-        .buttonStyle(.pressable)
+        Text("Showing \(Self.maxEnvironments) of \(rawEnvironmentCount) environments.")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
     }
 
     private var dashboardHeader: some View {
