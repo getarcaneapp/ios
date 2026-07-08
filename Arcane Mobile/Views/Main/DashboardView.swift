@@ -103,7 +103,6 @@ struct DashboardView: View {
     @State private var showImageUpdates = false
     @State private var showActivities = false
     @State private var showUpdateAll = false
-    @State private var showAddEnvironment = false
 
     private static let maxEnvironments = 50
     private static let maxConcurrentPerEnvFetches = 4
@@ -122,8 +121,6 @@ struct DashboardView: View {
                             Label("No Environments", systemImage: "server.rack")
                         } description: {
                             Text("Connect an environment to see live container, image, and system stats here.")
-                        } actions: {
-                            Button("Add Environment") { showAddEnvironment = true }
                         }
                         .padding(.top, 48)
                     } else {
@@ -188,11 +185,6 @@ struct DashboardView: View {
                     }
                     .accessibilityLabel("System Prune")
                 }
-            }
-            .sheet(isPresented: $showAddEnvironment) {
-                AddEnvironmentView {}
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showUpdateAll) {
                 UpdateAllEnvironmentsView(environmentCount: rawEnvironmentCount)
@@ -320,15 +312,6 @@ struct DashboardView: View {
                     .font(.headline)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button {
-                    showAddEnvironment = true
-                } label: {
-                    Image(systemName: "plus.circle")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .buttonStyle(.pressable)
-                .accessibilityLabel("Add Environment")
-
                 if manager.currentUser?.isAdmin == true {
                     Button {
                         showUpdateAll = true

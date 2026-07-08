@@ -47,10 +47,16 @@ struct ReleaseNote: Identifiable, Hashable {
     }
 }
 
-/// Hardcoded changelog. When bumping `MARKETING_VERSION` in the project, prepend
+/// Hardcoded changelog. When bumping `MARKETING_VERSION` in BuildNumber.xcconfig, prepend
 /// a new entry whose `version` matches — auto-show keys off that string.
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
+        ReleaseNote(
+            version: "0.5.1",
+            changed: [
+                .init("Removed the incorrect Add Environment dialog from the dashboard.")
+            ]
+        ),
         ReleaseNote(
             version: "0.5.0",
             new: [
