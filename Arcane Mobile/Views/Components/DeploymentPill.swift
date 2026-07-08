@@ -18,6 +18,8 @@ import SwiftUI
 extension View {
     /// Mounts the deployment pill overlay and the root stream sheet. Apply once
     /// near the root, before `.toastHost()` so toasts layer above the pill.
+    /// Root-only: mounting a second host inside a sheet double-binds the
+    /// stream-sheet presentation and SwiftUI tears one down.
     func deploymentActivityHost() -> some View {
         modifier(DeploymentActivityHostModifier())
     }

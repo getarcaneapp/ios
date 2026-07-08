@@ -43,11 +43,8 @@ struct ListImagesTool: Tool {
         let total = items.count
         let danglingTotal = items.count(where: isDangling)
         var header = "\(ToolSupport.countSummary(total, singular: "image")) in \(context.envName), \(ToolSupport.countSummary(danglingTotal, singular: "dangling image"))."
-        // Update availability is garnish — never fail the list for it. Raw REST +
-        // app-local ImageUpdateSummary, same recipe as DashboardView (the SDK's
-        // typed updateSummary doesn't match the current server's shape).
-        let summaryPath = context.client.rest.environmentPath(context.envID, "image-updates/summary")
-        if let updates: ImageUpdateSummary = try? await context.client.rest.get(summaryPath),
+        // Update availability is garnish — never fail the list for it.
+        if let updates = try? await context.client.images.updateSummary(envID: context.envID),
            updates.imagesWithUpdates > 0 {
             header += " \(ToolSupport.countSummary(updates.imagesWithUpdates, singular: "image update")) available."
         }

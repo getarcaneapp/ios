@@ -30,7 +30,7 @@ nonisolated struct DeployActivityAttributes: ActivityAttributes {
     /// Project or container display name.
     var targetName: String
     /// Raw `DeploymentActionKind` value ("up", "redeploy", "pull", "build",
-    /// "containerRedeploy") — mapped to presentation below.
+    /// "containerRedeploy", "containerUpdate") — mapped to presentation below.
     var actionKind: String
     var environmentName: String
 }
@@ -44,6 +44,7 @@ extension DeployActivityAttributes {
         case "pull": "Pull Images"
         case "build": "Build Images"
         case "imagePull": "Pull"
+        case "containerUpdate": "Update"
         default: "Redeploy"
         }
     }
@@ -53,6 +54,7 @@ extension DeployActivityAttributes {
         case "up": "shippingbox.fill"
         case "pull", "imagePull": "arrow.down"
         case "build": "hammer.fill"
+        case "containerUpdate": "arrow.up.circle.fill"
         default: "arrow.triangle.2.circlepath"
         }
     }

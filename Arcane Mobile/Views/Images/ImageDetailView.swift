@@ -134,8 +134,9 @@ struct ImageDetailView: View {
                     UpdateStateBadge(state: updateState)
                 }
                 if let info = updateInfo, info.hasUpdate,
-                   let latest = info.latestVersion, let current = info.currentVersion, latest != current {
-                    Text("\(current) → \(latest)")
+                   let latest = info.latestVersion, !info.currentVersion.isEmpty,
+                   latest != info.currentVersion {
+                    Text("\(info.currentVersion) → \(latest)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -252,9 +253,7 @@ struct ImageDetailView: View {
         isCheckingUpdate = true
         defer { isCheckingUpdate = false }
         do {
-            let path = client.rest.environmentPath(environmentID, "image-updates/check/\(image.id)")
-            let response: ImageUpdateResponse = try await client.rest.post(path, body: String?.none)
-            updateInfo = response
+            updateInfo = try await client.images.checkUpdateByIDPost(envID: environmentID, imageId: image.id)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -267,12 +266,12 @@ struct ImageDetailView: View {
         let refs = image.repoTags.filter { $0 != "<none>:<none>" }
         guard !refs.isEmpty else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "image-updates/by-refs")
-            let query = [URLQueryItem(name: "imageRefs", value: refs.joined(separator: ","))]
-            let map: BatchImageUpdateResponse = try await client.rest.get(path, query: query)
-            for tag in refs where map[tag] != nil {
-                updateInfo = map[tag]
-                break
+            let map = try await client.images.updateInfoByRefs(envID: environmentID, imageRefs: refs)
+            for tag in refs {
+                if let info = map[tag], let info {
+                    updateInfo = info.asUpdateResponse
+                    break
+                }
             }
         } catch {
             // Best-effort; the navbar recheck can force a fresh check.

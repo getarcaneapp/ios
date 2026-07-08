@@ -207,8 +207,13 @@ struct DashboardView: View {
             }
             .sheet(isPresented: $showImageUpdates) {
                 NavigationStack {
-                    AllEnvironmentsImageUpdatesView()
+                    // Starting an update dismisses this sheet so the root
+                    // pill (above the tab bar) becomes the progress surface.
+                    AllEnvironmentsImageUpdatesView(dismissOnOperationStart: true)
                 }
+                // Pre-flight error toasts must be visible while the sheet is
+                // up — the root toast host is covered by it.
+                .toastHost()
                 .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showActivities, onDismiss: {
@@ -462,13 +467,18 @@ struct DashboardView: View {
                 action: { selectedTab = AppTab.containers.id }
             ))
         }
-        if updates > 0 {
+        // Prefer the summary-based image count (same source as the Updates
+        // tile) so this row, the tile, and the image list they both open all
+        // agree. The server action item counts *resources* (a project with
+        // several outdated images counts once), which reads as a mismatch.
+        let imageUpdates = imageUpdatesTotal ?? updates
+        if imageUpdates > 0 {
             items.append(NeedsAttentionItem(
                 id: "image-updates",
                 severity: .warning,
                 icon: "arrow.triangle.2.circlepath",
                 title: "Image updates available",
-                count: updates,
+                count: imageUpdates,
                 action: { showImageUpdates = true }
             ))
         }
@@ -851,8 +861,7 @@ struct DashboardView: View {
                 guard let env = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
-                    let path = client.rest.environmentPath(envID, "image-updates/summary")
-                    let summary: ImageUpdateSummary? = try? await client.rest.get(path)
+                    let summary = try? await client.images.updateSummary(envID: envID)
                     return summary?.imagesWithUpdates ?? 0
                 }
             }
@@ -862,8 +871,7 @@ struct DashboardView: View {
                 if let env = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
                     group.addTask {
-                        let path = client.rest.environmentPath(envID, "image-updates/summary")
-                        let summary: ImageUpdateSummary? = try? await client.rest.get(path)
+                        let summary = try? await client.images.updateSummary(envID: envID)
                         return summary?.imagesWithUpdates ?? 0
                     }
                 }

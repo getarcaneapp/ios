@@ -493,10 +493,8 @@ struct ImagesView: View {
             .filter { $0 != "<none>:<none>" }
         guard !refs.isEmpty else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "image-updates/by-refs")
-            let query = [URLQueryItem(name: "imageRefs", value: refs.joined(separator: ","))]
-            let map: BatchImageUpdateResponse = try await client.rest.get(path, query: query)
-            updateInfo.merge(map) { _, new in new }
+            let map = try await client.images.updateInfoByRefs(envID: environmentID, imageRefs: refs)
+            updateInfo.merge(map.compactMapValues { $0?.asUpdateResponse }) { _, new in new }
             rebuildSections()
         } catch {
             // Update info is best-effort decoration — silent failure.

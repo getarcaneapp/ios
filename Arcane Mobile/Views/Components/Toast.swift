@@ -76,9 +76,9 @@ extension Toast {
               symbolTint: .green, haptic: .success)
     }
 
-    /// Failure notice — red triangle. A little longer so it can be read.
+    /// Failure notice — red triangle. Longer so a two-line message can be read.
     static func error(_ title: String) -> Toast {
-        Toast(title: title, duration: 3.5, symbol: "exclamationmark.triangle.fill",
+        Toast(title: title, duration: 5, symbol: "exclamationmark.triangle.fill",
               symbolTint: .red, haptic: .error)
     }
 
@@ -206,7 +206,10 @@ private struct ToastCapsule: View {
 
             Text(toast.title)
                 .font(.body)
-                .lineLimit(1)
+                // Two lines so error detail isn't lost to truncation; each
+                // toast renders at its natural size from the start (fresh
+                // identity per toast), so the glass shape never resizes.
+                .lineLimit(2)
 
             Spacer(minLength: 0)
 

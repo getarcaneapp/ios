@@ -645,36 +645,10 @@ extension PullProgressEvent {
     var isLayerEvent: Bool { id?.isEmpty == false }
 }
 
-// MARK: - Image update checks
-
-nonisolated struct ImageUpdateResponse: Codable, Sendable {
-    let hasUpdate: Bool
-    let updateType: String?
-    let currentVersion: String?
-    let latestVersion: String?
-    let currentDigest: String?
-    let latestDigest: String?
-    let checkTime: String?
-    let responseTimeMs: Int?
-    let error: String?
-    let authMethod: String?
-    let authUsername: String?
-    let authRegistry: String?
-    let usedCredential: Bool?
-}
-
-nonisolated struct ImageUpdateSummary: Codable, Sendable {
-    let totalImages: Int
-    let imagesWithUpdates: Int
-    let digestUpdates: Int
-    let errorsCount: Int
-}
-
-nonisolated struct BatchImageUpdateRequest: Encodable, Sendable {
-    let imageRefs: [String]
-}
-
-typealias BatchImageUpdateResponse = [String: ImageUpdateResponse]
+// Image update checks use the SDK's typed API (`client.images.updateSummary`,
+// `checkUpdateByRef`, `checkAllUpdates`, `updateInfoByRefs`) and its
+// `ImageUpdateResponse` / `ImageUpdateSummary` / `ImageUpdateInfo` models —
+// the former app-local shadow copies are gone.
 
 // MARK: - Vulnerabilities
 

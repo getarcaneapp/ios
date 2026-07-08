@@ -25,7 +25,7 @@ import Arcane
 // MARK: - Action kind
 
 enum DeploymentActionKind: String, Sendable {
-    case up, redeploy, pull, build, containerRedeploy, imagePull
+    case up, redeploy, pull, build, containerRedeploy, imagePull, containerUpdate
 
     var verb: String {
         switch self {
@@ -34,6 +34,7 @@ enum DeploymentActionKind: String, Sendable {
         case .pull: "Pull Images"
         case .build: "Build Images"
         case .imagePull: "Pull"
+        case .containerUpdate: "Update"
         }
     }
 
@@ -43,7 +44,14 @@ enum DeploymentActionKind: String, Sendable {
         case .redeploy, .containerRedeploy: "arrow.triangle.2.circlepath"
         case .pull, .imagePull: "arrow.down"
         case .build: "hammer.fill"
+        case .containerUpdate: "arrow.up.circle.fill"
         }
+    }
+
+    /// Kinds backed by plain request/response calls rather than an NDJSON
+    /// stream — pill + Live Activity only, and the response is authoritative.
+    var isRequestBacked: Bool {
+        self == .containerRedeploy || self == .containerUpdate
     }
 }
 
@@ -52,6 +60,12 @@ enum DeploymentActionKind: String, Sendable {
 @MainActor
 @Observable
 final class DeploymentOperation: Identifiable {
+    /// One container a `.containerUpdate` operation applies to.
+    struct UpdateTarget: Sendable, Hashable {
+        let id: String
+        let name: String
+    }
+
     let id = UUID()
     let kind: DeploymentActionKind
     let envID: EnvironmentID
@@ -60,6 +74,9 @@ final class DeploymentOperation: Identifiable {
     let targetID: String
     let targetName: String
     let environmentName: String
+    /// Containers a `.containerUpdate` runs over (one entry per container,
+    /// updated sequentially). Empty for every other kind.
+    let updateTargets: [UpdateTarget]
     let startedAt = Date()
 
     fileprivate(set) var lines: [InstallStreamLine] = []
@@ -88,12 +105,14 @@ final class DeploymentOperation: Identifiable {
     @ObservationIgnored fileprivate var serverSyncCursor: Date?
 
     init(kind: DeploymentActionKind, envID: EnvironmentID, targetID: String,
-         targetName: String, environmentName: String) {
+         targetName: String, environmentName: String,
+         updateTargets: [UpdateTarget] = []) {
         self.kind = kind
         self.envID = envID
         self.targetID = targetID
         self.targetName = targetName
         self.environmentName = environmentName
+        self.updateTargets = updateTargets
     }
 
     /// Sheet/pill title, mirroring the pre-store sheet titles: name-scoped for
@@ -166,6 +185,7 @@ final class DeploymentActivityStore {
                environmentName: String,
                manager: ArcaneClientManager,
                mutationStore: ResourceMutationStore,
+               updateTargets: [DeploymentOperation.UpdateTarget] = [],
                presentSheet: Bool? = nil) -> Bool {
         guard !isRunning else {
             showToast(.info("Another deployment is running"))
@@ -183,14 +203,16 @@ final class DeploymentActivityStore {
 
         let operation = DeploymentOperation(
             kind: kind, envID: envID, targetID: targetID,
-            targetName: targetName, environmentName: environmentName
+            targetName: targetName, environmentName: environmentName,
+            updateTargets: updateTargets
         )
         self.operation = operation
-        // Container redeploy has no stream worth watching — pill + Live
-        // Activity only; the sheet stays available via the pill. Callers can
-        // override (e.g. image pull starts from its own sheet, so presenting
-        // ours mid-dismissal would race).
-        isSheetPresented = presentSheet ?? (kind != .containerRedeploy)
+        // Request-backed kinds (container redeploy/update) have no stream
+        // worth watching — pill + Live Activity only; the sheet stays
+        // available via the pill. Callers can override (e.g. image pull
+        // starts from its own sheet, so presenting ours mid-dismissal would
+        // race).
+        isSheetPresented = presentSheet ?? !kind.isRequestBacked
         liveActivity.start(for: operation)
 
         // Resolve the backing server activity eagerly so a later Cancel or
@@ -304,6 +326,15 @@ final class DeploymentActivityStore {
         do {
             if operation.kind == .containerRedeploy {
                 try await runContainerRedeploy(operation, client: client)
+            } else if operation.kind == .containerUpdate {
+                // Per-target POSTs with partial-failure reporting; each
+                // response is authoritative, so this path terminates the
+                // operation itself instead of falling through.
+                await runContainerUpdate(operation, client: client,
+                                         manager: manager, mutationStore: mutationStore)
+                streamTask = nil
+                endBackgroundTask()
+                return
             } else {
                 let stream = try makeStream(for: operation, client: client)
                 for try await event in stream {
@@ -363,8 +394,25 @@ final class DeploymentActivityStore {
         }
         HapticsManager.warning()
         if !isSheetPresented {
-            let suffix = message == "Cancelled" ? "cancelled" : "failed"
-            showToast(.error("\(operation.title) \(suffix)"))
+            let cancelled = message == "Cancelled"
+            let title = cancelled
+                ? "\(operation.title) cancelled"
+                : "\(operation.title) failed: \(message)"
+            // "View" opens the full log so the complete error is reachable —
+            // the toast itself only fits a couple of lines.
+            showToast(Toast(
+                title: title,
+                duration: 5,
+                symbol: "exclamationmark.triangle.fill",
+                symbolTint: .red,
+                actionTitle: "View",
+                haptic: .error,
+                action: { [weak self] in
+                    guard let self, self.operation != nil else { return true }
+                    self.isSheetPresented = true
+                    return true
+                }
+            ))
         }
         finishPresentation(for: operation)
     }
@@ -388,8 +436,8 @@ final class DeploymentActivityStore {
                     options: ImagePullOptions(imageName: image, tag: tag)
                 )
             }()
-        case .containerRedeploy:
-            preconditionFailure("containerRedeploy is not stream-backed")
+        case .containerRedeploy, .containerUpdate:
+            preconditionFailure("\(operation.kind.rawValue) is not stream-backed")
         }
     }
 
@@ -416,6 +464,100 @@ final class DeploymentActivityStore {
         let path = client.rest.environmentPath(operation.envID, "containers/\(operation.targetID)/redeploy")
         let _: ContainerSummary = try await client.rest.post(path, body: String?.none)
         append(text: "Container recreated", isError: false, to: operation)
+    }
+
+    /// Updates each target container sequentially through the per-container
+    /// updater endpoint (pull latest image + recreate; the server handles
+    /// compose containers via their project). Each POST response is
+    /// authoritative, so success/failure is decided here — no server
+    /// re-attach.
+    private func runContainerUpdate(_ operation: DeploymentOperation,
+                                    client: ArcaneClient,
+                                    manager: ArcaneClientManager,
+                                    mutationStore: ResourceMutationStore) async {
+        let targets = operation.updateTargets
+        var failures: [String] = []
+
+        for (index, target) in targets.enumerated() {
+            guard self.operation?.id == operation.id, !Task.isCancelled else { return }
+            updatePhase(targets.count == 1 ? "Updating" : "Updating \(target.name)", on: operation)
+            append(text: "Updating \(target.name)…", isError: false, to: operation)
+            liveActivity.update(for: operation, immediate: false)
+            do {
+                let result = try await client.updater.updateContainer(target.id, envID: operation.envID)
+                ingest(result, into: operation)
+                failures.append(contentsOf: failureMessages(in: result))
+            } catch {
+                let message = friendlyErrorMessage(error)
+                append(text: "\(target.name): \(message)", isError: true, to: operation)
+                failures.append("\(target.name): \(message)")
+            }
+            if targets.count > 1 {
+                operation.progressFraction = Double(index + 1) / Double(targets.count)
+            }
+            liveActivity.update(for: operation, immediate: false)
+        }
+
+        guard self.operation?.id == operation.id, !operation.status.isTerminal else { return }
+        if userCancelRequested {
+            markFailed("Cancelled", operation: operation)
+        } else if let first = failures.first {
+            let message = failures.count > 1 ? "\(first) (+\(failures.count - 1) more)" : first
+            markFailed(message, operation: operation)
+        } else {
+            withAnimation(Motion.state) {
+                operation.status = .success
+                operation.currentPhase = "Complete"
+            }
+            await completeSuccessfully(operation, manager: manager, mutationStore: mutationStore)
+        }
+    }
+
+    /// Renders an updater result's per-resource items as log lines.
+    private func ingest(_ result: UpdaterResult, into operation: DeploymentOperation) {
+        for item in result.items {
+            let name = item.resourceName ?? item.resourceId
+            if let error = item.error, !error.isEmpty {
+                append(text: "\(name): \(error)", isError: true, to: operation)
+                continue
+            }
+            var line = "\(name): \(Self.updaterStatusLabel(item.status))"
+            if let change = Self.updaterImageChange(item) {
+                line += " · \(change)"
+            }
+            append(text: line, isError: false, to: operation)
+        }
+    }
+
+    private func failureMessages(in result: UpdaterResult) -> [String] {
+        result.items.compactMap { item in
+            guard let error = item.error, !error.isEmpty else { return nil }
+            return "\(item.resourceName ?? item.resourceId): \(error)"
+        }
+    }
+
+    private static func updaterStatusLabel(_ status: String) -> String {
+        switch status.lowercased() {
+        case "updated": "updated"
+        case "up_to_date": "already up to date"
+        case "restarted": "restarted"
+        case "skipped": "skipped"
+        case "checked": "checked"
+        case "failed": "failed"
+        default: status
+        }
+    }
+
+    private static func updaterImageChange(_ item: UpdaterResourceResult) -> String? {
+        let old = item.oldImages ?? [:]
+        let new = item.newImages ?? [:]
+        guard let key = new.keys.first ?? old.keys.first else { return nil }
+        switch (old[key], new[key]) {
+        case let (.some(from), .some(to)) where from != to: return "\(from) → \(to)"
+        case let (_, .some(to)): return to
+        case let (.some(from), _): return from
+        default: return nil
+        }
     }
 
     private func ingest(_ event: PullProgressEvent, into operation: DeploymentOperation) {
@@ -510,6 +652,7 @@ final class DeploymentActivityStore {
         case .build: .projectBuild
         case .containerRedeploy: .containerRedeploy
         case .imagePull: .imagePull
+        case .containerUpdate: .autoUpdate
         }
     }
 
@@ -689,6 +832,12 @@ final class DeploymentActivityStore {
             mutationStore.markChanged(kind: .containers, envID: operation.envID)
         case .imagePull:
             mutationStore.markChanged(kind: .images, envID: operation.envID)
+        case .containerUpdate:
+            // A new image was pulled and containers were recreated; compose
+            // consumers surface project changes too.
+            mutationStore.markChanged(kind: .containers, envID: operation.envID)
+            mutationStore.markChanged(kind: .images, envID: operation.envID)
+            mutationStore.markChanged(kind: .projects, envID: operation.envID)
         default:
             mutationStore.markChanged(kind: .projects, envID: operation.envID)
         }
@@ -709,6 +858,13 @@ final class DeploymentActivityStore {
             await cached.invalidate(envID: envID, paths: [
                 client.rest.environmentPath(envID, "containers"),
                 client.rest.environmentPath(envID, "containers/*")
+            ])
+        case .containerUpdate:
+            await cached.invalidate(envID: envID, paths: [
+                client.rest.environmentPath(envID, "containers"),
+                client.rest.environmentPath(envID, "containers/*"),
+                client.rest.environmentPath(envID, "images") + "*",
+                client.rest.environmentPath(envID, "images/*")
             ])
         case .imagePull:
             await cached.invalidate(envID: envID, paths: [

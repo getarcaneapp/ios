@@ -52,6 +52,20 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.5.2",
+            new: [
+                .init("Redesigned Updates page with one-tap and per-container updates."),
+                .init("Container updates show progress in the pill and Live Activities.")
+            ],
+            changed: [
+                .init("Terminal-style redesign for the operation log.")
+            ],
+            fixed: [
+                .init("Ports showing thousands separators (9,000 → 9000)."),
+                .init("Needs Attention and the Updates tile counted updates differently.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.5.1",
             changed: [
                 .init("Removed the incorrect Add Environment dialog from the dashboard.")

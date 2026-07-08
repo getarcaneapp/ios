@@ -30,13 +30,13 @@ struct ContainerPortsSection: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
                 if let publicPort = port.publicPort {
-                    Text("\(hostDisplay(port.ip)):\(publicPort)")
+                    Text(verbatim: "\(hostDisplay(port.ip)):\(publicPort)")
                         .font(.system(.body, design: .monospaced))
                     Image(systemName: "arrow.right")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
-                Text("\(port.privatePort)/\(port.type)")
+                Text(verbatim: "\(port.privatePort)/\(port.type)")
                     .font(.system(.body, design: .monospaced))
                 Spacer()
                 if port.publicPort == nil {

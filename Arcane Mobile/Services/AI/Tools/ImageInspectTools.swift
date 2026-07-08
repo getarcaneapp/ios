@@ -72,32 +72,30 @@ struct InspectImageTool: Tool {
         return String(lines.joined(separator: "\n").prefix(3000))
     }
 
-    // MARK: - Updates (raw REST, mirrors ImageDetailView/ImageUpdatesView)
+    // MARK: - Updates (SDK typed API, mirrors ImageDetailView/ImageUpdatesView)
 
     private func updateCheckText(id: String) async -> String {
         context.status.report("Checking for image updates…")
         let r: ImageUpdateResponse
         do {
-            let path = context.client.rest.environmentPath(context.envID, "image-updates/check/\(id)")
-            r = try await context.client.rest.post(path, body: String?.none)
+            r = try await context.client.images.checkUpdateByIDPost(envID: context.envID, imageId: id)
         } catch {
             return ToolSupport.friendlyFailure(error, reading: "update check for image “\(id)”")
         }
         if let error = r.error, !error.isEmpty {
             return "Update check failed: \(error)"
         }
-        let current = r.currentVersion ?? "the current version"
+        let current = r.currentVersion.isEmpty ? "the current version" : r.currentVersion
         guard r.hasUpdate else { return "No update available — \(current) is current." }
-        let latest = r.latestVersion ?? "a newer digest"
-        let type = r.updateType.map { " (\($0))" } ?? ""
+        let latest = r.latestVersion.flatMap { $0.isEmpty ? nil : $0 } ?? "a newer digest"
+        let type = r.updateType.isEmpty ? "" : " (\(r.updateType))"
         return "Update available\(type): \(current) → \(latest)."
     }
 
     private func updateSummaryText() async -> String {
         context.status.report("Checking image updates…")
         do {
-            let path = context.client.rest.environmentPath(context.envID, "image-updates/summary")
-            let s: ImageUpdateSummary = try await context.client.rest.get(path)
+            let s = try await context.client.images.updateSummary(envID: context.envID)
             var text = "Across \(s.totalImages) image(s): \(s.imagesWithUpdates) with updates available"
             if s.errorsCount > 0 { text += ", \(s.errorsCount) check error(s)" }
             return text + "."

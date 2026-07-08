@@ -85,8 +85,7 @@ struct ImageUpdatesView: View {
         loadingSummary = true
         defer { loadingSummary = false }
         do {
-            let path = client.rest.environmentPath(environmentID, "image-updates/summary")
-            summary = try await client.rest.get(path)
+            summary = try await client.images.updateSummary(envID: environmentID)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -97,10 +96,8 @@ struct ImageUpdatesView: View {
         loadingRefs = true
         defer { loadingRefs = false }
         do {
-            let path = client.rest.environmentPath(environmentID, "image-updates/by-refs")
-            let query = [URLQueryItem(name: "imageRefs", value: taggedRefs.joined(separator: ","))]
-            let map: BatchImageUpdateResponse = try await client.rest.get(path, query: query)
-            byRef = map
+            let map = try await client.images.updateInfoByRefs(envID: environmentID, imageRefs: taggedRefs)
+            byRef = map.compactMapValues { $0?.asUpdateResponse }
         } catch {
             // by-refs is a cache-read; failure isn't fatal
         }
@@ -111,10 +108,7 @@ struct ImageUpdatesView: View {
         checkingRef = ref
         defer { checkingRef = nil }
         do {
-            let path = client.rest.environmentPath(environmentID, "image-updates/check")
-            let query = [URLQueryItem(name: "imageRef", value: ref)]
-            let response: ImageUpdateResponse = try await client.rest.get(path, query: query)
-            byRef[ref] = response
+            byRef[ref] = try await client.images.checkUpdateByRef(envID: environmentID, imageRef: ref)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -125,9 +119,7 @@ struct ImageUpdatesView: View {
         isScanning = true
         defer { isScanning = false }
         do {
-            let path = client.rest.environmentPath(environmentID, "image-updates/check-all")
-            let body: [String: String] = [:]
-            let _: BatchImageUpdateResponse = try await client.rest.post(path, body: body)
+            _ = try await client.images.checkAllUpdates(envID: environmentID)
             await loadSummary()
             await loadByRefs()
         } catch {
@@ -231,11 +223,12 @@ struct UpdateRow: View {
     }
 
     private func versionLine(_ info: ImageUpdateResponse) -> String {
-        if let latest = info.latestVersion, let current = info.currentVersion, !latest.isEmpty, !current.isEmpty, latest != current {
-            return "\(current) → \(latest)"
+        if let latest = info.latestVersion, !latest.isEmpty,
+           !info.currentVersion.isEmpty, latest != info.currentVersion {
+            return "\(info.currentVersion) → \(latest)"
         }
-        if let type = info.updateType, !type.isEmpty {
-            return "Update available (\(type))"
+        if !info.updateType.isEmpty {
+            return "Update available (\(info.updateType))"
         }
         return "Update available"
     }
