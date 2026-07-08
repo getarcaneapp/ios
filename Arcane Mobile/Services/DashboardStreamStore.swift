@@ -33,7 +33,8 @@ final class DashboardStreamStore {
 
     private(set) var statesByEnvironmentID: [String: EnvironmentState] = [:]
     private(set) var connected = false
-    /// Set after the reconnect budget is exhausted; cleared by retry().
+    /// Set after the fast reconnect budget is exhausted; cleared by retry()
+    /// or by the stream reconnecting on its own during the slow idle probe.
     private(set) var streamFailed = false
     /// Latched when the server 404s the stream endpoint (predates arcane#2901).
     /// Permanent until configure() sees a different client.
@@ -42,8 +43,9 @@ final class DashboardStreamStore {
     private var client: ArcaneClient?
     private var clientIdentity: ObjectIdentifier?
     private var streamTask: Task<Void, Never>?
-    /// Desired lifecycle state. The task can be nil after retry budget
-    /// exhaustion while the visible dashboard still wants the stream running.
+    /// Desired lifecycle state. The task can be nil while the visible
+    /// dashboard still wants the stream running (e.g. a legacy server 404'd
+    /// the endpoint and the loop exited as unsupported).
     private var shouldRun = false
     /// Bumped on every stop()/start() so events and one-shot fetches from a
     /// previous stream generation can't mutate the current one's state.
@@ -54,6 +56,9 @@ final class DashboardStreamStore {
     /// A connection must survive this long before the attempt budget resets —
     /// a per-connection poison line would otherwise reconnect at 1s forever.
     private static let stableConnectionSeconds: TimeInterval = 5
+    /// After the fast-backoff budget is spent, keep probing at this cadence
+    /// forever so the stream heals on its own once the server returns.
+    private static let idleRetrySeconds: Double = 30
 
     var isStreaming: Bool { streamTask != nil }
 
@@ -229,12 +234,17 @@ final class DashboardStreamStore {
             if receivedFirstEvent, Date().timeIntervalSince(connectedAt) >= Self.stableConnectionSeconds {
                 attempt = 0
             }
+            // Exponential backoff while the budget lasts, then a slow idle
+            // probe forever — the Retry banner appears, but the stream also
+            // recovers on its own instead of staying dead until relaunch.
+            let delay: Double
             if attempt >= Self.maxReconnectAttempts {
                 streamFailed = true
-                return
+                delay = Self.idleRetrySeconds
+            } else {
+                delay = min(pow(2, Double(attempt)), Self.maxReconnectDelaySeconds)
+                attempt += 1
             }
-            let delay = min(pow(2, Double(attempt)), Self.maxReconnectDelaySeconds)
-            attempt += 1
             try? await Task.sleep(for: .seconds(delay))
         }
     }

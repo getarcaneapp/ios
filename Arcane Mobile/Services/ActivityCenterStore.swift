@@ -10,6 +10,9 @@ final class ActivityCenterStore {
     private static let maxReconnectDelaySeconds: Double = 15
     /// Reset the retry budget after a stream survives long enough to be useful.
     private static let stableConnectionSeconds: TimeInterval = 5
+    /// After the fast-backoff budget is spent, keep probing at this cadence
+    /// forever so live updates heal on their own once the server returns.
+    private static let idleRetrySeconds: Double = 30
 
     private(set) var activities: [Activity] = []
     private(set) var isLoading = false
@@ -250,12 +253,18 @@ final class ActivityCenterStore {
             if receivedFirstEvent, Date().timeIntervalSince(connectedAt) >= Self.stableConnectionSeconds {
                 attempt = 0
             }
+            // Exponential backoff while the budget lasts, then a slow idle
+            // probe forever — the "paused" banner stays honest, but the
+            // stream recovers on its own instead of staying dead until the
+            // app is relaunched.
+            let delay: Double
             if attempt >= Self.maxReconnectAttempts {
                 markStreamFailed(environment)
-                return
+                delay = Self.idleRetrySeconds
+            } else {
+                delay = min(pow(2, Double(attempt)), Self.maxReconnectDelaySeconds)
+                attempt += 1
             }
-            let delay = min(pow(2, Double(attempt)), Self.maxReconnectDelaySeconds)
-            attempt += 1
             try? await Task.sleep(for: .seconds(delay))
         }
     }

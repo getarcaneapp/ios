@@ -24,14 +24,21 @@ final class SystemStatsHistoryStore {
     /// Streams are opened for at most this many environments (dashboard order,
     /// active first) — strictly cheaper than the old per-visible-card streams.
     /// Further cards keep rings-only from whatever data they have.
-    static let maxStreams = 6
+    /// Capped at 4 because the server rejects stats upgrades past 5 concurrent
+    /// sockets per client IP (`checkRateLimitInternal`), and reconnect briefly
+    /// overlaps a closing socket with its replacement — headroom is needed so
+    /// a refresh doesn't trip the cap into 429/-1011 handshake failures.
+    static let maxStreams = 4
 
     /// Reconnect budget/backoff — mirrors `DashboardStreamStore`. A transient
     /// WebSocket handshake failure (e.g. `-1011` bad response during a server
     /// restart or proxy hiccup) no longer permanently kills the stream; the
-    /// store backs off and reopens a fresh channel until the budget is spent.
+    /// store backs off exponentially for the first `maxReconnectAttempts`,
+    /// then keeps probing at `idleRetrySeconds` forever so the stream heals
+    /// on its own once the server is reachable again.
     private static let maxReconnectAttempts = 20
     private static let maxReconnectDelaySeconds: Double = 15
+    private static let idleRetrySeconds: Double = 30
     /// A connection must survive this long before the attempt budget resets —
     /// otherwise a flapping env would reconnect at the base delay forever.
     private static let stableConnectionSeconds: TimeInterval = 5
@@ -95,9 +102,16 @@ final class SystemStatsHistoryStore {
         // Series are intentionally kept: last-known data keeps rendering.
     }
 
+    private var lastReconnectAt: Date?
+
     /// Force the dashboard stats streams to open fresh websocket channels.
     func reconnect() {
         guard isRunning else { return }
+        // Rapid pull-to-refresh would stack still-closing sockets against the
+        // server's per-IP connection cap; ignore reconnects inside a short
+        // window (live streams are unaffected, they just keep running).
+        if let last = lastReconnectAt, Date().timeIntervalSince(last) < 2 { return }
+        lastReconnectAt = Date()
         stop()
         start()
     }
@@ -160,6 +174,18 @@ final class SystemStatsHistoryStore {
                 // back off and try again.
                 setError(environmentID: environmentID,
                           "Live stats unavailable: \(friendlyErrorMessage(error))")
+                // A rejected handshake (expired bearer → 401, or the server's
+                // per-IP connection cap → 429) surfaces as URLError -1011 and
+                // never reaches the HTTP-layer 401-refresh path, so the SDK
+                // would replay the same stale token on every reconnect. Force
+                // a refresh so the next attempt carries a live credential.
+                // Harmless when the cause was the connection cap: refreshes
+                // are single-flighted and throttled inside AuthManager.
+                if let urlError = error as? URLError, urlError.code == .badServerResponse,
+                   (try? await client.authManager.hasRefreshCredential()) == true {
+                    guard generation == self.generation, !Task.isCancelled else { return }
+                    _ = try? await client.authManager.refreshTokens()
+                }
             }
 
             guard generation == self.generation, !Task.isCancelled else { return }
@@ -169,11 +195,16 @@ final class SystemStatsHistoryStore {
             if receivedFirstFrame, Date().timeIntervalSince(connectedAt) >= Self.stableConnectionSeconds {
                 attempt = 0
             }
+            // Exponential backoff while the budget lasts, then a slow idle
+            // probe forever — a stream must never permanently die, because
+            // nothing short of stop()/start() would ever restart it.
+            let delay: Double
             if attempt >= Self.maxReconnectAttempts {
-                return
+                delay = Self.idleRetrySeconds
+            } else {
+                delay = min(pow(2, Double(attempt)), Self.maxReconnectDelaySeconds)
+                attempt += 1
             }
-            let delay = min(pow(2, Double(attempt)), Self.maxReconnectDelaySeconds)
-            attempt += 1
             try? await Task.sleep(for: .seconds(delay))
         }
     }
