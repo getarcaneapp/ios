@@ -43,6 +43,7 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
 
 struct AppearanceSettingsView: View {
     @AppStorage("accentColorHex") private var accentColorHex = ""
+    @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
     @State private var showTabBarResetConfirm = false
     @State private var navTabsStore = NavTabsStore.shared
 
@@ -102,6 +103,20 @@ struct AppearanceSettingsView: View {
                 Text("Choose a color to customize the app's appearance.")
             }
 
+            Section {
+                Toggle(isOn: $sidebarNavigationEnabled) {
+                    SettingsRow(
+                        title: "Sidebar Navigation",
+                        systemImage: "sidebar.left",
+                        color: .indigo
+                    )
+                }
+            } header: {
+                Text("Navigation")
+            } footer: {
+                Text("Lists all available pages in a sidebar instead of the bottom dock.")
+            }
+
             if UIApplication.shared.supportsAlternateIcons {
                 Section {
                     NavigationLink(destination: AppIconPickerView()) {
@@ -129,14 +144,14 @@ struct AppearanceSettingsView: View {
                 Button(role: .destructive) {
                     showTabBarResetConfirm = true
                 } label: {
-                    Text("Reset Tab Bar")
+                    Text("Reset Dock")
                 }
                 .foregroundStyle(.red)
                 .disabled(navTabsStore.pinnedTabs == AppTab.mainDefaults)
             } header: {
-                Text("Tab Bar")
+                Text("Dock")
             } footer: {
-                Text("Restores the bottom tab bar to Dashboard, Containers, Images, and Projects. Long-press a tab to swap it.")
+                Text("Restores the bottom dock to Dashboard, Containers, Images, and Projects. Long-press a dock item to swap it.")
             }
 
             Section {
@@ -150,8 +165,8 @@ struct AppearanceSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .deleteConfirmation(
             isPresented: $showTabBarResetConfirm,
-            title: "Reset Tab Bar",
-            message: "Restores the bottom tab bar to Dashboard, Containers, Images, and Projects.",
+            title: "Reset Dock",
+            message: "Restores the bottom dock to Dashboard, Containers, Images, and Projects.",
             icon: "rectangle.3.offgrid",
             confirmTitle: "Reset"
         ) {

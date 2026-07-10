@@ -23,9 +23,9 @@ struct SettingsView: View {
                     NavigationLink {
                         ProfileView()
                     } label: {
-                        accountRow
+                        UserAccountLabel()
                     }
-                    .accessibilityLabel("Account")
+                    .accessibilityHint("Opens profile")
                 }
 
                 SettingsTabSection(
@@ -79,23 +79,6 @@ struct SettingsView: View {
                 await loadVolumeSize()
             }
             .aiAssistantToolbar()
-        }
-    }
-
-    /// Web-parity account row: initials avatar + name, pushes ProfileView.
-    private var accountRow: some View {
-        let name = manager.currentUser?.displayName?.isEmpty == false
-            ? manager.currentUser?.displayName
-            : manager.currentUser?.username
-        return HStack(spacing: 12) {
-            UserAvatarCircle(size: 36)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name ?? "Account")
-                    .font(.subheadline.weight(.medium))
-                Text("Profile, email & password")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 

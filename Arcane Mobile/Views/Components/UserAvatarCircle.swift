@@ -40,3 +40,41 @@ struct UserAvatarCircle: View {
         return String(source.prefix(1)).uppercased()
     }
 }
+
+/// Signed-in account identity used by navigation surfaces that open Profile.
+struct UserAccountLabel: View {
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+
+    var avatarSize: CGFloat = 36
+
+    var body: some View {
+        HStack(spacing: 12) {
+            UserAvatarCircle(size: avatarSize)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(displayName)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+                Text(username)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var displayName: String {
+        guard let user = manager.currentUser else { return "Account" }
+        if let displayName = user.displayName, !displayName.isEmpty {
+            return displayName
+        }
+        return user.username
+    }
+
+    private var username: String {
+        guard let username = manager.currentUser?.username else { return "Profile" }
+        return "@\(username)"
+    }
+}

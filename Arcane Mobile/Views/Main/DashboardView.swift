@@ -65,7 +65,11 @@ struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
+    @AppStorage("arcane.showAssistantButton") private var showAssistantButton = true
     @Binding var selectedTab: String
+    var showsSidebarButton = false
+    var onOpenSidebar: () -> Void = {}
+    var onNavigationRootChange: (Bool) -> Void = { _ in }
 
     @Namespace private var heroTransition
 
@@ -108,6 +112,14 @@ struct DashboardView: View {
     private static let maxConcurrentPerEnvFetches = 4
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
+
+    private var isNavigationRoot: Bool {
+        detailRoute == nil
+            && containerRoute == nil
+            && projectRoute == nil
+            && vulnerabilityRoute == nil
+            && !showAPIKeys
+    }
 
     var body: some View {
         NavigationStack {
@@ -157,6 +169,28 @@ struct DashboardView: View {
             .navigationTitle("")
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
+                if showsSidebarButton, isNavigationRoot {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: onOpenSidebar) {
+                            Image(systemName: "line.3.horizontal")
+                        }
+                        .accessibilityLabel("Open navigation")
+                    }
+                }
+
+                if #available(iOS 26, *),
+                   showsSidebarButton,
+                   showAssistantButton,
+                   manager.client != nil {
+                    if isNavigationRoot {
+                        ToolbarSpacer(.fixed, placement: .topBarLeading)
+                    }
+                    ToolbarItem(placement: .topBarLeading) {
+                        AIAssistantToolbarButton()
+                    }
+                    ToolbarSpacer(.fixed, placement: .topBarLeading)
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if manager.supportsActivities {
                         Button { showActivities = true } label: {
@@ -300,6 +334,9 @@ struct DashboardView: View {
                     streamStore.start()
                 }
             }
+        }
+        .onChange(of: isNavigationRoot, initial: true) { _, isRoot in
+            onNavigationRootChange(isRoot)
         }
     }
 

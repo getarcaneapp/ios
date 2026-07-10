@@ -52,6 +52,12 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.5.3",
+            new: [
+                .init("Optional sidebar navigation mode.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.5.2",
             new: [
                 .init("Redesigned Updates page with one-tap and per-container updates."),

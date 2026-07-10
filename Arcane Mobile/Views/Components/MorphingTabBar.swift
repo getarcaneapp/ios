@@ -25,6 +25,9 @@ struct MorphingTabBar: View {
     var onLongPressTab: (Int) -> Void
     /// Tints the selected-tab indicator (follows the app's configured accent).
     var accentColor: Color = .accentColor
+    /// Sidebar mode hides navigation tabs but reuses the exact same root/detail
+    /// action rendering. Dock mode keeps the default `true` behavior.
+    var showsNavigationTabs: Bool = true
 
     /// Sizing for the tabs capsule and the morphed controls. The tabs capsule
     /// fills the available width — like the native floating tab bar — so only its
@@ -44,20 +47,24 @@ struct MorphingTabBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            GlassContainerCompat(spacing: 10) {
-                let layout = isMorphed
-                    ? AnyLayout(HStackLayout(spacing: 10))
-                    : AnyLayout(ZStackLayout())
+            if showsNavigationTabs || isMorphed {
+                GlassContainerCompat(spacing: 10) {
+                    let layout = isMorphed
+                        ? AnyLayout(HStackLayout(spacing: 10))
+                        : AnyLayout(ZStackLayout())
 
-                layout {
-                    primaryCapsule
-
-                    if isMorphed, let payload {
-                        ForEach(payload.inline) { item in
-                            secondaryPill(item)
+                    layout {
+                        if showsNavigationTabs || payload?.primary != nil {
+                            primaryCapsule
                         }
-                        if !payload.overflow.isEmpty {
-                            overflowPill(payload.overflow)
+
+                        if isMorphed, let payload {
+                            ForEach(payload.inline) { item in
+                                secondaryPill(item)
+                            }
+                            if !payload.overflow.isEmpty {
+                                overflowPill(payload.overflow)
+                            }
                         }
                     }
                 }
@@ -92,30 +99,29 @@ struct MorphingTabBar: View {
         let primary = payload?.primary
         let isRunningPrimary = primary != nil && payload?.runningItemID == primary?.id
 
-        return CustomTabBar(
-            tabs: tabs,
-            activeIndex: Binding(
-                get: { activeIndex },
-                set: { idx in
-                    guard idx >= 0, idx < tabs.count else { return }
-                    selectedID = tabs[idx].id
-                }
-            ),
-            selectedTint: accentColor,
-            longPressEnabled: !isMorphed,
-            onLongPress: onLongPressTab,
-            onReselect: { idx in
-                guard idx >= 0, idx < tabs.count else { return }
-                store.requestPopToRoot(tabID: tabs[idx].id)
+        return ZStack {
+            if showsNavigationTabs {
+                CustomTabBar(
+                    tabs: tabs,
+                    activeIndex: Binding(
+                        get: { activeIndex },
+                        set: { idx in
+                            guard idx >= 0, idx < tabs.count else { return }
+                            selectedID = tabs[idx].id
+                        }
+                    ),
+                    selectedTint: accentColor,
+                    longPressEnabled: !isMorphed,
+                    onLongPress: onLongPressTab,
+                    onReselect: { idx in
+                        guard idx >= 0, idx < tabs.count else { return }
+                        store.requestPopToRoot(tabID: tabs[idx].id)
+                    }
+                )
+                .opacity(isMorphed ? 0 : 1)
+                .allowsHitTesting(!isMorphed)
             }
-        )
-        .opacity(isMorphed ? 0 : 1)
-        .allowsHitTesting(!isMorphed)
-        // Tabs state fills the width like the native floating bar; morphed state
-        // collapses to a primary-size circle.
-        .frame(maxWidth: isMorphed ? primarySize : .infinity)
-        .frame(height: isMorphed ? primarySize : barHeight)
-        .overlay {
+
             if let primary {
                 Button {
                     handleTap(primary)
@@ -141,6 +147,10 @@ struct MorphingTabBar: View {
                 .allowsHitTesting(isMorphed && !disabled(primary))
             }
         }
+        // Tabs state fills the width like the native floating bar; morphed state
+        // collapses to a primary-size circle.
+        .frame(maxWidth: isMorphed ? primarySize : .infinity)
+        .frame(height: isMorphed ? primarySize : barHeight)
         .clipShape(.capsule)
         // Morphed primary = a tinted, interactive chip (a *solid* fill on iOS 18
         // so the white glyph keeps contrast). Tabs capsule = plain glass/material,
