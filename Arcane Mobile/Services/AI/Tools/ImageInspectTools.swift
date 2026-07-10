@@ -14,14 +14,14 @@ struct InspectImageTool: Tool {
     let description = "ONE image's details, update check, or CVEs. Without imageId: environment-wide update or CVE summary."
 
     @Generable
-    enum ImageTopic {
+    enum ImageTopic: Sendable {
         case details
         case updates
         case cves
     }
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "Image id from listImages. Omit for environment summary.")
         var imageId: String?
         @Guide(description: "details (default), updates, or cves.")

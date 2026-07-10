@@ -6,6 +6,7 @@ import Arcane
 @Observable
 final class ActivityCenterStore {
     private static let pageSize = 50
+    private static let maxConcurrentEnvironmentRequests = 4
     private static let maxReconnectAttempts = 20
     private static let maxReconnectDelaySeconds: Double = 15
     /// Reset the retry budget after a stream survives long enough to be useful.
@@ -29,10 +30,11 @@ final class ActivityCenterStore {
     var resourceFilter = ""
 
     private var client: ArcaneClient?
+    private var clientTransportIdentity: ObjectIdentifier?
     private var limit = pageSize
     private var activityBuckets: [String: [Activity]] = [:]
     private var environmentNames: [String: String] = [:]
-    private var streamTasks: [String: Task<Void, Never>] = [:]
+    private var streamTask: Task<Void, Never>?
     private var failedStreamEnvironmentIDs: Set<String> = []
     private var streamWarning: StreamWarning?
     /// Bumped on every stream start/stop so a finishing task from a previous
@@ -58,19 +60,20 @@ final class ActivityCenterStore {
     }
 
     func configure(client: ArcaneClient?) {
-        let changed = self.client == nil
+        let nextIdentity = client.map { ObjectIdentifier($0.transport) }
+        let changed = nextIdentity != clientTransportIdentity
         self.client = client
-        if changed {
-            stopStream()
-            activities = []
-            activityBuckets = [:]
-            environmentNames = [:]
-            environmentIDs = []
-            limit = Self.pageSize
-            hasMore = false
-            errorMessage = nil
-            clearStreamWarning()
-        }
+        guard changed else { return }
+        clientTransportIdentity = nextIdentity
+        stopStream()
+        activities = []
+        activityBuckets = [:]
+        environmentNames = [:]
+        environmentIDs = []
+        limit = Self.pageSize
+        hasMore = false
+        errorMessage = nil
+        clearStreamWarning()
     }
 
     func load(reset: Bool = true, refresh: Bool = false) async {
@@ -93,7 +96,10 @@ final class ActivityCenterStore {
         let pageLimit = limit
 
         await withTaskGroup(of: (ActivityEnvironment, [Activity]?).self) { group in
-            for environment in environments {
+            var iterator = environments.makeIterator()
+            let initialBatch = min(Self.maxConcurrentEnvironmentRequests, environments.count)
+            for _ in 0..<initialBatch {
+                guard let environment = iterator.next() else { break }
                 group.addTask {
                     let response = try? await client.activities.listPaginated(
                         envID: environment.id,
@@ -113,6 +119,17 @@ final class ActivityCenterStore {
                 let normalized = data.map { normalize($0, environment: environment) }
                 buckets[environment.id.rawValue] = sortActivities(normalized)
                 if data.count >= limit { anyHasMore = true }
+                if let environment = iterator.next() {
+                    group.addTask {
+                        let response = try? await client.activities.listPaginated(
+                            envID: environment.id,
+                            order: .descending,
+                            start: 0,
+                            limit: pageLimit
+                        )
+                        return (environment, response?.data)
+                    }
+                }
             }
         }
 
@@ -137,21 +154,11 @@ final class ActivityCenterStore {
         stopStream()
         clearStreamWarning()
 
-        let environments = environmentIDs.map { id in
-            ActivityEnvironment(
-                id: EnvironmentID(rawValue: id),
-                name: environmentNames[id] ?? id
-            )
-        }
-        guard !environments.isEmpty else { return }
-
         isStreaming = true
         streamGeneration += 1
         let generation = streamGeneration
-        for environment in environments {
-            streamTasks[environment.id.rawValue] = Task { [weak self] in
-                await self?.consumeStream(client: client, environment: environment, generation: generation)
-            }
+        streamTask = Task { [weak self] in
+            await self?.consumeStream(client: client, generation: generation)
         }
     }
 
@@ -164,8 +171,8 @@ final class ActivityCenterStore {
 
     func stopStream() {
         streamGeneration += 1
-        streamTasks.values.forEach { $0.cancel() }
-        streamTasks = [:]
+        streamTask?.cancel()
+        streamTask = nil
         isStreaming = false
     }
 
@@ -194,7 +201,10 @@ final class ActivityCenterStore {
         var deleted: Int64 = 0
         var failed = 0
         await withTaskGroup(of: (Int64?, Bool).self) { group in
-            for id in targets {
+            var iterator = targets.makeIterator()
+            let initialBatch = min(Self.maxConcurrentEnvironmentRequests, targets.count)
+            for _ in 0..<initialBatch {
+                guard let id = iterator.next() else { break }
                 group.addTask {
                     do {
                         let result = try await client.activities.clearHistory(envID: EnvironmentID(rawValue: id))
@@ -210,6 +220,18 @@ final class ActivityCenterStore {
                 } else {
                     failed += 1
                 }
+                if let id = iterator.next() {
+                    group.addTask {
+                        do {
+                            let result = try await client.activities.clearHistory(
+                                envID: EnvironmentID(rawValue: id)
+                            )
+                            return (result.deleted, true)
+                        } catch {
+                            return (nil, false)
+                        }
+                    }
+                }
             }
         }
 
@@ -217,13 +239,11 @@ final class ActivityCenterStore {
         return (deleted, failed)
     }
 
-    private func consumeStream(client: ArcaneClient, environment: ActivityEnvironment, generation: Int) async {
+    private func consumeStream(client: ArcaneClient, generation: Int) async {
         defer {
-            // Only clean up our own entry — a stale task finishing after a
-            // restart must not remove the current generation's task.
             if generation == streamGeneration {
-                streamTasks[environment.id.rawValue] = nil
-                isStreaming = !streamTasks.isEmpty
+                streamTask = nil
+                isStreaming = false
             }
         }
 
@@ -232,13 +252,13 @@ final class ActivityCenterStore {
             let connectedAt = Date()
             var receivedFirstEvent = false
             do {
-                for try await event in client.activities.stream(envID: environment.id, limit: Self.pageSize) {
+                for try await event in client.activities.stream(limit: Self.pageSize) {
                     guard generation == streamGeneration, !Task.isCancelled else { return }
                     if !receivedFirstEvent {
                         receivedFirstEvent = true
-                        markStreamConnected(environment)
+                        markStreamConnected()
                     }
-                    apply(event, environment: environment)
+                    apply(event)
                 }
             } catch is CancellationError {
                 return
@@ -259,7 +279,7 @@ final class ActivityCenterStore {
             // app is relaunched.
             let delay: Double
             if attempt >= Self.maxReconnectAttempts {
-                markStreamFailed(environment)
+                markStreamFailed()
                 delay = Self.idleRetrySeconds
             } else {
                 delay = min(pow(2, Double(attempt)), Self.maxReconnectDelaySeconds)
@@ -269,51 +289,63 @@ final class ActivityCenterStore {
         }
     }
 
-    private func apply(_ event: ActivityStreamEvent, environment: ActivityEnvironment) {
+    private func apply(_ event: ActivityStreamEvent) {
         switch event.type {
         case .snapshot:
-            replaceSnapshot(event.activities, environment: environment)
+            applySnapshot(event)
         case .activity:
-            if let activity = event.activity {
-                upsert(normalize(activity, environment: environment))
-            }
+            applyActivity(event)
         case .message:
             if let message = event.message {
                 apply(message)
             }
         case .missed:
             setStreamWarning(.missed)
+        case .error:
+            applyEnvironmentError(event)
+        case .heartbeat:
+            break
         case .unknown:
             break
         }
     }
 
-    private func markStreamConnected(_ environment: ActivityEnvironment) {
-        failedStreamEnvironmentIDs.remove(environment.id.rawValue)
+    private func applySnapshot(_ event: ActivityStreamEvent) {
+        guard let environmentID = event.environmentID else { return }
+        let environment = environment(for: EnvironmentID(rawValue: environmentID))
+        replaceSnapshot(event.activities, environment: environment)
+        markEnvironmentStreamConnected(environmentID)
+    }
+
+    private func applyActivity(_ event: ActivityStreamEvent) {
+        guard let activity = event.activity else { return }
+        let environmentID = event.environmentID ?? activity.sourceEnvironmentKey
+        let environment = environment(for: EnvironmentID(rawValue: environmentID))
+        upsert(normalize(activity, environment: environment))
+    }
+
+    private func applyEnvironmentError(_ event: ActivityStreamEvent) {
+        guard let environmentID = event.environmentID else { return }
+        failedStreamEnvironmentIDs.insert(environmentID)
+        setStreamWarning(.environmentFailure)
+    }
+
+    private func markStreamConnected() {
         if streamWarning == .persistentFailure {
-            updatePersistentStreamWarning()
+            clearStreamWarning()
         }
     }
 
-    private func markStreamFailed(_ environment: ActivityEnvironment) {
-        failedStreamEnvironmentIDs.insert(environment.id.rawValue)
-        updatePersistentStreamWarning()
+    private func markEnvironmentStreamConnected(_ environmentID: String) {
+        failedStreamEnvironmentIDs.remove(environmentID)
+        if failedStreamEnvironmentIDs.isEmpty, streamWarning == .environmentFailure {
+            clearStreamWarning()
+        }
     }
 
-    private func updatePersistentStreamWarning() {
-        guard !failedStreamEnvironmentIDs.isEmpty else {
-            if streamWarning == .persistentFailure {
-                clearStreamWarning()
-            }
-            return
-        }
-
+    private func markStreamFailed() {
         streamWarning = .persistentFailure
-        if !environmentIDs.isEmpty, failedStreamEnvironmentIDs.count >= environmentIDs.count {
-            streamErrorMessage = "Live updates paused. Pull to refresh."
-        } else {
-            streamErrorMessage = "Some live updates paused. Pull to refresh."
-        }
+        streamErrorMessage = "Live updates paused. Pull to refresh."
     }
 
     private func setStreamWarning(_ warning: StreamWarning) {
@@ -323,8 +355,10 @@ final class ActivityCenterStore {
             streamErrorMessage = "Some environments could not load. Pull to refresh."
         case .missed:
             streamErrorMessage = "Some activity updates were missed. Pull to refresh."
+        case .environmentFailure:
+            streamErrorMessage = "Some environments could not provide live activity updates."
         case .persistentFailure:
-            updatePersistentStreamWarning()
+            streamErrorMessage = "Live updates paused. Pull to refresh."
         }
     }
 
@@ -423,6 +457,7 @@ final class ActivityCenterStore {
 private enum StreamWarning {
     case loadPartial
     case missed
+    case environmentFailure
     case persistentFailure
 }
 

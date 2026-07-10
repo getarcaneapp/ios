@@ -11,7 +11,7 @@ import Arcane
 
 struct CachedClient: Sendable {
     let client: ArcaneClient
-    let serverHost: String
+    let serverIdentity: String
     let userID: String
 
     /// Returns a cached value (if fresh) and triggers a background revalidate;
@@ -32,7 +32,7 @@ struct CachedClient: Sendable {
         #endif
 
         let key = CacheKey(
-            serverHost: serverHost,
+            serverIdentity: serverIdentity,
             userID: userID,
             envID: envID.rawValue,
             pathWithQuery: path
@@ -182,7 +182,7 @@ struct CachedClient: Sendable {
                "ResponseCache must not be used for stream paths: \(path)")
         #endif
         let key = CacheKey(
-            serverHost: serverHost, userID: userID,
+            serverIdentity: serverIdentity, userID: userID,
             envID: envID.rawValue, pathWithQuery: path
         )
         if !refresh,

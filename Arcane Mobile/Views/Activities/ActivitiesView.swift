@@ -8,7 +8,8 @@ struct ActivitiesView: View {
     @State private var showClearConfirm = false
 
     private var taskID: String {
-        "\(manager.supportsActivities)"
+        let transportID = manager.client.map { ObjectIdentifier($0.transport).hashValue } ?? 0
+        return "\(manager.supportsActivities)-\(transportID)"
     }
 
     private var clearableEnvironmentIDs: Set<String> {
@@ -138,8 +139,8 @@ struct ActivitiesView: View {
             }
         }
         .task(id: taskID) {
+            store.configure(client: manager.supportsActivities ? manager.client : nil)
             guard manager.supportsActivities else { return }
-            store.configure(client: manager.client)
             await store.retryLiveUpdates()
         }
         .onDisappear {

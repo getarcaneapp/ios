@@ -10,7 +10,7 @@ import CryptoKit
 // implicit @MainActor inference on Sendable/Hashable conformances.
 
 nonisolated struct CacheKey: Hashable, Codable, Sendable {
-    let serverHost: String   // host portion of manager.serverURL (multi-server safety)
+    let serverIdentity: String // canonical scheme + host + effective port + base path
     let userID: String       // currentUser?.id ?? "anon" (multi-account safety)
     let envID: String        // active environment raw value
     let pathWithQuery: String
@@ -59,7 +59,9 @@ actor ResponseCache {
     private init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        diskDirectory = caches.appendingPathComponent("ResponseCache", isDirectory: true)
+        let legacyDirectory = caches.appendingPathComponent("ResponseCache", isDirectory: true)
+        diskDirectory = caches.appendingPathComponent("ResponseCache-v2", isDirectory: true)
+        try? FileManager.default.removeItem(at: legacyDirectory)
         try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
         let enc = JSONEncoder()
         enc.dateEncodingStrategy = .iso8601
@@ -263,7 +265,7 @@ actor ResponseCache {
     // MARK: - Disk helpers
 
     private func diskURL(for key: CacheKey) -> URL {
-        let stable = "\(key.serverHost)|\(key.userID)|\(key.envID)|\(key.pathWithQuery)"
+        let stable = "\(key.serverIdentity)|\(key.userID)|\(key.envID)|\(key.pathWithQuery)"
         let digest = SHA256.hash(data: Data(stable.utf8))
         let name = digest.map { String(format: "%02x", $0) }.joined()
         return diskDirectory.appendingPathComponent(name + ".json")

@@ -13,6 +13,7 @@ struct AllEnvironmentsImageUpdatesView: View {
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(ImageUpdateCountStore.self) private var imageUpdateCountStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     @State private var buckets: [EnvUpdateBucket] = []
@@ -139,15 +140,17 @@ struct AllEnvironmentsImageUpdatesView: View {
     }
 
     private var totalOutdatedCount: Int {
-        buckets.reduce(0) { total, bucket in
-            let rows = outdatedImages(in: bucket).count
-            // While a bucket's image list is still loading, trust its summary
-            // so the headline doesn't undercount mid-load.
-            if rows == 0, bucket.loading, let summary = bucket.summary {
-                return total + summary.imagesWithUpdates
-            }
-            return total + rows
+        buckets.reduce(0) { $0 + updateCount(in: $1) }
+    }
+
+    private func updateCount(in bucket: EnvUpdateBucket) -> Int {
+        let rows = outdatedImages(in: bucket).count
+        // While a bucket's image list is still loading, trust its summary so
+        // the headline and dashboard don't undercount mid-load.
+        if rows == 0, bucket.loading, let summary = bucket.summary {
+            return summary.imagesWithUpdates
         }
+        return rows
     }
 
     // MARK: - Environment card
@@ -797,7 +800,10 @@ struct AllEnvironmentsImageUpdatesView: View {
         if Task.isCancelled { return }
 
         buckets = envs.map { EnvUpdateBucket(env: $0, loading: true) }
-        guard !envs.isEmpty else { return }
+        guard !envs.isEmpty else {
+            publishUpdateCount()
+            return
+        }
 
         let pageSize = Self.imagesPageSize
 
@@ -822,6 +828,7 @@ struct AllEnvironmentsImageUpdatesView: View {
                 }
             }
         }
+        if !Task.isCancelled { publishUpdateCount() }
     }
 
     private func apply(result: EnvLoadResult) {
@@ -919,6 +926,7 @@ struct AllEnvironmentsImageUpdatesView: View {
             result = result.merging(map.compactMapValues { $0 })
         }
         apply(result: result)
+        publishUpdateCount()
     }
 
     private func recheck(bucket: EnvUpdateBucket, ref: String) async {
@@ -930,9 +938,21 @@ struct AllEnvironmentsImageUpdatesView: View {
         if let response = try? await client.images.checkUpdateByRef(envID: envID, imageRef: ref) {
             guard let index = buckets.firstIndex(where: { $0.id == bucket.id }) else { return }
             buckets[index].byRef[ref] = response
+            publishUpdateCount()
         } else {
             showToast(.error("Couldn't check \(ref)"))
         }
+    }
+
+    private func publishUpdateCount() {
+        let counts = Dictionary(uniqueKeysWithValues: buckets.map { bucket in
+            (bucket.id, updateCount(in: bucket))
+        })
+        imageUpdateCountStore.setCounts(
+            counts,
+            client: manager.client,
+            userID: manager.currentUser?.id
+        )
     }
 }
 
@@ -1022,4 +1042,3 @@ private extension String {
         return (String(self[..<colon]), String(tail))
     }
 }
-

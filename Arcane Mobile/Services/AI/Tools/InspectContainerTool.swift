@@ -13,14 +13,14 @@ struct InspectContainerTool: Tool {
     let description = "ONE container's details (default), recent logs, or a CPU/memory sample."
 
     @Generable
-    enum ContainerTopic {
+    enum ContainerTopic: Sendable {
         case details
         case logs
         case stats
     }
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "Container id from listContainers.")
         var containerId: String
         @Guide(description: "details (default), logs, or stats.")

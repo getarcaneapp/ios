@@ -37,13 +37,13 @@ enum ToolSupport {
     }
 
     /// Removes whitespace/newlines so model-facing lines stay one line and safe.
-    nonisolated static func safeText(_ text: String?) -> String {
+    nonisolated static func safeText(_ text: String?, maximumBytes: Int = 160) -> String {
         guard var safe = text?.trimmingCharacters(in: .whitespacesAndNewlines), !safe.isEmpty else {
             return "unknown"
         }
         safe = safe.replacingOccurrences(of: "\n", with: " ")
         safe = safe.replacingOccurrences(of: "\r", with: " ")
-        return safe
+        return AITextLimiter.headAndTail(safe, maximumUTF8Bytes: maximumBytes)
     }
 
     /// Returns a normalized display name with a stable fallback for summaries.

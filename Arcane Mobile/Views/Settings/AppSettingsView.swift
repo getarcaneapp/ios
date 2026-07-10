@@ -54,7 +54,8 @@ struct AppSettingsView: View {
                 return DeleteConfirmationConfig(
                     title: "Clear Cache?",
                     message: cacheSizeBytes > 0
-                        ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images and API data. Everything will be re-fetched as needed."
+                        ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images and API data. "
+                            + "Everything will be re-fetched as needed."
                         : "This will clear all cached images and API data.",
                     icon: "trash",
                     actions: [DeleteConfirmationAction(title: "Clear Cache") {
@@ -79,7 +80,7 @@ struct AppSettingsView: View {
             Toggle(isOn: $rememberLastTab) {
                 SettingsRow(title: "Remember Last Tab", systemImage: "arrow.uturn.backward.square", color: .indigo)
             }
-            if #available(iOS 26, *) {
+            if #available(iOS 26, *), AIAvailability.canExposeAssistant {
                 Toggle(isOn: $showAssistantButton) {
                     SettingsRow(title: "Arcane Assistant", systemImage: "sparkles", color: .pink)
                 }
@@ -127,7 +128,10 @@ struct AppSettingsView: View {
         } header: {
             Text("Danger Zone")
         } footer: {
-            Text("Cached images and API responses are re-fetched as needed.")
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Cached images and API responses are re-fetched as needed.")
+                versionFooter
+            }
         }
     }
 
@@ -166,12 +170,8 @@ struct AppSettingsView: View {
 
     @ViewBuilder
     private var supportSection: some View {
-        Section {
+        Section("Support") {
             supportRows
-        } header: {
-            Text("Support")
-        } footer: {
-            versionFooter
         }
     }
 

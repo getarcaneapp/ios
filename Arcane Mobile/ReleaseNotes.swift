@@ -52,6 +52,22 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.5.4",
+            changed: [
+                .init("Version details moved below the Danger Zone in App Settings."),
+                .init("Bounded terminal and event history during long-running sessions.")
+            ],
+            fixed: [
+                .init("Assistant uses safe context limits."), .init("Assistant stays hidden on unsupported devices."),
+                .init("Dashboard update counts stay in sync after image scans and tab changes."),
+                .init("Reliable live activity updates across environments."),
+                .init("Reliable sign-out when the server is unavailable."),
+                .init("Reliable log and statistics reconnection after reopening views."),
+                .init("Correct terminal output when text and control sequences span network frames."),
+                .init("Isolated cached data for servers that share a hostname.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.5.3",
             new: [
                 .init("Optional sidebar navigation mode.")

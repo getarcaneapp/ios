@@ -3,6 +3,7 @@ import Arcane
 
 struct ImageUpdatesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ImageUpdateCountStore.self) private var imageUpdateCountStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
     let images: [ImageSummary]
@@ -86,6 +87,14 @@ struct ImageUpdatesView: View {
         defer { loadingSummary = false }
         do {
             summary = try await client.images.updateSummary(envID: environmentID)
+            if let summary {
+                imageUpdateCountStore.setCount(
+                    summary.imagesWithUpdates,
+                    environmentID: environmentID,
+                    client: manager.client,
+                    userID: manager.currentUser?.id
+                )
+            }
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -109,6 +118,7 @@ struct ImageUpdatesView: View {
         defer { checkingRef = nil }
         do {
             byRef[ref] = try await client.images.checkUpdateByRef(envID: environmentID, imageRef: ref)
+            await loadSummary()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

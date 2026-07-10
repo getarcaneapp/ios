@@ -10,15 +10,30 @@ enum StreamBudget {
     /// Thread-safe accumulator shared by the collector and the timeout racer.
     actor Box {
         private(set) var items: [String] = []
-        func append(_ s: String) { items.append(s) }
+        private var bytes = 0
+        private let maximumBytes: Int
+
+        init(maximumBytes: Int) {
+            self.maximumBytes = maximumBytes
+        }
+
+        func append(_ item: String) {
+            guard bytes < maximumBytes else { return }
+            let remaining = maximumBytes - bytes
+            let bounded = AITextLimiter.headAndTail(item, maximumUTF8Bytes: remaining)
+            guard !bounded.isEmpty else { return }
+            items.append(bounded)
+            bytes += bounded.utf8.count
+        }
         func all() -> [String] { items }
     }
 
     static func bounded(
         timeout: Duration = .seconds(3),
+        maximumBytes: Int = 2_048,
         _ collect: @escaping @Sendable (Box) async -> Void
     ) async -> [String] {
-        let box = Box()
+        let box = Box(maximumBytes: maximumBytes)
         return await withTaskGroup(of: Void.self) { group in
             group.addTask { await collect(box) }
             group.addTask { try? await Task.sleep(for: timeout) }

@@ -12,7 +12,7 @@ struct ListNetworksTool: Tool {
     let description = "List networks, the network→container topology, inspect ONE network, or list published host ports."
 
     @Generable
-    enum NetworkTopic {
+    enum NetworkTopic: Sendable {
         case list
         case topology
         case inspect
@@ -20,7 +20,7 @@ struct ListNetworksTool: Tool {
     }
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "list (default), topology, inspect, or ports.")
         var topic: NetworkTopic?
         @Guide(description: "Network name for inspect; filter for list/ports.")

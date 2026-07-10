@@ -11,6 +11,7 @@ enum AIAvailability: Equatable, Sendable {
     case deviceNotEligible   // hardware can't run Apple Intelligence
     case aiNotEnabled        // user hasn't turned Apple Intelligence on
     case modelNotReady       // assets still downloading
+    case configurationTooLarge
     case unknown
 
     /// Maps `SystemLanguageModel.default.availability` into our enum.
@@ -32,11 +33,20 @@ enum AIAvailability: Equatable, Sendable {
         }
     }
 
-    /// Convenience for unrestricted code: `true` only on iOS 26+ when the model
-    /// is ready right now. Lets non-gated views guard an "Ask AI" affordance
-    /// without their own `#available` branch.
-    static var isReady: Bool {
-        if #available(iOS 26, *) { return current() == .available }
+    /// Permanent exposure gate. Supported devices keep the entry points while
+    /// Apple Intelligence is off or its assets are downloading so the user can
+    /// see recovery guidance. Unsupported and unknown states fail closed.
+    var allowsExposure: Bool {
+        switch self {
+        case .available, .aiNotEnabled, .modelNotReady:
+            return true
+        case .checking, .osTooOld, .deviceNotEligible, .configurationTooLarge, .unknown:
+            return false
+        }
+    }
+
+    static var canExposeAssistant: Bool {
+        if #available(iOS 26, *) { return current().allowsExposure }
         return false
     }
 }

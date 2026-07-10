@@ -13,14 +13,14 @@ struct ProjectStatusTool: Tool {
     let description = "ONE project's per-service status (default), compose file, or recent logs."
 
     @Generable
-    enum ProjectTopic {
+    enum ProjectTopic: Sendable {
         case status
         case compose
         case logs
     }
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "Project id or name from listProjects.")
         var project: String
         @Guide(description: "status (default), compose, or logs.")

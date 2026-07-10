@@ -13,7 +13,7 @@ struct SystemInfoTool: Tool {
     let description = "Docker host info: versions, OS, counts, memory, Swarm. includeLiveStats samples live CPU/memory."
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "Also sample live CPU/memory/disk.")
         var includeLiveStats: Bool?
     }

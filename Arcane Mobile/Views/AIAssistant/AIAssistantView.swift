@@ -14,7 +14,9 @@ struct AIAssistantView: View {
 
     var body: some View {
         Group {
-            if let service {
+            if !initialAvailability.allowsExposure {
+                AIUnavailableView(state: initialAvailability)
+            } else if let service {
                 switch service.availability {
                 case .available:
                     AIChatView(service: service)
@@ -23,7 +25,7 @@ struct AIAssistantView: View {
                 default:
                     AIUnavailableView(state: service.availability) {
                         service.refreshAvailability()
-                        service.startSessionIfNeeded()
+                        Task { await service.startSessionIfNeeded() }
                     }
                 }
             } else if manager.client == nil {
@@ -52,7 +54,7 @@ struct AIAssistantView: View {
                 }
             }
         }
-        .task { setupIfNeeded() }
+        .task { await setupIfNeeded() }
     }
 
     private var assistantLoadingView: some View {
@@ -64,8 +66,14 @@ struct AIAssistantView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func setupIfNeeded() {
-        guard service == nil, let client = manager.client else { return }
+    private var initialAvailability: AIAvailability {
+        AIAvailability.current()
+    }
+
+    private func setupIfNeeded() async {
+        guard initialAvailability.allowsExposure,
+              service == nil,
+              let client = manager.client else { return }
 
         let envID = manager.activeEnvironmentID
         let context = ArcaneToolContext(
@@ -89,7 +97,7 @@ struct AIAssistantView: View {
             }
         }
         svc.refreshAvailability()
-        svc.startSessionIfNeeded()
+        await svc.startSessionIfNeeded()
         service = svc
     }
 }

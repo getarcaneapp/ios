@@ -1,5 +1,6 @@
 import SwiftUI
 import Arcane
+import UIKit
 
 struct ContainerTerminalView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -7,7 +8,9 @@ struct ContainerTerminalView: View {
     let container: ContainerSummary
     let environmentID: EnvironmentID
 
-    @State private var output: String = ""
+    @State private var outputLines: [TerminalOutputLine] = []
+    @State private var outputText = ""
+    @State private var outputRevision: UInt64 = 0
     @State private var input: String = ""
     @State private var session: TerminalSession?
     @State private var connectError: String?
@@ -15,9 +18,8 @@ struct ContainerTerminalView: View {
     @State private var isConnected = false
     @State private var shell: String = "/bin/sh"
     @State private var outputTask: Task<Void, Never>?
+    @State private var outputProcessor = TerminalOutputProcessor()
     @FocusState private var inputFocused: Bool
-
-    private let charBudget = 200_000
 
     var body: some View {
         NavigationStack {
@@ -32,15 +34,27 @@ struct ContainerTerminalView: View {
 
                 ScrollViewReader { proxy in
                     ScrollView {
-                        Text(output.isEmpty ? "Connecting to \(shell)…" : output)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .id("bottom")
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            if outputLines.isEmpty {
+                                Text("Connecting to \(shell)…")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(outputLines) { line in
+                                    Text(verbatim: line.text.isEmpty ? " " : line.text)
+                                        .id(line.id)
+                                }
+                            }
+                            Color.clear
+                                .frame(height: 1)
+                                .id("bottom")
+                        }
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
                     }
                     .background(Color(.systemBackground))
-                    .onChange(of: output) { _, _ in
+                    .onChange(of: outputRevision) { _, _ in
                         withAnimation(Motion.follow) {
                             proxy.scrollTo("bottom", anchor: .bottom)
                         }
@@ -72,8 +86,16 @@ struct ContainerTerminalView: View {
                         }
                         .disabled(isConnected || isConnecting)
 
+                        Button {
+                            UIPasteboard.general.string = outputText
+                            showToast(.copied())
+                        } label: {
+                            Label("Copy All", systemImage: "doc.on.doc")
+                        }
+                        .disabled(outputText.isEmpty)
+
                         Button(role: .destructive) {
-                            output = ""
+                            Task { await clearOutput() }
                         } label: {
                             Label("Clear Output", systemImage: "trash")
                         }
@@ -167,112 +189,99 @@ struct ContainerTerminalView: View {
         isConnecting = true
         connectError = nil
         do {
-            let s = try await client.containers.exec(envID: environmentID, id: container.id, shell: shell)
-            session = s
+            let terminalSession = try await client.containers.exec(
+                envID: environmentID,
+                id: container.id,
+                shell: shell
+            )
+            await outputProcessor.clear()
+            outputLines = []
+            outputText = ""
+            session = terminalSession
             isConnected = true
             isConnecting = false
             inputFocused = true
-            outputTask = Task {
-                do {
-                    for try await chunk in s.output {
-                        if Task.isCancelled { break }
-                        
-                        let (stripped, needsReply) = await Task.detached(priority: .userInitiated) {
-                            let raw = String(decoding: chunk, as: UTF8.self)
-                            let needsReply = raw.contains("\u{001b}[6n")
-                            let stripped = AnsiSanitizer.strip(raw)
-                            return (stripped, needsReply)
-                        }.value
-                        
-                        // Auto-reply to cursor-position requests (DSR [6n) so the
-                        // shell prompt finishes drawing instead of waiting forever.
-                        if needsReply {
-                            try? await s.send("\u{001b}[1;1R")
-                        }
-                        
-                        appendOutput(stripped)
-                    }
-                } catch is CancellationError {
-                    // expected
-                } catch {
-                    connectError = "Disconnected: \(friendlyErrorMessage(error))"
-                }
-                isConnected = false
+            let processor = outputProcessor
+            outputTask = Task { @concurrent in
+                await consumeOutput(from: terminalSession, processor: processor)
             }
         } catch {
             connectError = friendlyErrorMessage(error)
             isConnecting = false
         }
     }
+}
 
-    @MainActor
-    private func appendOutput(_ text: String) {
-        output.append(text)
-        if output.count > charBudget {
-            let drop = output.count - charBudget + (charBudget / 10)
-            output.removeFirst(drop)
+private extension ContainerTerminalView {
+    @concurrent
+    func consumeOutput(
+        from terminalSession: TerminalSession,
+        processor: TerminalOutputProcessor
+    ) async {
+        let clock = ContinuousClock()
+        var lastFlush: ContinuousClock.Instant?
+        do {
+            for try await chunk in terminalSession.output {
+                if Task.isCancelled { break }
+                let replyCount = await processor.append(chunk)
+                for _ in 0..<replyCount {
+                    try? await terminalSession.send("\u{001b}[1;1R")
+                }
+
+                let now = clock.now
+                if lastFlush == nil || lastFlush!.duration(to: now) >= .milliseconds(50) {
+                    await publish(await processor.snapshot())
+                    lastFlush = now
+                }
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            await MainActor.run {
+                connectError = "Disconnected: \(friendlyErrorMessage(error))"
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+        await processor.finish()
+        await waitForFlushInterval(after: lastFlush, clock: clock)
+        guard !Task.isCancelled else { return }
+        await publish(await processor.snapshot())
+        await MainActor.run { isConnected = false }
+    }
+
+    nonisolated func waitForFlushInterval(
+        after lastFlush: ContinuousClock.Instant?,
+        clock: ContinuousClock
+    ) async {
+        guard let lastFlush else { return }
+        let minimumInterval: Duration = .milliseconds(50)
+        let elapsed = lastFlush.duration(to: clock.now)
+        if elapsed < minimumInterval {
+            try? await Task.sleep(for: minimumInterval - elapsed)
         }
     }
 
-    private func teardown() async {
+    func publish(_ snapshot: TerminalOutputSnapshot) {
+        guard snapshot.lines != outputLines || snapshot.fullText != outputText else { return }
+        outputLines = snapshot.lines
+        outputText = snapshot.fullText
+        outputRevision &+= 1
+    }
+
+    func clearOutput() async {
+        await outputProcessor.clear()
+        outputLines = []
+        outputText = ""
+        outputRevision &+= 1
+    }
+
+    func teardown() async {
         outputTask?.cancel()
         outputTask = nil
         await session?.close()
         session = nil
         isConnected = false
         isConnecting = false
-    }
-}
-
-/// Best-effort stripper for ANSI escape sequences emitted by interactive
-/// shells. v1 does not interpret them, so we drop the noisy ones rather than
-/// printing literal `[6n`, `[?2004h`, etc. Bell (\a) is also discarded.
-nonisolated enum AnsiSanitizer {
-    static func strip(_ input: String) -> String {
-        guard input.contains("\u{001b}") || input.contains("\u{0007}") else { return input }
-        var output = String()
-        output.reserveCapacity(input.count)
-
-        var iterator = input.unicodeScalars.makeIterator()
-        while let scalar = iterator.next() {
-            switch scalar {
-            case "\u{0007}":
-                continue // bell
-            case "\u{001b}":
-                consumeEscape(after: &iterator)
-            default:
-                output.unicodeScalars.append(scalar)
-            }
-        }
-        return output
-    }
-
-    /// Consume an ANSI escape sequence starting just after the ESC byte.
-    /// Handles CSI (`ESC [ ... <final-byte>`), OSC (`ESC ] ... BEL or ST`),
-    /// and short two-byte forms (`ESC ( B`, `ESC =`, etc.).
-    private static func consumeEscape(after iterator: inout String.UnicodeScalarView.Iterator) {
-        guard let next = iterator.next() else { return }
-        switch next {
-        case "[":
-            // CSI: parameter bytes 0x30–0x3F, intermediate 0x20–0x2F,
-            // final 0x40–0x7E (terminates the sequence).
-            while let s = iterator.next() {
-                let v = s.value
-                if v >= 0x40 && v <= 0x7E { return }
-            }
-        case "]":
-            // OSC: terminated by BEL (0x07) or ST (ESC \).
-            while let s = iterator.next() {
-                if s == "\u{0007}" { return }
-                if s == "\u{001b}" {
-                    _ = iterator.next() // consume the trailing `\`
-                    return
-                }
-            }
-        case "(", ")", "*", "+", "%", "#":
-            _ = iterator.next() // designator byte
-        default:
-            return // single-character escape
-        }
     }
 }

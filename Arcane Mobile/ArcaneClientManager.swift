@@ -228,11 +228,30 @@ final class ArcaneClientManager {
         guard let client else { return }
         isLoading = true
         defer { isLoading = false }
-        try? await client.auth.logout()
-        currentUser = nil
-        serverCapabilities = nil
-        authState = .login
-        needsConnectionBootstrapRetry = false
+
+        var logoutError: Error?
+        do {
+            try await client.auth.logout()
+        } catch {
+            logoutError = error
+        }
+
+        let credentialRemains: Bool
+        do {
+            credentialRemains = try await client.authManager.hasRefreshCredential()
+        } catch {
+            errorMessage = "Couldn't verify that local sign-in credentials were removed. \(friendlyErrorMessage(error))"
+            return
+        }
+
+        guard !credentialRemains else {
+            errorMessage = logoutError.map(friendlyErrorMessage)
+                ?? "Couldn't remove local sign-in credentials."
+            return
+        }
+
+        signOutLocally()
+        errorMessage = nil
         DeploymentActivityStore.shared.sessionDidEnd()
         WidgetSnapshotPublisher.shared.publishSignedOut()
         await ResponseCache.shared.invalidateAll()

@@ -25,7 +25,10 @@ struct AIAssistantToolbarModifier: ViewModifier {
                 }
 
                 if #available(iOS 26, *) {
-                    if isEnabled, showAssistantButton, manager.client != nil {
+                    if isEnabled,
+                       showAssistantButton,
+                       AIAvailability.canExposeAssistant,
+                       manager.client != nil {
                         if showsNavigationButton {
                             ToolbarSpacer(.fixed, placement: .topBarLeading)
                         }
@@ -44,7 +47,7 @@ struct AIAssistantToolbarButton: View {
     @State private var showAssistant = false
 
     var body: some View {
-        if #available(iOS 26, *) {
+        if #available(iOS 26, *), AIAvailability.canExposeAssistant {
             Button { showAssistant = true } label: {
                 Image(systemName: "sparkles")
             }

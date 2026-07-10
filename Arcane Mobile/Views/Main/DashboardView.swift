@@ -63,6 +63,7 @@ private struct DashboardLiveCounts: Sendable, Equatable {
 
 struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ImageUpdateCountStore.self) private var imageUpdateCountStore
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @AppStorage("arcane.showAssistantButton") private var showAssistantButton = true
@@ -77,7 +78,6 @@ struct DashboardView: View {
     @State private var environments: [Arcane.Environment] = []
     @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
-    @State private var imageUpdatesTotal: Int?
     @State private var liveCounts: DashboardLiveCounts?
     @State private var failedActivities: [Activity] = []
     @State private var rawEnvironmentCount: Int = 0
@@ -112,6 +112,15 @@ struct DashboardView: View {
     private static let maxConcurrentPerEnvFetches = 4
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
+
+    private var imageUpdatesTotal: Int? {
+        let source = allEnvironments.isEmpty ? environments : allEnvironments
+        return imageUpdateCountStore.total(
+            client: manager.client,
+            userID: manager.currentUser?.id,
+            environmentIDs: source.map { EnvironmentID(rawValue: $0.id) }
+        )
+    }
 
     private var isNavigationRoot: Bool {
         detailRoute == nil
@@ -181,6 +190,7 @@ struct DashboardView: View {
                 if #available(iOS 26, *),
                    showsSidebarButton,
                    showAssistantButton,
+                   AIAvailability.canExposeAssistant,
                    manager.client != nil {
                     if isNavigationRoot {
                         ToolbarSpacer(.fixed, placement: .topBarLeading)
@@ -738,8 +748,11 @@ struct DashboardView: View {
         // instead re-fetch snapshots over REST on pull-to-refresh.
         let streamDelivering = streamStore.aggregate != nil
 
-        async let volumesResult = loadVolumesTotal(envs: bounded)
-        async let updatesResult = loadImageUpdatesTotal(envs: bounded)
+        // The card list is intentionally capped, but the overview totals must
+        // still represent every environment the Updates and Volumes screens
+        // include.
+        async let volumesResult = loadVolumesTotal(envs: envs)
+        async let updatesResult = loadImageUpdatesTotal(envs: envs)
         if refresh, streamStore.isStreaming {
             await streamStore.refresh()
         }
@@ -747,10 +760,9 @@ struct DashboardView: View {
             ? nil
             : await loadLiveCounts(envs: bounded, refresh: refresh)
         let volumes = await volumesResult
-        let updates = await updatesResult
+        _ = await updatesResult
         if !Task.isCancelled {
             volumesTotal = volumes
-            imageUpdatesTotal = updates
             if let counts { liveCounts = counts }
         }
 
@@ -891,7 +903,7 @@ struct DashboardView: View {
         guard let client = manager.client else { return 0 }
         guard !envs.isEmpty else { return 0 }
 
-        return await withTaskGroup(of: Int.self) { group in
+        let counts = await withTaskGroup(of: (String, Int).self) { group in
             var iterator = envs.makeIterator()
             let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
             for _ in 0..<initialBatch {
@@ -899,22 +911,28 @@ struct DashboardView: View {
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
                     let summary = try? await client.images.updateSummary(envID: envID)
-                    return summary?.imagesWithUpdates ?? 0
+                    return (envID.rawValue, summary?.imagesWithUpdates ?? 0)
                 }
             }
-            var total = 0
+            var counts: [String: Int] = [:]
             for await result in group {
-                total += result
+                counts[result.0] = result.1
                 if let env = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
                     group.addTask {
                         let summary = try? await client.images.updateSummary(envID: envID)
-                        return summary?.imagesWithUpdates ?? 0
+                        return (envID.rawValue, summary?.imagesWithUpdates ?? 0)
                     }
                 }
             }
-            return total
+            return counts
         }
+        imageUpdateCountStore.setSummaryCounts(
+            counts,
+            client: manager.client,
+            userID: manager.currentUser?.id
+        )
+        return counts.values.reduce(0, +)
     }
 
     /// Aggregates running/total container and image counts across environments

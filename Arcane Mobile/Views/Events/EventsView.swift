@@ -127,7 +127,7 @@ struct EventsView: View {
         defer { isLoading = false }
         do {
             let response = try await client.events.listPaginated(start: 0, limit: limit)
-            events = response.data.sorted { $0.timestamp > $1.timestamp }
+            events = EventHistory.merged(current: [], incoming: response.data, limit: limit)
             hasMore = response.data.count >= limit
             errorMessage = nil
         } catch {
@@ -142,7 +142,7 @@ struct EventsView: View {
         let newLimit = limit + Self.pageSize
         do {
             let response = try await client.events.listPaginated(start: 0, limit: newLimit)
-            events = response.data.sorted { $0.timestamp > $1.timestamp }
+            events = EventHistory.merged(current: [], incoming: response.data, limit: newLimit)
             limit = newLimit
             hasMore = response.data.count >= newLimit
         } catch {
@@ -164,13 +164,10 @@ struct EventsView: View {
         do {
             let response = try await client.events.listPaginated(start: 0, limit: Self.pageSize)
             guard !Task.isCancelled, !isLoading, !isLoadingMore else { return }
-            let currentIDs = Set(events.map(\.id))
-            let incoming = response.data
-                .filter { !currentIDs.contains($0.id) }
-                .sorted { $0.timestamp > $1.timestamp }
-            guard !incoming.isEmpty else { return }
+            let merged = EventHistory.merged(current: events, incoming: response.data, limit: limit)
+            guard merged != events else { return }
             withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
-                events.insert(contentsOf: incoming, at: 0)
+                events = merged
             }
             errorMessage = nil
         } catch {

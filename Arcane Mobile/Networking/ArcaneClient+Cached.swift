@@ -8,10 +8,11 @@ import Arcane
 extension ArcaneClientManager {
     var cached: CachedClient? {
         guard let client else { return nil }
-        let host = URL(string: serverURL)?.host ?? serverURL
+        let identity = (parsedServerURL ?? URL(string: serverURL))
+            .map(ServerCacheIdentity.canonical(for:)) ?? serverURL
         return CachedClient(
             client: client,
-            serverHost: host,
+            serverIdentity: identity,
             userID: currentUser?.id ?? "anon"
         )
     }

@@ -5,7 +5,7 @@ import UIKit
 /// Unrestricted so it can also render on the iOS 18 code path (`osTooOld`).
 struct AIUnavailableView: View {
     let state: AIAvailability
-    var onRetry: (() -> Void)? = nil
+    var onRetry: (() -> Void)?
 
     @Environment(\.openURL) private var openURL
 
@@ -43,6 +43,7 @@ struct AIUnavailableView: View {
         case .deviceNotEligible:  return "Device Not Supported"
         case .aiNotEnabled:       return "Apple Intelligence Is Off"
         case .modelNotReady:      return "Getting Ready…"
+        case .configurationTooLarge: return "Assistant Configuration Unavailable"
         default:                  return "Arcane Assistant Unavailable"
         }
     }
@@ -65,6 +66,8 @@ struct AIUnavailableView: View {
             return "Turn on Apple Intelligence in Settings to use Arcane Assistant."
         case .modelNotReady:
             return "Apple Intelligence is still downloading its model. Try again in a moment."
+        case .configurationTooLarge:
+            return "Arcane Assistant's tools do not leave enough room for a safe on-device response."
         default:
             return "The on-device model isn't available right now."
         }

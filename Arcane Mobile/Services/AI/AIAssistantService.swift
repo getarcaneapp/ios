@@ -26,7 +26,11 @@ final class AIAssistantService {
     private let context: ArcaneToolContext
     /// MainActor cache-invalidation hook supplied by the view (it has the manager).
     private let invalidate: @MainActor (AIPendingAction) -> Void
-    private let sink = AIPendingActionSink()
+    private let sink: AIPendingActionSink
+    private let budget: AIContextBudget
+    private let instructionText: String
+    private let instructions: Instructions
+    private let tools: [any Tool]
     private let seed: AISeed
 
     @ObservationIgnored private var session: LanguageModelSession?
@@ -47,6 +51,18 @@ final class AIAssistantService {
         self.context = context
         self.seed = seed
         self.invalidate = invalidate
+        let sink = AIPendingActionSink()
+        let budget = AIContextBudget()
+        let boundedEnvironmentName = ToolSupport.safeText(context.envName, maximumBytes: 80)
+        let instructionText = AIInstructions.build(
+            environmentName: boundedEnvironmentName,
+            capabilities: context.capabilities
+        )
+        self.sink = sink
+        self.budget = budget
+        self.instructionText = instructionText
+        self.instructions = Instructions(instructionText)
+        self.tools = AIToolbox.make(context: context, sink: sink, budget: budget)
         if let prompt = seed.initialPrompt { inputDraft = prompt }
     }
 
@@ -62,16 +78,24 @@ final class AIAssistantService {
 
     func refreshAvailability() {
         availability = AIAvailability.current()
+        if availability != .available { session = nil }
     }
 
-    func startSessionIfNeeded() {
+    func startSessionIfNeeded() async {
         guard session == nil, availability == .available else { return }
-        // `instructions:` is an @InstructionsBuilder closure, not a String arg.
-        let s = LanguageModelSession(tools: AIToolbox.make(context: context, sink: sink)) {
-            AIInstructions.build(environmentName: context.envName, capabilities: context.capabilities)
+        do {
+            try await budget.preflight(
+                instructions: instructions,
+                instructionText: instructionText,
+                tools: tools
+            )
+        } catch {
+            availability = .configurationTooLarge
+            return
         }
-        s.prewarm()
-        session = s
+        let newSession = LanguageModelSession(tools: tools, instructions: instructions)
+        newSession.prewarm()
+        session = newSession
     }
 
     // MARK: - Sending
@@ -84,8 +108,9 @@ final class AIAssistantService {
 
         messages.append(.user(visible))
         inputDraft = ""
-        // Prepend any pending action-result notes so the model stays truthful.
-        let prompt = (pendingSystemNotes + [visible]).joined(separator: "\n")
+        // Action outcomes are already bounded when queued. Keep only the newest
+        // three so they cannot crowd the user's current request out of context.
+        let notes = Array(pendingSystemNotes.suffix(3))
         pendingSystemNotes.removeAll()
 
         let assistant = AIMessage.assistantPlaceholder()
@@ -94,8 +119,11 @@ final class AIAssistantService {
         context.status.text = nil
 
         streamTask = Task { [weak self] in
-            await self?.runTurn(prompt: prompt, assistantID: assistant.id)
-            await self?.finishTurn(assistantID: assistant.id)
+            await self?.prepareAndRunTurn(
+                userPrompt: visible,
+                systemNotes: notes,
+                assistantID: assistant.id
+            )
         }
     }
 
@@ -118,17 +146,66 @@ final class AIAssistantService {
         pendingSystemNotes.removeAll()
         destructiveConfirm = nil
         session = nil
-        startSessionIfNeeded()
+        Task { [weak self] in await self?.startSessionIfNeeded() }
     }
 
     // MARK: - Streaming
+
+    private func prepareAndRunTurn(
+        userPrompt: String,
+        systemNotes: [String],
+        assistantID: UUID
+    ) async {
+        guard let currentSession = session else {
+            update(assistantID, text: Self.modelNotReadyText)
+            await finishTurn(assistantID: assistantID)
+            return
+        }
+
+        var prompt = (systemNotes + [userPrompt]).joined(separator: "\n")
+        do {
+            let prepared: AIContextBudget.PreparedTurn
+            do {
+                prepared = try await budget.prepareTurn(
+                    transcript: currentSession.transcript,
+                    prompt: prompt
+                )
+            } catch AIContextBudget.PreparationError.promptTooLarge where !systemNotes.isEmpty {
+                // Never truncate user input. Action notes are useful context but
+                // may be omitted when the current request only fits without them.
+                prompt = userPrompt
+                prepared = try await budget.prepareTurn(
+                    transcript: currentSession.transcript,
+                    prompt: prompt
+                )
+            }
+
+            if prepared.transcript != currentSession.transcript {
+                session = LanguageModelSession(tools: tools, transcript: prepared.transcript)
+            }
+            await runTurn(prompt: prompt, assistantID: assistantID)
+        } catch AIContextBudget.PreparationError.promptTooLarge {
+            pendingSystemNotes.insert(contentsOf: systemNotes, at: 0)
+            update(
+                assistantID,
+                text: "That message is too long for the on-device model. Shorten it and try again."
+            )
+        } catch {
+            update(
+                assistantID,
+                text: "Arcane Assistant's context budget is unavailable. Start a new conversation and try again."
+            )
+        }
+        await finishTurn(assistantID: assistantID)
+    }
 
     private func runTurn(prompt: String, assistantID: UUID) async {
         guard let session else { return }
         do {
             // streamResponse yields cumulative snapshots; `.content` is the whole
             // text so far — assign, never append.
-            for try await partial in session.streamResponse(to: prompt) {
+            let options = GenerationOptions(maximumResponseTokens: AIContextBudget.responseTokens)
+            for try await partial in session.streamResponse(to: prompt, options: options) {
                 update(assistantID, text: partial.content)
             }
         } catch let error as LanguageModelSession.GenerationError {
@@ -157,14 +234,29 @@ final class AIAssistantService {
         switch error {
         case .exceededContextWindowSize:
             guard !didJustRebuild else {
-                update(assistantID, text: "This conversation got too long for me to continue. I've started a fresh session — please ask again.")
+                update(
+                    assistantID,
+                    text: "This conversation is too long to continue safely. Start a new conversation and ask again."
+                )
                 return
             }
             didJustRebuild = true
             defer { didJustRebuild = false }
-            rebuildSession()
-            update(assistantID, text: "")
-            await runTurn(prompt: prompt, assistantID: assistantID)   // retry once on the fresh session
+            let fresh = LanguageModelSession(tools: tools, instructions: instructions)
+            do {
+                let prepared = try await budget.prepareTurn(
+                    transcript: fresh.transcript,
+                    prompt: prompt
+                )
+                session = LanguageModelSession(tools: tools, transcript: prepared.transcript)
+                update(assistantID, text: "")
+                await runTurn(prompt: prompt, assistantID: assistantID)
+            } catch {
+                update(
+                    assistantID,
+                    text: "That request is too large for the on-device model. Shorten it and try again."
+                )
+            }
         case .guardrailViolation:
             update(assistantID, text: "I can't help with that request.")
         case .assetsUnavailable:
@@ -175,26 +267,23 @@ final class AIAssistantService {
         }
     }
 
-    private static let modelNotReadyText = "Apple Intelligence's on-device model isn't ready — it may still be downloading. Keep the device on Wi-Fi and power, then try again in a few minutes."
+    private static let modelNotReadyText = "Apple Intelligence's on-device model isn't ready; "
+        + "it may still be downloading. Keep the device on Wi-Fi and power, then try again."
 
     private func finishTurn(assistantID: UUID) async {
         context.status.text = nil
         if let idx = messages.firstIndex(where: { $0.id == assistantID }) {
             messages[idx].isStreaming = false
             if messages[idx].text.isEmpty {
-                messages[idx].text = "I checked, but couldn't produce a useful summary. Try asking for a specific container, project, or issue."
+                messages[idx].text = "I couldn't produce a useful summary. "
+                    + "Try asking about a specific container, project, or issue."
             }
         }
         isResponding = false
+        streamTask = nil
         // Single reconciliation point: surface any actions staged this turn.
         let staged = await sink.drain()
         if !staged.isEmpty { visibleActions.append(contentsOf: staged) }
-    }
-
-    private func rebuildSession() {
-        session = LanguageModelSession(tools: AIToolbox.make(context: context, sink: sink)) {
-            AIInstructions.build(environmentName: context.envName, capabilities: context.capabilities)
-        }
     }
 
     private func update(_ id: UUID, text: String) {
@@ -203,9 +292,12 @@ final class AIAssistantService {
         guard let idx = messages.firstIndex(where: { $0.id == id }) else { return }
         messages[idx].text = text
     }
+}
 
-    // MARK: - Confirming staged actions
+// MARK: - Confirming staged actions
 
+@available(iOS 26, *)
+extension AIAssistantService {
     /// Called by an inline card's Confirm button. Destructive actions are routed
     /// to the app's red extra-friction card; others execute immediately.
     func requestConfirm(_ action: AIPendingAction) {
@@ -224,7 +316,7 @@ final class AIAssistantService {
     func cancel(_ actionID: UUID) {
         guard let action = visibleActions.first(where: { $0.id == actionID }) else { return }
         visibleActions.removeAll { $0.id == actionID }
-        pendingSystemNotes.append("(System: the user declined to \(action.summary).)")
+        appendSystemNote("(System: the user declined to \(action.summary).)")
     }
 
     private func execute(_ action: AIPendingAction) {
@@ -236,19 +328,32 @@ final class AIAssistantService {
             guard let self else { return }
             defer { self.actionTasks[action.id] = nil }
             do {
-                let summary = try await action.execute(client: self.context.client, envID: self.context.envID)
+                let summary = try await action.execute(
+                    client: self.context.client,
+                    envID: self.context.envID
+                )
                 self.invalidate(action)
                 HapticsManager.success()
                 showToast(.success(summary))
                 self.messages.append(.system(summary))
-                self.pendingSystemNotes.append("(System: the user approved and \(action.summary) succeeded — \(summary))")
+                self.appendSystemNote(
+                    "(System: the user approved and \(action.summary) succeeded — \(summary))"
+                )
             } catch {
                 let message = friendlyErrorMessage(error)
                 HapticsManager.warning()
                 showToast(.error(message))
-                self.messages.append(.system("Couldn't \(action.actionTitle.lowercased()) \(action.displayName): \(message)"))
-                self.pendingSystemNotes.append("(System: \(action.summary) FAILED: \(message))")
+                let failure = "Couldn't \(action.actionTitle.lowercased()) \(action.displayName): \(message)"
+                self.messages.append(.system(failure))
+                self.appendSystemNote("(System: \(action.summary) FAILED: \(message))")
             }
+        }
+    }
+
+    private func appendSystemNote(_ note: String) {
+        pendingSystemNotes.append(AIContextBudget.boundedSystemNote(note))
+        if pendingSystemNotes.count > 3 {
+            pendingSystemNotes.removeFirst(pendingSystemNotes.count - 3)
         }
     }
 }

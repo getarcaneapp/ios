@@ -14,7 +14,7 @@ struct ListContainersTool: Tool {
     let description = "List containers with status and image. Use first for running/up/down/container questions."
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "Name/image substring filter.")
         var filter: String?
         @Guide(description: "Only non-running containers.")

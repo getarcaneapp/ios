@@ -10,6 +10,7 @@ struct Arcane_MobileApp: App {
     @State private var clientManager = ArcaneClientManager()
     private var pinnedStore = PinnedItemsStore.shared
     private var resourceMutationStore = ResourceMutationStore.shared
+    private var imageUpdateCountStore = ImageUpdateCountStore.shared
     @AppStorage("accentColorHex") private var accentColorHex = ""
 
     private var accentColor: Color {
@@ -25,6 +26,7 @@ struct Arcane_MobileApp: App {
                 .environment(clientManager)
                 .environment(pinnedStore)
                 .environment(resourceMutationStore)
+                .environment(imageUpdateCountStore)
                 .tint(accentColorHex.isEmpty ? nil : accentColor)
                 .task {
                     Task.detached(priority: .background) { ImageCache.shared.trimDiskCache() }

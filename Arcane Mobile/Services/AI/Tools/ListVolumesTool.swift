@@ -12,7 +12,7 @@ struct ListVolumesTool: Tool {
     let description = "List volumes, or ONE volume's details, files, or backups."
 
     @Generable
-    enum VolumeTopic {
+    enum VolumeTopic: Sendable {
         case list
         case details
         case files
@@ -20,7 +20,7 @@ struct ListVolumesTool: Tool {
     }
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "list (default), details, files, or backups.")
         var topic: VolumeTopic?
         @Guide(description: "Volume name (filter for list, exact otherwise).")

@@ -13,7 +13,7 @@ struct ListImagesTool: Tool {
     let description = "List images with tag and size; header notes dangling images and available updates."
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "Tag substring filter.")
         var filter: String?
         @Guide(description: "Only dangling (untagged) images.")

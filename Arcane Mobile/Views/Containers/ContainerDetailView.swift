@@ -292,7 +292,7 @@ struct ContainerDetailView: View {
         items.append(ActionButtonItem(id: "rename", title: "Rename", systemImage: "pencil", tint: .accentColor) {
             showRename = true
         })
-        if AIAvailability.isReady {
+        if AIAvailability.canExposeAssistant {
             items.append(ActionButtonItem(id: "ask-ai", title: "Ask AI", systemImage: "sparkles", tint: .purple) {
                 showAskAI = true
             })

@@ -13,7 +13,7 @@ struct GetDashboardTool: Tool {
     let description = "Broad health overview: counts plus items needing attention. Use for dashboard/how-is-everything questions."
 
     @Generable
-    struct Arguments {}
+    struct Arguments: Sendable {}
 
     func call(arguments: Arguments) async throws -> String {
         context.status.report("Checking the dashboard…")

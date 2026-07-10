@@ -14,7 +14,7 @@ struct GetOpsInfoTool: Tool {
     let description = "Server configuration: registries, templates, jobs, updater, webhooks, notifications, builds, or GitOps status. Pick one topic."
 
     @Generable
-    enum OpsTopic {
+    enum OpsTopic: Sendable {
         case registries
         case templates
         case templateContent
@@ -27,7 +27,7 @@ struct GetOpsInfoTool: Tool {
     }
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "Which list to read.")
         var topic: OpsTopic
         @Guide(description: "Template id, or GitOps sync id for detail.")

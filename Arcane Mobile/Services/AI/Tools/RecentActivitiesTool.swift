@@ -13,7 +13,7 @@ struct RecentActivitiesTool: Tool {
     let description = "Recent activities with status and id. Pass activityId for one activity's full output — use to explain failures."
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "Only failed activities.")
         var onlyFailed: Bool?
         @Guide(description: "How many to read (5–25).")

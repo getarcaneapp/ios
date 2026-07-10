@@ -375,7 +375,7 @@ struct ProjectDetailView: View {
                 Task { await archiveProject() }
             })
         }
-        if AIAvailability.isReady {
+        if AIAvailability.canExposeAssistant {
             items.append(ActionButtonItem(id: "ask-ai", title: "Ask AI", systemImage: "sparkles", tint: .purple) {
                 showAskAI = true
             })

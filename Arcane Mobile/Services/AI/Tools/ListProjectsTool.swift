@@ -11,7 +11,7 @@ struct ListProjectsTool: Tool {
     let description = "List Compose projects with status and running/total service counts."
 
     @Generable
-    struct Arguments {
+    struct Arguments: Sendable {
         @Guide(description: "Name substring filter.")
         var filter: String?
     }
