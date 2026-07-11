@@ -52,6 +52,12 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.5.5",
+            fixed: [
+                .init("Network topology renders as an interactive network-to-container diagram.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.5.4",
             changed: [
                 .init("Version details moved below the Danger Zone in App Settings."),
