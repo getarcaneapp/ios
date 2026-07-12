@@ -53,6 +53,9 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.5.5",
+            changed: [
+                .init("Floating profile and App Settings buttons in sidebar navigation.")
+            ],
             fixed: [
                 .init("Network topology renders as an interactive network-to-container diagram.")
             ]
