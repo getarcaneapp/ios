@@ -30,7 +30,9 @@ struct Sparkline: View {
             }
         }
         .frame(height: height)
-        .motionAwareAnimation(Motion.state, value: samples)
+        // Live dashboard streams can deliver several series updates each
+        // second. Drawing the latest path directly avoids overlapping whole-
+        // chart animations while the user scrolls through environment cards.
         .accessibilityHidden(true)
     }
 

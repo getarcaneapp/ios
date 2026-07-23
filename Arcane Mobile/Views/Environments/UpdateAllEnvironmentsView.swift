@@ -578,7 +578,8 @@ struct UpdateAllEnvironmentsView: View {
         }
         phase = .triggering
         do {
-            let job = try await client.system.triggerUpdateAll(envID: managerEnvID)
+            let requestClient = try ActivityBatchID.scopedClient(client)
+            let job = try await requestClient.system.triggerUpdateAll(envID: managerEnvID)
             phase = .polling(job)
             startPolling(client: client, lastKnown: job)
         } catch ArcaneError.conflict {

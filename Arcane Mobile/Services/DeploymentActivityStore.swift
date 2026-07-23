@@ -191,7 +191,14 @@ final class DeploymentActivityStore {
             showToast(.info("Another deployment is running"))
             return false
         }
-        guard let client = manager.client else { return false }
+        guard let baseClient = manager.client else { return false }
+        let client: ArcaneClient
+        do {
+            client = try ActivityBatchID.scopedClient(baseClient)
+        } catch {
+            showToast(.error("Couldn't start operation"))
+            return false
+        }
 
         autoClearTask?.cancel()
         autoClearTask = nil

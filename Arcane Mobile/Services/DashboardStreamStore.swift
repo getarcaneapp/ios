@@ -29,6 +29,7 @@ final class DashboardStreamStore {
         var stoppedContainers = 0
         var totalContainers = 0
         var totalImages = 0
+        var imageUpdates = 0
     }
 
     private(set) var statesByEnvironmentID: [String: EnvironmentState] = [:]
@@ -62,25 +63,24 @@ final class DashboardStreamStore {
 
     var isStreaming: Bool { streamTask != nil }
 
-    /// Aggregate tile counts across tracked environments. Non-nil only when
-    /// every tracked environment has settled (loaded or errored) and at least
-    /// one snapshot arrived, so the tiles never dip to a partial sum mid-fill.
+    /// Aggregate tile counts across tracked environments. Every environment
+    /// must have a snapshot from the current stream connection; stale or
+    /// partial data is never presented as a live fleet total.
     var aggregate: AggregateCounts? {
         guard !statesByEnvironmentID.isEmpty else { return nil }
         var counts = AggregateCounts()
-        var loadedCount = 0
         for state in statesByEnvironmentID.values {
-            if state.hasLoaded, let snapshot = state.snapshot {
-                loadedCount += 1
-                counts.runningContainers += snapshot.containers.counts.runningContainers
-                counts.stoppedContainers += snapshot.containers.counts.stoppedContainers
-                counts.totalContainers += snapshot.containers.counts.totalContainers
-                counts.totalImages += snapshot.imageUsageCounts.totalImages
-            } else if !state.streamError {
-                return nil
+            guard state.hasLoaded, let snapshot = state.snapshot else { return nil }
+            counts.runningContainers += snapshot.containers.counts.runningContainers
+            counts.stoppedContainers += snapshot.containers.counts.stoppedContainers
+            counts.totalContainers += snapshot.containers.counts.totalContainers
+            counts.totalImages += snapshot.imageUsageCounts.totalImages
+            counts.imageUpdates += snapshot.actionItems.items.reduce(0) { total, item in
+                if case .imageUpdates = item.kind { return total + item.count }
+                return total
             }
         }
-        return loadedCount > 0 ? counts : nil
+        return counts
     }
 
     func state(for environmentID: String) -> EnvironmentState? {
@@ -108,6 +108,7 @@ final class DashboardStreamStore {
     func start() {
         shouldRun = true
         guard let client, !streamUnsupported, streamTask == nil else { return }
+        invalidateSnapshots()
         generation += 1
         let generation = generation
         streamTask = Task { [weak self] in
@@ -198,6 +199,7 @@ final class DashboardStreamStore {
         }
 
         while !Task.isCancelled, generation == self.generation {
+            invalidateSnapshots()
             let connectedAt = Date()
             var receivedFirstEvent = false
             do {
@@ -229,6 +231,7 @@ final class DashboardStreamStore {
             }
 
             connected = false
+            invalidateSnapshots()
             guard generation == self.generation, !Task.isCancelled else { return }
 
             if receivedFirstEvent, Date().timeIntervalSince(connectedAt) >= Self.stableConnectionSeconds {
@@ -280,12 +283,22 @@ final class DashboardStreamStore {
 
     private func applyError(message: String?, code: DashboardStreamErrorCode?, environmentID: String) {
         guard var state = statesByEnvironmentID[environmentID] else { return }
-        // Snapshot and hasLoaded stay untouched so last-known data persists.
+        state.snapshot = nil
+        state.hasLoaded = false
         state.loading = false
         state.streamError = true
         state.errorMessage = message
         state.errorCode = code
         statesByEnvironmentID[environmentID] = state
+    }
+
+    private func invalidateSnapshots() {
+        for (id, var state) in statesByEnvironmentID {
+            state.snapshot = nil
+            state.hasLoaded = false
+            state.loading = true
+            statesByEnvironmentID[id] = state
+        }
     }
 
     private func clearAllStreamErrors() {

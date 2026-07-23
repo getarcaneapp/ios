@@ -6,64 +6,85 @@ struct EventsView: View {
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static let pageSize = 50
-
-    @State private var events: [Event] = []
-    @State private var limit: Int = EventsView.pageSize
-    @State private var hasMore = false
-    @State private var isLoading = false
-    @State private var isLoadingMore = false
-    @State private var errorMessage: String?
-    @State private var searchText = ""
-    @State private var severityFilter: EventSeverity = .all
+    @State private var store = EventsStore()
     @State private var isLive = true
-
-    private var filtered: [Event] {
-        let bySeverity: [Event]
-        if severityFilter == .all {
-            bySeverity = events
-        } else {
-            bySeverity = events.filter { $0.severity.lowercased() == severityFilter.rawValue }
-        }
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return bySeverity }
-        return bySeverity.filter { event in
-            event.title.localizedCaseInsensitiveContains(trimmed) ||
-            (event.description ?? "").localizedCaseInsensitiveContains(trimmed) ||
-            (event.resourceName ?? "").localizedCaseInsensitiveContains(trimmed) ||
-            event.type.localizedCaseInsensitiveContains(trimmed)
-        }
-    }
+    @State private var pendingDeleteEvent: Event?
 
     var body: some View {
+        @Bindable var store = store
+
         Group {
-            if isLoading && events.isEmpty {
+            if store.isLoading && store.events.isEmpty {
                 ProgressView("Loading events…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage, events.isEmpty {
+            } else if let errorMessage = store.errorMessage, store.events.isEmpty {
                 ContentUnavailableView(
                     "Couldn't Load Events",
                     systemImage: "exclamationmark.triangle",
                     description: Text(errorMessage)
                 )
-            } else if events.isEmpty {
-                ContentUnavailableView("No Events", systemImage: "clock.badge.exclamationmark")
             } else {
                 List {
-                    ForEach(filtered) { event in
-                        NavigationLink {
-                            EventDetailView(event: event)
-                        } label: {
-                            EventRow(event: event)
+                    if store.supportsSeverityCounts, let counts = store.severityCounts {
+                        Section {
+                            EventSeveritySummary(
+                                counts: counts,
+                                selectedSeverities: store.selectedSeverities,
+                                onSelectAll: store.clearSeverities,
+                                onToggle: store.toggle
+                            )
+                            .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                            .listRowBackground(Color.clear)
                         }
                     }
-                    if hasMore, searchText.isEmpty, severityFilter == .all {
+
+                    if store.events.isEmpty {
+                        ContentUnavailableView {
+                            Label(
+                                store.selectedSeverities.isEmpty && store.searchText.isEmpty
+                                    ? "No Events"
+                                    : "No Matching Events",
+                                systemImage: "clock.badge.exclamationmark"
+                            )
+                        }
+                        .listRowBackground(Color.clear)
+                    } else {
+                        Section {
+                            ForEach(store.events) { event in
+                                NavigationLink {
+                                    EventDetailView(event: event)
+                                } label: {
+                                    EventRow(event: event)
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    if canDeleteEvents {
+                                        Button(role: .destructive) {
+                                            pendingDeleteEvent = event
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                        .disabled(store.deletingEventIDs.contains(event.id))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if let errorMessage = store.errorMessage, !store.events.isEmpty {
+                        Section {
+                            Label(errorMessage, systemImage: "exclamationmark.triangle")
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                        }
+                    }
+
+                    if store.hasMore {
                         Button {
-                            Task { await loadMore() }
+                            Task { await store.loadMore() }
                         } label: {
                             HStack {
                                 Spacer()
-                                if isLoadingMore {
+                                if store.isLoadingMore {
                                     ProgressView()
                                 } else {
                                     Label("Show More", systemImage: "arrow.down.circle")
@@ -73,138 +94,189 @@ struct EventsView: View {
                             }
                             .padding(.vertical, 4)
                         }
-                        .disabled(isLoadingMore)
+                        .disabled(store.isLoadingMore)
                     }
                 }
                 .listStyle(.insetGrouped)
             }
         }
         .navigationTitle("Events")
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search events")
+        .searchable(
+            text: $store.searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search events"
+        )
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Picker("Severity", selection: $severityFilter) {
-                        ForEach(EventSeverity.allCases) { severity in
-                            Label(severity.title, systemImage: severity.icon).tag(severity)
-                        }
-                    }
-                } label: {
-                    Image(
-                        systemName: severityFilter == .all
-                            ? "line.3.horizontal.decrease.circle"
-                            : "line.3.horizontal.decrease.circle.fill"
-                    )
-                }
-                .accessibilityLabel("Filter")
-            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     isLive.toggle()
                 } label: {
                     Image(systemName: isLive ? "dot.radiowaves.left.and.right" : "pause.circle")
-                        .contentTransition(.symbolEffect(.replace))
+                        .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                 }
                 .accessibilityLabel(isLive ? "Pause live events" : "Resume live events")
             }
         }
-        .task { await load() }
+        .deleteConfirmation(
+            item: $pendingDeleteEvent,
+            title: { _ in "Delete Event" },
+            message: { event in "Delete “\(event.title)” from the event history?" },
+            icon: "trash",
+            confirmTitle: "Delete"
+        ) { event in
+            Task { await deleteEvent(event) }
+        }
+        .task(id: queryTaskKey) {
+            store.configure(client: manager.client)
+            do {
+                try await Task.sleep(for: .milliseconds(350))
+                await store.reload(clearExisting: true)
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
+        }
+        .task(id: clientIdentity) {
+            store.configure(client: manager.client)
+            await store.loadSeverityCounts()
+        }
         .task(id: liveTaskKey) { await liveLoop() }
-        .refreshable { await load(refresh: true) }
+        .refreshable {
+            await store.reload()
+            await store.loadSeverityCounts()
+        }
+    }
+
+    private var clientIdentity: ObjectIdentifier? {
+        manager.client.map { ObjectIdentifier($0.transport) }
+    }
+
+    private var queryTaskKey: String {
+        "\(clientIdentity?.hashValue ?? 0)|\(store.queryKey)"
     }
 
     private var liveTaskKey: String {
-        "\(isLive)-\(scenePhase == .active)"
-    }
-
-    private func load(refresh: Bool = false) async {
-        guard let client = manager.client else { return }
-        if events.isEmpty || refresh { isLoading = true }
-        if refresh {
-            limit = Self.pageSize
-            errorMessage = nil
-        }
-        defer { isLoading = false }
-        do {
-            let response = try await client.events.listPaginated(start: 0, limit: limit)
-            events = EventHistory.merged(current: [], incoming: response.data, limit: limit)
-            hasMore = response.data.count >= limit
-            errorMessage = nil
-        } catch {
-            errorMessage = friendlyErrorMessage(error)
-        }
-    }
-
-    private func loadMore() async {
-        guard let client = manager.client, !isLoadingMore else { return }
-        isLoadingMore = true
-        defer { isLoadingMore = false }
-        let newLimit = limit + Self.pageSize
-        do {
-            let response = try await client.events.listPaginated(start: 0, limit: newLimit)
-            events = EventHistory.merged(current: [], incoming: response.data, limit: newLimit)
-            limit = newLimit
-            hasMore = response.data.count >= newLimit
-        } catch {
-            errorMessage = friendlyErrorMessage(error)
-        }
+        "\(queryTaskKey)|\(isLive)|\(scenePhase == .active)"
     }
 
     private func liveLoop() async {
         guard isLive, scenePhase == .active else { return }
         while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled, isLive, scenePhase == .active, !isLoading, !isLoadingMore else { continue }
-            await pollForNewEvents()
+            do {
+                try await Task.sleep(for: .seconds(5))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, isLive, scenePhase == .active else { return }
+            await store.poll()
+            await store.loadSeverityCounts()
         }
     }
 
-    private func pollForNewEvents() async {
-        guard let client = manager.client else { return }
+    private var canDeleteEvents: Bool {
+        manager.permissions.has(Permission.Events.delete, in: nil)
+    }
+
+    private func deleteEvent(_ event: Event) async {
         do {
-            let response = try await client.events.listPaginated(start: 0, limit: Self.pageSize)
-            guard !Task.isCancelled, !isLoading, !isLoadingMore else { return }
-            let merged = EventHistory.merged(current: events, incoming: response.data, limit: limit)
-            guard merged != events else { return }
-            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
-                events = merged
-            }
-            errorMessage = nil
+            try await store.delete(event)
+            showToast(.success("Event deleted"))
         } catch {
-            if events.isEmpty {
-                errorMessage = friendlyErrorMessage(error)
-            }
+            showToast(.error(friendlyErrorMessage(error)))
         }
     }
 }
 
-private enum EventSeverity: String, CaseIterable, Identifiable, Hashable {
-    case all
-    case info
-    case warning
-    case error
-    case critical
+private struct EventSeveritySummary: View {
+    let counts: EventSeverityCounts
+    let selectedSeverities: Set<EventSeverityFilter>
+    let onSelectAll: () -> Void
+    let onToggle: (EventSeverityFilter) -> Void
 
-    var id: String { rawValue }
+    var body: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                EventSeverityChip(
+                    title: "Total",
+                    count: counts.total,
+                    icon: "tray.full.fill",
+                    tint: .primary,
+                    isSelected: selectedSeverities.isEmpty,
+                    action: onSelectAll
+                )
 
-    var title: String {
-        switch self {
-        case .all: return "All"
-        case .info: return "Info"
-        case .warning: return "Warning"
-        case .error: return "Error"
-        case .critical: return "Critical"
+                ForEach(EventSeverityFilter.allCases) { severity in
+                    EventSeverityChip(
+                        title: severity.title,
+                        count: count(for: severity),
+                        icon: severity.icon,
+                        tint: tint(for: severity),
+                        isSelected: selectedSeverities.contains(severity),
+                        action: { onToggle(severity) }
+                    )
+                }
+            }
+            .padding(.horizontal)
+        }
+        .scrollIndicators(.hidden)
+        .accessibilityLabel("Event severity filters")
+    }
+
+    private func count(for severity: EventSeverityFilter) -> Int64 {
+        switch severity {
+        case .info: counts.info
+        case .success: counts.success
+        case .warning: counts.warning
+        case .error: counts.error
         }
     }
 
-    var icon: String {
-        switch self {
-        case .all: return "tray.full"
-        case .info: return "info.circle"
-        case .warning: return "exclamationmark.triangle"
-        case .error: return "xmark.octagon"
-        case .critical: return "flame"
+    private func tint(for severity: EventSeverityFilter) -> Color {
+        switch severity {
+        case .info: .blue
+        case .success: .green
+        case .warning: .orange
+        case .error: .red
         }
+    }
+}
+
+private struct EventSeverityChip: View {
+    let title: String
+    let count: Int64
+    let icon: String
+    let tint: Color
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .foregroundStyle(tint)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                    Text(count, format: .number)
+                        .font(.subheadline.monospacedDigit().weight(.semibold))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                isSelected ? tint.opacity(0.15) : Color.secondary.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.standard, style: .continuous)
+                    .stroke(isSelected ? tint.opacity(0.45) : .clear, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.pressable)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), \(count.formatted()) events")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

@@ -8,7 +8,6 @@ struct TemplateRegistriesView: View {
     @State private var errorMessage: String?
     @State private var showCreateSheet = false
     @State private var editingRegistry: TemplateRegistry?
-    @State private var actionErrorMessage: String?
     @State private var pendingDeleteRegistry: TemplateRegistry?
     @State private var isAddingCommunity = false
 
@@ -21,8 +20,12 @@ struct TemplateRegistriesView: View {
 
     var body: some View {
         Group {
-            if manager.currentUser?.isAdmin != true {
-                ContentUnavailableView("Admin Required", systemImage: "lock.fill", description: Text("Only administrators can manage template registries."))
+            if !canViewRegistries {
+                ContentUnavailableView(
+                    "Permission Required",
+                    systemImage: "lock.fill",
+                    description: Text("Your role cannot view template registries.")
+                )
             } else if isLoading && registries.isEmpty {
                 ProgressView("Loading template registries...").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, registries.isEmpty {
@@ -39,39 +42,45 @@ struct TemplateRegistriesView: View {
                 } description: {
                     Text("Add a registry to browse and deploy ready-made project templates.")
                 } actions: {
-                    Button {
-                        Task { await addCommunityRegistry() }
-                    } label: {
-                        if isAddingCommunity {
-                            ProgressView()
-                        } else {
-                            Text("Add Community Registry")
+                    if canCreateRegistries {
+                        Button {
+                            Task { await addCommunityRegistry() }
+                        } label: {
+                            if isAddingCommunity {
+                                ProgressView()
+                            } else {
+                                Text("Add Community Registry")
+                            }
                         }
+                        .disabled(isAddingCommunity)
+                        Button("Add Custom Registry") { showCreateSheet = true }
                     }
-                    .disabled(isAddingCommunity)
-                    Button("Add Custom Registry") { showCreateSheet = true }
                 }
             } else {
                 List {
                     ForEach(registries) { registry in
                         PressableTemplateRegistryRow(
                             registry: registry,
+                            canEdit: canUpdateRegistries,
+                            canDelete: canDeleteRegistries,
                             onEdit: { editingRegistry = registry },
                             onDelete: { pendingDeleteRegistry = registry }
                         )
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button {
-                                pendingDeleteRegistry = registry
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                            if canDeleteRegistries {
+                                Button {
+                                    pendingDeleteRegistry = registry
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                .tint(.red)
                             }
-                            .tint(.red)
                         }
                     }
 
                     // One-tap add for the official community registry when it
                     // isn't configured yet (mirrors the web's suggestion card).
-                    if !hasCommunityRegistry {
+                    if canCreateRegistries, !hasCommunityRegistry {
                         Section {
                             Button {
                                 Task { await addCommunityRegistry() }
@@ -102,18 +111,18 @@ struct TemplateRegistriesView: View {
             Task { await deleteTemplateRegistry(registry) }
         }
         .toolbar {
-            if manager.currentUser?.isAdmin == true {
+            if canCreateRegistries {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Template Registry")
                 }
             }
         }
         .task {
-            guard manager.currentUser?.isAdmin == true else { return }
+            guard canViewRegistries else { return }
             await loadRegistries()
         }
         .refreshable {
-            guard manager.currentUser?.isAdmin == true else { return }
+            guard canViewRegistries else { return }
             await loadRegistries(refresh: true)
         }
         .sheet(isPresented: $showCreateSheet) {
@@ -132,32 +141,15 @@ struct TemplateRegistriesView: View {
                 await loadRegistries(refresh: true)
             }
         }
-        .alert(
-            "Couldn't Delete Registry",
-            isPresented: Binding(
-                get: { actionErrorMessage != nil },
-                set: { if !$0 { actionErrorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) { actionErrorMessage = nil }
-        } message: {
-            Text(actionErrorMessage ?? "")
-        }
     }
 
     private func loadRegistries(refresh: Bool = false) async {
-        guard manager.currentUser?.isAdmin == true, let cached = manager.cached else { return }
+        guard canViewRegistries, let client = manager.client else { return }
         if registries.isEmpty { isLoading = true }
         if refresh { errorMessage = nil }
         defer { isLoading = false }
         do {
-            if let result: [TemplateRegistry] = try await cached.getListGlobal(
-                "templates/registries", elementType: TemplateRegistry.self,
-                policy: .templates, refresh: refresh,
-                onFresh: { fresh in registries = fresh }
-            ) {
-                registries = result
-            }
+            registries = try await client.templates.listRegistries()
             errorMessage = nil
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -165,40 +157,57 @@ struct TemplateRegistriesView: View {
     }
 
     private func addCommunityRegistry() async {
-        guard manager.currentUser?.isAdmin == true, let client = manager.client else { return }
+        guard canCreateRegistries, let client = manager.client else { return }
         isAddingCommunity = true
         defer { isAddingCommunity = false }
         do {
-            let body = CreateTemplateRegistryRequest(
+            let body = CreateTemplateRegistry(
                 name: "Arcane Community Templates",
                 url: Self.communityRegistryURL,
                 description: "Official Arcane community template registry",
                 enabled: true
             )
-            let _: TemplateRegistry = try await client.rest.post("templates/registries", body: body)
+            _ = try await client.templates.createRegistry(body)
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
             }
             await loadRegistries(refresh: true)
             showToast(.success("Community registry added"))
         } catch {
-            actionErrorMessage = friendlyErrorMessage(error)
+            showToast(.error(friendlyErrorMessage(error)))
         }
     }
 
     private func deleteTemplateRegistry(_ registry: TemplateRegistry) async {
-        guard manager.currentUser?.isAdmin == true, let client = manager.client else { return }
+        guard canDeleteRegistries, let client = manager.client else { return }
         do {
-            let _: DataResponse<String> = try await client.rest.delete("templates/registries/\(registry.id)")
+            try await client.templates.deleteRegistry(id: registry.id)
             withAnimation {
                 registries.removeAll { $0.id == registry.id }
             }
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
             }
+            showToast(.success("Template registry deleted"))
         } catch {
-            actionErrorMessage = friendlyErrorMessage(error)
+            showToast(.error(friendlyErrorMessage(error)))
         }
+    }
+
+    private var canViewRegistries: Bool {
+        manager.permissions.has(Permission.Templates.list, in: nil)
+    }
+
+    private var canCreateRegistries: Bool {
+        manager.permissions.has(Permission.Templates.create, in: nil)
+    }
+
+    private var canUpdateRegistries: Bool {
+        manager.permissions.has(Permission.Templates.update, in: nil)
+    }
+
+    private var canDeleteRegistries: Bool {
+        manager.permissions.has(Permission.Templates.delete, in: nil)
     }
 }
 
@@ -235,22 +244,34 @@ struct TemplateRegistryRow: View {
 
 private struct PressableTemplateRegistryRow: View {
     let registry: TemplateRegistry
+    let canEdit: Bool
+    let canDelete: Bool
     let onEdit: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
-        Button(action: onEdit) {
-            TemplateRegistryRow(registry: registry)
+        Group {
+            if canEdit {
+                Button(action: onEdit) {
+                    TemplateRegistryRow(registry: registry)
+                }
+                .buttonStyle(.plain)
+            } else {
+                TemplateRegistryRow(registry: registry)
+            }
         }
-        .buttonStyle(.plain)
         .contextMenu {
-            Button(action: onEdit) {
-                Label("Edit", systemImage: "pencil")
+            if canEdit {
+                Button(action: onEdit) {
+                    Label("Edit", systemImage: "pencil")
+                }
             }
-            Button(role: .destructive, action: onDelete) {
-                DestructiveLabel(text: "Delete")
+            if canDelete {
+                Button(role: .destructive, action: onDelete) {
+                    DestructiveLabel(text: "Delete")
+                }
+                .tint(.red)
             }
-            .tint(.red)
         } preview: {
             RowPreviewCard(
                 icon: "doc.text.fill",
@@ -275,4 +296,3 @@ private struct PressableTemplateRegistryRow: View {
         return rows
     }
 }
-

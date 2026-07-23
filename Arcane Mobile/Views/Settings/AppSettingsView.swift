@@ -5,6 +5,8 @@ struct AppSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @AppStorage("arcane.showAssistantButton") private var showAssistantButton = true
     @AppStorage("arcane.rememberLastTab") private var rememberLastTab = true
+    @AppStorage("arcane.activityToastScope")
+    private var activityToastScopeRawValue = ActivityToastScope.userInitiated.rawValue
     @State private var pendingDestructive: PendingDestructive?
     @State private var cacheSizeBytes: Int = 0
     @State private var showWhatsNew = false
@@ -35,6 +37,7 @@ struct AppSettingsView: View {
     var body: some View {
         List {
             generalSection
+            activityNotificationsSection
             serverSection
             aboutSection
             supportSection
@@ -86,6 +89,40 @@ struct AppSettingsView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var activityNotificationsSection: some View {
+        Section {
+            HStack(spacing: 12) {
+                SettingsRow(
+                    title: "Activity Toasts",
+                    subtitle: activityToastScope.subtitle,
+                    systemImage: "bell.badge.fill",
+                    color: .orange
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Picker("Activity Toasts", selection: $activityToastScopeRawValue) {
+                    ForEach(ActivityToastScope.allCases) { scope in
+                        Text(scope.title).tag(scope.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize(horizontal: true, vertical: false)
+                .accessibilityLabel("Activity Toasts")
+                .accessibilityValue(activityToastScope.title)
+            }
+        } header: {
+            Text("Activity Notifications")
+        } footer: {
+            Text("User Initiated excludes automated and server maintenance activities.")
+        }
+    }
+
+    private var activityToastScope: ActivityToastScope {
+        ActivityToastScope(rawValue: activityToastScopeRawValue) ?? .userInitiated
     }
 
     @ViewBuilder

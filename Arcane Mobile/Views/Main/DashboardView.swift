@@ -53,8 +53,8 @@ struct EnvironmentDetailRoute: Hashable {
 }
 
 /// Aggregated container/image counts derived live from per-environment
-/// `system/docker/info`, used as a version-independent source for the dashboard
-/// tiles (v2 removed the cross-environment `/dashboard/environments` summary).
+/// `system/docker/info`, used as the authoritative source for the dashboard
+/// tiles because dashboard snapshots exclude Arcane-managed containers.
 private struct DashboardLiveCounts: Sendable, Equatable {
     var running: Int
     var total: Int
@@ -78,6 +78,7 @@ struct DashboardView: View {
     @State private var environments: [Arcane.Environment] = []
     @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
+    @State private var supplementalImageUpdatesTotal: Int?
     @State private var liveCounts: DashboardLiveCounts?
     @State private var failedActivities: [Activity] = []
     @State private var rawEnvironmentCount: Int = 0
@@ -89,6 +90,7 @@ struct DashboardView: View {
     @State private var showAPIKeys = false
     @State private var streamStore = DashboardStreamStore()
     @State private var statsHistory = SystemStatsHistoryStore()
+    @State private var quickActionRouter = QuickActionRouter.shared
     /// Guards the scenePhase handler — hidden tab pages also receive scene
     /// phase changes and must not start their own stream.
     @State private var isDashboardVisible = false
@@ -113,13 +115,12 @@ struct DashboardView: View {
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
 
+    private var canPrune: Bool {
+        manager.permissions.has(Permission.System.prune, in: envID)
+    }
+
     private var imageUpdatesTotal: Int? {
-        let source = allEnvironments.isEmpty ? environments : allEnvironments
-        return imageUpdateCountStore.total(
-            client: manager.client,
-            userID: manager.currentUser?.id,
-            environmentIDs: source.map { EnvironmentID(rawValue: $0.id) }
-        )
+        streamStore.aggregate?.imageUpdates ?? supplementalImageUpdatesTotal
     }
 
     private var isNavigationRoot: Bool {
@@ -223,11 +224,17 @@ struct DashboardView: View {
                     }
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showPruneSheet = true } label: {
-                        Image(systemName: "trash")
+                if #available(iOS 26, *), manager.supportsActivities, canPrune {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
+
+                if canPrune {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button { showPruneSheet = true } label: {
+                            Image(systemName: "trash")
+                        }
+                        .accessibilityLabel("System Prune")
                     }
-                    .accessibilityLabel("System Prune")
                 }
             }
             .sheet(isPresented: $showUpdateAll) {
@@ -311,14 +318,19 @@ struct DashboardView: View {
                 guard manager.supportsActivities else { return }
                 streamStore.start()
             }
-            .onAppear { isDashboardVisible = true }
+            .onAppear {
+                isDashboardVisible = true
+                presentPendingActivityCenter()
+            }
             .onDisappear {
                 isDashboardVisible = false
                 streamStore.stop()
                 statsHistory.stop()
             }
-            .onChange(of: streamStore.aggregate) { _, _ in
+            .onChange(of: streamStore.aggregate) { previous, current in
                 publishWidgetSnapshot()
+                guard current != nil, current != previous else { return }
+                Task { await refreshLiveCounts() }
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
@@ -344,6 +356,11 @@ struct DashboardView: View {
                     streamStore.start()
                 }
             }
+            .onChange(of: quickActionRouter.pendingActivityCenter) { _, pending in
+                if pending, isDashboardVisible {
+                    presentPendingActivityCenter()
+                }
+            }
         }
         .onChange(of: isNavigationRoot, initial: true) { _, isRoot in
             onNavigationRootChange(isRoot)
@@ -351,6 +368,12 @@ struct DashboardView: View {
     }
 
     // MARK: - Subviews
+
+    private func presentPendingActivityCenter() {
+        guard quickActionRouter.pendingActivityCenter else { return }
+        quickActionRouter.pendingActivityCenter = false
+        showActivities = true
+    }
 
     private var hasPinnedDashboardResources: Bool {
         !pinnedStore.pinnedIDs(kind: .container, envID: envID).isEmpty ||
@@ -650,15 +673,12 @@ struct DashboardView: View {
     }
 
     private var overviewGrid: some View {
-        // Counts source precedence: the aggregated dashboard stream (live,
-        // ~15s cadence, server-computed counts) → per-environment Docker info
-        // (works on both v1 and v2) → the v1-only `/dashboard/environments`
-        // summary. A loaded zero renders as "0 / 0"/"0"; "—" means only
-        // "not loaded yet".
-        let aggregate = streamStore.aggregate
-        let running = aggregate?.runningContainers ?? liveCounts?.running ?? overview?.summary.containers?.runningContainers ?? 0
-        let total: Int? = aggregate?.totalContainers ?? liveCounts?.total ?? overview?.summary.containers?.totalContainers
-        let images: Int? = aggregate?.totalImages ?? liveCounts?.images ?? overview?.summary.imageUsageCounts?.totalImages
+        // Docker info is the only count source that includes every container.
+        // A failed environment request invalidates the fleet total instead of
+        // falling back to the dashboard snapshot's filtered count.
+        let running = liveCounts?.running ?? 0
+        let total = liveCounts?.total
+        let images = liveCounts?.images
 
         return Grid(horizontalSpacing: 10, verticalSpacing: 10) {
             GridRow {
@@ -705,6 +725,12 @@ struct DashboardView: View {
     private func loadData(refresh: Bool = false) async {
         guard let client = manager.client else { return }
         if refresh { cardRefreshToken += 1 }
+        // These values describe the current fleet. Clear them before each pass
+        // so a failed or incomplete refresh cannot leave an older number on
+        // screen looking live.
+        volumesTotal = nil
+        supplementalImageUpdatesTotal = nil
+        liveCounts = nil
         if !hasLoadedOnce { isLoading = true }
         defer {
             isLoading = false
@@ -728,7 +754,10 @@ struct DashboardView: View {
         allEnvironments = envs
         let bounded = dashboardEnvironments(from: envs)
         environments = bounded
-        streamStore.reconcile(environments: bounded)
+        // Cards and live sparklines stay bounded, but the backend dashboard
+        // stream must track every enabled environment so its aggregate tiles
+        // are true fleet totals.
+        streamStore.reconcile(environments: envs)
         statsHistory.reconcile(environments: bounded)
         if let reqData {
             overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
@@ -743,27 +772,22 @@ struct DashboardView: View {
         hasLoadedOnce = true
         isLoading = false
 
-        // While the aggregated stream is delivering, it owns the container/
-        // image tile counts — skip the per-environment docker-info fan-out and
-        // instead re-fetch snapshots over REST on pull-to-refresh.
-        let streamDelivering = streamStore.aggregate != nil
-
         // The card list is intentionally capped, but the overview totals must
         // still represent every environment the Updates and Volumes screens
         // include.
-        async let volumesResult = loadVolumesTotal(envs: envs)
-        async let updatesResult = loadImageUpdatesTotal(envs: envs)
+        let enabledEnvironments = envs.filter(\.enabled)
+        async let volumesResult = loadVolumesTotal(envs: enabledEnvironments)
+        async let updatesResult = loadImageUpdatesTotal(envs: enabledEnvironments)
         if refresh, streamStore.isStreaming {
             await streamStore.refresh()
         }
-        let counts: DashboardLiveCounts? = streamDelivering
-            ? nil
-            : await loadLiveCounts(envs: bounded, refresh: refresh)
+        let counts = await loadLiveCounts(envs: enabledEnvironments)
         let volumes = await volumesResult
-        _ = await updatesResult
+        let updates = await updatesResult
         if !Task.isCancelled {
             volumesTotal = volumes
-            if let counts { liveCounts = counts }
+            supplementalImageUpdatesTotal = updates
+            liveCounts = counts
         }
 
         let activities = await loadFailedWork()
@@ -866,11 +890,11 @@ struct DashboardView: View {
             .map { $0 }
     }
 
-    private func loadVolumesTotal(envs: [Arcane.Environment]) async -> Int {
-        guard let client = manager.client else { return 0 }
+    private func loadVolumesTotal(envs: [Arcane.Environment]) async -> Int? {
+        guard let client = manager.client else { return nil }
         guard !envs.isEmpty else { return 0 }
 
-        return await withTaskGroup(of: Int64.self) { group in
+        return await withTaskGroup(of: Int64?.self) { group in
             var iterator = envs.makeIterator()
             let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
             for _ in 0..<initialBatch {
@@ -881,8 +905,12 @@ struct DashboardView: View {
                 }
             }
             var total: Int64 = 0
+            var loadedCount = 0
             for await result in group {
-                total += result
+                if let result {
+                    total += result
+                    loadedCount += 1
+                }
                 if let env = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
                     group.addTask {
@@ -890,20 +918,20 @@ struct DashboardView: View {
                     }
                 }
             }
-            return Int(total)
+            return loadedCount == envs.count ? Int(total) : nil
         }
     }
 
-    private nonisolated static func volumeCount(client: ArcaneClient, envID: EnvironmentID) async -> Int64 {
+    private nonisolated static func volumeCount(client: ArcaneClient, envID: EnvironmentID) async -> Int64? {
         let query = SearchPaginationSort(start: 0, limit: 1)
-        return (try? await client.volumes.list(envID: envID, query: query).pagination.totalItems) ?? 0
+        return try? await client.volumes.list(envID: envID, query: query).pagination.totalItems
     }
 
-    private func loadImageUpdatesTotal(envs: [Arcane.Environment]) async -> Int {
-        guard let client = manager.client else { return 0 }
+    private func loadImageUpdatesTotal(envs: [Arcane.Environment]) async -> Int? {
+        guard let client = manager.client else { return nil }
         guard !envs.isEmpty else { return 0 }
 
-        let counts = await withTaskGroup(of: (String, Int).self) { group in
+        let counts = await withTaskGroup(of: (String, Int?).self) { group in
             var iterator = envs.makeIterator()
             let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
             for _ in 0..<initialBatch {
@@ -911,17 +939,19 @@ struct DashboardView: View {
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
                     let summary = try? await client.images.updateSummary(envID: envID)
-                    return (envID.rawValue, summary?.imagesWithUpdates ?? 0)
+                    return (envID.rawValue, summary?.imagesWithUpdates)
                 }
             }
             var counts: [String: Int] = [:]
             for await result in group {
-                counts[result.0] = result.1
+                if let count = result.1 {
+                    counts[result.0] = count
+                }
                 if let env = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
                     group.addTask {
                         let summary = try? await client.images.updateSummary(envID: envID)
-                        return (envID.rawValue, summary?.imagesWithUpdates ?? 0)
+                        return (envID.rawValue, summary?.imagesWithUpdates)
                     }
                 }
             }
@@ -932,17 +962,21 @@ struct DashboardView: View {
             client: manager.client,
             userID: manager.currentUser?.id
         )
+        guard counts.count == envs.count else { return nil }
         return counts.values.reduce(0, +)
     }
 
-    /// Aggregates running/total container and image counts across environments
-    /// from each environment's `system/docker/info` — the same cached source the
-    /// environment cards use. Works on both v1 and v2 servers and does not rely
-    /// on the cross-environment `/dashboard/environments` summary that v2 removed.
-    /// Returns nil only when no environment's Docker info could be read, so the
-    /// tiles can tell "not loaded" apart from a genuine zero.
-    private func loadLiveCounts(envs: [Arcane.Environment], refresh: Bool) async -> DashboardLiveCounts? {
-        guard let client = manager.client, let cached = manager.cached, !envs.isEmpty else { return nil }
+    private func refreshLiveCounts() async {
+        let enabledEnvironments = allEnvironments.filter(\.enabled)
+        liveCounts = await loadLiveCounts(envs: enabledEnvironments)
+        publishWidgetSnapshot()
+    }
+
+    /// Aggregates running/total container and image counts from a fresh Docker
+    /// info response for every enabled environment. Returns nil unless every
+    /// environment responds, because a partial sum is not a fleet total.
+    private func loadLiveCounts(envs: [Arcane.Environment]) async -> DashboardLiveCounts? {
+        guard let client = manager.client, !envs.isEmpty else { return nil }
 
         let perEnv: [DashboardLiveCounts] = await withTaskGroup(of: DashboardLiveCounts?.self) { group in
             var iterator = envs.makeIterator()
@@ -950,20 +984,20 @@ struct DashboardView: View {
             for _ in 0..<initialBatch {
                 guard let env = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
-                group.addTask { await Self.dockerCounts(client: client, cached: cached, envID: envID, refresh: refresh) }
+                group.addTask { await Self.dockerCounts(client: client, envID: envID) }
             }
             var acc: [DashboardLiveCounts] = []
             for await result in group {
                 if let result { acc.append(result) }
                 if let env = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
-                    group.addTask { await Self.dockerCounts(client: client, cached: cached, envID: envID, refresh: refresh) }
+                    group.addTask { await Self.dockerCounts(client: client, envID: envID) }
                 }
             }
             return acc
         }
 
-        guard !perEnv.isEmpty else { return nil }
+        guard perEnv.count == envs.count else { return nil }
         return perEnv.reduce(into: DashboardLiveCounts(running: 0, total: 0, images: 0)) {
             $0.running += $1.running
             $0.total += $1.total
@@ -973,19 +1007,9 @@ struct DashboardView: View {
 
     private static func dockerCounts(
         client: ArcaneClient,
-        cached: CachedClient,
-        envID: EnvironmentID,
-        refresh: Bool
+        envID: EnvironmentID
     ) async -> DashboardLiveCounts? {
-        let path = client.rest.environmentPath(envID, "system/docker/info")
-        let fetcher: @Sendable () async throws -> DockerInfo = {
-            let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            return try JSONDecoder().decode(DockerInfo.self, from: raw)
-        }
-        guard let info = try? await cached.getCustom(
-            path: path, as: DockerInfo.self, policy: .dockerInfo,
-            envID: envID, refresh: refresh, fetcher: fetcher
-        ) else { return nil }
+        guard let info = try? await client.system.dockerInfo(envID: envID) else { return nil }
         return DashboardLiveCounts(
             running: Int(info.containersRunning),
             total: Int(info.containers),
@@ -1005,7 +1029,7 @@ struct DashboardView: View {
                 rawEnvironmentCount = fresh.count
                 allEnvironments = fresh
                 environments = dashboardEnvironments(from: fresh)
-                streamStore.reconcile(environments: environments)
+                streamStore.reconcile(environments: fresh)
                 statsHistory.reconcile(environments: environments)
             }
         )
@@ -1498,7 +1522,9 @@ struct SystemPruneView: View {
         do {
             let result = try await client.system.prune(request, envID: environmentID)
             await ResponseCache.shared.invalidateEnvironment(environmentID.rawValue)
-            showToast(.success(formatPruneResult(result)))
+            if !manager.supportsActivities {
+                showToast(.success(formatPruneResult(result)))
+            }
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)

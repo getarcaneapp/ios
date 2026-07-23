@@ -547,12 +547,19 @@ struct ImagesView: View {
     }
 
     private func bulkDeleteImages(ids: [String]) async {
-        guard let client = manager.client else { return }
+        guard let baseClient = manager.client else { return }
         isBulkRunning = true
         bulkRunningActionID = "bulk-delete"
         defer {
             isBulkRunning = false
             bulkRunningActionID = nil
+        }
+        let client: ArcaneClient
+        do {
+            client = try ActivityBatchID.scopedClient(baseClient)
+        } catch {
+            showToast(.error("Couldn't start bulk deletion"))
+            return
         }
         let result = await BulkActionRunner.run(ids: ids) { id in
             try await client.images.remove(envID: environmentID, id: id)

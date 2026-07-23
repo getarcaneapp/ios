@@ -13,8 +13,9 @@ struct SettingsView: View {
         // access tracking re-fires on currentUser / serverCapabilities /
         // pinned-tab changes. The sections below are Equatable value views, so
         // SwiftUI skips their bodies whenever these inputs are unchanged.
-        let isAdmin = manager.currentUser?.isAdmin == true
-        let supportsV2 = manager.serverCapabilities?.mode == .rbac
+        let availableTabs = Set(
+            AppTab.allCases.filter { $0 != .activities && manager.canAccess($0) }
+        )
         let pinned = Set(NavTabsStore.shared.pinnedTabs)  // getter reads `version` for tracking
 
         NavigationStack(path: $navPath) {
@@ -30,20 +31,20 @@ struct SettingsView: View {
 
                 SettingsTabSection(
                     title: "Management",
-                    tabs: Self.visibleTabs(.management, pinned: pinned, isAdmin: isAdmin, supportsV2: supportsV2)
+                    tabs: Self.visibleTabs(.management, pinned: pinned, availableTabs: availableTabs)
                 )
                 SettingsResourcesSection(
-                    tabs: Self.visibleTabs(.resources, pinned: pinned, isAdmin: isAdmin, supportsV2: supportsV2),
+                    tabs: Self.visibleTabs(.resources, pinned: pinned, availableTabs: availableTabs),
                     volumeSizeBytes: volumeSizeBytes,
                     loadingVolumeSize: loadingVolumeSize
                 )
                 SettingsTabSection(
                     title: "Swarm",
-                    tabs: Self.visibleTabs(.swarm, pinned: pinned, isAdmin: isAdmin, supportsV2: supportsV2)
+                    tabs: Self.visibleTabs(.swarm, pinned: pinned, availableTabs: availableTabs)
                 )
                 SettingsTabSection(
                     title: "Administration",
-                    tabs: Self.visibleTabs(.administration, pinned: pinned, isAdmin: isAdmin, supportsV2: supportsV2)
+                    tabs: Self.visibleTabs(.administration, pinned: pinned, availableTabs: availableTabs)
                 )
             }
             .listStyle(.insetGrouped)
@@ -85,19 +86,18 @@ struct SettingsView: View {
     private static func visibleTabs(
         _ section: AppTab.Section,
         pinned: Set<AppTab>,
-        isAdmin: Bool,
-        supportsV2: Bool
+        availableTabs: Set<AppTab>
     ) -> [AppTab] {
         AppTab.allCases.filter { tab in
             tab.section == section
                 && !pinned.contains(tab)
-                && (isAdmin || !tab.requiresAdmin)
-                && (supportsV2 || !tab.requiresV2)
+                && availableTabs.contains(tab)
         }
     }
 
     private func loadVolumeSize() async {
-        guard let client = manager.client, let cached = manager.cached,
+        guard manager.canAccess(.volumes),
+              let client = manager.client, let cached = manager.cached,
               volumeSizeBytes == nil, !loadingVolumeSize else { return }
         loadingVolumeSize = true
         defer { loadingVolumeSize = false }

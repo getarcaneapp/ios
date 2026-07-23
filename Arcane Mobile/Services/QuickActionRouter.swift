@@ -26,6 +26,11 @@ final class QuickActionRouter {
     /// Set by the AppDelegate. `MainTabView` consumes and clears.
     var pendingTabID: String? = nil
 
+    /// Consumed by Dashboard once it is visible. Activity toasts use this
+    /// route so the Activity Center opens correctly from any tab or sidebar
+    /// destination.
+    var pendingActivityCenter = false
+
     /// Payload from a widget/intent deep link (`arcane-mobile://open?...`).
     /// Tab switching rides `pendingTabID`; detail views consume the resource
     /// payload when navigation for it exists.
@@ -39,6 +44,11 @@ final class QuickActionRouter {
     var pendingDeepLink: DeepLink? = nil
 
     private init() {}
+
+    func openActivityCenter() {
+        pendingActivityCenter = true
+        pendingTabID = AppTab.dashboard.id
+    }
 
     /// Handles `arcane-mobile://open?tab=<AppTab.rawValue>&env=<id>&container=<id>`.
     /// Returns false for URLs this router doesn't own.

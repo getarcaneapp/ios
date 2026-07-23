@@ -5,8 +5,7 @@ struct EnvironmentDashboardCard: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environment: Arcane.Environment
     var cachedCard: DashboardGlobalEnvironmentCard?
-    /// Live per-environment state from the aggregated dashboard stream; takes
-    /// precedence over `cachedCard` (v1) and `dockerInfo` for the counts.
+    /// Live per-environment state from the aggregated dashboard stream.
     var streamState: DashboardStreamStore.EnvironmentState?
     /// Passed in by the parent instead of reading manager.activeEnvironmentID
     /// here — a body read would make every card track the manager and
@@ -96,19 +95,12 @@ struct EnvironmentDashboardCard: View {
 
                 Divider()
 
-                // Mini Metrics — stream snapshot wins, then the v1 overview
-                // card, then raw Docker info.
-                let hasCachedCounts = cachedCard?.snapshotState == "ready"
-                let running = streamSnapshot?.containers.counts.runningContainers
-                    ?? cachedCard?.containers?.runningContainers
-                    ?? Int(dockerInfo?.containersRunning ?? 0)
-                let stopped = streamSnapshot?.containers.counts.stoppedContainers
-                    ?? cachedCard?.containers?.stoppedContainers
-                    ?? Int(dockerInfo?.containersStopped ?? 0)
-                let images = streamSnapshot?.imageUsageCounts.totalImages
-                    ?? cachedCard?.imageUsageCounts?.totalImages
-                    ?? Int(dockerInfo?.images ?? 0)
-                let hasAnyData = streamSnapshot != nil || hasCachedCounts || dockerInfo != nil
+                // Docker info includes every container; dashboard snapshots
+                // intentionally omit Arcane-managed containers.
+                let running = Int(dockerInfo?.containersRunning ?? 0)
+                let stopped = Int(dockerInfo?.containersStopped ?? 0)
+                let images = Int(dockerInfo?.images ?? 0)
+                let hasAnyData = dockerInfo != nil
                 HStack(spacing: 12) {
                     let miniRadius = Radius.concentric(outer: Radius.card, inset: 10)
                     DashboardMiniMetric(title: "Running", value: hasAnyData ? "\(running)" : "--", color: .green, cornerRadius: miniRadius)
@@ -173,12 +165,14 @@ struct EnvironmentDashboardCard: View {
                     Label("Upgrade Arcane", systemImage: "arrow.up.circle")
                 }
             }
-            Button(role: .destructive) {
-                showPruneSheet = true
-            } label: {
-                Label("System Prune", systemImage: "trash")
+            if manager.permissions.has(Permission.System.prune, in: envID) {
+                Button(role: .destructive) {
+                    showPruneSheet = true
+                } label: {
+                    Label("System Prune", systemImage: "trash")
+                }
+                .tint(.red)
             }
-            .tint(.red)
         }
         .sheet(isPresented: $showPruneSheet) {
             SystemPruneView(environmentID: envID)
@@ -198,7 +192,7 @@ struct EnvironmentDashboardCard: View {
         .task { await loadDockerInfo() }
         .task { await checkUpgradeAvailability() }
         .onChange(of: refreshToken) { _, _ in
-            Task { await loadDockerInfo(refresh: true) }
+            Task { await loadDockerInfo() }
         }
     }
 
@@ -414,34 +408,18 @@ struct EnvironmentDashboardCard: View {
         return "\(value)"
     }
 
-    private func loadDockerInfo(refresh: Bool = false) async {
-        guard let client = manager.client, let cached = manager.cached else { return }
-        let path = client.rest.environmentPath(envID, "system/docker/info")
-        let fetcher: @Sendable () async throws -> DockerInfo = {
-            let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            return try JSONDecoder().decode(DockerInfo.self, from: rawData)
-        }
+    private func loadDockerInfo() async {
+        guard let client = manager.client else { return }
         do {
-            let info = try await cached.getCustom(
-                path: path, as: DockerInfo.self, policy: .dockerInfo,
-                envID: envID, refresh: refresh,
-                onFresh: { fresh in
-                    dockerInfo = fresh
-                    dockerError = nil
-                },
-                fetcher: fetcher
-            )
-            await MainActor.run { 
-                dockerInfo = info
-                dockerError = nil 
-            }
+            dockerInfo = try await client.system.dockerInfo(envID: envID)
+            dockerError = nil
         } catch let error as ArcaneError {
             if !isCancellation(error) {
-                await MainActor.run { dockerError = arcaneMessage(error) }
+                dockerError = arcaneMessage(error)
             }
         } catch {
             if !(error is CancellationError) {
-                await MainActor.run { dockerError = "Docker info unavailable" }
+                dockerError = "Docker info unavailable"
             }
         }
     }

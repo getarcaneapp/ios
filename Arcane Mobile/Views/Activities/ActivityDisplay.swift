@@ -84,7 +84,13 @@ extension Activity {
     }
 
     var statusTint: Color {
-        switch status {
+        status.activityTint
+    }
+}
+
+extension ActivityStatus {
+    var activityTint: Color {
+        switch self {
         case .running: return .blue
         case .queued: return .orange
         case .success: return .green
@@ -94,6 +100,9 @@ extension Activity {
         }
     }
 
+}
+
+extension Activity {
     var typeIcon: String {
         switch type {
         case let raw where raw.rawValue.hasPrefix("project_"):

@@ -95,8 +95,9 @@ struct ProjectsView: View {
         }
     }
 
-    private var isAdmin: Bool {
-        manager.currentUser?.isAdmin == true
+    private var canBrowseTemplates: Bool {
+        manager.permissions.has(Permission.Templates.list, in: nil)
+            && manager.permissions.has(Permission.Templates.read, in: nil)
     }
 
     private var mutationVersion: Int {
@@ -159,7 +160,7 @@ struct ProjectsView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        if isAdmin {
+        if canBrowseTemplates {
             ToolbarItem(placement: .navigationBarLeading) {
                 // Straight into the template browser; registry management is
                 // behind its Settings (gear) button.

@@ -6,6 +6,7 @@ struct ActivitiesView: View {
 
     @State private var store = ActivityCenterStore()
     @State private var showClearConfirm = false
+    @State private var expandedBatchIDs: Set<String> = []
 
     private var taskID: String {
         let transportID = manager.client.map { ObjectIdentifier($0.transport).hashValue } ?? 0
@@ -63,7 +64,7 @@ struct ActivitiesView: View {
                         }
                     }
 
-                    if store.filteredActivities.isEmpty {
+                    if store.runningItems.isEmpty && store.historyItems.isEmpty {
                         ContentUnavailableView(
                             "No Matching Activities",
                             systemImage: "line.3.horizontal.decrease.circle",
@@ -71,16 +72,16 @@ struct ActivitiesView: View {
                         )
                         .listRowBackground(Color.clear)
                     } else {
-                        Section {
-                            ForEach(store.filteredActivities) { activity in
-                                NavigationLink {
-                                    ActivityDetailView(activity: activity)
-                                } label: {
-                                    ActivityRow(activity: activity)
-                                }
-                            }
+                        if !store.runningItems.isEmpty {
+                            activitySection(title: "Running", items: store.runningItems)
+                        }
 
-                            if store.hasMore && store.searchText.isEmpty {
+                        if !store.historyItems.isEmpty {
+                            activitySection(title: "History", items: store.historyItems)
+                        }
+
+                        if store.hasMore && store.searchText.isEmpty {
+                            Section {
                                 Button {
                                     Task { await store.loadMore() }
                                 } label: {
@@ -97,8 +98,6 @@ struct ActivitiesView: View {
                                 }
                                 .disabled(store.isLoadingMore)
                             }
-                        } header: {
-                            EmptyView()
                         }
                     }
                 }
@@ -109,6 +108,9 @@ struct ActivitiesView: View {
             }
         }
         .navigationTitle("Activities")
+        .navigationDestination(for: Activity.self) { activity in
+            ActivityDetailView(activity: activity)
+        }
         .searchable(
             text: $store.searchText,
             placement: .navigationBarDrawer(displayMode: .always),
@@ -208,6 +210,128 @@ struct ActivitiesView: View {
         if !store.typeFilter.isEmpty { count += 1 }
         if !store.resourceFilter.isEmpty { count += 1 }
         return count
+    }
+
+    private func activitySection(title: String, items: [ActivityCenterItem]) -> some View {
+        Section(title) {
+            ForEach(items) { item in
+                switch item {
+                case .activity(let activity):
+                    NavigationLink(value: activity) {
+                        ActivityRow(activity: activity)
+                    }
+                case .batch(let batch):
+                    DisclosureGroup(isExpanded: expansionBinding(for: batch.id)) {
+                        ForEach(batch.activities) { activity in
+                            NavigationLink(value: activity) {
+                                ActivityBatchMemberRow(activity: activity)
+                            }
+                        }
+                    } label: {
+                        ActivityBatchRow(batch: batch)
+                    }
+                }
+            }
+        }
+    }
+
+    private func expansionBinding(for batchID: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedBatchIDs.contains(batchID) },
+            set: { expanded in
+                if expanded {
+                    expandedBatchIDs.insert(batchID)
+                } else {
+                    expandedBatchIDs.remove(batchID)
+                }
+            }
+        )
+    }
+}
+
+private struct ActivityBatchRow: View {
+    let batch: ActivityBatchSummary
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "square.stack.3d.up.fill")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(batch.status.activityTint)
+                .frame(width: 34, height: 34)
+                .background(batch.status.activityTint.opacity(0.14), in: .circle)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(batch.displayTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+
+                    Spacer(minLength: 0)
+
+                    ResourceStatusBadge(status: batch.status.rawValue)
+                }
+
+                Text("\(batch.completedCount) of \(batch.activities.count) completed")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if batch.failedCount > 0 {
+                    Text("\(batch.failedCount) failed")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                ProgressView(value: Double(batch.progress), total: 100)
+                    .tint(batch.status.activityTint)
+
+                HStack(spacing: 6) {
+                    Text(batch.startedAt, format: .relative(presentation: .named))
+                    if let environmentLabel = batch.environmentLabel {
+                        Text("-")
+                        Text(environmentLabel)
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(batch.displayTitle), \(batch.status.rawValue), \(batch.completedCount) of \(batch.activities.count) completed"
+        )
+        .accessibilityHint("Expands related activities")
+    }
+}
+
+private struct ActivityBatchMemberRow: View {
+    let activity: Activity
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ActivityIcon(activity: activity)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(activity.displayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                Text(activity.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if let source = activity.sourceEnvironmentName, !source.isEmpty {
+                    Text(source)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Spacer(minLength: 0)
+            ResourceStatusBadge(status: activity.status.rawValue)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
 

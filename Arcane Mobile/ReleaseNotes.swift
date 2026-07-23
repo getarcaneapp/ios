@@ -52,12 +52,33 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
-            version: "0.5.5",
+            version: "0.6.0",
+            new: [
+                .init("Global variable management with secret and environment scoping."),
+                .init("Configurable activity start toasts for user or system activity.")
+            ],
             changed: [
-                .init("Floating profile and App Settings buttons in sidebar navigation.")
+                .init("Floating profile and App Settings buttons in sidebar navigation."),
+                .init("Swarm management is marked as coming soon."),
+                .init("Activities is accessed from the dashboard instead of navigation menus."),
+                .init("Grouped Activity Center summaries for related operations."),
+                .init("Event severity summaries, server-side filters, and permission-aware deletion."),
+                .init("Template search, source filtering, metadata, and remote downloads."),
+                .init("Navigation visibility based on server-provided permissions."),
+                .init("Updates opens directly to environment update cards."),
+                .init("Activity progress toasts open Activity Center when tapped.")
             ],
             fixed: [
-                .init("Network topology renders as an interactive network-to-container diagram.")
+                .init("Network topology renders as an interactive network-to-container diagram."),
+                .init("Dashboard activity and prune buttons render separately."),
+                .init("System prune reports background activity progress correctly."),
+                .init("Bottom overlays sit at the safe-area edge in sidebar navigation."),
+                .init("Dashboard container totals include every container in every enabled environment."),
+                .init("Port mappings replace invalid host addresses with the wildcard address."),
+                .init("Activity toast selections stay aligned beside their setting."),
+                .init("Activity toasts use compact text with live progress."),
+                .init("Dashboard live charts update without interrupting scrolling."),
+                .init("Image update actions support consumers resolved by name.")
             ]
         ),
         ReleaseNote(

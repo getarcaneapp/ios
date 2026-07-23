@@ -46,7 +46,6 @@ struct AllEnvironmentsImageUpdatesView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 16) {
-                        overviewHeader
                         ForEach(buckets) { bucket in
                             environmentCard(for: bucket)
                         }
@@ -79,68 +78,6 @@ struct AllEnvironmentsImageUpdatesView: View {
             updatingKeys.removeAll()
             Task { await loadAll(refresh: true) }
         }
-    }
-
-    // MARK: - Overview header
-
-    /// One glanceable line: how many updates, across how many environments —
-    /// or a green all-clear once everything is current.
-    @ViewBuilder
-    private var overviewHeader: some View {
-        let updates = totalOutdatedCount
-        let stillLoading = buckets.contains(where: \.loading)
-        let tint: Color = updates > 0 ? .orange : .green
-        let icon = updates > 0 ? "arrow.up.circle.fill" : "checkmark.seal.fill"
-        let title: String = {
-            if updates > 0 { return updates == 1 ? "1 update available" : "\(updates) updates available" }
-            return stillLoading ? "Checking images…" : "You're up to date"
-        }()
-
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(0.14))
-                if stillLoading && updates == 0 {
-                    ProgressView()
-                } else {
-                    Image(systemName: icon)
-                        .font(.system(size: 26, weight: .semibold))
-                        .foregroundStyle(tint)
-                }
-            }
-            .frame(width: 56, height: 56)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.title3.bold())
-                    .contentTransition(.numericText())
-                Text(overviewSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
-        .motionAwareAnimation(Motion.state, value: totalOutdatedCount)
-    }
-
-    private var overviewSubtitle: String {
-        let checked = buckets.compactMap(\.summary?.totalImages).reduce(0, +)
-        let envs = buckets.count
-        let envPart = envs == 1
-            ? (buckets.first?.env.displayName ?? "1 environment")
-            : "\(envs) environments"
-        if checked > 0 {
-            return "\(checked) image\(checked == 1 ? "" : "s") · \(envPart)"
-        }
-        return envPart
-    }
-
-    private var totalOutdatedCount: Int {
-        buckets.reduce(0) { $0 + updateCount(in: $1) }
     }
 
     private func updateCount(in bucket: EnvUpdateBucket) -> Int {
@@ -639,7 +576,14 @@ struct AllEnvironmentsImageUpdatesView: View {
     }
 
     private func actionableConsumers(of item: OutdatedImage) -> [ImageUsedBy] {
-        item.consumers.filter { $0.id != nil }
+        item.consumers.filter {
+            let name = $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let id = $0.id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // Compose resources that were discovered outside Arcane may not
+            // have a database ID. The tap-time resolver already supports
+            // matching both projects and containers by name.
+            return !name.isEmpty || !id.isEmpty
+        }
     }
 
     private func key(_ bucket: EnvUpdateBucket, _ suffix: String) -> String {

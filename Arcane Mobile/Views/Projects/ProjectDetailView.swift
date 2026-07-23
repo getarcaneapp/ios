@@ -618,6 +618,11 @@ struct CreateProjectView: View {
 
     private var isPrefilled: Bool { prefilledCompose != nil }
 
+    private var canBrowseTemplates: Bool {
+        manager.permissions.has(Permission.Templates.list, in: nil)
+            && manager.permissions.has(Permission.Templates.read, in: nil)
+    }
+
     private var selectedTemplate: Template? {
         templates.first { $0.id == selectedTemplateID }
     }
@@ -647,7 +652,7 @@ struct CreateProjectView: View {
                             }
                         }
                     }
-                } else {
+                } else if canBrowseTemplates {
                     Section("Template") {
                         if isLoadingTemplates {
                             ProgressView("Loading templates...")
@@ -726,7 +731,7 @@ struct CreateProjectView: View {
                 .presentationDragIndicator(.visible)
             }
             .task {
-                if !isPrefilled {
+                if !isPrefilled, canBrowseTemplates {
                     await loadTemplates()
                 }
             }
@@ -734,20 +739,20 @@ struct CreateProjectView: View {
     }
 
     private func loadTemplates() async {
-        guard let client = manager.client else { return }
+        guard canBrowseTemplates, let client = manager.client else { return }
         isLoadingTemplates = true
         defer { isLoadingTemplates = false }
         do {
-            templates = try await client.rest.get("templates/all")
+            templates = try await client.templates.listAll()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
     }
 
     private func applyTemplate(id: String) async {
-        guard !id.isEmpty, let client = manager.client else { return }
+        guard canBrowseTemplates, !id.isEmpty, let client = manager.client else { return }
         do {
-            let content: TemplateContent = try await client.rest.get("templates/\(id)/content")
+            let content = try await client.templates.getContent(id: id)
             composeContent = content.content
             envContent = content.envContent
             if name.isEmpty {
