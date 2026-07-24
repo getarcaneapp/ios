@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 /// One point in a sparkline series.
 nonisolated struct SparklineSample: Equatable, Sendable {
@@ -22,11 +21,19 @@ struct Sparkline: View {
     var height: CGFloat = 36
 
     var body: some View {
-        Group {
+        Canvas(opaque: false, colorMode: .linear, rendersAsynchronously: true) { context, size in
             if samples.count < 2 {
-                placeholder
+                var placeholder = Path()
+                let y = size.height / 2
+                placeholder.move(to: CGPoint(x: 0, y: y))
+                placeholder.addLine(to: CGPoint(x: size.width, y: y))
+                context.stroke(
+                    placeholder,
+                    with: .color(.secondary.opacity(0.2)),
+                    style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+                )
             } else {
-                chart
+                drawSparkline(in: &context, size: size)
             }
         }
         .frame(height: height)
@@ -36,40 +43,49 @@ struct Sparkline: View {
         .accessibilityHidden(true)
     }
 
-    private var chart: some View {
-        Chart(samples, id: \.timestamp) { sample in
-            AreaMark(
-                x: .value("Time", sample.timestamp),
-                y: .value("Value", sample.value)
-            )
-            .interpolationMethod(.monotone)
-            .foregroundStyle(
-                LinearGradient(
-                    colors: [tint.opacity(0.18), tint.opacity(0.02)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+    private func drawSparkline(in context: inout GraphicsContext, size: CGSize) {
+        guard let first = samples.first, let last = samples.last,
+              size.width > 0, size.height > 0 else { return }
 
-            LineMark(
-                x: .value("Time", sample.timestamp),
-                y: .value("Value", sample.value)
-            )
-            .interpolationMethod(.monotone)
-            .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round))
-            .foregroundStyle(tint)
+        let startTime = first.timestamp.timeIntervalSinceReferenceDate
+        let timeSpan = max(last.timestamp.timeIntervalSinceReferenceDate - startTime, 1)
+        let valueSpan = max(range.upperBound - range.lowerBound, .leastNonzeroMagnitude)
+
+        var points: [CGPoint] = []
+        points.reserveCapacity(samples.count)
+        for sample in samples {
+            let elapsed = sample.timestamp.timeIntervalSinceReferenceDate - startTime
+            let x = size.width * CGFloat(elapsed / timeSpan)
+            let normalized = min(max((sample.value - range.lowerBound) / valueSpan, 0), 1)
+            let y = size.height * (1 - CGFloat(normalized))
+            points.append(CGPoint(x: x, y: y))
         }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartLegend(.hidden)
-        .chartYScale(domain: range)
-    }
 
-    /// Flat hairline shown until two samples exist, at the same fixed height.
-    private var placeholder: some View {
-        Capsule()
-            .fill(.secondary.opacity(0.2))
-            .frame(height: 1.5)
-            .frame(maxHeight: .infinity, alignment: .center)
+        guard let firstPoint = points.first, let lastPoint = points.last else { return }
+
+        var line = Path()
+        line.move(to: firstPoint)
+        for point in points.dropFirst() {
+            line.addLine(to: point)
+        }
+
+        var area = line
+        area.addLine(to: CGPoint(x: lastPoint.x, y: size.height))
+        area.addLine(to: CGPoint(x: firstPoint.x, y: size.height))
+        area.closeSubpath()
+
+        context.fill(
+            area,
+            with: .linearGradient(
+                Gradient(colors: [tint.opacity(0.18), tint.opacity(0.02)]),
+                startPoint: .zero,
+                endPoint: CGPoint(x: 0, y: size.height)
+            )
+        )
+        context.stroke(
+            line,
+            with: .color(tint),
+            style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
+        )
     }
 }

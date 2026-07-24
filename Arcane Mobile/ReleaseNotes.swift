@@ -59,14 +59,14 @@ enum ReleaseNotes {
             ],
             changed: [
                 .init("Floating profile and App Settings buttons in sidebar navigation."),
-                .init("Swarm management is marked as coming soon."),
                 .init("Activities is accessed from the dashboard instead of navigation menus."),
                 .init("Grouped Activity Center summaries for related operations."),
                 .init("Event severity summaries, server-side filters, and permission-aware deletion."),
                 .init("Template search, source filtering, metadata, and remote downloads."),
                 .init("Navigation visibility based on server-provided permissions."),
                 .init("Updates opens directly to environment update cards."),
-                .init("Activity progress toasts open Activity Center when tapped.")
+                .init("Activity progress toasts open the app-wide Activity Center sheet when tapped."),
+                .init("Widgets use solid black system-style backgrounds.")
             ],
             fixed: [
                 .init("Network topology renders as an interactive network-to-container diagram."),
@@ -77,7 +77,10 @@ enum ReleaseNotes {
                 .init("Port mappings replace invalid host addresses with the wildcard address."),
                 .init("Activity toast selections stay aligned beside their setting."),
                 .init("Activity toasts use compact text with live progress."),
-                .init("Dashboard live charts update without interrupting scrolling."),
+                .init("Dashboard live charts use lightweight rendering for smooth scrolling."),
+                .init("Dashboard environment cards keep their scroll position as live data arrives."),
+                .init("Widgets use live Docker totals and online state across all enabled environments."),
+                .init("Toasts align with the bottom safe area inside sheets."),
                 .init("Image update actions support consumers resolved by name.")
             ]
         ),

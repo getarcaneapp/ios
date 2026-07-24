@@ -113,7 +113,7 @@ struct EnvironmentsWidgetView: View {
                 WidgetUnconfiguredView()
             }
         }
-        .widgetContainerBackground(accent: accent)
+        .widgetContainerBackground()
     }
 
     private func deepLink(for env: WidgetSnapshot.EnvSummary) -> URL {

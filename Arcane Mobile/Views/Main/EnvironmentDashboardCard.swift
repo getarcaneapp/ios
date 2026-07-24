@@ -7,19 +7,20 @@ struct EnvironmentDashboardCard: View {
     var cachedCard: DashboardGlobalEnvironmentCard?
     /// Live per-environment state from the aggregated dashboard stream.
     var streamState: DashboardStreamStore.EnvironmentState?
+    /// Authoritative Docker info loaded once by DashboardView's bounded fleet
+    /// fetch and shared by cards, totals, and widgets.
+    var dockerInfo: DockerInfo?
     /// Passed in by the parent instead of reading manager.activeEnvironmentID
     /// here — a body read would make every card track the manager and
     /// re-render on any manager change, not just environment switches.
     var isActive: Bool = false
     /// Live stats history owned by DashboardView's SystemStatsHistoryStore —
     /// value-passed like `streamState` so only touched cards re-evaluate, and
-    /// so history survives this card scrolling out of the LazyVStack.
+    /// so history is independent of card view updates.
     var series: SystemStatsHistoryStore.Series?
-    var refreshToken: Int = 0
     var onSelect: () -> Void = {}
+    var onRefresh: () async -> Void = {}
 
-    @State private var dockerInfo: DockerInfo?
-    @State private var dockerError: String?
     @State private var selectionPulse = false
     @State private var showPruneSheet = false
     @State private var showUpgradeSheet = false
@@ -52,11 +53,14 @@ struct EnvironmentDashboardCard: View {
                             arcaneVersionBadge(versionInfo)
                         }
                     }
-                    if let version = dockerInfo?.serverVersion {
-                        Text("Docker " + version)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(cardStatus.text)
+                        .font(.caption2)
+                        .foregroundStyle(
+                            cardStatus.isError
+                                ? AnyShapeStyle(Color.orange)
+                                : AnyShapeStyle(.secondary)
+                        )
+                        .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
@@ -84,15 +88,6 @@ struct EnvironmentDashboardCard: View {
 
                 diskChip
 
-                if let statsError {
-                    Label(statsError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
                 Divider()
 
                 // Docker info includes every container; dashboard snapshots
@@ -109,18 +104,10 @@ struct EnvironmentDashboardCard: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                if let items = streamSnapshot?.actionItems.items, !items.isEmpty {
-                    actionItemsRow(items)
-                }
-
-                if let banner = errorBanner {
-                    Text(banner)
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                // Keep this final row in the hierarchy even when empty. Live
+                // stream metadata must not change card height while the user
+                // is scrolling.
+                actionItemsRow(streamSnapshot?.actionItems.items ?? [])
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -130,9 +117,7 @@ struct EnvironmentDashboardCard: View {
                     .stroke(isActive ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 2)
             )
         }
-        // Opacity-only press: this card is a `.matchedTransitionSource` hero-zoom
-        // source, so it must not change geometry on press (a scale would disturb
-        // the zoom snapshot). Feedback without breaking the push transition.
+        // Opacity-only press keeps scrolling geometry stable.
         .buttonStyle(.pressable(scales: false))
         // Round the context-menu preview to match the card; the default
         // square-cornered preview reads noticeably boxy against it.
@@ -189,10 +174,12 @@ struct EnvironmentDashboardCard: View {
         }
         .sensoryFeedback(.selection, trigger: selectionPulse)
         .sensoryFeedback(.success, trigger: syncSuccessPulse)
-        .task { await loadDockerInfo() }
-        .task { await checkUpgradeAvailability() }
-        .onChange(of: refreshToken) { _, _ in
-            Task { await loadDockerInfo() }
+        .task(id: streamSnapshot?.versionInfo?.updateAvailable == true) {
+            guard streamSnapshot?.versionInfo?.updateAvailable == true else {
+                canUpgrade = false
+                return
+            }
+            await checkUpgradeAvailability()
         }
     }
 
@@ -200,6 +187,19 @@ struct EnvironmentDashboardCard: View {
     private var latestStats: SystemStatsFrame? { series?.latest }
 
     private var statsError: String? { series?.error }
+
+    private var cardStatus: (text: String, isError: Bool) {
+        if let errorBanner {
+            return (errorBanner, true)
+        }
+        if let statsError {
+            return (statsError, true)
+        }
+        if let version = dockerInfo?.serverVersion, !version.isEmpty {
+            return ("Docker \(version)", false)
+        }
+        return ("Loading Docker information…", false)
+    }
 
     /// Current value + rolling-history chip in the same raised-chip
     /// vocabulary as `DashboardMiniMetric`. Restrained — solid line + soft
@@ -244,15 +244,11 @@ struct EnvironmentDashboardCard: View {
                     .contentTransition(.numericText())
                     .motionAwareAnimation(Motion.state, value: percentShort(diskPercent))
             }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.secondary.opacity(0.15))
-                    Capsule()
-                        .fill(.teal)
-                        .frame(width: max(6, geo.size.width * percent / 100))
-                        .animation(Motion.gauge, value: percent)
-                }
-            }
+            ProgressView(value: percent, total: 100)
+                .progressViewStyle(.linear)
+                .tint(.teal)
+                .scaleEffect(x: 1, y: 2, anchor: .center)
+                .animation(Motion.gauge, value: percent)
             .frame(height: 8)
         }
         .padding(8)
@@ -292,13 +288,14 @@ struct EnvironmentDashboardCard: View {
         case "skipped":
             return dockerInfo == nil ? "Environment offline" : nil
         default:
-            return dockerError
+            return nil
         }
     }
 
     // MARK: - Action items & version badge
 
     private func actionItemsRow(_ items: [ActionItem]) -> some View {
+        let isVisible = !items.isEmpty
         let hasCritical = items.contains { $0.severity == .critical }
         let summary = items
             .prefix(2)
@@ -315,8 +312,10 @@ struct EnvironmentDashboardCard: View {
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
+        .opacity(isVisible ? 1 : 0)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Needs attention: \(summary)")
+        .accessibilityHidden(!isVisible)
     }
 
     private static func actionItemLabel(_ kind: ActionItemKind) -> String {
@@ -408,29 +407,6 @@ struct EnvironmentDashboardCard: View {
         return "\(value)"
     }
 
-    private func loadDockerInfo() async {
-        guard let client = manager.client else { return }
-        do {
-            dockerInfo = try await client.system.dockerInfo(envID: envID)
-            dockerError = nil
-        } catch let error as ArcaneError {
-            if !isCancellation(error) {
-                dockerError = arcaneMessage(error)
-            }
-        } catch {
-            if !(error is CancellationError) {
-                dockerError = "Docker info unavailable"
-            }
-        }
-    }
-
-    private func isCancellation(_ error: ArcaneError) -> Bool {
-        if case .transport(let msg) = error {
-            return msg.lowercased().contains("cancel")
-        }
-        return false
-    }
-
     private func checkUpgradeAvailability() async {
         guard let client = manager.client,
               manager.currentUser?.isAdmin == true else {
@@ -452,7 +428,7 @@ struct EnvironmentDashboardCard: View {
         do {
             try await client.environments.sync(id: envID)
             await ResponseCache.shared.invalidateEnvironment(envID.rawValue)
-            await loadDockerInfo()
+            await onRefresh()
             syncSuccessPulse.toggle()
         } catch let error as ArcaneError {
             showToast(.error(arcaneMessage(error)))

@@ -44,7 +44,7 @@ struct UpdatesWidgetView: View {
                 WidgetUnconfiguredView()
             }
         }
-        .widgetContainerBackground(accent: accent)
+        .widgetContainerBackground()
         .widgetURL(URL(string: "arcane-mobile://open?tab=updates"))
     }
 

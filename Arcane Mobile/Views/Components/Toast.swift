@@ -259,8 +259,8 @@ final class ToastPresenter {
 extension View {
     /// Mounts the single, app-wide toast overlay. Apply once near the root,
     /// after `.deleteConfirmationHost()` so a toast rides above the delete scrim.
-    func toastHost() -> some View {
-        overlay { ToastHost() }
+    func toastHost(reservesTabBarSpace: Bool = true) -> some View {
+        overlay { ToastHost(reservesTabBarSpace: reservesTabBarSpace) }
     }
 }
 
@@ -268,12 +268,13 @@ private struct ToastHost: View {
     @State private var presenter = ToastPresenter.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
+    let reservesTabBarSpace: Bool
 
     /// Sidebar navigation has no bottom bar, so its toast sits on the bottom safe
-    /// area. Dock navigation adds its own clearance because this host lives above
-    /// the `UITabBarController` and cannot inherit the bar's inset.
+    /// area. Root dock navigation adds its own clearance because that host lives
+    /// above the `UITabBarController`; sheet-local hosts do not.
     private var barClearance: CGFloat {
-        guard !sidebarNavigationEnabled else { return 0 }
+        guard reservesTabBarSpace, !sidebarNavigationEnabled else { return 0 }
         if #available(iOS 26, *) { return 60 }
         return 56
     }

@@ -5,6 +5,8 @@ struct ContentView: View {
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @AppStorage("arcane.lastSeenReleaseVersion") private var lastSeenVersion: String = ""
     @State private var showWhatsNew = false
+    @State private var showActivityCenter = false
+    @State private var quickActionRouter = QuickActionRouter.shared
 
     var body: some View {
         Group {
@@ -38,6 +40,18 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await manager.retryConnectionBootstrapIfNeeded() }
+        }
+        .onChange(of: quickActionRouter.pendingActivityCenter, initial: true) { _, pending in
+            guard pending, manager.supportsActivities else { return }
+            quickActionRouter.pendingActivityCenter = false
+            showActivityCenter = true
+        }
+        .sheet(isPresented: $showActivityCenter) {
+            NavigationStack {
+                ActivitiesView()
+            }
+            .toastHost(reservesTabBarSpace: false)
+            .presentationDragIndicator(.visible)
         }
         // Single app-wide host for the animated delete/destructive confirmation
         // card. Mounted above the tab bar and navigation stacks so the card and

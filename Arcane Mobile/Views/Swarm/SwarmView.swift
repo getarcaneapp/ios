@@ -122,7 +122,7 @@ struct SwarmView: View {
                 onUnsupported: { store.markEasyJoinUnsupported() }
             )
             .environment(manager)
-            .toastHost()
+            .toastHost(reservesTabBarSpace: false)
         }
         .sheet(item: $selectedNode) { node in
             SwarmNodeAgentView(
@@ -134,7 +134,7 @@ struct SwarmView: View {
                 await store.loadNodes(client: manager.client, environmentID: environmentID)
             }
             .environment(manager)
-            .toastHost()
+            .toastHost(reservesTabBarSpace: false)
         }
     }
 

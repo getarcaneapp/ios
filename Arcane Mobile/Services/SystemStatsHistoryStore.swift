@@ -4,7 +4,7 @@ import Arcane
 
 /// Owns the per-environment `system/stats` streams for the dashboard and
 /// retains a rolling sample window per environment, so sparklines survive
-/// their card scrolling out of the LazyVStack (card `@State` dies on reuse).
+/// dashboard view updates without restarting their stream history.
 /// Mirrors `DashboardStreamStore`'s lifecycle: `configure(client:)`,
 /// `reconcile(environments:)`, `start()`/`stop()` driven by DashboardView's
 /// visibility/scenePhase handlers, and a generation counter fencing stale

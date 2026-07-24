@@ -57,8 +57,19 @@ struct EnvironmentDetailRoute: Hashable {
 /// tiles because dashboard snapshots exclude Arcane-managed containers.
 private struct DashboardLiveCounts: Sendable, Equatable {
     var running: Int
+    var stopped: Int
     var total: Int
     var images: Int
+}
+
+private enum DashboardEnvironmentLiveState: Sendable, Equatable {
+    case online(DockerInfo)
+    case offline
+
+    var dockerInfo: DockerInfo? {
+        guard case .online(let info) = self else { return nil }
+        return info
+    }
 }
 
 struct DashboardView: View {
@@ -72,14 +83,13 @@ struct DashboardView: View {
     var onOpenSidebar: () -> Void = {}
     var onNavigationRootChange: (Bool) -> Void = { _ in }
 
-    @Namespace private var heroTransition
-
     @State private var allEnvironments: [Arcane.Environment] = []
     @State private var environments: [Arcane.Environment] = []
     @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
     @State private var supplementalImageUpdatesTotal: Int?
     @State private var liveCounts: DashboardLiveCounts?
+    @State private var environmentLiveStates: [String: DashboardEnvironmentLiveState] = [:]
     @State private var failedActivities: [Activity] = []
     @State private var rawEnvironmentCount: Int = 0
     @State private var detailRoute: EnvironmentDetailRoute?
@@ -107,7 +117,6 @@ struct DashboardView: View {
     @State private var showPruneSheet = false
     @State private var showVolumes = false
     @State private var showImageUpdates = false
-    @State private var showActivities = false
     @State private var showUpdateAll = false
 
     private static let maxEnvironments = 50
@@ -168,7 +177,6 @@ struct DashboardView: View {
 
                         environmentsSection
                             .padding(.top, 8)
-                            .motionAwareAnimation(Motion.reflow, value: needsAttentionItems.map(\.id))
                     }
                 }
                 .padding(.horizontal)
@@ -204,7 +212,7 @@ struct DashboardView: View {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if manager.supportsActivities {
-                        Button { showActivities = true } label: {
+                        Button { quickActionRouter.openActivityCenter() } label: {
                             Image(systemName: "clock.arrow.circlepath")
                                 .overlay(alignment: .topTrailing) {
                                     if failedActivityBadgeCount > 0 {
@@ -264,15 +272,7 @@ struct DashboardView: View {
                 }
                 // Pre-flight error toasts must be visible while the sheet is
                 // up — the root toast host is covered by it.
-                .toastHost()
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showActivities, onDismiss: {
-                Task { failedActivities = await loadFailedWork() }
-            }) {
-                NavigationStack {
-                    ActivitiesView()
-                }
+                .toastHost(reservesTabBarSpace: false)
                 .presentationDragIndicator(.visible)
             }
             .navigationDestination(item: $detailRoute) { route in
@@ -320,7 +320,6 @@ struct DashboardView: View {
             }
             .onAppear {
                 isDashboardVisible = true
-                presentPendingActivityCenter()
             }
             .onDisappear {
                 isDashboardVisible = false
@@ -356,11 +355,6 @@ struct DashboardView: View {
                     streamStore.start()
                 }
             }
-            .onChange(of: quickActionRouter.pendingActivityCenter) { _, pending in
-                if pending, isDashboardVisible {
-                    presentPendingActivityCenter()
-                }
-            }
         }
         .onChange(of: isNavigationRoot, initial: true) { _, isRoot in
             onNavigationRootChange(isRoot)
@@ -369,19 +363,13 @@ struct DashboardView: View {
 
     // MARK: - Subviews
 
-    private func presentPendingActivityCenter() {
-        guard quickActionRouter.pendingActivityCenter else { return }
-        quickActionRouter.pendingActivityCenter = false
-        showActivities = true
-    }
-
     private var hasPinnedDashboardResources: Bool {
         !pinnedStore.pinnedIDs(kind: .container, envID: envID).isEmpty ||
             !pinnedStore.pinnedIDs(kind: .project, envID: envID).isEmpty
     }
 
     private var environmentsSection: some View {
-        LazyVStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Text("Environments")
                     .font(.headline)
@@ -410,14 +398,16 @@ struct DashboardView: View {
                     environment: env,
                     cachedCard: cardData,
                     streamState: streamStore.state(for: env.id),
+                    dockerInfo: environmentLiveStates[env.id]?.dockerInfo,
                     isActive: env.id == manager.activeEnvironmentID.rawValue,
                     series: statsHistory.series(for: env.id),
-                    refreshToken: cardRefreshToken,
                     onSelect: {
                         detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
+                    },
+                    onRefresh: {
+                        await refreshEnvironmentDockerInfo(environmentID: env.id)
                     }
                 )
-                .matchedTransitionSource(id: env.id, in: heroTransition)
                 .padding(.bottom, 4)
             }
 
@@ -569,7 +559,7 @@ struct DashboardView: View {
                 icon: "exclamationmark.triangle.fill",
                 title: "Failed activities",
                 count: failedActivities.count,
-                action: { showActivities = true }
+                action: { quickActionRouter.openActivityCenter() }
             ))
         }
         return items
@@ -731,6 +721,7 @@ struct DashboardView: View {
         volumesTotal = nil
         supplementalImageUpdatesTotal = nil
         liveCounts = nil
+        environmentLiveStates = [:]
         if !hasLoadedOnce { isLoading = true }
         defer {
             isLoading = false
@@ -781,13 +772,14 @@ struct DashboardView: View {
         if refresh, streamStore.isStreaming {
             await streamStore.refresh()
         }
-        let counts = await loadLiveCounts(envs: enabledEnvironments)
+        let liveStates = await loadLiveCounts(envs: enabledEnvironments)
         let volumes = await volumesResult
         let updates = await updatesResult
         if !Task.isCancelled {
             volumesTotal = volumes
             supplementalImageUpdatesTotal = updates
-            liveCounts = counts
+            environmentLiveStates = liveStates
+            liveCounts = aggregateLiveCounts(liveStates, expectedCount: enabledEnvironments.count)
         }
 
         let activities = await loadFailedWork()
@@ -800,28 +792,45 @@ struct DashboardView: View {
     /// Fold the dashboard's current knowledge into the App-Group widget
     /// snapshot. Cheap to call; the publisher debounces the actual write.
     private func publishWidgetSnapshot() {
-        guard manager.client != nil else { return }
-        let summaries: [WidgetSnapshot.EnvSummary] = environments.map { env in
+        guard manager.client != nil, hasLoadedEnvironments else { return }
+        let enabledEnvironments = allEnvironments.filter(\.enabled)
+        guard environmentLiveStates.count == enabledEnvironments.count else { return }
+
+        let previousByID = Dictionary(
+            uniqueKeysWithValues: (WidgetSnapshotStore.load()?.environments ?? []).map { ($0.id, $0) }
+        )
+        let summaries: [WidgetSnapshot.EnvSummary] = enabledEnvironments.map { env in
             let state = streamStore.state(for: env.id)
             let snapshot = (state?.hasLoaded == true) ? state?.snapshot : nil
             let updates = snapshot?.actionItems.items
                 .first(where: {
                     if case .imageUpdates = $0.kind { return true }
                     return false
-                })?.count ?? 0
+                })?.count ?? previousByID[env.id]?.updatesAvailable ?? 0
             let vulnerabilities = snapshot?.actionItems.items
                 .first(where: {
                     if case .actionableVulnerabilities = $0.kind { return true }
                     return false
-                })?.count ?? 0
+                })?.count ?? previousByID[env.id]?.actionableVulnerabilities
+
+            let info: DockerInfo?
+            let online: Bool
+            switch environmentLiveStates[env.id] {
+            case .online(let dockerInfo):
+                info = dockerInfo
+                online = true
+            case .offline, .none:
+                info = nil
+                online = false
+            }
             return WidgetSnapshot.EnvSummary(
                 id: env.id,
                 name: env.name ?? env.id,
-                online: state.map { $0.hasLoaded && !$0.streamError } ?? false,
-                running: snapshot?.containers.counts.runningContainers ?? 0,
-                stopped: snapshot?.containers.counts.stoppedContainers ?? 0,
-                total: snapshot?.containers.counts.totalContainers ?? 0,
-                images: snapshot?.imageUsageCounts.totalImages ?? 0,
+                online: online,
+                running: Int(info?.containersRunning ?? 0),
+                stopped: Int(info?.containersStopped ?? 0),
+                total: Int(info?.containers ?? 0),
+                images: Int(info?.images ?? 0),
                 updatesAvailable: updates,
                 actionableVulnerabilities: vulnerabilities
             )
@@ -968,53 +977,80 @@ struct DashboardView: View {
 
     private func refreshLiveCounts() async {
         let enabledEnvironments = allEnvironments.filter(\.enabled)
-        liveCounts = await loadLiveCounts(envs: enabledEnvironments)
+        let liveStates = await loadLiveCounts(envs: enabledEnvironments)
+        environmentLiveStates = liveStates
+        liveCounts = aggregateLiveCounts(liveStates, expectedCount: enabledEnvironments.count)
         publishWidgetSnapshot()
     }
 
-    /// Aggregates running/total container and image counts from a fresh Docker
-    /// info response for every enabled environment. Returns nil unless every
-    /// environment responds, because a partial sum is not a fleet total.
-    private func loadLiveCounts(envs: [Arcane.Environment]) async -> DashboardLiveCounts? {
-        guard let client = manager.client, !envs.isEmpty else { return nil }
+    /// Loads authoritative Docker counts for every enabled environment. The
+    /// per-environment results feed widgets; dashboard totals are only formed
+    /// when every environment is online.
+    private func loadLiveCounts(
+        envs: [Arcane.Environment]
+    ) async -> [String: DashboardEnvironmentLiveState] {
+        guard let client = manager.client, !envs.isEmpty else { return [:] }
 
-        let perEnv: [DashboardLiveCounts] = await withTaskGroup(of: DashboardLiveCounts?.self) { group in
+        return await withTaskGroup(
+            of: (String, DockerInfo?).self,
+            returning: [String: DashboardEnvironmentLiveState].self
+        ) { group in
             var iterator = envs.makeIterator()
             let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
             for _ in 0..<initialBatch {
                 guard let env = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
-                group.addTask { await Self.dockerCounts(client: client, envID: envID) }
-            }
-            var acc: [DashboardLiveCounts] = []
-            for await result in group {
-                if let result { acc.append(result) }
-                if let env = iterator.next() {
-                    let envID = EnvironmentID(rawValue: env.id)
-                    group.addTask { await Self.dockerCounts(client: client, envID: envID) }
+                group.addTask {
+                    (env.id, await Self.fetchDockerInfo(client: client, envID: envID))
                 }
             }
-            return acc
-        }
-
-        guard perEnv.count == envs.count else { return nil }
-        return perEnv.reduce(into: DashboardLiveCounts(running: 0, total: 0, images: 0)) {
-            $0.running += $1.running
-            $0.total += $1.total
-            $0.images += $1.images
+            var states: [String: DashboardEnvironmentLiveState] = [:]
+            for await (id, info) in group {
+                states[id] = info.map(DashboardEnvironmentLiveState.online) ?? .offline
+                if let env = iterator.next() {
+                    let envID = EnvironmentID(rawValue: env.id)
+                    group.addTask {
+                        (env.id, await Self.fetchDockerInfo(client: client, envID: envID))
+                    }
+                }
+            }
+            return states
         }
     }
 
-    private static func dockerCounts(
+    private func aggregateLiveCounts(
+        _ states: [String: DashboardEnvironmentLiveState],
+        expectedCount: Int
+    ) -> DashboardLiveCounts? {
+        guard expectedCount > 0, states.count == expectedCount else { return nil }
+        var aggregate = DashboardLiveCounts(running: 0, stopped: 0, total: 0, images: 0)
+        for state in states.values {
+            guard case .online(let info) = state else { return nil }
+            aggregate.running += Int(info.containersRunning)
+            aggregate.stopped += Int(info.containersStopped)
+            aggregate.total += Int(info.containers)
+            aggregate.images += Int(info.images)
+        }
+        return aggregate
+    }
+
+    private func refreshEnvironmentDockerInfo(environmentID: String) async {
+        guard let client = manager.client else { return }
+        let info = await Self.fetchDockerInfo(
+            client: client,
+            envID: EnvironmentID(rawValue: environmentID)
+        )
+        environmentLiveStates[environmentID] = info.map(DashboardEnvironmentLiveState.online) ?? .offline
+        let enabledCount = allEnvironments.count(where: \.enabled)
+        liveCounts = aggregateLiveCounts(environmentLiveStates, expectedCount: enabledCount)
+        publishWidgetSnapshot()
+    }
+
+    private static func fetchDockerInfo(
         client: ArcaneClient,
         envID: EnvironmentID
-    ) async -> DashboardLiveCounts? {
-        guard let info = try? await client.system.dockerInfo(envID: envID) else { return nil }
-        return DashboardLiveCounts(
-            running: Int(info.containersRunning),
-            total: Int(info.containers),
-            images: Int(info.images)
-        )
+    ) async -> DockerInfo? {
+        try? await client.system.dockerInfo(envID: envID)
     }
 
     /// Nil means the fetch failed (or no client yet) — distinct from a
