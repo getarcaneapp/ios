@@ -71,24 +71,17 @@ enum ReleaseNotes {
             ],
             fixed: [
                 .init("Network topology renders as an interactive network-to-container diagram."),
-                .init("Dashboard activity and prune buttons render separately."),
+                .init("Multiple dashboard performance and reliability improvements."),
                 .init("System prune reports background activity progress correctly."),
                 .init("Bottom overlays sit at the safe-area edge in sidebar navigation."),
-                .init("Dashboard container totals include every container in every enabled environment."),
                 .init("Port mappings replace invalid host addresses with the wildcard address."),
                 .init("Activity toast selections stay aligned beside their setting."),
                 .init("Activity toasts use compact text with live progress."),
-                .init("Dashboard live charts use lightweight rendering for smooth scrolling."),
-                .init("Dashboard environment cards keep their scroll position as live data arrives."),
                 .init("Widgets use live Docker totals and online state across all enabled environments."),
                 .init("Toasts align with the bottom safe area inside sheets."),
                 .init("Image update actions support consumers resolved by name."),
-                .init("Dashboard volume totals use a resilient count lookup."),
-                .init("Dashboard unavailable totals identify affected environments."),
                 .init("Widget refreshes keep environment work within the extension budget."),
-                .init("Delete confirmations avoid unnecessary app-wide overlay work."),
-                .init("Dashboard environment cards defer off-screen rendering."),
-                .init("Dashboard live-count refreshes cancel superseded work.")
+                .init("Delete confirmations avoid unnecessary app-wide overlay work.")
             ]
         ),
         ReleaseNote(
