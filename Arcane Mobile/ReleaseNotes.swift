@@ -66,7 +66,8 @@ enum ReleaseNotes {
                 .init("Navigation visibility based on server-provided permissions."),
                 .init("Updates opens directly to environment update cards."),
                 .init("Activity progress toasts open the app-wide Activity Center sheet when tapped."),
-                .init("Widgets use solid black system-style backgrounds.")
+                .init("Widgets use solid black system-style backgrounds."),
+                .init("Dashboard overview identifies counts across all enabled environments.")
             ],
             fixed: [
                 .init("Network topology renders as an interactive network-to-container diagram."),
@@ -81,7 +82,10 @@ enum ReleaseNotes {
                 .init("Dashboard environment cards keep their scroll position as live data arrives."),
                 .init("Widgets use live Docker totals and online state across all enabled environments."),
                 .init("Toasts align with the bottom safe area inside sheets."),
-                .init("Image update actions support consumers resolved by name.")
+                .init("Image update actions support consumers resolved by name."),
+                .init("Dashboard volume totals use a resilient count lookup."),
+                .init("Dashboard unavailable totals identify affected environments."),
+                .init("Widget refreshes keep environment work within the extension budget.")
             ]
         ),
         ReleaseNote(

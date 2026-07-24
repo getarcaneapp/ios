@@ -10,21 +10,28 @@ struct RefreshDashboardIntent: AppIntent {
     static let title: LocalizedStringResource = "Refresh Arcane Status"
     static let description = IntentDescription("Fetches fresh container counts from your Arcane server.")
 
-    private static let pageSize = 50
+    private static let maxEnvironments = 10
     private static let maxConcurrentFetches = 4
 
     func perform() async throws -> some IntentResult {
         let client = try IntentClientFactory.makeClient()
         var environments: [Arcane.Environment] = []
+        var inspectedEnvironmentCount = 0
         for try await environment in ArcanePaginator<Arcane.Environment>(
-            limit: Self.pageSize,
+            limit: Self.maxEnvironments,
             fetch: { start, limit in
                 try await client.environments.list(
                     query: SearchPaginationSort(start: start, limit: limit)
                 )
             }
-        ) where environment.enabled {
-            environments.append(environment)
+        ) {
+            inspectedEnvironmentCount += 1
+            if environment.enabled {
+                environments.append(environment)
+            }
+            if inspectedEnvironmentCount == Self.maxEnvironments {
+                break
+            }
         }
 
         let previous = WidgetSnapshotStore.load()

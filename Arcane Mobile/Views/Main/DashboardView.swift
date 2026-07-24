@@ -62,6 +62,22 @@ private struct DashboardLiveCounts: Sendable, Equatable {
     var images: Int
 }
 
+private struct DashboardFleetCountResult: Sendable {
+    let total: Int?
+    let unavailableEnvironmentIDs: [String]
+}
+
+private struct DashboardCountIssue: Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+}
+
+private struct DashboardCountAvailability: Identifiable {
+    let id = UUID()
+    let issues: [DashboardCountIssue]
+}
+
 private enum DashboardEnvironmentLiveState: Sendable, Equatable {
     case online(DockerInfo)
     case offline
@@ -90,6 +106,10 @@ struct DashboardView: View {
     @State private var supplementalImageUpdatesTotal: Int?
     @State private var liveCounts: DashboardLiveCounts?
     @State private var environmentLiveStates: [String: DashboardEnvironmentLiveState] = [:]
+    @State private var volumeCountUnavailableEnvironmentIDs: [String] = []
+    @State private var updateCountUnavailableEnvironmentIDs: [String] = []
+    @State private var hasLoadedFleetCounts = false
+    @State private var countAvailabilityPresentation: DashboardCountAvailability?
     @State private var failedActivities: [Activity] = []
     @State private var rawEnvironmentCount: Int = 0
     @State private var detailRoute: EnvironmentDetailRoute?
@@ -155,7 +175,10 @@ struct DashboardView: View {
                         }
                         .padding(.top, 48)
                     } else {
-                        overviewGrid
+                        VStack(alignment: .leading, spacing: 8) {
+                            overviewGrid
+                            fleetCountAvailabilityNote
+                        }
                             .cardEntrance()
 
                         let attention = needsAttentionItems
@@ -666,7 +689,7 @@ struct DashboardView: View {
         // Docker info is the only count source that includes every container.
         // A failed environment request invalidates the fleet total instead of
         // falling back to the dashboard snapshot's filtered count.
-        let running = liveCounts?.running ?? 0
+        let running: Int? = liveCounts?.running
         let total = liveCounts?.total
         let images = liveCounts?.images
 
@@ -681,7 +704,9 @@ struct DashboardView: View {
 
                 DashboardGlassTile(
                     title: "Containers",
-                    value: total.map { "\(running) / \($0)" } ?? "—",
+                    value: running.flatMap { running in
+                        total.map { "\(running) / \($0)" }
+                    } ?? "—",
                     icon: "cube.box.fill",
                     tint: .orange
                 ) { selectedTab = AppTab.containers.id }
@@ -704,6 +729,78 @@ struct DashboardView: View {
         }
     }
 
+    @ViewBuilder
+    private var fleetCountAvailabilityNote: some View {
+        let issues = countAvailabilityIssues
+        if issues.isEmpty {
+            Label("Counts include all enabled environments.", systemImage: "server.rack")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+        } else {
+            Button {
+                countAvailabilityPresentation = DashboardCountAvailability(issues: issues)
+            } label: {
+                Label("Some environment counts are unavailable.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.orange)
+            }
+            .buttonStyle(.pressable(scales: false))
+            .padding(.horizontal, 4)
+            .accessibilityHint("Shows which environment counts could not be loaded")
+            .popover(item: $countAvailabilityPresentation) { availability in
+                DashboardCountAvailabilityPopover(issues: availability.issues)
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
+    }
+
+    private var countAvailabilityIssues: [DashboardCountIssue] {
+        guard hasLoadedFleetCounts else { return [] }
+        var issues: [DashboardCountIssue] = []
+
+        let dockerUnavailableIDs = allEnvironments
+            .filter(\.enabled)
+            .filter { environmentLiveStates[$0.id]?.dockerInfo == nil }
+            .map(\.id)
+        if liveCounts == nil, !dockerUnavailableIDs.isEmpty {
+            issues.append(DashboardCountIssue(
+                id: "docker",
+                title: "Container and image counts",
+                detail: "Docker information could not be loaded from \(environmentSummary(for: dockerUnavailableIDs))."
+            ))
+        }
+
+        if volumesTotal == nil, !volumeCountUnavailableEnvironmentIDs.isEmpty {
+            issues.append(DashboardCountIssue(
+                id: "volumes",
+                title: "Volume count",
+                detail: "Volume totals could not be loaded from \(environmentSummary(for: volumeCountUnavailableEnvironmentIDs))."
+            ))
+        }
+
+        if imageUpdatesTotal == nil, !updateCountUnavailableEnvironmentIDs.isEmpty {
+            issues.append(DashboardCountIssue(
+                id: "updates",
+                title: "Update count",
+                detail: "Image update totals could not be loaded from \(environmentSummary(for: updateCountUnavailableEnvironmentIDs))."
+            ))
+        }
+
+        return issues
+    }
+
+    private func environmentSummary(for ids: [String]) -> String {
+        let namesByID = Dictionary(
+            uniqueKeysWithValues: allEnvironments.map { ($0.id, $0.name ?? $0.id) }
+        )
+        let names = ids.map { namesByID[$0] ?? $0 }
+        let visibleNames = names.prefix(2)
+        let summary = visibleNames.joined(separator: visibleNames.count == 2 ? " and " : "")
+        let remaining = names.count - visibleNames.count
+        return remaining > 0 ? "\(summary) and \(remaining) more" : summary
+    }
+
     // MARK: - Data loading
 
     private func refreshDashboard() async {
@@ -722,6 +819,9 @@ struct DashboardView: View {
         supplementalImageUpdatesTotal = nil
         liveCounts = nil
         environmentLiveStates = [:]
+        volumeCountUnavailableEnvironmentIDs = []
+        updateCountUnavailableEnvironmentIDs = []
+        hasLoadedFleetCounts = false
         if !hasLoadedOnce { isLoading = true }
         defer {
             isLoading = false
@@ -776,10 +876,13 @@ struct DashboardView: View {
         let volumes = await volumesResult
         let updates = await updatesResult
         if !Task.isCancelled {
-            volumesTotal = volumes
-            supplementalImageUpdatesTotal = updates
+            volumesTotal = volumes.total
+            volumeCountUnavailableEnvironmentIDs = volumes.unavailableEnvironmentIDs
+            supplementalImageUpdatesTotal = updates.total
+            updateCountUnavailableEnvironmentIDs = updates.unavailableEnvironmentIDs
             environmentLiveStates = liveStates
             liveCounts = aggregateLiveCounts(liveStates, expectedCount: enabledEnvironments.count)
+            hasLoadedFleetCounts = true
         }
 
         let activities = await loadFailedWork()
@@ -899,46 +1002,71 @@ struct DashboardView: View {
             .map { $0 }
     }
 
-    private func loadVolumesTotal(envs: [Arcane.Environment]) async -> Int? {
-        guard let client = manager.client else { return nil }
-        guard !envs.isEmpty else { return 0 }
+    private func loadVolumesTotal(envs: [Arcane.Environment]) async -> DashboardFleetCountResult {
+        guard let client = manager.client else {
+            return DashboardFleetCountResult(
+                total: nil,
+                unavailableEnvironmentIDs: envs.map(\.id)
+            )
+        }
+        guard !envs.isEmpty else {
+            return DashboardFleetCountResult(total: 0, unavailableEnvironmentIDs: [])
+        }
 
-        return await withTaskGroup(of: Int64?.self) { group in
+        return await withTaskGroup(of: (String, Int64?).self) { group in
             var iterator = envs.makeIterator()
             let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
             for _ in 0..<initialBatch {
                 guard let env = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
-                    await Self.volumeCount(client: client, envID: envID)
+                    (env.id, await Self.volumeCount(client: client, envID: envID))
                 }
             }
-            var total: Int64 = 0
-            var loadedCount = 0
-            for await result in group {
-                if let result {
-                    total += result
-                    loadedCount += 1
+            var counts: [String: Int64] = [:]
+            for await (id, count) in group {
+                if let count {
+                    counts[id] = count
                 }
                 if let env = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
                     group.addTask {
-                        await Self.volumeCount(client: client, envID: envID)
+                        (env.id, await Self.volumeCount(client: client, envID: envID))
                     }
                 }
             }
-            return loadedCount == envs.count ? Int(total) : nil
+            let unavailableIDs = envs.compactMap { counts[$0.id] == nil ? $0.id : nil }
+            let total = unavailableIDs.isEmpty ? Int(counts.values.reduce(0, +)) : nil
+            return DashboardFleetCountResult(
+                total: total,
+                unavailableEnvironmentIDs: unavailableIDs
+            )
         }
     }
 
     private nonisolated static func volumeCount(client: ArcaneClient, envID: EnvironmentID) async -> Int64? {
+        do {
+            return Int64(try await client.volumes.counts(envID: envID).total)
+        } catch is CancellationError {
+            return nil
+        } catch {
+            // Older servers may not expose the dedicated counts route. The
+            // paginated list still supplies the same unfiltered total.
+        }
         let query = SearchPaginationSort(start: 0, limit: 1)
         return try? await client.volumes.list(envID: envID, query: query).pagination.totalItems
     }
 
-    private func loadImageUpdatesTotal(envs: [Arcane.Environment]) async -> Int? {
-        guard let client = manager.client else { return nil }
-        guard !envs.isEmpty else { return 0 }
+    private func loadImageUpdatesTotal(envs: [Arcane.Environment]) async -> DashboardFleetCountResult {
+        guard let client = manager.client else {
+            return DashboardFleetCountResult(
+                total: nil,
+                unavailableEnvironmentIDs: envs.map(\.id)
+            )
+        }
+        guard !envs.isEmpty else {
+            return DashboardFleetCountResult(total: 0, unavailableEnvironmentIDs: [])
+        }
 
         let counts = await withTaskGroup(of: (String, Int?).self) { group in
             var iterator = envs.makeIterator()
@@ -971,8 +1099,11 @@ struct DashboardView: View {
             client: manager.client,
             userID: manager.currentUser?.id
         )
-        guard counts.count == envs.count else { return nil }
-        return counts.values.reduce(0, +)
+        let unavailableIDs = envs.compactMap { counts[$0.id] == nil ? $0.id : nil }
+        return DashboardFleetCountResult(
+            total: unavailableIDs.isEmpty ? counts.values.reduce(0, +) : nil,
+            unavailableEnvironmentIDs: unavailableIDs
+        )
     }
 
     private func refreshLiveCounts() async {
@@ -1178,6 +1309,35 @@ struct DashboardGlassTile: View {
         .accessibilityLabel("\(title): \(value)")
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens \(title)")
+    }
+}
+
+private struct DashboardCountAvailabilityPopover: View {
+    let issues: [DashboardCountIssue]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Incomplete environment counts", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.orange)
+
+            ForEach(issues) { issue in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(issue.title)
+                        .font(.subheadline.weight(.semibold))
+                    Text(issue.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+
+            Text("Pull down on the Dashboard to retry unavailable environments.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .frame(idealWidth: 300, maxWidth: 340, alignment: .leading)
     }
 }
 
