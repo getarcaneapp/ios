@@ -67,7 +67,14 @@ enum ReleaseNotes {
                 .init("Updates opens directly to environment update cards."),
                 .init("Activity progress toasts open the app-wide Activity Center sheet when tapped."),
                 .init("Widgets use solid black system-style backgrounds."),
-                .init("Dashboard overview identifies counts across all enabled environments.")
+                .init("Dashboard overview identifies counts across all enabled environments."),
+                .init("Batched log line streaming and unanimated terminal scrolling."),
+                .init("Cached Activity Center grouping for smoother list rendering."),
+                .init("Debounced search filtering across resource lists."),
+                .init("Hero zoom navigation transitions for resource cards and details."),
+                .init("Rich context menus and swipe actions for jobs, variables, events, and updates."),
+                .init("Long-press preview cards render custom container and project icons."),
+                .init("Navigation toolbar actions render as separate buttons.")
             ],
             fixed: [
                 .init("Network topology renders as an interactive network-to-container diagram."),
@@ -81,7 +88,9 @@ enum ReleaseNotes {
                 .init("Toasts align with the bottom safe area inside sheets."),
                 .init("Image update actions support consumers resolved by name."),
                 .init("Widget refreshes keep environment work within the extension budget."),
-                .init("Delete confirmations avoid unnecessary app-wide overlay work.")
+                .init("Delete confirmations avoid unnecessary app-wide overlay work."),
+                .init("Context menu previews safely retain app environment dependencies."),
+                .init("Container registry previews show current status and URL.")
             ]
         ),
         ReleaseNote(

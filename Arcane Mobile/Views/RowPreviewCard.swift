@@ -29,6 +29,7 @@ struct DestructiveLabel: View {
 struct RowPreviewCard: View {
     let icon: String
     let iconColor: Color
+    var iconUrl: String? = nil
     let title: String
     var subtitle: String? = nil
     var badges: [PreviewBadge] = []
@@ -49,20 +50,22 @@ struct RowPreviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 14) {
-                if #available(iOS 26, *) {
-                    Image(systemName: icon)
-                        .font(.title)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.white)
-                        .frame(width: 52, height: 52)
-                        .glassEffect(.regular.tint(iconColor), in: .circle)
-                } else {
-                    Image(systemName: icon)
-                        .font(.title)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.white)
-                        .frame(width: 52, height: 52)
-                        .background(iconColor, in: .circle)
+                CachedAsyncImage(url: iconUrl, size: 52) {
+                    if #available(iOS 26, *) {
+                        Image(systemName: icon)
+                            .font(.title)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.white)
+                            .frame(width: 52, height: 52)
+                            .glassEffect(.regular.tint(iconColor), in: .circle)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.title)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.white)
+                            .frame(width: 52, height: 52)
+                            .background(iconColor, in: .circle)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {

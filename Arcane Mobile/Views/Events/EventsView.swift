@@ -56,6 +56,41 @@ struct EventsView: View {
                                 } label: {
                                     EventRow(event: event)
                                 }
+                                .contextMenu {
+                                    Button {
+                                        UIPasteboard.general.string = event.title
+                                        showToast(.copied("Title copied"))
+                                    } label: {
+                                        Label("Copy Title", systemImage: "doc.on.doc")
+                                    }
+
+                                    if let description = event.description, !description.isEmpty {
+                                        Button {
+                                            UIPasteboard.general.string = description
+                                            showToast(.copied("Description copied"))
+                                        } label: {
+                                            Label("Copy Description", systemImage: "doc.on.doc.fill")
+                                        }
+                                    }
+
+                                    if canDeleteEvents {
+                                        Divider()
+                                        Button(role: .destructive) {
+                                            pendingDeleteEvent = event
+                                        } label: {
+                                            Label("Delete Event", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                    Button {
+                                        UIPasteboard.general.string = event.title
+                                        showToast(.copied("Title copied"))
+                                    } label: {
+                                        Label("Copy", systemImage: "doc.on.doc")
+                                    }
+                                    .tint(.blue)
+                                }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     if canDeleteEvents {
                                         Button(role: .destructive) {

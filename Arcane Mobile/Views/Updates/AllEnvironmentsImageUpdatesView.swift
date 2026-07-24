@@ -260,6 +260,30 @@ struct AllEnvironmentsImageUpdatesView: View {
             }
         }
         .padding(.vertical, 10)
+        .contextMenu {
+            if !actionable.isEmpty {
+                Button {
+                    Task { await startImageUpdate(item, in: bucket) }
+                } label: {
+                    Label("Update Image", systemImage: "arrow.up.circle.fill")
+                }
+                .disabled(anyWorkInFlight(in: bucket))
+            }
+
+            Button {
+                Task { await recheck(bucket: bucket, ref: item.ref) }
+            } label: {
+                Label("Recheck Registry", systemImage: "arrow.clockwise")
+            }
+            .disabled(rescanningEnvID != nil)
+
+            Button {
+                UIPasteboard.general.string = item.ref
+                showToast(.copied("Image ref copied"))
+            } label: {
+                Label("Copy Image Ref", systemImage: "doc.on.doc")
+            }
+        }
     }
 
     @ViewBuilder

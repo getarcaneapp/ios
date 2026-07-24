@@ -17,6 +17,7 @@ struct DynamicResourceListView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
     @State private var actionMessage: String?
     @State private var selectedAction: PendingAction?
     @State private var showCreateSheet = false
@@ -24,9 +25,9 @@ struct DynamicResourceListView: View {
     private var filteredItems: [DynamicResource] {
         items
             .filter { item in
-                searchText.isEmpty ||
-                item.title.localizedCaseInsensitiveContains(searchText) ||
-                item.subtitle.localizedCaseInsensitiveContains(searchText)
+                debouncedSearchText.isEmpty ||
+                item.title.localizedCaseInsensitiveContains(debouncedSearchText) ||
+                item.subtitle.localizedCaseInsensitiveContains(debouncedSearchText)
             }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
@@ -34,7 +35,7 @@ struct DynamicResourceListView: View {
     var body: some View {
         Group {
             if isLoading && items.isEmpty {
-                ProgressView("Loading \(title.lowercased())...").frame(maxWidth: .infinity, maxHeight: .infinity)
+                SkeletonListLoadingView(rowCount: 5)
             } else if let errorMessage, items.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
             } else if items.isEmpty {
@@ -70,6 +71,7 @@ struct DynamicResourceListView: View {
         }
         .navigationTitle(title)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search \(title.lowercased())")
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
@@ -78,6 +80,9 @@ struct DynamicResourceListView: View {
                 .accessibilityLabel("Refresh")
             }
             if createPath != nil, !createFields.isEmpty {
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: {
                         Image(systemName: "plus")
@@ -87,6 +92,9 @@ struct DynamicResourceListView: View {
             }
             let globalActions = actions.filter { !$0.requiresSelection }
             if !globalActions.isEmpty {
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         ForEach(globalActions) { action in

@@ -19,7 +19,7 @@ struct SystemInfoDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            LazyVStack(spacing: 16) {
                 headerCard
 
                 Picker("", selection: $selectedTab) {

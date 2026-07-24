@@ -16,6 +16,7 @@ struct SwarmView: View {
     @State private var showsLeave = false
     @State private var showsEasyJoin = false
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
 
     private var canRead: Bool {
         manager.permissions.has(Permission.Swarm.read, in: environmentID)
@@ -38,7 +39,7 @@ struct SwarmView: View {
     }
 
     private var filteredNodes: [SwarmNode] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return store.nodes }
         return store.nodes.filter { node in
             node.hostname.localizedCaseInsensitiveContains(query)
@@ -296,12 +297,63 @@ struct SwarmView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityHint("Opens node and agent details")
+                            .contextMenu {
+                                Button {
+                                    selectedNode = node
+                                } label: {
+                                    Label("Inspect Details", systemImage: "info.circle")
+                                }
+
+                                Button {
+                                    UIPasteboard.general.string = node.hostname
+                                    showToast(.copied("Hostname copied"))
+                                } label: {
+                                    Label("Copy Hostname", systemImage: "doc.on.doc")
+                                }
+
+                                Button {
+                                    UIPasteboard.general.string = node.id
+                                    showToast(.copied("Node ID copied"))
+                                } label: {
+                                    Label("Copy Node ID", systemImage: "number")
+                                }
+
+                                if canManageNodes {
+                                    Divider()
+                                    Button {
+                                        Task { await reconcileNodeAgents() }
+                                    } label: {
+                                        Label("Reconcile Node Agents", systemImage: "arrow.triangle.2.circlepath")
+                                    }
+                                    .disabled(store.isReconciling || !store.agentLifecycleSupported)
+                                }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button {
+                                    selectedNode = node
+                                } label: {
+                                    Label("Details", systemImage: "info.circle")
+                                }
+                                .tint(.blue)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if canManageNodes {
+                                    Button {
+                                        Task { await reconcileNodeAgents() }
+                                    } label: {
+                                        Label("Reconcile", systemImage: "arrow.triangle.2.circlepath")
+                                    }
+                                    .tint(.indigo)
+                                    .disabled(store.isReconciling || !store.agentLifecycleSupported)
+                                }
+                            }
                         }
                     }
                 }
             }
             .listStyle(.insetGrouped)
             .searchable(text: $searchText, prompt: "Search nodes")
+            .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
             .refreshable { await load() }
             .toolbar {
                 if canManageNodes {
@@ -330,9 +382,11 @@ struct SwarmView: View {
 
     private func reconcileNodeAgents() async {
         guard let client = manager.client else { return }
+        HapticsManager.medium()
         do {
             let supported = try await store.reconcileNodeAgents(client: client, environmentID: environmentID)
             if supported {
+                HapticsManager.success()
                 showToast(.success("Node agents reconciled"))
             } else {
                 showToast(.info("Node-agent reconciliation is unavailable on this backend"))

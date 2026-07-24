@@ -139,6 +139,7 @@ private struct DeploymentPillView: View {
         .clipShape(.capsule)
         .glassEffectCompat(in: .capsule)
         .modifier(PillLegacyFloatChrome())
+        .motionAwareAnimation(Motion.state, value: status)
         .padding(.horizontal, 15)
         .gesture(
             DragGesture()

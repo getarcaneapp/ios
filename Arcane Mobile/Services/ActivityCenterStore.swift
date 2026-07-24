@@ -104,6 +104,8 @@ final class ActivityCenterStore {
     private static let idleRetrySeconds: Double = 30
 
     private(set) var activities: [Activity] = []
+    private(set) var runningItems: [ActivityCenterItem] = []
+    private(set) var historyItems: [ActivityCenterItem] = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     private(set) var isStreaming = false
@@ -112,10 +114,18 @@ final class ActivityCenterStore {
     private(set) var streamErrorMessage: String?
     private(set) var environmentIDs: [String] = []
 
-    var searchText = ""
-    var statusFilter: ActivityStatusFilter = .all
-    var typeFilter = ""
-    var resourceFilter = ""
+    var searchText = "" {
+        didSet { recomputeGroupedItems() }
+    }
+    var statusFilter: ActivityStatusFilter = .all {
+        didSet { recomputeGroupedItems() }
+    }
+    var typeFilter = "" {
+        didSet { recomputeGroupedItems() }
+    }
+    var resourceFilter = "" {
+        didSet { recomputeGroupedItems() }
+    }
 
     private var client: ArcaneClient?
     private var clientTransportIdentity: ObjectIdentifier?
@@ -139,15 +149,13 @@ final class ActivityCenterStore {
         }
     }
 
-    var runningItems: [ActivityCenterItem] {
-        groupedItems.filter(\.isActive)
+    private func recomputeGroupedItems() {
+        let items = calculateGroupedItems()
+        runningItems = items.filter(\.isActive)
+        historyItems = items.filter { !$0.isActive }
     }
 
-    var historyItems: [ActivityCenterItem] {
-        groupedItems.filter { !$0.isActive }
-    }
-
-    private var groupedItems: [ActivityCenterItem] {
+    private func calculateGroupedItems() -> [ActivityCenterItem] {
         var unbatched: [Activity] = []
         var batches: [String: [Activity]] = [:]
 
@@ -195,6 +203,7 @@ final class ActivityCenterStore {
         hasMore = false
         errorMessage = nil
         clearStreamWarning()
+        recomputeGroupedItems()
     }
 
     func load(reset: Bool = true, refresh: Bool = false) async {
@@ -520,6 +529,7 @@ final class ActivityCenterStore {
 
     private func rebuildActivities() {
         activities = sortActivities(activityBuckets.values.flatMap { $0 })
+        recomputeGroupedItems()
     }
 
     private func matchesSearch(_ activity: Activity, search: String) -> Bool {

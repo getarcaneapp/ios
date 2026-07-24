@@ -8,6 +8,7 @@ struct ProjectsView: View {
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -173,6 +174,9 @@ struct ProjectsView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             moreOptionsMenu
         }
+        if #available(iOS 26, *) {
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        }
         ToolbarItem(placement: .navigationBarTrailing) {
             Button { showCreateSheet = true } label: {
                 Image(systemName: "plus")
@@ -253,7 +257,7 @@ struct ProjectsView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ProjectDetails.self) { project in
             ProjectDetailView(project: project, environmentID: environmentID)
-                .pageEntranceFromTop()
+                .navigationTransition(.zoom(sourceID: project.id, in: heroTransition))
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateProjectView(environmentID: environmentID) {}
@@ -360,6 +364,7 @@ struct ProjectsView: View {
             .tint(.red)
         } preview: {
             projectPreview(project)
+                .environment(manager)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
@@ -416,6 +421,7 @@ struct ProjectsView: View {
         return RowPreviewCard(
             icon: "square.stack.3d.up.fill",
             iconColor: color,
+            iconUrl: project.themedIconUrl(for: colorScheme),
             title: project.displayName,
             badges: [
                 .init(text: project.status.capitalized, color: color)

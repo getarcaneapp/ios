@@ -9,6 +9,7 @@ struct VariablesView: View {
     @State private var editorRoute: VariableEditorRoute?
     @State private var pendingDelete: GlobalVariable?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
     @State private var showsSyncStatus = false
 
     private var canRead: Bool {
@@ -32,7 +33,7 @@ struct VariablesView: View {
     }
 
     private var filteredVariables: [GlobalVariable] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return store.variables }
         return store.variables.filter { variable in
             variable.key.localizedCaseInsensitiveContains(query)
@@ -82,10 +83,11 @@ struct VariablesView: View {
         }
         .navigationTitle("Variables")
         .searchable(text: $searchText, prompt: "Search variables")
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .toolbar {
             if canRead, !store.isUnsupported {
-                ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    if canSync {
+                if canSync {
+                    ToolbarItem(placement: .navigationBarTrailing) {
                         Button {
                             Task { await syncVariables() }
                         } label: {
@@ -98,8 +100,14 @@ struct VariablesView: View {
                         .disabled(store.isSyncing)
                         .accessibilityLabel("Sync variables")
                     }
+                }
 
-                    if canCreate {
+                if #available(iOS 26, *), canSync, canCreate {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
+
+                if canCreate {
+                    ToolbarItem(placement: .navigationBarTrailing) {
                         Button { editorRoute = .create } label: {
                             Image(systemName: "plus")
                         }
@@ -177,6 +185,47 @@ struct VariablesView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityHint("Opens variable editor")
+                            .contextMenu {
+                                Button {
+                                    editorRoute = .edit(variable)
+                                } label: {
+                                    Label("Edit Variable", systemImage: "pencil")
+                                }
+
+                                Button {
+                                    UIPasteboard.general.string = variable.key
+                                    showToast(.copied("Key copied"))
+                                } label: {
+                                    Label("Copy Key", systemImage: "doc.on.doc")
+                                }
+
+                                if !variable.isSecret {
+                                    Button {
+                                        UIPasteboard.general.string = variable.value
+                                        showToast(.copied("Value copied"))
+                                    } label: {
+                                        Label("Copy Value", systemImage: "doc.on.doc.fill")
+                                    }
+                                }
+
+                                if canDelete {
+                                    Divider()
+                                    Button(role: .destructive) {
+                                        pendingDelete = variable
+                                    } label: {
+                                        Label("Delete Variable", systemImage: "trash")
+                                    }
+                                }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button {
+                                    UIPasteboard.general.string = variable.key
+                                    showToast(.copied("Key copied"))
+                                } label: {
+                                    Label("Copy Key", systemImage: "doc.on.doc")
+                                }
+                                .tint(.blue)
+                            }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if canDelete {
                                     Button(role: .destructive) {
@@ -191,6 +240,41 @@ struct VariablesView: View {
                                 variable: variable,
                                 scopeLabel: store.scopeLabel(for: variable)
                             )
+                            .contextMenu {
+                                Button {
+                                    UIPasteboard.general.string = variable.key
+                                    showToast(.copied("Key copied"))
+                                } label: {
+                                    Label("Copy Key", systemImage: "doc.on.doc")
+                                }
+
+                                if !variable.isSecret {
+                                    Button {
+                                        UIPasteboard.general.string = variable.value
+                                        showToast(.copied("Value copied"))
+                                    } label: {
+                                        Label("Copy Value", systemImage: "doc.on.doc.fill")
+                                    }
+                                }
+
+                                if canDelete {
+                                    Divider()
+                                    Button(role: .destructive) {
+                                        pendingDelete = variable
+                                    } label: {
+                                        Label("Delete Variable", systemImage: "trash")
+                                    }
+                                }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button {
+                                    UIPasteboard.general.string = variable.key
+                                    showToast(.copied("Key copied"))
+                                } label: {
+                                    Label("Copy Key", systemImage: "doc.on.doc")
+                                }
+                                .tint(.blue)
+                            }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if canDelete {
                                     Button(role: .destructive) {
@@ -215,8 +299,10 @@ struct VariablesView: View {
 
     private func syncVariables() async {
         guard canSync, let client = manager.client else { return }
+        HapticsManager.medium()
         do {
             try await store.sync(client: client)
+            HapticsManager.success()
             showToast(.success("Variables synced"))
         } catch {
             showToast(.error(friendlyErrorMessage(error)))
@@ -374,6 +460,7 @@ private struct DeleteVariableView: View {
 
         do {
             try await onDelete()
+            HapticsManager.success()
             showToast(.success("Variable deleted"))
             dismiss()
         } catch {
@@ -577,6 +664,7 @@ private struct VariableEditorView: View {
         defer { isSaving = false }
         do {
             try await onSave(request)
+            HapticsManager.success()
             showToast(.success(isEditing ? "Variable updated" : "Variable created"))
             dismiss()
         } catch {

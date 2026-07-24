@@ -97,7 +97,6 @@ struct AppSettingsView: View {
             HStack(spacing: 12) {
                 SettingsRow(
                     title: "Activity Toasts",
-                    subtitle: activityToastScope.subtitle,
                     systemImage: "bell.badge.fill",
                     color: .orange
                 )
@@ -117,7 +116,7 @@ struct AppSettingsView: View {
         } header: {
             Text("Activity Notifications")
         } footer: {
-            Text("User Initiated excludes automated and server maintenance activities.")
+            Text("\(activityToastScope.subtitle). User Initiated excludes automated and server maintenance activities.")
         }
     }
 

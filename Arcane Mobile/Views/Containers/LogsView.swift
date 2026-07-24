@@ -64,10 +64,13 @@ struct LogsView: View {
                         // Plain toolbar items — the nav bar supplies its own
                         // glass; a nested GlassContainerCompat here rendered
                         // the spinner and trash button overlapping.
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            if isStreaming {
+                        if isStreaming {
+                            ToolbarItem(placement: .navigationBarTrailing) {
                                 ProgressView()
                                     .scaleEffect(0.8)
+                            }
+                            if #available(iOS 26, *) {
+                                ToolbarSpacer(.fixed, placement: .topBarTrailing)
                             }
                         }
                         ToolbarItem(placement: .navigationBarTrailing) {
@@ -94,7 +97,7 @@ struct LogsView: View {
                     }
                 }
                 .listStyle(.plain)
-                .motionAwareAnimation(.linear(duration: 0.12), value: filteredLines.count)
+                .motionAwareAnimation(isStreaming ? nil : .linear(duration: 0.12), value: filteredLines.count)
                 .onChange(of: filteredLines.last?.id) { _, lastID in
                     if autoScroll, let lastID {
                         withAnimation(.none) {
@@ -213,11 +216,28 @@ private extension LogsView {
             isStreaming = true
         }
         do {
+            let clock = ContinuousClock()
+            var lastFlush = clock.now
+            var batch: [LogLine] = []
+
             for try await line in stream {
                 guard !Task.isCancelled else { break }
+                batch.append(line)
+                let now = clock.now
+                if lastFlush.duration(to: now) >= .milliseconds(50) || batch.count >= 50 {
+                    let linesToAppend = batch
+                    batch.removeAll(keepingCapacity: true)
+                    lastFlush = now
+                    await MainActor.run {
+                        guard !Task.isCancelled else { return }
+                        appendStreamedLines(linesToAppend)
+                    }
+                }
+            }
+            if !batch.isEmpty && !Task.isCancelled {
+                let linesToAppend = batch
                 await MainActor.run {
-                    guard !Task.isCancelled else { return }
-                    appendStreamedLine(line)
+                    appendStreamedLines(linesToAppend)
                 }
             }
         } catch {
@@ -230,27 +250,41 @@ private extension LogsView {
         }
     }
 
-    func appendStreamedLine(_ line: LogLine) {
-        let entry = IdentifiedLogLine(id: nextLineID, line: line)
-        lines.append(entry)
-        nextLineID &+= 1
-        if matchesFilter(entry) {
-            filteredLines.append(entry)
+    func appendStreamedLines(_ newLines: [LogLine]) {
+        guard !newLines.isEmpty else { return }
+        var newEntries: [IdentifiedLogLine] = []
+        newEntries.reserveCapacity(newLines.count)
+        var newFiltered: [IdentifiedLogLine] = []
+
+        for line in newLines {
+            let entry = IdentifiedLogLine(id: nextLineID, line: line)
+            nextLineID &+= 1
+            newEntries.append(entry)
+            if matchesFilter(entry) {
+                newFiltered.append(entry)
+            }
         }
+
+        lines.append(contentsOf: newEntries)
+        if !newFiltered.isEmpty {
+            filteredLines.append(contentsOf: newFiltered)
+        }
+
         trimRetainedWindowIfNeeded()
         if !autoScroll {
-            newLinesWhilePaused += 1
+            newLinesWhilePaused += newLines.count
         }
     }
 
     func trimRetainedWindowIfNeeded() {
         guard lines.count > 5000 else { return }
-        lines.removeFirst(100)
-        // Both arrays are id-ordered; drop the filtered prefix that fell out of
-        // the retained window.
+        let overflow = lines.count - 5000
+        lines.removeSubrange(0..<overflow)
         if let minID = lines.first?.id {
             let dropCount = filteredLines.prefix(while: { $0.id < minID }).count
-            if dropCount > 0 { filteredLines.removeFirst(dropCount) }
+            if dropCount > 0 {
+                filteredLines.removeSubrange(0..<dropCount)
+            }
         }
     }
 

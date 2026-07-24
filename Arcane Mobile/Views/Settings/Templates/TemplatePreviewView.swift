@@ -75,6 +75,13 @@ struct TemplatePreviewView: View {
                 }
             }
 
+            if #available(iOS 26, *),
+               displayedTemplate.isRemote,
+               canDownload,
+               canDeploy {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+
             if canDeploy {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {

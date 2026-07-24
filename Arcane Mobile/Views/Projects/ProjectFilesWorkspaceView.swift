@@ -213,16 +213,26 @@ struct ProjectFilesWorkspaceView: View {
 
     @ToolbarContentBuilder
     private func browserToolbar(folderPath: String) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
+        ToolbarItem(placement: .navigationBarTrailing) {
             projectFileMenu(folderPath: folderPath)
+        }
+        if #available(iOS 26, *) {
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
             saveButton
         }
     }
 
     @ToolbarContentBuilder
     private func editorToolbar(folderPath: String) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
+        ToolbarItem(placement: .navigationBarTrailing) {
             projectFileMenu(folderPath: folderPath)
+        }
+        if #available(iOS 26, *) {
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
             saveButton
         }
     }

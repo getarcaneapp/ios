@@ -72,7 +72,7 @@ struct ProjectDetailView: View {
         }
         .navigationDestination(for: ContainerSummary.self) { container in
             ContainerDetailView(container: container, environmentID: environmentID)
-                    .pageEntranceFromTop()
+                .navigationTransition(.zoom(sourceID: container.id, in: heroTransition))
         }
         .sheet(isPresented: $showLogs) {
             LogsView(

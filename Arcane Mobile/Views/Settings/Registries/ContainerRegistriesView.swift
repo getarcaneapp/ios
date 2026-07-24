@@ -232,4 +232,3 @@ private struct PressableRegistryRow: View {
         }
     }
 }
-

@@ -14,9 +14,10 @@ struct UpdaterHistoryView: View {
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
 
     private var filtered: [AutoUpdateRecord] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return records }
         return records.filter { record in
             record.resourceName.localizedCaseInsensitiveContains(trimmed) ||
@@ -67,6 +68,7 @@ struct UpdaterHistoryView: View {
         }
         .navigationTitle("Updater History")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search updater history")
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
