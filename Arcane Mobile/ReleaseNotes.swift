@@ -85,7 +85,10 @@ enum ReleaseNotes {
                 .init("Image update actions support consumers resolved by name."),
                 .init("Dashboard volume totals use a resilient count lookup."),
                 .init("Dashboard unavailable totals identify affected environments."),
-                .init("Widget refreshes keep environment work within the extension budget.")
+                .init("Widget refreshes keep environment work within the extension budget."),
+                .init("Delete confirmations avoid unnecessary app-wide overlay work."),
+                .init("Dashboard environment cards defer off-screen rendering."),
+                .init("Dashboard live-count refreshes cancel superseded work.")
             ]
         ),
         ReleaseNote(

@@ -132,8 +132,8 @@ extension Toast {
 
 // MARK: - Presenter (single source of truth)
 
-/// App-wide store for the currently-visible toast. Mirrors
-/// `DeleteConfirmationPresenter`: one shared instance, a root host renders it,
+/// App-wide store for the currently-visible toast. Uses the same shared-presenter
+/// pattern as `DeleteConfirmationPresenter`; the root toast host renders it and
 /// call sites publish via `showToast(_:)`.
 @MainActor
 @Observable
@@ -257,8 +257,8 @@ final class ToastPresenter {
 // MARK: - Host (mount once near the root)
 
 extension View {
-    /// Mounts the single, app-wide toast overlay. Apply once near the root,
-    /// after `.deleteConfirmationHost()` so a toast rides above the delete scrim.
+    /// Mounts the single, app-wide toast overlay. Apply once near the root so
+    /// toasts ride above view-local delete confirmation scrims.
     func toastHost(reservesTabBarSpace: Bool = true) -> some View {
         overlay { ToastHost(reservesTabBarSpace: reservesTabBarSpace) }
     }

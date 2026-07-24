@@ -25,7 +25,7 @@ enum Motion {
     /// Card / first-appear entrance.
     static let entrance: Animation = .spring(response: 0.42, dampingFraction: 0.85)
 
-    /// Root overlay (delete-confirmation card) entrance/exit.
+    /// Delete-confirmation card entrance/exit.
     static let overlay: Animation = .interpolatingSpring(duration: 0.3)
 
     /// Long-press tab-replace: the Liquid Glass picker callout growing out of —

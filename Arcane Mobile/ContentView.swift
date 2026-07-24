@@ -53,10 +53,6 @@ struct ContentView: View {
             .toastHost(reservesTabBarSpace: false)
             .presentationDragIndicator(.visible)
         }
-        // Single app-wide host for the animated delete/destructive confirmation
-        // card. Mounted above the tab bar and navigation stacks so the card and
-        // its scrim float over everything.
-        .deleteConfirmationHost()
         // Deployment activity host: the floating progress pill and the stream
         // sheet for the active deploy/redeploy/pull operation. Mounted before
         // the toast host so toasts layer above the pill.
@@ -65,9 +61,9 @@ struct ContentView: View {
         // open. The user's App Settings preference controls which starts become
         // app-wide toasts.
         .activityToastMonitor()
-        // Single app-wide host for transient toasts. Mounted after the delete
-        // host so a toast layers above the confirmation card's scrim, and on the
-        // outer Group so toasts also work on the login / setup screens.
+        // Single app-wide host for transient toasts. Mounted on the outer Group
+        // so toasts layer above view-local confirmation overlays and also work
+        // on the login / setup screens.
         .toastHost()
     }
 

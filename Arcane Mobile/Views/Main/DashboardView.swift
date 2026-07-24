@@ -138,6 +138,7 @@ struct DashboardView: View {
     @State private var showVolumes = false
     @State private var showImageUpdates = false
     @State private var showUpdateAll = false
+    @State private var liveCountsRefreshTask: Task<Void, Never>?
 
     private static let maxEnvironments = 50
     private static let maxConcurrentPerEnvFetches = 4
@@ -163,7 +164,7 @@ struct DashboardView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
+                LazyVStack(spacing: 16) {
                     dashboardHeader
                     if !hasLoadedOnce && isLoading {
                         skeletonView
@@ -346,17 +347,22 @@ struct DashboardView: View {
             }
             .onDisappear {
                 isDashboardVisible = false
+                liveCountsRefreshTask?.cancel()
+                liveCountsRefreshTask = nil
                 streamStore.stop()
                 statsHistory.stop()
             }
             .onChange(of: streamStore.aggregate) { previous, current in
                 publishWidgetSnapshot()
                 guard current != nil, current != previous else { return }
-                Task { await refreshLiveCounts() }
+                liveCountsRefreshTask?.cancel()
+                liveCountsRefreshTask = Task { await refreshLiveCounts() }
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .background:
+                    liveCountsRefreshTask?.cancel()
+                    liveCountsRefreshTask = nil
                     statsHistory.stop()
                     if manager.supportsActivities { streamStore.stop() }
                     publishWidgetSnapshot()
@@ -392,7 +398,7 @@ struct DashboardView: View {
     }
 
     private var environmentsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        LazyVStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Text("Environments")
                     .font(.headline)
@@ -1109,6 +1115,7 @@ struct DashboardView: View {
     private func refreshLiveCounts() async {
         let enabledEnvironments = allEnvironments.filter(\.enabled)
         let liveStates = await loadLiveCounts(envs: enabledEnvironments)
+        guard !Task.isCancelled else { return }
         environmentLiveStates = liveStates
         liveCounts = aggregateLiveCounts(liveStates, expectedCount: enabledEnvironments.count)
         publishWidgetSnapshot()
@@ -1120,7 +1127,7 @@ struct DashboardView: View {
     private func loadLiveCounts(
         envs: [Arcane.Environment]
     ) async -> [String: DashboardEnvironmentLiveState] {
-        guard let client = manager.client, !envs.isEmpty else { return [:] }
+        guard !Task.isCancelled, let client = manager.client, !envs.isEmpty else { return [:] }
 
         return await withTaskGroup(
             of: (String, DockerInfo?).self,
@@ -1131,17 +1138,23 @@ struct DashboardView: View {
             for _ in 0..<initialBatch {
                 guard let env = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
-                group.addTask {
-                    (env.id, await Self.fetchDockerInfo(client: client, envID: envID))
+                _ = group.addTaskUnlessCancelled {
+                    guard !Task.isCancelled else { return (env.id, nil) }
+                    return (env.id, await Self.fetchDockerInfo(client: client, envID: envID))
                 }
             }
             var states: [String: DashboardEnvironmentLiveState] = [:]
             for await (id, info) in group {
+                guard !Task.isCancelled else {
+                    group.cancelAll()
+                    break
+                }
                 states[id] = info.map(DashboardEnvironmentLiveState.online) ?? .offline
                 if let env = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
-                    group.addTask {
-                        (env.id, await Self.fetchDockerInfo(client: client, envID: envID))
+                    _ = group.addTaskUnlessCancelled {
+                        guard !Task.isCancelled else { return (env.id, nil) }
+                        return (env.id, await Self.fetchDockerInfo(client: client, envID: envID))
                     }
                 }
             }
