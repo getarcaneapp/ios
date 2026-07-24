@@ -124,6 +124,7 @@ struct NetworksView: View {
                                     // No actions — built-in Docker networks cannot be deleted.
                                 } preview: {
                                     networkPreview(network)
+                                        .environment(manager)
                                 }
                             }
                         } header: {
@@ -148,6 +149,7 @@ struct NetworksView: View {
                                     .tint(.red)
                                 } preview: {
                                     networkPreview(network)
+                                        .environment(manager)
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button {
@@ -193,11 +195,17 @@ struct NetworksView: View {
                 }
                 .accessibilityLabel("More options")
             }
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: {
                     Image(systemName: "plus")
                 }
                 .accessibilityLabel("Create network")
+            }
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(role: .destructive) { pendingDestructive = .prune } label: {
@@ -212,7 +220,7 @@ struct NetworksView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: NetworkSummary.self) { network in
             NetworkDetailView(network: network, environmentID: environmentID)
-                .pageEntranceFromTop()
+                .navigationTransition(.zoom(sourceID: network.id, in: heroTransition))
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateNetworkView(environmentID: environmentID) {}

@@ -150,7 +150,7 @@ struct StatusWidgetView: View {
                 WidgetUnconfiguredView()
             }
         }
-        .widgetContainerBackground(accent: accent)
+        .widgetContainerBackground()
         .widgetURL(deepLinkURL)
     }
 

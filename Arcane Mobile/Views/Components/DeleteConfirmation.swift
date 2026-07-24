@@ -12,12 +12,12 @@
 //  menus, toolbar buttons and `.alert` state (none of which leave a persistent
 //  source button), we present the same card as a unified centered dialog instead.
 //
-//  IMPORTANT: the card is rendered by a SINGLE host (`.deleteConfirmationHost()`,
-//  mounted once near the app root) as a plain ZStack overlay — NOT via
-//  `.fullScreenCover`. A clear-background `fullScreenCover` is unreliable here:
-//  dismissing it can leave the screen stuck on a black cover. A root overlay has
-//  no cover to leave behind, so it presents and dismisses cleanly every time.
-//  `.deleteConfirmation(...)` call sites just publish a request to the host.
+//  IMPORTANT: each `.deleteConfirmation(...)` modifier owns one stable overlay
+//  host and publishes requests tagged with that host's ID. The matching host
+//  renders the card as a plain ZStack overlay — NOT via `.fullScreenCover`.
+//  A clear-background `fullScreenCover` is unreliable here: dismissing it can
+//  leave the screen stuck on a black cover. An overlay has no cover to leave
+//  behind, so it presents and dismisses cleanly every time.
 //
 
 import SwiftUI
@@ -60,7 +60,7 @@ struct DeleteConfirmationConfig {
 // MARK: - Presenter (single source of truth)
 
 /// App-wide store for the currently-presented confirmation. `.deleteConfirmation`
-/// modifiers publish here; the host (`DeleteConfirmationHost`) renders it.
+/// modifiers publish here; the matching modifier-owned host renders it.
 @MainActor
 @Observable
 final class DeleteConfirmationPresenter {
@@ -104,15 +104,7 @@ final class DeleteConfirmationPresenter {
     }
 }
 
-// MARK: - Host (mount once near the root)
-
-extension View {
-    /// Mounts the single, app-wide confirmation overlay. Apply once near the
-    /// root (above the tab bar / navigation stacks).
-    func deleteConfirmationHost() -> some View {
-        overlay { DeleteConfirmationHost(hostID: UUID()) }
-    }
-}
+// MARK: - Host
 
 private struct DeleteConfirmationHost: View {
     let hostID: UUID

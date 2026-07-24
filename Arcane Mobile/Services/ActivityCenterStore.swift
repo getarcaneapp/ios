@@ -2,6 +2,94 @@ import Foundation
 import Observation
 import Arcane
 
+nonisolated enum ActivityCenterItem: Identifiable, Hashable, Sendable {
+    case activity(Activity)
+    case batch(ActivityBatchSummary)
+
+    var id: String {
+        switch self {
+        case .activity(let activity):
+            return "activity-\(activity.sourceEnvironmentKey)-\(activity.id)"
+        case .batch(let batch):
+            return "batch-\(batch.id)"
+        }
+    }
+
+    var isActive: Bool {
+        switch self {
+        case .activity(let activity): activity.isCancellable
+        case .batch(let batch): batch.isActive
+        }
+    }
+
+    var sortTime: Date {
+        switch self {
+        case .activity(let activity): activity.sortTime
+        case .batch(let batch): batch.sortTime
+        }
+    }
+}
+
+nonisolated struct ActivityBatchSummary: Identifiable, Hashable, Sendable {
+    let id: String
+    let activities: [Activity]
+
+    var status: ActivityStatus {
+        if activities.contains(where: \.isCancellable) { return .running }
+        if activities.contains(where: { $0.status == .failed }) { return .failed }
+        if activities.allSatisfy({ $0.status == .cancelled }) { return .cancelled }
+        return .success
+    }
+
+    var isActive: Bool {
+        activities.contains(where: \.isCancellable)
+    }
+
+    var completedCount: Int {
+        activities.count(where: { !$0.isCancellable })
+    }
+
+    var failedCount: Int {
+        activities.count(where: { $0.status == .failed })
+    }
+
+    var progress: Int {
+        guard !activities.isEmpty else { return 0 }
+        let total = activities.reduce(0) { partial, activity in
+            if let progress = activity.progress { return partial + min(max(progress, 0), 100) }
+            return partial + (activity.isCancellable ? 0 : 100)
+        }
+        return total / activities.count
+    }
+
+    var sortTime: Date {
+        activities.map(\.sortTime).max() ?? .distantPast
+    }
+
+    var startedAt: Date {
+        activities.map(\.startedAt).min() ?? .distantPast
+    }
+
+    var displayTitle: String {
+        let types = Set(activities.map(\.type))
+        if let type = types.first, types.count == 1 {
+            return type.displayName
+        }
+        return "Related Operations"
+    }
+
+    var environmentLabel: String? {
+        let names = Set(
+            activities.compactMap { activity in
+                activity.sourceEnvironmentName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            }
+        )
+        if names.count == 1 { return names.first }
+        if names.count > 1 { return "\(names.count) environments" }
+        return nil
+    }
+}
+
 @MainActor
 @Observable
 final class ActivityCenterStore {
@@ -16,6 +104,8 @@ final class ActivityCenterStore {
     private static let idleRetrySeconds: Double = 30
 
     private(set) var activities: [Activity] = []
+    private(set) var runningItems: [ActivityCenterItem] = []
+    private(set) var historyItems: [ActivityCenterItem] = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     private(set) var isStreaming = false
@@ -24,10 +114,18 @@ final class ActivityCenterStore {
     private(set) var streamErrorMessage: String?
     private(set) var environmentIDs: [String] = []
 
-    var searchText = ""
-    var statusFilter: ActivityStatusFilter = .all
-    var typeFilter = ""
-    var resourceFilter = ""
+    var searchText = "" {
+        didSet { recomputeGroupedItems() }
+    }
+    var statusFilter: ActivityStatusFilter = .all {
+        didSet { recomputeGroupedItems() }
+    }
+    var typeFilter = "" {
+        didSet { recomputeGroupedItems() }
+    }
+    var resourceFilter = "" {
+        didSet { recomputeGroupedItems() }
+    }
 
     private var client: ArcaneClient?
     private var clientTransportIdentity: ObjectIdentifier?
@@ -49,6 +147,37 @@ final class ActivityCenterStore {
                 && (resourceFilter.isEmpty || activity.resourceType == resourceFilter)
                 && (trimmed.isEmpty || matchesSearch(activity, search: trimmed))
         }
+    }
+
+    private func recomputeGroupedItems() {
+        let items = calculateGroupedItems()
+        runningItems = items.filter(\.isActive)
+        historyItems = items.filter { !$0.isActive }
+    }
+
+    private func calculateGroupedItems() -> [ActivityCenterItem] {
+        var unbatched: [Activity] = []
+        var batches: [String: [Activity]] = [:]
+
+        for activity in filteredActivities {
+            let batchID = activity.batchID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if batchID.isEmpty {
+                unbatched.append(activity)
+            } else {
+                batches[batchID, default: []].append(activity)
+            }
+        }
+
+        var items = unbatched.map(ActivityCenterItem.activity)
+        for (batchID, members) in batches {
+            let sortedMembers = members.sorted { $0.sortTime > $1.sortTime }
+            if sortedMembers.count == 1, let activity = sortedMembers.first {
+                items.append(.activity(activity))
+            } else {
+                items.append(.batch(ActivityBatchSummary(id: batchID, activities: sortedMembers)))
+            }
+        }
+        return items.sorted { $0.sortTime > $1.sortTime }
     }
 
     var availableTypes: [String] {
@@ -74,6 +203,7 @@ final class ActivityCenterStore {
         hasMore = false
         errorMessage = nil
         clearStreamWarning()
+        recomputeGroupedItems()
     }
 
     func load(reset: Bool = true, refresh: Bool = false) async {
@@ -399,6 +529,7 @@ final class ActivityCenterStore {
 
     private func rebuildActivities() {
         activities = sortActivities(activityBuckets.values.flatMap { $0 })
+        recomputeGroupedItems()
     }
 
     private func matchesSearch(_ activity: Activity, search: String) -> Bool {
@@ -467,7 +598,7 @@ private struct ActivityEnvironment: Hashable, Sendable {
 }
 
 private extension String {
-    var nilIfEmpty: String? {
+    nonisolated var nilIfEmpty: String? {
         isEmpty ? nil : self
     }
 }

@@ -4,7 +4,7 @@ import Arcane
 
 /// Owns the per-environment `system/stats` streams for the dashboard and
 /// retains a rolling sample window per environment, so sparklines survive
-/// their card scrolling out of the LazyVStack (card `@State` dies on reuse).
+/// dashboard view updates without restarting their stream history.
 /// Mirrors `DashboardStreamStore`'s lifecycle: `configure(client:)`,
 /// `reconcile(environments:)`, `start()`/`stop()` driven by DashboardView's
 /// visibility/scenePhase handlers, and a generation counter fencing stale
@@ -12,7 +12,8 @@ import Arcane
 @MainActor
 @Observable
 final class SystemStatsHistoryStore {
-    struct Series {
+    @Observable
+    final class Series {
         var cpu: [SparklineSample] = []
         var memory: [SparklineSample] = []
         var latest: SystemStatsFrame?
@@ -82,6 +83,13 @@ final class SystemStatsHistoryStore {
         let target = Set(trackedIDs)
         for id in seriesByEnvironmentID.keys where !target.contains(id) {
             seriesByEnvironmentID.removeValue(forKey: id)
+        }
+        // Create stable per-environment reference models before stream frames
+        // arrive. Mutating one series then invalidates only the card reading
+        // that model instead of replacing the dictionary and re-evaluating the
+        // entire dashboard on every stats frame.
+        for id in trackedIDs where seriesByEnvironmentID[id] == nil {
+            seriesByEnvironmentID[id] = Series()
         }
         if isRunning { reconcileTasks() }
     }
@@ -210,20 +218,18 @@ final class SystemStatsHistoryStore {
     }
 
     private func setError(environmentID: String, _ message: String) {
-        var series = seriesByEnvironmentID[environmentID] ?? Series()
+        let series = seriesInternal(for: environmentID)
         series.error = message
-        seriesByEnvironmentID[environmentID] = series
     }
 
     private func clearError(environmentID: String) {
-        guard var series = seriesByEnvironmentID[environmentID], series.error != nil else { return }
+        guard let series = seriesByEnvironmentID[environmentID], series.error != nil else { return }
         series.error = nil
-        seriesByEnvironmentID[environmentID] = series
     }
 
     private func append(_ frame: SystemStatsFrame, environmentID: String) {
         guard trackedIDs.contains(environmentID) else { return }
-        var series = seriesByEnvironmentID[environmentID] ?? Series()
+        let series = seriesInternal(for: environmentID)
         series.latest = frame
         series.error = nil
 
@@ -238,7 +244,13 @@ final class SystemStatsHistoryStore {
         if series.memory.count > Self.windowSize {
             series.memory.removeFirst(series.memory.count - Self.windowSize)
         }
+    }
+
+    private func seriesInternal(for environmentID: String) -> Series {
+        if let series = seriesByEnvironmentID[environmentID] { return series }
+        let series = Series()
         seriesByEnvironmentID[environmentID] = series
+        return series
     }
 
     private func clamped(_ value: Double) -> Double {

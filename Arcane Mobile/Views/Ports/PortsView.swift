@@ -41,7 +41,7 @@ struct PortsView: View {
             port.protocolName.localizedCaseInsensitiveContains(trimmed) ||
             portString(port.containerPort).contains(trimmed) ||
             (port.hostPort.map(portString) ?? "").contains(trimmed) ||
-            (port.hostIp ?? "").localizedCaseInsensitiveContains(trimmed)
+            displayHostIP(port.hostIp).localizedCaseInsensitiveContains(trimmed)
         }
     }
 
@@ -169,7 +169,7 @@ private struct PortMappingRow: View {
     }
 
     private func hostString(_ port: PortMapping) -> String {
-        let ip = port.hostIp.flatMap { $0.isEmpty ? nil : $0 } ?? "0.0.0.0"
+        let ip = displayHostIP(port.hostIp)
         guard let hostPort = port.hostPort else { return ip }
         return "\(ip):\(portString(hostPort))"
     }
@@ -221,10 +221,19 @@ private struct PortMappingDetailView: View {
     }
 
     private var hostString: String {
-        let ip = port.hostIp.flatMap { $0.isEmpty ? nil : $0 } ?? "0.0.0.0"
+        let ip = displayHostIP(port.hostIp)
         guard let hostPort = port.hostPort else { return ip }
         return "\(ip):\(portString(hostPort))"
     }
+}
+
+private func displayHostIP(_ value: String?) -> String {
+    let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard !trimmed.isEmpty,
+          trimmed.localizedCaseInsensitiveCompare("invalid IP") != .orderedSame else {
+        return "0.0.0.0"
+    }
+    return trimmed
 }
 
 private func portString<T: BinaryInteger>(_ value: T) -> String {

@@ -227,6 +227,9 @@ struct ImagesView: View {
                 }
                 .accessibilityLabel("More options")
             }
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
             if isSelecting {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
@@ -240,6 +243,9 @@ struct ImagesView: View {
                         Image(systemName: "arrow.down.circle")
                     }
                     .accessibilityLabel("Pull image")
+                }
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
@@ -336,7 +342,7 @@ struct ImagesView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ImageSummary.self) { image in
             ImageDetailView(image: image, environmentID: environmentID)
-                .pageEntranceFromTop()
+                .navigationTransition(.zoom(sourceID: image.id, in: heroTransition))
         }
         .sheet(isPresented: $showPullSheet) {
             PullImageView(environmentID: environmentID)
@@ -381,6 +387,7 @@ struct ImagesView: View {
         } preview: {
             if !isSelecting {
                 imagePreview(image, state: row.updateState)
+                    .environment(manager)
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -547,12 +554,19 @@ struct ImagesView: View {
     }
 
     private func bulkDeleteImages(ids: [String]) async {
-        guard let client = manager.client else { return }
+        guard let baseClient = manager.client else { return }
         isBulkRunning = true
         bulkRunningActionID = "bulk-delete"
         defer {
             isBulkRunning = false
             bulkRunningActionID = nil
+        }
+        let client: ArcaneClient
+        do {
+            client = try ActivityBatchID.scopedClient(baseClient)
+        } catch {
+            showToast(.error("Couldn't start bulk deletion"))
+            return
         }
         let result = await BulkActionRunner.run(ids: ids) { id in
             try await client.images.remove(envID: environmentID, id: id)

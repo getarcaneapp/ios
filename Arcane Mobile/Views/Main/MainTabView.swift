@@ -20,8 +20,8 @@ struct MainTabView: View {
     init() {
         // Restore the last selected tab (opt-out via App Settings). Seeding the
         // initial State here instead of onAppear avoids a visible tab flash.
-        // ensureSelectedTabVisible() falls back to Dashboard if the saved tab is
-        // no longer available, and quick-action routing still takes precedence.
+        // ensureSelectedTabVisible() falls back to the first reachable destination
+        // if the saved tab is no longer available; quick-action routing still wins.
         let defaults = UserDefaults.standard
         let remember = defaults.object(forKey: "arcane.rememberLastTab") as? Bool ?? true
         if remember,
@@ -31,8 +31,13 @@ struct MainTabView: View {
         }
     }
 
-    private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
-    private var supportsV2: Bool { manager.serverCapabilities?.mode == .rbac }
+    private var availableTabs: [AppTab] {
+        AppTab.allCases.filter(manager.canAccess)
+    }
+
+    private var availableTabSet: Set<AppTab> {
+        Set(availableTabs)
+    }
 
     /// The configured accent (matches `Arcane_MobileApp`), used to tint the
     /// morphing bar's selected-tab indicator.
@@ -44,16 +49,15 @@ struct MainTabView: View {
     }
 
     private var visibleTabs: [AppTab] {
-        store.visibleTabs(isAdmin: isAdmin, supportsV2: supportsV2)
+        store.visibleTabs(availableTabs: availableTabSet)
     }
 
     /// Sidebar mode is not constrained by dock eligibility: every destination
-    /// the current user and backend can access is available as a top-level row.
+    /// the current user and backend can access is available as a top-level row,
+    /// except Activities, which remains available from the dashboard's activity
+    /// button instead of occupying a permanent sidebar destination.
     private var sidebarTabs: [AppTab] {
-        AppTab.allCases.filter { tab in
-            (isAdmin || !tab.requiresAdmin)
-                && (supportsV2 || !tab.requiresV2)
-        }
+        availableTabs.filter { $0 != .activities }
     }
 
     private var allowedDestinationIDs: [String] {
@@ -132,8 +136,7 @@ struct MainTabView: View {
                     accentColor: accentColor,
                     pinnedTabs: store.pinnedTabs,
                     swapTarget: $swapTarget,
-                    isAdmin: isAdmin,
-                    supportsV2: supportsV2,
+                    availableTabs: availableTabSet,
                     onLongPressTab: handleLongPressTab,
                     onPick: handleMorphPick
                 )
@@ -361,7 +364,7 @@ struct MainTabView: View {
     private func ensureSelectedTabVisible() {
         let allowed = Set(allowedDestinationIDs)
         if !allowed.contains(selectedTab) {
-            selectedTab = AppTab.dashboard.id
+            selectedTab = allowedDestinationIDs.first ?? SidebarUtilityDestination.settings.rawValue
         }
     }
 }

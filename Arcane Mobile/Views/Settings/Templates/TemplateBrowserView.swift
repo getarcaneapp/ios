@@ -9,96 +9,181 @@ struct TemplateBrowserView: View {
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    @State private var templates: [Template] = []
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-
-    private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
-
-    private var groupedTemplates: [(String, [Template])] {
-        let groups = Dictionary(grouping: templates) { template in
-            template.registry?.name ?? (template.isRemote ? "Remote" : "Local")
-        }
-        return groups.keys.sorted().map { key in
-            let sorted = (groups[key] ?? []).sorted {
-                $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            }
-            return (key, sorted)
-        }
-    }
+    @State private var store = TemplateBrowserStore()
 
     var body: some View {
+        @Bindable var store = store
+
         if embedded {
-            content
+            content(searchText: $store.searchText, source: $store.source)
         } else {
             NavigationStack {
-                content
+                content(searchText: $store.searchText, source: $store.source)
             }
         }
     }
 
-    private var content: some View {
-            Group {
-                if isLoading && templates.isEmpty {
-                    ProgressView("Loading templates...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let errorMessage, templates.isEmpty {
-                    ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
-                } else if templates.isEmpty {
-                    ContentUnavailableView("No Templates", systemImage: "doc.text", description: nil)
-                } else {
-                    List {
-                        ForEach(groupedTemplates, id: \.0) { registryName, templates in
-                            Section(registryName) {
-                                ForEach(templates) { template in
-                                    NavigationLink(destination: TemplatePreviewView(template: template)) {
+    private func content(
+        searchText: Binding<String>,
+        source: Binding<TemplateSourceSelection>
+    ) -> some View {
+        Group {
+            if !canListTemplates {
+                ContentUnavailableView(
+                    "Templates Access Required",
+                    systemImage: "lock.fill",
+                    description: Text("Your role cannot list templates.")
+                )
+            } else if store.isLoading && store.templates.isEmpty {
+                ProgressView("Loading templates…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage = store.errorMessage, store.templates.isEmpty {
+                ContentUnavailableView {
+                    Label("Couldn't Load Templates", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") { Task { await store.reload() } }
+                }
+            } else {
+                List {
+                    Section {
+                        Picker("Source", selection: source) {
+                            ForEach(TemplateSourceSelection.allCases) { option in
+                                Label(option.title, systemImage: option.icon).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityLabel("Template source")
+                    }
+
+                    if store.templates.isEmpty {
+                        ContentUnavailableView {
+                            Label(
+                                store.queryKey == "|all" ? "No Templates" : "No Matching Templates",
+                                systemImage: "doc.text.magnifyingglass"
+                            )
+                        }
+                        .listRowBackground(Color.clear)
+                    } else {
+                        ForEach(groupedTemplates, id: \.name) { group in
+                            Section(group.name) {
+                                ForEach(group.templates) { template in
+                                    if canReadTemplates {
+                                        NavigationLink {
+                                            TemplatePreviewView(template: template)
+                                        } label: {
+                                            TemplateRow(template: template)
+                                        }
+                                    } else {
                                         TemplateRow(template: template)
                                     }
                                 }
                             }
                         }
                     }
-                    .listStyle(.insetGrouped)
-                }
-            }
-            .navigationTitle("Templates")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if !embedded {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Done") { dismiss() }
-                    }
-                }
-                if embedded && isAdmin {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        NavigationLink {
-                            TemplateRegistriesView()
-                        } label: {
-                            Image(systemName: "gearshape")
+
+                    if let errorMessage = store.errorMessage, !store.templates.isEmpty {
+                        Section {
+                            Label(errorMessage, systemImage: "exclamationmark.triangle")
+                                .font(.footnote)
+                                .foregroundStyle(.red)
                         }
-                        .accessibilityLabel("Manage Template Registries")
+                    }
+
+                    if store.hasMore {
+                        Button {
+                            Task { await store.loadMore() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if store.isLoadingMore {
+                                    ProgressView()
+                                } else {
+                                    Label("Show More", systemImage: "arrow.down.circle")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .disabled(store.isLoadingMore)
                     }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await loadTemplates() } } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
+                .listStyle(.insetGrouped)
+            }
+        }
+        .navigationTitle("Templates")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search templates"
+        )
+        .toolbar {
+            if !embedded {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
                 }
             }
-            .task { await loadTemplates() }
-            .refreshable { await loadTemplates() }
+            if embedded && canManageRegistries {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink {
+                        TemplateRegistriesView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Manage Template Registries")
+                }
+            }
+        }
+        .task(id: queryTaskKey) {
+            guard canListTemplates else { return }
+            store.configure(client: manager.client)
+            do {
+                try await Task.sleep(for: .milliseconds(350))
+                await store.reload(clearExisting: true)
+            } catch {
+                return
+            }
+        }
+        .refreshable {
+            guard canListTemplates else { return }
+            await store.reload()
+        }
     }
 
-    private func loadTemplates() async {
-        guard let client = manager.client else { return }
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        do {
-            templates = try await client.rest.get("templates/all")
-        } catch {
-            errorMessage = friendlyErrorMessage(error)
+    private var clientIdentity: ObjectIdentifier? {
+        manager.client.map { ObjectIdentifier($0.transport) }
+    }
+
+    private var queryTaskKey: String {
+        "\(clientIdentity?.hashValue ?? 0)|\(store.queryKey)"
+    }
+
+    private var groupedTemplates: [(name: String, templates: [Template])] {
+        let groups = Dictionary(grouping: store.templates) { template in
+            template.registry?.name ?? (template.isRemote ? "Remote" : "Local")
         }
+        return groups.keys.sorted().map { key in
+            (name: key, templates: groups[key] ?? [])
+        }
+    }
+
+    private var canManageRegistries: Bool {
+        canListTemplates
+            && manager.permissions.hasAny(
+                [Permission.Templates.create, Permission.Templates.update, Permission.Templates.delete],
+                in: nil
+            )
+    }
+
+    private var canListTemplates: Bool {
+        manager.permissions.has(Permission.Templates.list, in: nil)
+    }
+
+    private var canReadTemplates: Bool {
+        manager.permissions.has(Permission.Templates.read, in: nil)
     }
 }
 
@@ -107,7 +192,7 @@ struct TemplateRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CachedAsyncImage(url: template.iconUrl, size: 36) {
+            CachedAsyncImage(url: template.metadata?.iconUrl, size: 36) {
                 Image(systemName: template.isRemote ? "cloud.fill" : "doc.text.fill")
                     .font(.title3)
                     .foregroundStyle(template.isRemote ? .blue : .indigo)
@@ -115,16 +200,31 @@ struct TemplateRow: View {
                     .glassEffectCompat(in: .circle)
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(template.name)
                     .font(.headline)
                 Text(template.description)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                HStack(spacing: 6) {
+                    Label(template.isRemote ? "Remote" : "Local", systemImage: template.isRemote ? "cloud" : "internaldrive")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(template.isRemote ? .blue : .indigo)
+                    if let version = template.metadata?.version, !version.isEmpty {
+                        Text(version)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    if let tags = template.metadata?.tags, !tags.isEmpty {
+                        Text("\(tags.count) tag\(tags.count == 1 ? "" : "s")")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
-

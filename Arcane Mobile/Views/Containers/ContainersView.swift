@@ -6,6 +6,7 @@ struct ContainersView: View {
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
     @Namespace private var heroTransition
     let environmentID: EnvironmentID
     let environmentName: String
@@ -271,6 +272,9 @@ struct ContainersView: View {
                 }
                 .accessibilityLabel("More options")
             }
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
             if isSelecting {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
@@ -374,7 +378,7 @@ struct ContainersView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ContainerSummary.self) { container in
             ContainerDetailView(container: container, environmentID: environmentID)
-                .pageEntranceFromTop()
+                .navigationTransition(.zoom(sourceID: container.id, in: heroTransition))
         }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadContainers(refresh: true) }
@@ -414,6 +418,7 @@ struct ContainersView: View {
         } preview: {
             if !isSelecting {
                 containerPreview(container)
+                    .environment(manager)
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -536,6 +541,7 @@ struct ContainersView: View {
         return RowPreviewCard(
             icon: "cube.box.fill",
             iconColor: container.isRunning ? .green : .secondary,
+            iconUrl: container.themedIconUrl(for: colorScheme),
             title: container.displayName,
             badges: [
                 .init(text: container.isRunning ? "Running" : "Stopped",

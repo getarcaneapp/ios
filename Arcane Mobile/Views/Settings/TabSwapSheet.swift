@@ -8,15 +8,15 @@ struct TabSwapSheet: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
-    private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
-    private var supportsV2: Bool { manager.serverCapabilities?.mode == .rbac }
     private var store: NavTabsStore { .shared }
 
     private var pinnedSet: Set<AppTab> { Set(store.pinnedTabs) }
 
     private func eligible(_ section: AppTab.Section) -> [AppTab] {
         AppTab.replacementOptions(
-            current: current, pinned: pinnedSet, isAdmin: isAdmin, supportsV2: supportsV2
+            current: current,
+            pinned: pinnedSet,
+            availableTabs: Set(AppTab.allCases.filter(manager.canAccess))
         )
         .filter { $0.section == section }
     }

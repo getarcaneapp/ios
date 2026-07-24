@@ -10,6 +10,7 @@ struct JobsListView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
     @State private var runningJobs: Set<String> = []
     @State private var actionMessage: String?
 
@@ -22,7 +23,7 @@ struct JobsListView: View {
     }
 
     private var filteredJobs: [JobStatus] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return jobs }
         return jobs.filter { job in
             job.name.localizedCaseInsensitiveContains(trimmed) ||
@@ -42,12 +43,6 @@ struct JobsListView: View {
                 ContentUnavailableView("No Jobs", systemImage: "play.square.stack")
             } else {
                 List {
-                    if let actionMessage {
-                        Section {
-                            Label(actionMessage, systemImage: "checkmark.circle")
-                                .foregroundStyle(.green)
-                        }
-                    }
                     ForEach(grouped, id: \.category) { group in
                         Section {
                             ForEach(group.jobs) { job in
@@ -61,6 +56,48 @@ struct JobsListView: View {
                                 } label: {
                                     JobRow(job: job, isRunning: runningJobs.contains(job.id))
                                 }
+                                .contextMenu {
+                                    Button {
+                                        Task { await run(job) }
+                                    } label: {
+                                        Label("Run Job", systemImage: "play.fill")
+                                    }
+                                    .disabled(runningJobs.contains(job.id) || !job.enabled)
+
+                                    Button {
+                                        UIPasteboard.general.string = job.name
+                                        showToast(.copied("Job name copied"))
+                                    } label: {
+                                        Label("Copy Job Name", systemImage: "doc.on.doc")
+                                    }
+
+                                    if !job.schedule.isEmpty {
+                                        Button {
+                                            UIPasteboard.general.string = job.schedule
+                                            showToast(.copied("Schedule copied"))
+                                        } label: {
+                                            Label("Copy Schedule", systemImage: "clock")
+                                        }
+                                    }
+                                }
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    Button {
+                                        Task { await run(job) }
+                                    } label: {
+                                        Label("Run", systemImage: "play.fill")
+                                    }
+                                    .tint(.blue)
+                                    .disabled(runningJobs.contains(job.id) || !job.enabled)
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button {
+                                        UIPasteboard.general.string = job.name
+                                        showToast(.copied("Job name copied"))
+                                    } label: {
+                                        Label("Copy", systemImage: "doc.on.doc")
+                                    }
+                                    .tint(.gray)
+                                }
                             }
                         } header: {
                             Text(group.category.capitalized)
@@ -72,6 +109,7 @@ struct JobsListView: View {
         }
         .navigationTitle("Jobs")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search jobs")
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
@@ -102,13 +140,16 @@ struct JobsListView: View {
 
     private func run(_ job: JobStatus) async {
         guard let client = manager.client, !runningJobs.contains(job.id) else { return }
+        HapticsManager.medium()
         runningJobs.insert(job.id)
         defer { runningJobs.remove(job.id) }
         do {
             let result = try await client.jobs.run(jobID: job.id, envID: environmentID)
-            actionMessage = result.message.isEmpty ? "\(job.name) started" : result.message
+            let msg = result.message.isEmpty ? "\(job.name) started" : result.message
+            HapticsManager.success()
+            showToast(.success(msg))
         } catch {
-            actionMessage = friendlyErrorMessage(error)
+            showToast(.error(friendlyErrorMessage(error)))
         }
     }
 }

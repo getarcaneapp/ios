@@ -196,6 +196,9 @@ struct VolumesView: View {
                 }
                 .accessibilityLabel("More options")
             }
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
             if isSelecting {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
@@ -209,6 +212,9 @@ struct VolumesView: View {
                         Image(systemName: "plus")
                     }
                     .accessibilityLabel("Create volume")
+                }
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(role: .destructive) { pendingDestructive = .prune } label: {
@@ -224,7 +230,7 @@ struct VolumesView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: Volume.self) { volume in
             VolumeDetailView(volume: volume, environmentID: environmentID)
-                .pageEntranceFromTop()
+                .navigationTransition(.zoom(sourceID: volume.id, in: heroTransition))
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateVolumeView(environmentID: environmentID) {}
@@ -338,6 +344,7 @@ struct VolumesView: View {
         } preview: {
             if !isSelecting {
                 volumePreview(volume)
+                    .environment(manager)
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: false) {

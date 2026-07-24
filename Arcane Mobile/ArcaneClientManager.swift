@@ -32,6 +32,7 @@ final class ArcaneClientManager {
     var authState: AppAuthState = .setup
     var currentUser: User?
     var serverCapabilities: ServerCapabilities?
+    private(set) var permissionsManifest: PermissionsManifest?
     var isLoading: Bool = false
     var errorMessage: String?
 
@@ -69,6 +70,7 @@ final class ArcaneClientManager {
 
     // MARK: - Client
     private(set) var client: ArcaneClient?
+    private(set) var clientGeneration = 0
     private var clientSession: URLSession?
     /// URL the current `client`/`clientSession` were built for; lets
     /// `configureClient` skip needless session rebuilds.
@@ -117,6 +119,11 @@ final class ArcaneClientManager {
         isRetryingConnectionBootstrap = false
         serverURL = normalized
         parsedServerURL = parsed
+        currentUser = nil
+        serverCapabilities = nil
+        permissionsManifest = nil
+        currentUserAvatarData = nil
+        avatarFetchKey = nil
         lastBootstrapDNSAddresses = []
         Task { lastBootstrapDNSAddresses = await Self.resolveAddressesDetached(for: parsed) }
         // Explicit (re)configuration — always rebuild, even for the same URL.
@@ -169,9 +176,36 @@ final class ArcaneClientManager {
         serverCapabilities?.mode == .rbac
     }
 
+    /// Whether the current session can reach a top-level app destination.
+    /// v2 servers publish access-surface policy in the permissions manifest;
+    /// v1 servers and older v2 servers without that metadata retain the app's
+    /// existing admin/non-admin fallback.
+    func canAccess(_ tab: AppTab) -> Bool {
+        let supportsV2 = serverCapabilities?.mode == .rbac
+        guard supportsV2 || !tab.requiresV2,
+              let user = currentUser else {
+            return false
+        }
+
+        if supportsV2,
+           let permissionsManifest,
+           !permissionsManifest.accessSurfaces.isEmpty,
+           !tab.accessSurfaceIDs.isEmpty {
+            return tab.accessSurfaceIDs.contains { surfaceID in
+                permissionsManifest.canAccessSurface(
+                    id: surfaceID,
+                    user: user,
+                    selectedEnvironmentID: activeEnvironmentID.rawValue
+                )
+            }
+        }
+
+        return user.isAdmin || !tab.requiresAdmin
+    }
+
     // MARK: - Auth
     func login(username: String, password: String) async {
-        guard client != nil else {
+        guard let client else {
             errorMessage = "No server configured"
             return
         }
@@ -182,9 +216,11 @@ final class ArcaneClientManager {
             let response = try await withNetworkSessionRefreshRetry { client in
                 try await client.auth.login(username: username, password: password)
             }
-            currentUser = response.user
-            serverCapabilities = ServerCapabilities(mode: ServerCapabilities.detect(from: response.user))
-            authState = .authenticated
+            await completeAuthenticatedBootstrap(
+                user: response.user,
+                capabilities: ServerCapabilities(mode: ServerCapabilities.detect(from: response.user)),
+                client: self.client ?? client
+            )
             needsConnectionBootstrapRetry = false
         } catch {
             needsConnectionBootstrapRetry = shouldRefreshNetworkSession(after: error)
@@ -208,9 +244,8 @@ final class ArcaneClientManager {
                 redirectURI: ArcaneMobileOIDC.redirectURI,
                 presenting: anchor
             )
-            currentUser = result.user
-            serverCapabilities = await client.serverCapabilities()
-            authState = .authenticated
+            let capabilities = await client.serverCapabilities()
+            await completeAuthenticatedBootstrap(user: result.user, capabilities: capabilities, client: client)
             needsConnectionBootstrapRetry = false
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             // User cancelled the system sheet — no error message needed.
@@ -225,7 +260,10 @@ final class ArcaneClientManager {
             await endDemo(reason: .userInitiated)
             return
         }
-        guard let client else { return }
+        guard let client else {
+            signOutLocally()
+            return
+        }
         isLoading = true
         defer { isLoading = false }
 
@@ -297,9 +335,8 @@ final class ArcaneClientManager {
 
             do {
                 let response = try await client.auth.login(username: session.username, password: session.password)
-                currentUser = response.user
-                serverCapabilities = await client.serverCapabilities()
-                authState = .authenticated
+                let capabilities = await client.serverCapabilities()
+                await completeAuthenticatedBootstrap(user: response.user, capabilities: capabilities, client: client)
                 needsConnectionBootstrapRetry = false
                 isDemoActive = true
                 demoEndsAt = session.endsAt
@@ -326,12 +363,14 @@ final class ArcaneClientManager {
         let endingClient = client
         currentUser = nil
         serverCapabilities = nil
+        permissionsManifest = nil
         isDemoActive = false
         demoEndsAt = nil
         needsConnectionBootstrapRetry = false
         isRetryingConnectionBootstrap = false
         serverURL = ""
         client = nil
+        clientGeneration &+= 1
         authState = .setup
         DeploymentActivityStore.shared.sessionDidEnd()
         WidgetSnapshotPublisher.shared.publishSignedOut()
@@ -376,7 +415,7 @@ final class ArcaneClientManager {
 
         guard hasCredential else {
             // No stored credential at all — the user is genuinely signed out.
-            authState = .login
+            signOutLocally()
             await refreshOIDCStatus()
             return
         }
@@ -385,9 +424,11 @@ final class ArcaneClientManager {
             let user = try await withNetworkSessionRefreshRetry { client in
                 try await client.auth.me()
             }
-            currentUser = user
-            serverCapabilities = ServerCapabilities(mode: ServerCapabilities.detect(from: user))
-            authState = .authenticated
+            await completeAuthenticatedBootstrap(
+                user: user,
+                capabilities: ServerCapabilities(mode: ServerCapabilities.detect(from: user)),
+                client: self.client ?? client
+            )
             needsConnectionBootstrapRetry = false
         } catch let error as ArcaneError {
             switch error {
@@ -419,6 +460,7 @@ final class ArcaneClientManager {
 
         currentUser = nil
         serverCapabilities = nil
+        permissionsManifest = nil
         authState = .login
         errorMessage = connectionAwareErrorMessage(error)
         needsConnectionBootstrapRetry = shouldRefreshNetworkSession(after: error)
@@ -430,7 +472,26 @@ final class ArcaneClientManager {
         currentUserAvatarData = nil
         avatarFetchKey = nil
         serverCapabilities = nil
+        permissionsManifest = nil
         needsConnectionBootstrapRetry = false
+    }
+
+    /// Finishes every successful authentication path consistently. The
+    /// manifest is session-scoped decision metadata, so a fetch failure must
+    /// not prevent sign-in; navigation falls back to the legacy admin policy.
+    private func completeAuthenticatedBootstrap(
+        user: User,
+        capabilities: ServerCapabilities,
+        client: ArcaneClient
+    ) async {
+        currentUser = user
+        serverCapabilities = capabilities
+        if capabilities.mode == .rbac {
+            permissionsManifest = try? await client.roles.availablePermissions()
+        } else {
+            permissionsManifest = nil
+        }
+        authState = .authenticated
     }
 
     // MARK: - Current user avatar
@@ -507,6 +568,7 @@ final class ArcaneClientManager {
         clientSession?.finishTasksAndInvalidate()
         let bundle = Self.makeClient(url: url)
         client = bundle.client
+        clientGeneration &+= 1
         clientSession = bundle.session
         configuredClientURL = url
     }

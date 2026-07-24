@@ -191,7 +191,7 @@ private struct CachedImageLoadID: Hashable {
 }
 
 struct CachedAsyncImage<Fallback: View>: View {
-    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager: ArcaneClientManager?
     let url: String?
     let size: CGFloat
     let fallback: Fallback
@@ -231,7 +231,8 @@ struct CachedAsyncImage<Fallback: View>: View {
         guard let urlString = url, !urlString.isEmpty else { return nil }
         let resolved: String
         if urlString.hasPrefix("/") {
-            guard let base = manager.parsedServerURL,
+            guard let manager,
+                  let base = manager.parsedServerURL,
                   let combined = URL(string: urlString, relativeTo: base)?.absoluteURL
             else { return nil }
             resolved = combined.absoluteString
@@ -271,7 +272,7 @@ struct CachedAsyncImage<Fallback: View>: View {
     /// changed while a fetch was in flight.
     private func loadImage() async {
         image = nil
-        guard let resolved = resolvedURL() else { return }
+        guard let manager, let resolved = resolvedURL() else { return }
         let maxPixel = maxPixelSize
         if let cached = ImageCache.shared[resolved, maxPixelSize: maxPixel] {
             image = cached

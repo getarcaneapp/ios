@@ -41,9 +41,10 @@ struct WebhooksView: View {
                                     DestructiveLabel(text: "Delete")
                                 }
                                 .tint(.red)
-                            } preview: {
-                                webhookPreview(webhook)
-                            }
+                             } preview: {
+                                 webhookPreview(webhook)
+                                     .environment(manager)
+                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button {
                                     pendingDeleteWebhook = webhook

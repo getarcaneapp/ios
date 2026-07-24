@@ -66,12 +66,11 @@ struct AppSidebar: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.bottom, 16)
+                .padding(.bottom, 88)
             }
             .scrollIndicators(.hidden)
-
-            Divider()
-
+        }
+        .overlay(alignment: .bottom) {
             HStack(spacing: 8) {
                 SidebarProfileButton(
                     isSelected: selectedID == SidebarUtilityDestination.profile.rawValue,
@@ -80,6 +79,8 @@ struct AppSidebar: View {
                     onSelect(SidebarUtilityDestination.profile.rawValue)
                 }
 
+                Spacer(minLength: 0)
+
                 SidebarSettingsButton(
                     isSelected: selectedID == SidebarUtilityDestination.settings.rawValue,
                     accentColor: accentColor
@@ -87,8 +88,8 @@ struct AppSidebar: View {
                     onSelect(SidebarUtilityDestination.settings.rawValue)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 18)
         }
         .background(Color(uiColor: .systemBackground))
         .accessibilityElement(children: .contain)
@@ -104,13 +105,13 @@ private struct SidebarSettingsButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "gearshape.fill")
-                .font(.callout.weight(.semibold))
+                .font(.title.weight(.semibold))
                 .foregroundStyle(isSelected ? accentColor : .primary)
-                .frame(width: 20, height: 20)
         }
-        .buttonBorderShape(.circle)
-        .controlSize(.regular)
-        .glassButtonStyleCompat()
+        .buttonStyle(.plain)
+        .frame(width: 52, height: 52)
+        .contentShape(.circle)
+        .glassEffectCompat(interactive: true, in: .circle)
         .accessibilityLabel("App Settings")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -123,15 +124,18 @@ private struct SidebarProfileButton: View {
 
     var body: some View {
         Button(action: action) {
-            UserAccountLabel(avatarSize: 42)
-                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-                .padding(.horizontal, 10)
-                .background(isSelected ? accentColor.opacity(0.12) : .clear)
-                .clipShape(.rect(cornerRadius: Radius.standard))
-                .contentShape(.rect)
+            UserAvatarCircle(size: 52, font: .title3.bold())
+                .overlay {
+                    if isSelected {
+                        Circle()
+                            .strokeBorder(accentColor, lineWidth: 3)
+                    }
+                }
         }
         .buttonStyle(.plain)
-        .layoutPriority(1)
+        .frame(width: 52, height: 52)
+        .contentShape(.circle)
+        .accessibilityLabel("Profile")
         .accessibilityHint("Opens profile")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

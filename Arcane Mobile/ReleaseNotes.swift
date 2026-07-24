@@ -52,6 +52,48 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.6.0",
+            new: [
+                .init("Global variable management with secret and environment scoping."),
+                .init("Configurable activity start toasts for user or system activity.")
+            ],
+            changed: [
+                .init("Floating profile and App Settings buttons in sidebar navigation."),
+                .init("Activities is accessed from the dashboard instead of navigation menus."),
+                .init("Grouped Activity Center summaries for related operations."),
+                .init("Event severity summaries, server-side filters, and permission-aware deletion."),
+                .init("Template search, source filtering, metadata, and remote downloads."),
+                .init("Navigation visibility based on server-provided permissions."),
+                .init("Updates opens directly to environment update cards."),
+                .init("Activity progress toasts open the app-wide Activity Center sheet when tapped."),
+                .init("Widgets use solid black system-style backgrounds."),
+                .init("Dashboard overview identifies counts across all enabled environments."),
+                .init("Batched log line streaming and unanimated terminal scrolling."),
+                .init("Cached Activity Center grouping for smoother list rendering."),
+                .init("Debounced search filtering across resource lists."),
+                .init("Hero zoom navigation transitions for resource cards and details."),
+                .init("Rich context menus and swipe actions for jobs, variables, events, and updates."),
+                .init("Long-press preview cards render custom container and project icons."),
+                .init("Navigation toolbar actions render as separate buttons.")
+            ],
+            fixed: [
+                .init("Network topology renders as an interactive network-to-container diagram."),
+                .init("Multiple dashboard performance and reliability improvements."),
+                .init("System prune reports background activity progress correctly."),
+                .init("Bottom overlays sit at the safe-area edge in sidebar navigation."),
+                .init("Port mappings replace invalid host addresses with the wildcard address."),
+                .init("Activity toast selections stay aligned beside their setting."),
+                .init("Activity toasts use compact text with live progress."),
+                .init("Widgets use live Docker totals and online state across all enabled environments."),
+                .init("Toasts align with the bottom safe area inside sheets."),
+                .init("Image update actions support consumers resolved by name."),
+                .init("Widget refreshes keep environment work within the extension budget."),
+                .init("Delete confirmations avoid unnecessary app-wide overlay work."),
+                .init("Context menu previews safely retain app environment dependencies."),
+                .init("Container registry previews show current status and URL.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.5.4",
             changed: [
                 .init("Version details moved below the Danger Zone in App Settings."),

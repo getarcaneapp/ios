@@ -25,19 +25,28 @@ final class NavTabsStore {
         return resolved.count == Self.slotCount ? resolved : AppTab.mainDefaults
     }
 
-    /// Drops admin-only tabs for non-admins and v2-only tabs on v1 servers,
-    /// then pads with `mainDefaults` so the returned list always has
-    /// `slotCount` entries.
-    func visibleTabs(isAdmin: Bool, supportsV2: Bool) -> [AppTab] {
+    /// Drops tabs the authenticated session cannot reach, then fills empty
+    /// slots with other available primary destinations. A restricted account
+    /// may legitimately have fewer than four reachable destinations.
+    func visibleTabs(availableTabs: Set<AppTab>) -> [AppTab] {
         var visible = pinnedTabs.filter { tab in
             tab.canPinToBottomBar
-                && (isAdmin || !tab.requiresAdmin)
-                && (supportsV2 || !tab.requiresV2)
+                && availableTabs.contains(tab)
         }
         if visible.count < Self.slotCount {
             for fallback in AppTab.mainDefaults {
                 if visible.count == Self.slotCount { break }
-                if !visible.contains(fallback) { visible.append(fallback) }
+                if availableTabs.contains(fallback), !visible.contains(fallback) {
+                    visible.append(fallback)
+                }
+            }
+        }
+        if visible.count < Self.slotCount {
+            for fallback in AppTab.allCases where fallback.canPinToBottomBar {
+                if visible.count == Self.slotCount { break }
+                if availableTabs.contains(fallback), !visible.contains(fallback) {
+                    visible.append(fallback)
+                }
             }
         }
         return Array(visible.prefix(Self.slotCount))

@@ -13,6 +13,7 @@ struct VolumeBrowserView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
+    @State private var debouncedSearchText = ""
     @State private var showPathAlert = false
     @State private var pathInput = "/"
     @State private var loadGeneration = 0
@@ -22,7 +23,7 @@ struct VolumeBrowserView: View {
     }
 
     private var displayedEntries: [FileEntry] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let filtered = query.isEmpty
             ? entries
             : entries.filter { $0.name.localizedCaseInsensitiveContains(query) }
@@ -80,6 +81,7 @@ struct VolumeBrowserView: View {
         .navigationTitle(currentPath == "/" ? volumeName : currentPath)
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search folder")
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .safeAreaInset(edge: .top, spacing: 0) {
             breadcrumbBar
         }

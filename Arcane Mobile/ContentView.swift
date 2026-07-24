@@ -5,6 +5,8 @@ struct ContentView: View {
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @AppStorage("arcane.lastSeenReleaseVersion") private var lastSeenVersion: String = ""
     @State private var showWhatsNew = false
+    @State private var showActivityCenter = false
+    @State private var quickActionRouter = QuickActionRouter.shared
 
     var body: some View {
         Group {
@@ -39,17 +41,29 @@ struct ContentView: View {
             guard phase == .active else { return }
             Task { await manager.retryConnectionBootstrapIfNeeded() }
         }
-        // Single app-wide host for the animated delete/destructive confirmation
-        // card. Mounted above the tab bar and navigation stacks so the card and
-        // its scrim float over everything.
-        .deleteConfirmationHost()
+        .onChange(of: quickActionRouter.pendingActivityCenter, initial: true) { _, pending in
+            guard pending, manager.supportsActivities else { return }
+            quickActionRouter.pendingActivityCenter = false
+            showActivityCenter = true
+        }
+        .sheet(isPresented: $showActivityCenter) {
+            NavigationStack {
+                ActivitiesView()
+            }
+            .toastHost(reservesTabBarSpace: false)
+            .presentationDragIndicator(.visible)
+        }
         // Deployment activity host: the floating progress pill and the stream
         // sheet for the active deploy/redeploy/pull operation. Mounted before
         // the toast host so toasts layer above the pill.
         .deploymentActivityHost()
-        // Single app-wide host for transient toasts. Mounted after the delete
-        // host so a toast layers above the confirmation card's scrim, and on the
-        // outer Group so toasts also work on the login / setup screens.
+        // Listen for new v2 activity updates even when Activity Center is not
+        // open. The user's App Settings preference controls which starts become
+        // app-wide toasts.
+        .activityToastMonitor()
+        // Single app-wide host for transient toasts. Mounted on the outer Group
+        // so toasts layer above view-local confirmation overlays and also work
+        // on the login / setup screens.
         .toastHost()
     }
 

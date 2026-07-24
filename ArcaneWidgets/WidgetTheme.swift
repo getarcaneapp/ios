@@ -22,31 +22,31 @@ enum WidgetTheme {
     }
 }
 
-/// Standard widget container background: a whisper of accent gradient in the
-/// default rendering mode; plain background in `.accented` (tinted Home
-/// Screen) and StandBy, where custom gradients fight the system treatment.
+/// Calendar-style widget background: solid black in full-color mode. Tinted
+/// Home Screen and StandBy rendering remain system-controlled.
 struct WidgetContainerBackground: ViewModifier {
     @Environment(\.widgetRenderingMode) private var renderingMode
-    let accent: Color
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
-        content.containerBackground(for: .widget) {
-            if renderingMode == .fullColor {
-                LinearGradient(
-                    colors: [accent.opacity(0.14), .clear],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            } else {
-                Color.clear
+        content
+            .environment(
+                \.colorScheme,
+                renderingMode == .fullColor ? .dark : colorScheme
+            )
+            .containerBackground(for: .widget) {
+                if renderingMode == .fullColor {
+                    Color.black
+                } else {
+                    Color.clear
+                }
             }
-        }
     }
 }
 
 extension View {
-    func widgetContainerBackground(accent: Color) -> some View {
-        modifier(WidgetContainerBackground(accent: accent))
+    func widgetContainerBackground() -> some View {
+        modifier(WidgetContainerBackground())
     }
 }
 

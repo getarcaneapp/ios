@@ -38,6 +38,22 @@ enum HapticKind {
     }
 }
 
+enum ToastActivityState {
+    case running
+    case success
+    case failure
+    case cancelled
+
+    var tint: Color {
+        switch self {
+        case .running: return .blue
+        case .success: return .green
+        case .failure: return .red
+        case .cancelled: return .secondary
+        }
+    }
+}
+
 // MARK: - Model
 
 struct Toast: Identifiable {
@@ -58,6 +74,15 @@ struct Toast: Identifiable {
     var actionTint: Color = .accentColor
     /// Haptic played once when the toast is presented.
     var haptic: HapticKind = .light
+    /// A stable backend activity key enables in-place progress updates.
+    var activityID: String? = nil
+    /// Normalized activity progress in the 0...1 range.
+    var activityProgress: Double? = nil
+    var activityState: ToastActivityState? = nil
+    /// Active activities remain visible until a terminal stream update arrives.
+    var isPersistent = false
+    /// Optional whole-toast action used by progress surfaces.
+    var tapAction: (@MainActor () -> Void)? = nil
     /// Optional trailing button. Returns `true` to dismiss the toast.
     var action: (@MainActor () -> Bool)? = nil
 }
@@ -86,12 +111,29 @@ extension Toast {
     static func info(_ title: String) -> Toast {
         Toast(title: title, duration: 2.5, symbol: "info.circle", haptic: .light)
     }
+
+    static func activity(id: String, title: String, progress: Double?) -> Toast {
+        Toast(
+            title: title,
+            duration: 2.5,
+            symbol: "clock.arrow.circlepath",
+            symbolTint: .blue,
+            haptic: .light,
+            activityID: id,
+            activityProgress: progress,
+            activityState: .running,
+            isPersistent: true,
+            tapAction: {
+                QuickActionRouter.shared.openActivityCenter()
+            }
+        )
+    }
 }
 
 // MARK: - Presenter (single source of truth)
 
-/// App-wide store for the currently-visible toast. Mirrors
-/// `DeleteConfirmationPresenter`: one shared instance, a root host renders it,
+/// App-wide store for the currently-visible toast. Uses the same shared-presenter
+/// pattern as `DeleteConfirmationPresenter`; the root toast host renders it and
 /// call sites publish via `showToast(_:)`.
 @MainActor
 @Observable
@@ -119,17 +161,73 @@ final class ToastPresenter {
         }
     }
 
+    func showActivity(id: String, title: String, progress: Double?) {
+        let normalizedProgress = progress.map { min(max($0, 0), 1) }
+        guard var toast = activeToast, toast.activityID == id else {
+            show(.activity(id: id, title: title, progress: normalizedProgress))
+            return
+        }
+
+        dismissTask?.cancel()
+        dismissTask = nil
+        toast.title = title
+        toast.symbol = "clock.arrow.circlepath"
+        toast.symbolTint = .blue
+        toast.activityProgress = normalizedProgress
+        toast.activityState = .running
+        toast.isPersistent = true
+        activeToast = toast
+    }
+
+    func finishActivity(id: String, title: String, state: ToastActivityState, progress: Double?) {
+        guard var toast = activeToast, toast.activityID == id else { return }
+
+        dismissTask?.cancel()
+        toast.title = terminalTitle(title, state: state)
+        toast.symbol = terminalSymbol(state)
+        toast.symbolTint = state.tint
+        toast.activityProgress = state == .success ? 1 : progress.map { min(max($0, 0), 1) }
+        toast.activityState = state
+        toast.isPersistent = false
+        activeToast = toast
+
+        UIAccessibility.post(notification: .announcement, argument: toast.title)
+        scheduleDismiss(after: state == .failure ? 5 : 2.5)
+    }
+
     private func present(_ toast: Toast) {
         activeToast = toast
         toast.haptic.play()
         // VoiceOver doesn't move focus to a transient overlay, so announce it.
         UIAccessibility.post(notification: .announcement, argument: toast.title)
 
-        let duration = max(toast.duration, 1)
+        guard !toast.isPersistent else { return }
+        scheduleDismiss(after: max(toast.duration, 1))
+    }
+
+    private func scheduleDismiss(after duration: CGFloat) {
         dismissTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(Double(duration)))
             guard !Task.isCancelled else { return }
             dismiss()
+        }
+    }
+
+    private func terminalTitle(_ title: String, state: ToastActivityState) -> String {
+        switch state {
+        case .running: return title
+        case .success: return "\(title) completed"
+        case .failure: return "\(title) failed"
+        case .cancelled: return "\(title) cancelled"
+        }
+    }
+
+    private func terminalSymbol(_ state: ToastActivityState) -> String {
+        switch state {
+        case .running: return "clock.arrow.circlepath"
+        case .success: return "checkmark.circle.fill"
+        case .failure: return "exclamationmark.triangle.fill"
+        case .cancelled: return "slash.circle.fill"
         }
     }
 
@@ -143,28 +241,42 @@ final class ToastPresenter {
 /// Publish a toast to the app-wide overlay. Main-actor; call from button actions,
 /// `@MainActor` view methods, or `Task { @MainActor in … }` completion handlers.
 @MainActor func showToast(_ toast: Toast) { ToastPresenter.shared.show(toast) }
+@MainActor func showActivityToast(id: String, title: String, progress: Double?) {
+    ToastPresenter.shared.showActivity(id: id, title: title, progress: progress)
+}
+@MainActor func finishActivityToast(
+    id: String,
+    title: String,
+    state: ToastActivityState,
+    progress: Double?
+) {
+    ToastPresenter.shared.finishActivity(id: id, title: title, state: state, progress: progress)
+}
 @MainActor func dismissToast() { ToastPresenter.shared.dismiss() }
 
 // MARK: - Host (mount once near the root)
 
 extension View {
-    /// Mounts the single, app-wide toast overlay. Apply once near the root,
-    /// after `.deleteConfirmationHost()` so a toast rides above the delete scrim.
-    func toastHost() -> some View {
-        overlay { ToastHost() }
+    /// Mounts the single, app-wide toast overlay. Apply once near the root so
+    /// toasts ride above view-local delete confirmation scrims.
+    func toastHost(reservesTabBarSpace: Bool = true) -> some View {
+        overlay { ToastHost(reservesTabBarSpace: reservesTabBarSpace) }
     }
 }
 
 private struct ToastHost: View {
     @State private var presenter = ToastPresenter.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
+    let reservesTabBarSpace: Bool
 
-    /// Lifts the toast above the bottom tab bar. The host overlays the outer view
-    /// tree (outside the `UITabBarController` whose inset `BottomBarInsetInstaller`
-    /// manages), so we add the clearance ourselves. Tuned per OS — the iOS 26
-    /// floating bar sits higher than the iOS 18 standard bar.
+    /// Sidebar navigation has no bottom bar, so its toast sits on the bottom safe
+    /// area. Root dock navigation adds its own clearance because that host lives
+    /// above the `UITabBarController`; sheet-local hosts do not.
     private var barClearance: CGFloat {
-        if #available(iOS 26, *) { 60 } else { 56 }
+        guard reservesTabBarSpace, !sidebarNavigationEnabled else { return 0 }
+        if #available(iOS 26, *) { return 60 }
+        return 56
     }
 
     var body: some View {
@@ -196,35 +308,19 @@ private struct ToastCapsule: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            if let symbol = toast.symbol {
-                Image(systemName: symbol)
-                    .font(.title3)
-                    .foregroundStyle(toast.symbolTint)
-                    .transition(.identity)
-            }
-
-            Text(toast.title)
-                .font(.body)
-                // Two lines so error detail isn't lost to truncation; each
-                // toast renders at its natural size from the start (fresh
-                // identity per toast), so the glass shape never resizes.
-                .lineLimit(2)
-
-            Spacer(minLength: 0)
-
-            if let actionTitle = toast.actionTitle, let action = toast.action {
+        Group {
+            if let tapAction = toast.tapAction {
                 Button {
-                    if action() { onDismiss() }
+                    tapAction()
+                    onDismiss()
                 } label: {
-                    Text(actionTitle)
-                        .foregroundStyle(toast.actionTint)
+                    content
                 }
-                .transition(.identity)
+                .buttonStyle(.plain)
+            } else {
+                content
             }
         }
-        .padding(.horizontal, 18)
-        .frame(height: 50)
         .clipShape(.capsule)
         .contentShape(.capsule)
         .glassEffectCompat(in: .capsule)
@@ -239,7 +335,58 @@ private struct ToastCapsule: View {
         )
         .transition(transition)
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isStaticText)
+        .accessibilityValue(activityAccessibilityValue)
+    }
+
+    private var content: some View {
+        VStack(spacing: toast.activityState == nil ? 0 : 7) {
+            HStack(spacing: 10) {
+                if let symbol = toast.symbol {
+                    Image(systemName: symbol)
+                        .font(toast.activityState == nil ? .title3 : .body)
+                        .foregroundStyle(toast.symbolTint)
+                        .transition(.identity)
+                }
+
+                Text(toast.title)
+                    .font(toast.activityState == nil ? .body : .subheadline.weight(.medium))
+                    // Activity titles stay compact above their progress bar.
+                    // Other feedback retains two lines for useful error detail.
+                    .lineLimit(toast.activityState == nil ? 2 : 1)
+
+                Spacer(minLength: 0)
+
+                if let progress = toast.activityProgress {
+                    Text(verbatim: "\(Int((progress * 100).rounded()))%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
+                if let actionTitle = toast.actionTitle, let action = toast.action {
+                    Button {
+                        if action() { onDismiss() }
+                    } label: {
+                        Text(actionTitle)
+                            .foregroundStyle(toast.actionTint)
+                    }
+                    .transition(.identity)
+                }
+            }
+
+            if let state = toast.activityState {
+                ProgressView(value: toast.activityProgress ?? 0)
+                    .progressViewStyle(.linear)
+                    .tint(state.tint)
+            }
+        }
+        .padding(.horizontal, 18)
+        .frame(height: toast.activityState == nil ? 50 : 62)
+    }
+
+    private var activityAccessibilityValue: String {
+        guard toast.activityState != nil else { return "" }
+        guard let progress = toast.activityProgress else { return "In progress" }
+        return "\(Int((progress * 100).rounded())) percent"
     }
 
     private var transition: AnyTransition {

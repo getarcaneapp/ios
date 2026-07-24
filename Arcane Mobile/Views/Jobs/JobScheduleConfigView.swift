@@ -87,6 +87,9 @@ struct JobScheduleConfigView: View {
                 .accessibilityLabel("Refresh")
                 .disabled(isLoading)
             }
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
             ToolbarItem(placement: .confirmationAction) {
                 Button {
                     Task { await save() }

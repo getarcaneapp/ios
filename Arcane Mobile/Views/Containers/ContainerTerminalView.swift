@@ -55,7 +55,7 @@ struct ContainerTerminalView: View {
                     }
                     .background(Color(.systemBackground))
                     .onChange(of: outputRevision) { _, _ in
-                        withAnimation(Motion.follow) {
+                        withAnimation(.none) {
                             proxy.scrollTo("bottom", anchor: .bottom)
                         }
                     }
@@ -157,7 +157,10 @@ struct ContainerTerminalView: View {
     }
 
     private func shortcutButton(_ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button {
+            HapticsManager.light()
+            action()
+        } label: {
             Text(label)
                 .font(.caption.monospaced())
                 .padding(.vertical, 6)

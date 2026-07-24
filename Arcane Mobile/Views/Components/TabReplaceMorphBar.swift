@@ -19,8 +19,7 @@ struct TabReplaceMorphBar: View {
     let pinnedTabs: [AppTab]
     /// The tab the user long-pressed to replace; nil collapses the callout.
     @Binding var swapTarget: AppTab?
-    let isAdmin: Bool
-    let supportsV2: Bool
+    let availableTabs: Set<AppTab>
     var onLongPressTab: (Int) -> Void
     var onPick: (AppTab) -> Void
 
@@ -64,8 +63,7 @@ struct TabReplaceMorphBar: View {
                     panelWidth: panelWidth,
                     pointerX: pointerX(for: target),
                     pinnedTabs: pinnedTabs,
-                    isAdmin: isAdmin,
-                    supportsV2: supportsV2,
+                    availableTabs: availableTabs,
                     onPick: onPick
                 )
                 // Float clear above the bar; the pointer reaches down to the tab
@@ -108,8 +106,7 @@ private struct TabReplaceCallout: View {
     let panelWidth: CGFloat
     let pointerX: CGFloat
     let pinnedTabs: [AppTab]
-    let isAdmin: Bool
-    let supportsV2: Bool
+    let availableTabs: Set<AppTab>
     let onPick: (AppTab) -> Void
 
     private let columns = 3
@@ -121,8 +118,7 @@ private struct TabReplaceCallout: View {
         AppTab.replacementOptions(
             current: current,
             pinned: Set(pinnedTabs),
-            isAdmin: isAdmin,
-            supportsV2: supportsV2
+            availableTabs: availableTabs
         )
     }
 

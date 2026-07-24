@@ -7,7 +7,7 @@ import Arcane
 nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case dashboard, containers, images, projects
     case volumes, networks, ports, updates, activities, events
-    case gitRepositories, gitOps, swarm
+    case gitRepositories, gitOps, variables, swarm
     case users, apiKeys, containerRegistries, templateRegistries,
          notifications, webhooks, systemSettings, authentication, jobs,
          roles, oidcRoleMappings
@@ -32,11 +32,12 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .events: return "Events"
         case .gitRepositories: return "Git Repositories"
         case .gitOps: return "GitOps"
+        case .variables: return "Variables"
         case .swarm: return "Swarm"
         case .users: return "Users"
         case .apiKeys: return "API Keys"
         case .containerRegistries: return "Container Registries"
-        case .templateRegistries: return "Template Registries"
+        case .templateRegistries: return "Templates"
         case .notifications: return "Notifications"
         case .webhooks: return "Webhooks"
         case .systemSettings: return "System Settings"
@@ -77,6 +78,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .events: return "clock.badge.exclamationmark"
         case .gitRepositories: return "arrow.triangle.branch"
         case .gitOps: return "arrow.triangle.merge"
+        case .variables: return "curlybraces"
         case .swarm: return "square.stack.3d.up"
         case .users: return "person.2.fill"
         case .apiKeys: return "key.fill"
@@ -102,6 +104,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .activities: return .orange
         case .events: return .red
         case .gitRepositories, .gitOps: return .indigo
+        case .variables: return .teal
         case .swarm: return .mint
         case .users: return .blue
         case .apiKeys: return .yellow
@@ -119,7 +122,8 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
 
     var section: Section {
         switch self {
-        case .dashboard, .projects, .containerRegistries, .templateRegistries, .gitRepositories, .gitOps:
+        case .dashboard, .projects, .containerRegistries, .templateRegistries, .gitRepositories, .gitOps,
+             .variables:
             return .management
         case .containers, .images, .updates, .activities, .networks, .ports, .volumes, .jobs:
             return .resources
@@ -142,7 +146,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
              .volumes, .networks, .ports,
              .updates, .activities, .events, .swarm:
             return true
-        case .gitRepositories, .gitOps,
+        case .gitRepositories, .gitOps, .variables,
              .containerRegistries, .templateRegistries,
              .jobs, .users, .apiKeys, .notifications, .webhooks,
              .systemSettings, .authentication, .roles, .oidcRoleMappings:
@@ -152,7 +156,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
 
     var requiresAdmin: Bool {
         switch self {
-        case .containerRegistries, .templateRegistries, .gitRepositories, .gitOps,
+        case .containerRegistries, .templateRegistries, .gitRepositories, .gitOps, .variables,
              .jobs, .swarm,
              .users, .apiKeys, .notifications, .webhooks, .systemSettings, .authentication,
              .roles, .oidcRoleMappings:
@@ -166,7 +170,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
     /// `requiresV2 == true` are hidden — the underlying endpoints don't exist.
     var requiresV2: Bool {
         switch self {
-        case .activities, .roles, .oidcRoleMappings: return true
+        case .activities, .variables, .roles, .oidcRoleMappings: return true
         default: return false
         }
     }
@@ -179,13 +183,52 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
     var isEnvironmentScoped: Bool {
         switch self {
         case .dashboard, .containers, .images, .projects, .volumes, .networks,
-             .ports, .gitOps, .jobs:
+             .ports, .gitOps, .jobs, .swarm:
             return true
         case .activities, .updates, .events, .gitRepositories, .users, .apiKeys,
              .containerRegistries, .templateRegistries,
              .notifications, .webhooks, .systemSettings, .authentication,
-             .swarm, .roles, .oidcRoleMappings:
+             .variables, .roles, .oidcRoleMappings:
             return false
+        }
+    }
+
+    /// Backend-owned access surfaces that can make this destination reachable
+    /// on v2. A destination with multiple IDs is reachable when any matching
+    /// surface is allowed by the server's manifest.
+    var accessSurfaceIDs: [String] {
+        switch self {
+        case .dashboard: return ["route.dashboard"]
+        case .containers: return ["route.containers"]
+        case .images: return ["route.images"]
+        case .projects: return ["route.projects"]
+        case .volumes: return ["route.volumes"]
+        case .networks: return ["route.networks"]
+        case .ports: return ["route.ports"]
+        case .updates: return ["route.updates"]
+        case .events: return ["route.events"]
+        case .gitRepositories: return ["customize.category.git-repositories"]
+        case .gitOps: return ["route.environments.gitops"]
+        case .variables: return ["customize.category.variables"]
+        case .swarm: return ["route.swarm"]
+        case .users: return ["settings.category.users"]
+        case .apiKeys: return ["settings.category.apikeys"]
+        case .containerRegistries: return ["customize.category.registries"]
+        case .templateRegistries: return ["customize.category.templates"]
+        case .notifications: return ["settings.category.notifications"]
+        case .webhooks: return ["settings.category.webhooks"]
+        case .systemSettings:
+            return [
+                "settings.category.appearance",
+                "settings.category.build",
+                "settings.category.timeouts",
+                "settings.category.diagnostics"
+            ]
+        case .authentication: return ["settings.category.authentication"]
+        case .jobs: return ["settings.category.jobschedule"]
+        case .roles: return ["settings.category.roles"]
+        case .activities: return ["route.activities"]
+        case .oidcRoleMappings: return ["route.oidc-role-mappings"]
         }
     }
 
@@ -200,15 +243,13 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
     static func replacementOptions(
         current: AppTab,
         pinned: Set<AppTab>,
-        isAdmin: Bool,
-        supportsV2: Bool
+        availableTabs: Set<AppTab>
     ) -> [AppTab] {
         AppTab.allCases.filter { tab in
             tab.canPinToBottomBar
                 && !pinned.contains(tab)
                 && tab != current
-                && (isAdmin || !tab.requiresAdmin)
-                && (supportsV2 || !tab.requiresV2)
+                && availableTabs.contains(tab)
         }
     }
 }
@@ -262,8 +303,15 @@ func appTabDestination(
         GitRepositoriesView()
     case .gitOps:
         GitOpsSyncsView(environmentID: manager.activeEnvironmentID)
+    case .variables:
+        VariablesView()
     case .swarm:
-        SwarmView()
+        ContentUnavailableView {
+            Label("Coming Soon", systemImage: "square.stack.3d.up")
+        } description: {
+            Text("Swarm management is planned for a future Arcane Mobile update.")
+        }
+        .navigationTitle("Swarm")
     case .users:
         UsersView()
     case .apiKeys:
@@ -271,7 +319,7 @@ func appTabDestination(
     case .containerRegistries:
         ContainerRegistriesView()
     case .templateRegistries:
-        TemplateRegistriesView()
+        TemplateBrowserView(embedded: true)
     case .notifications:
         NotificationSettingsView()
     case .webhooks:

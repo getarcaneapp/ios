@@ -83,24 +83,23 @@ struct TemplateRegistryFormView: View {
         defer { isLoading = false }
         do {
             if let registry {
-                let body = UpdateTemplateRegistryRequest(
+                let body = UpdateTemplateRegistry(
                     name: name,
                     url: url,
                     description: description,
                     enabled: enabled
                 )
-                let _: TemplateRegistry = try await client.rest.put("templates/registries/\(registry.id)", body: body)
+                try await client.templates.updateRegistry(id: registry.id, body: body)
             } else {
-                let body = CreateTemplateRegistryRequest(
+                let body = CreateTemplateRegistry(
                     name: name,
                     url: url,
                     description: description,
                     enabled: enabled
                 )
-                let _: TemplateRegistry = try await client.rest.post("templates/registries", body: body)
+                _ = try await client.templates.createRegistry(body)
             }
             await onSuccess(); dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }
-
