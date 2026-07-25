@@ -228,16 +228,18 @@ struct InstallStreamSheet: View {
         Text(attributedLine(line))
             .font(.system(.caption, design: .monospaced))
             .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
     }
 
     private func attributedLine(_ line: InstallStreamLine) -> AttributedString {
+        let text = line.text.isEmpty ? " " : line.text
         if line.isError {
-            var attr = AttributedString(line.text)
+            var attr = AttributedString(text)
             attr.foregroundColor = .red
             return attr
         }
-        var attr = AttributedString(line.text)
+        var attr = AttributedString(text)
         attr.foregroundColor = Self.consoleText
         if let prefixEnd = servicePrefixEnd(line.text) {
             let endIndex = attr.characters.index(attr.startIndex, offsetBy: prefixEnd)

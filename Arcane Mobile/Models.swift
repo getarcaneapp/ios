@@ -639,12 +639,6 @@ nonisolated struct DestroyProjectRequest: Encodable, Sendable {
     let removeVolumes: Bool
 }
 
-// `PullProgressEvent` is provided by the SDK. We extend it locally with the
-// `isLayerEvent` helper the views previously relied on.
-extension PullProgressEvent {
-    var isLayerEvent: Bool { id?.isEmpty == false }
-}
-
 // Image update checks use the SDK's typed API (`client.images.updateSummary`,
 // `checkUpdateByRef`, `checkAllUpdates`, `updateInfoByRefs`) and its
 // `ImageUpdateResponse` / `ImageUpdateSummary` / `ImageUpdateInfo` models —

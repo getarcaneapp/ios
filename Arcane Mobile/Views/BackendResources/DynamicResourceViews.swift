@@ -12,6 +12,7 @@ struct DynamicResourceListView: View {
     var createTitle: String? = nil
     var createFields: [BackendFormField] = []
     var createPath: ((ArcaneClientManager, ArcaneClient) -> String)? = nil
+    var managementDestination: AppTab? = nil
 
     @State private var items: [DynamicResource] = []
     @State private var isLoading = false
@@ -79,10 +80,31 @@ struct DynamicResourceListView: View {
                 }
                 .accessibilityLabel("Refresh")
             }
-            if createPath != nil, !createFields.isEmpty {
-                if #available(iOS 26, *) {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            if #available(iOS 26, *),
+               managementDestination != nil || (createPath != nil && !createFields.isEmpty) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            if let managementDestination {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink {
+                        appTabDestination(
+                            managementDestination,
+                            manager: manager,
+                            selectedTab: .constant("")
+                        )
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Manage \(managementDestination.title)")
                 }
+            }
+            if #available(iOS 26, *),
+               managementDestination != nil,
+               createPath != nil,
+               !createFields.isEmpty {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            if createPath != nil, !createFields.isEmpty {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: {
                         Image(systemName: "plus")

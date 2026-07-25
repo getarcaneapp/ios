@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct GitOpsSyncsView: View {
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+
     let environmentID: EnvironmentID
 
     var body: some View {
@@ -22,7 +24,8 @@ struct GitOpsSyncsView: View {
                 .init("path", label: "Path", required: true),
                 .init("enabled", label: "Enabled", type: .toggle)
             ],
-            createPath: { _, client in client.rest.environmentPath(environmentID, "gitops-syncs") }
+            createPath: { _, client in client.rest.environmentPath(environmentID, "gitops-syncs") },
+            managementDestination: manager.canAccess(.gitRepositories) ? .gitRepositories : nil
         )
     }
 }

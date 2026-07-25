@@ -74,6 +74,22 @@ struct RolesView: View {
         }
         .navigationTitle("Roles")
         .toolbar {
+            if manager.canAccess(.oidcRoleMappings) {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink {
+                        OIDCRoleMappingsView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Manage OIDC Role Mappings")
+                }
+            }
+            if #available(iOS 26, *),
+               rbacAvailable,
+               manager.permissions.canManageRoles,
+               manager.canAccess(.oidcRoleMappings) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
             if rbacAvailable && manager.permissions.canManageRoles {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Create Role")

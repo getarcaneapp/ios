@@ -1,7 +1,7 @@
 import SwiftUI
 import Arcane
 
-/// Every destination that can live in the bottom nav bar.
+/// Every destination represented by the shared app navigation model.
 /// Pure data — no view types. Use `appTabDestination(_:manager:selectedTab:)`
 /// to render the destination view for a tab.
 nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
@@ -135,11 +135,23 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    /// Whether this destination appears as a standalone row in Settings and
+    /// sidebar navigation. Nested destinations remain in AppTab so their access
+    /// surfaces and destination builders stay centralized.
+    var showsInNavigationMenus: Bool {
+        switch self {
+        case .activities, .gitRepositories, .oidcRoleMappings:
+            return false
+        default:
+            return true
+        }
+    }
+
     /// Whether this tab makes sense pinned to the bottom bar — a primary content
     /// or resource view you navigate to often. Settings, admin, and one-off
-    /// config pages (users, registries, auth, webhooks, jobs, …) are excluded:
-    /// they live under Settings, so the long-press replace picker never offers
-    /// them as bar tabs. They stay fully reachable via the Settings list.
+    /// config pages (users, registries, auth, webhooks, jobs, …) are excluded,
+    /// so the long-press replace picker never offers them as bar tabs. They stay
+    /// reachable through Settings or their parent destination.
     var canPinToBottomBar: Bool {
         switch self {
         case .dashboard, .containers, .images, .projects,

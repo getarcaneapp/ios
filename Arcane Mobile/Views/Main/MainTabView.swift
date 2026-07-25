@@ -52,12 +52,11 @@ struct MainTabView: View {
         store.visibleTabs(availableTabs: availableTabSet)
     }
 
-    /// Sidebar mode is not constrained by dock eligibility: every destination
-    /// the current user and backend can access is available as a top-level row,
-    /// except Activities, which remains available from the dashboard's activity
-    /// button instead of occupying a permanent sidebar destination.
+    /// Sidebar mode is not constrained by dock eligibility: every standalone
+    /// destination the current user and backend can access is available as a
+    /// top-level row. Nested destinations remain reachable from their parent.
     private var sidebarTabs: [AppTab] {
-        availableTabs.filter { $0 != .activities }
+        availableTabs.filter(\.showsInNavigationMenus)
     }
 
     private var allowedDestinationIDs: [String] {

@@ -14,7 +14,7 @@ struct SettingsView: View {
         // pinned-tab changes. The sections below are Equatable value views, so
         // SwiftUI skips their bodies whenever these inputs are unchanged.
         let availableTabs = Set(
-            AppTab.allCases.filter { $0 != .activities && manager.canAccess($0) }
+            AppTab.allCases.filter { $0.showsInNavigationMenus && manager.canAccess($0) }
         )
         let pinned = Set(NavTabsStore.shared.pinnedTabs)  // getter reads `version` for tracking
 

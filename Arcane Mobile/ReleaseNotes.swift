@@ -52,6 +52,16 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.6.1",
+            changed: [
+                .init("OIDC role mappings and Git repositories move behind management buttons in Roles and GitOps.")
+            ],
+            fixed: [
+                .init("Project and image operation logs match Docker output, wrap cleanly, and reconnect reliably."),
+                .init("Image uploads report the server result correctly.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.6.0",
             new: [
                 .init("Global variable management with secret and environment scoping."),

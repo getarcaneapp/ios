@@ -14,7 +14,6 @@ struct UploadImageView: View {
     @State private var pickedName: String = ""
     @State private var showImporter = false
     @State private var isUploading = false
-    @State private var progress: Double = 0
     @State private var output: String?
     @State private var errorMessage: String?
     @State private var uploadTask: Task<Void, Never>?
@@ -47,9 +46,9 @@ struct UploadImageView: View {
                 if isUploading {
                     Section("Progress") {
                         VStack(alignment: .leading, spacing: 4) {
-                            ProgressView(value: progress, total: 1.0)
-                            Text("\(Int(progress * 100))%")
-                                .font(.caption.monospaced())
+                            ProgressView()
+                            Text("Uploading…")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -147,7 +146,6 @@ struct UploadImageView: View {
             return
         }
         isUploading = true
-        progress = 0
         errorMessage = nil
         output = nil
         let cached = manager.cached
@@ -164,31 +162,17 @@ struct UploadImageView: View {
             defer { if needsScope { url.stopAccessingSecurityScopedResource() } }
 
             do {
-                // The SDK's uploadStream emits progress + load events as NDJSON.
-                // We aggregate the human-readable status string for the final output.
-                let stream = client.images.uploadStream(envID: envID, fileURL: url, filename: filename)
-                var aggregated: [String] = []
-                for try await event in stream {
-                    if Task.isCancelled { break }
-                    if let err = event.error, !err.isEmpty {
-                        errorMessage = err
-                        continue
-                    }
-                    if let detail = event.progressDetail,
-                       let total = detail.total, total > 0,
-                       let current = detail.current {
-                        progress = Double(min(current, total)) / Double(total)
-                    }
-                    if let status = event.status, !status.isEmpty {
-                        aggregated.append(status)
-                    }
-                }
+                let result = try await client.images.upload(
+                    envID: envID,
+                    fileURL: url,
+                    filename: filename
+                )
                 guard !Task.isCancelled else {
                     errorMessage = "Cancelled"
                     return
                 }
-                progress = 1.0
-                output = aggregated.isEmpty ? "Upload complete." : aggregated.joined(separator: "\n")
+                let serverOutput = result.stream.trimmingCharacters(in: .whitespacesAndNewlines)
+                output = serverOutput.isEmpty ? "Upload complete." : serverOutput
                 if let cached {
                     await cached.invalidate(envID: envID, paths: [
                         client.rest.environmentPath(envID, "images") + "*",
