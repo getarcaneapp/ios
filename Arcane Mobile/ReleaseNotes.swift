@@ -58,7 +58,8 @@ enum ReleaseNotes {
             ],
             fixed: [
                 .init("Project and image operation logs match Docker output, wrap cleanly, and reconnect reliably."),
-                .init("Image uploads report the server result correctly.")
+                .init("Image uploads report the server result correctly."),
+                .init("Reliable OIDC sign-in when identity providers repeat callbacks.")
             ]
         ),
         ReleaseNote(

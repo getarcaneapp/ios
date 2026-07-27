@@ -247,6 +247,9 @@ final class ArcaneClientManager {
             let capabilities = await client.serverCapabilities()
             await completeAuthenticatedBootstrap(user: result.user, capabilities: capabilities, client: client)
             needsConnectionBootstrapRetry = false
+        } catch is CancellationError {
+            // The caller ended the sign-in task — no error message needed.
+            return
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             // User cancelled the system sheet — no error message needed.
             return
