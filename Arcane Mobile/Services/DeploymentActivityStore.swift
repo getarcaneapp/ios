@@ -181,6 +181,8 @@ final class DeploymentActivityStore {
 
     private static let maxLines = 2000
     private static let lineTrim = 200
+    private static let maxPhases = 100
+    private static let maxPullLayers = 2_000
     private static let terminalPillLinger: Duration = .seconds(4)
 
     // MARK: Lifecycle
@@ -699,14 +701,17 @@ final class DeploymentActivityStore {
         }
 
         var output = ""
-        if let id = event.id, !id.isEmpty {
+        if let rawID = event.id, !rawID.isEmpty {
+            let id = RemoteDataLimits.boundedText(rawID, maximumBytes: 512)
             output = "\(id):"
         }
-        if let status = event.status, !status.isEmpty {
+        if let rawStatus = event.status, !rawStatus.isEmpty {
+            let status = RemoteDataLimits.boundedText(rawStatus, maximumBytes: 2_048)
             if !output.isEmpty { output += " " }
             output += status
         }
-        if let progress = event.progress, !progress.isEmpty {
+        if let rawProgress = event.progress, !rawProgress.isEmpty {
+            let progress = RemoteDataLimits.boundedText(rawProgress, maximumBytes: 2_048)
             if !output.isEmpty { output += " " }
             output += progress
         }
@@ -714,18 +719,23 @@ final class DeploymentActivityStore {
     }
 
     private func append(text: String, isError: Bool, to operation: DeploymentOperation) {
-        operation.lines.append(InstallStreamLine(text: text, isError: isError))
+        operation.lines.append(InstallStreamLine(
+            text: RemoteDataLimits.boundedText(text, maximumBytes: RemoteDataLimits.maximumStreamLineBytes),
+            isError: isError
+        ))
         if operation.lines.count > Self.maxLines {
             operation.lines.removeFirst(Self.lineTrim)
         }
     }
 
     private func updatePhase(_ phase: String, on operation: DeploymentOperation) {
-        guard phase != operation.currentPhase else { return }
+        let boundedPhase = RemoteDataLimits.boundedText(phase, maximumBytes: 512)
+        guard boundedPhase != operation.currentPhase else { return }
         withAnimation(Motion.state) {
-            operation.currentPhase = phase
-            if !operation.seenPhases.contains(phase) {
-                operation.seenPhases.append(phase)
+            operation.currentPhase = boundedPhase
+            if operation.seenPhases.count < Self.maxPhases,
+               !operation.seenPhases.contains(boundedPhase) {
+                operation.seenPhases.append(boundedPhase)
             }
         }
     }
@@ -739,17 +749,23 @@ final class DeploymentActivityStore {
 
     private func updateProgress(from event: OperationStreamEvent,
                                 on operation: DeploymentOperation) {
-        guard let layerID = event.id, !layerID.isEmpty else { return }
+        guard let rawLayerID = event.id, !rawLayerID.isEmpty else { return }
+        let layerID = RemoteDataLimits.boundedText(rawLayerID, maximumBytes: 512)
         if let detail = event.progressDetail, let total = detail.total, total > 0 {
-            operation.pullLayers[layerID] = (current: min(detail.current ?? 0, total), total: total)
+            guard operation.pullLayers[layerID] != nil || operation.pullLayers.count < Self.maxPullLayers else { return }
+            let boundedTotal = RemoteDataLimits.nonnegative(total)
+            operation.pullLayers[layerID] = (
+                current: min(RemoteDataLimits.nonnegative(detail.current ?? 0), boundedTotal),
+                total: boundedTotal
+            )
         } else if let status = event.status, Self.layerDoneStatuses.contains(status),
                   let known = operation.pullLayers[layerID] {
             operation.pullLayers[layerID] = (current: known.total, total: known.total)
         }
 
         let totals = operation.pullLayers.values.reduce(into: (current: Int64(0), total: Int64(0))) {
-            $0.current += $1.current
-            $0.total += $1.total
+            $0.current = RemoteDataLimits.saturatingAdd($0.current, $1.current)
+            $0.total = RemoteDataLimits.saturatingAdd($0.total, $1.total)
         }
         guard totals.total > 0 else { return }
         let fraction = min(Double(totals.current) / Double(totals.total), 1)

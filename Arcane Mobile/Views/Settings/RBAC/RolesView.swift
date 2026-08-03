@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct RolesView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var roles: [Role] = []
     @State private var manifest: PermissionsManifest?
@@ -10,6 +12,11 @@ struct RolesView: View {
     @State private var actionErrorMessage: String?
     @State private var showCreateSheet = false
     @State private var pendingDeleteRole: Role?
+    @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    @State private var pagination = ProgressivePaginationState()
+    @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
 
     private var rbacAvailable: Bool {
         manager.serverCapabilities?.supportsRoleManagement == true
@@ -43,16 +50,23 @@ struct RolesView: View {
                     let builtIns = roles.filter { $0.builtIn }
                     let customs = roles.filter { !$0.builtIn }
                     if !builtIns.isEmpty {
-                        Section("Built-in") {
+                        Section {
                             ForEach(builtIns) { role in
                                 NavigationLink(destination: RoleDetailView(role: role, manifest: manifest, mode: .readOnly, onUpdate: { await load(refresh: true) })) {
                                     RoleRow(role: role)
                                 }
                             }
+                        } header: {
+                            ResourceCountSectionHeader(
+                                "Built-in",
+                                loadedCount: roles.count,
+                                totalCount: pagination.totalItems,
+                                hasMore: pagination.hasMore
+                            )
                         }
                     }
                     if !customs.isEmpty {
-                        Section("Custom") {
+                        Section {
                             ForEach(customs) { role in
                                 NavigationLink(destination: RoleDetailView(role: role, manifest: manifest, mode: .edit, onUpdate: { await load(refresh: true) })) {
                                     RoleRow(role: role)
@@ -66,6 +80,32 @@ struct RolesView: View {
                                     .tint(.red)
                                 }
                             }
+                        } header: {
+                            if builtIns.isEmpty {
+                                ResourceCountSectionHeader(
+                                    "Custom",
+                                    loadedCount: roles.count,
+                                    totalCount: pagination.totalItems,
+                                    hasMore: pagination.hasMore
+                                )
+                            } else {
+                                Text("Custom")
+                            }
+                        }
+                    }
+
+                    if pagination.hasMore {
+                        if loadMoreError != nil {
+                            Button("Retry loading more") {
+                                Task { await loadMore() }
+                            }
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            SkeletonListRow()
+                                .skeletonShimmer()
+                                .onAppear {
+                                    Task { await loadMore() }
+                                }
                         }
                     }
                 }
@@ -73,6 +113,15 @@ struct RolesView: View {
             }
         }
         .navigationTitle("Roles")
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search roles"
+        )
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .onChange(of: debouncedSearchText) {
+            Task { await load(refresh: true) }
+        }
         .toolbar {
             if manager.canAccess(.oidcRoleMappings) {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -127,18 +176,71 @@ struct RolesView: View {
 
     private func load(refresh: Bool = false) async {
         guard rbacAvailable, let client = manager.client else { return }
+        let generation = pagination.reset()
+        isLoadingMore = false
         if roles.isEmpty { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
+        loadMoreError = nil
+        defer {
+            if pagination.accepts(generation) {
+                isLoading = false
+            }
+        }
         do {
-            async let rolesPage = client.roles.listPaginated(limit: 100)
+            async let rolesPage = client.roles.listPaginated(
+                search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                start: 0,
+                limit: Self.pageSize
+            )
             async let manifestResp = client.roles.availablePermissions()
             let (page, m) = try await (rolesPage, manifestResp)
-            roles = page.data
             manifest = m
+            applyPage(page, reset: true, requestedStart: 0, generation: generation)
         } catch {
+            guard pagination.accepts(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func loadMore() async {
+        guard pagination.hasMore, !isLoadingMore, let client = manager.client else { return }
+        isLoadingMore = true
+        loadMoreError = nil
+        let generation = pagination.generation
+        let start = pagination.nextStart
+        defer {
+            if pagination.accepts(generation) {
+                isLoadingMore = false
+            }
+        }
+        do {
+            let response = try await client.roles.listPaginated(
+                search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                start: start,
+                limit: Self.pageSize
+            )
+            applyPage(response, reset: false, requestedStart: start, generation: generation)
+        } catch {
+            guard pagination.accepts(generation) else { return }
+            loadMoreError = friendlyErrorMessage(error)
+        }
+    }
+
+    private func applyPage(
+        _ response: PaginatedResponse<Role>,
+        reset: Bool,
+        requestedStart: Int,
+        generation: Int
+    ) {
+        guard pagination.receive(
+            pagination: response.pagination,
+            itemCount: response.data.count,
+            requestedStart: requestedStart,
+            requestedLimit: Self.pageSize,
+            generation: generation
+        ) else { return }
+        roles = PaginationLoader.merge(current: roles, incoming: response.data, reset: reset)
+        loadMoreError = nil
     }
 
     private func deleteRole(_ role: Role) async {
@@ -148,6 +250,7 @@ struct RolesView: View {
             withAnimation {
                 roles.removeAll { $0.id == role.id }
             }
+            await load(refresh: true)
         } catch let ArcaneError.conflict(message) {
             actionErrorMessage = message ?? "This role can't be deleted because it would leave the system with no administrators."
         } catch {

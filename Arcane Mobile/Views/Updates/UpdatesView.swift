@@ -8,6 +8,7 @@ struct UpdatesView: View {
     @State private var environments: [Arcane.Environment] = []
     @State private var pickerMode: PickerMode?
     @State private var navTarget: NavTarget?
+    @State private var environmentLoadError: String?
 
     /// True when this page is PUSHED inside another tab's stack (e.g. from
     /// Settings) — there's a back button, so the bar can fully morph like the
@@ -63,7 +64,10 @@ struct UpdatesView: View {
     }
 
     private func launch(_ mode: PickerMode) {
-        guard !environments.isEmpty else { return }
+        guard !environments.isEmpty else {
+            if let environmentLoadError { showToast(.error(environmentLoadError)) }
+            return
+        }
         if environments.count == 1, let only = environments.first {
             navTarget = NavTarget(envID: only.id, mode: mode)
         } else {
@@ -72,13 +76,32 @@ struct UpdatesView: View {
     }
 
     private func loadEnvironments() async {
-        guard let cached = manager.cached else { return }
-        let envs: [Arcane.Environment] = (try? await cached.getListGlobal(
-            "environments", elementType: Arcane.Environment.self,
-            policy: .environments, refresh: false,
-            onFresh: { fresh in environments = fresh }
-        )) ?? []
-        environments = envs
+        guard let cached = manager.cached, let client = manager.client else { return }
+        do {
+            let envs: [Arcane.Environment] = try await cached.getAllPagesGlobal(
+                path: "environments", elementType: Arcane.Environment.self,
+                policy: .environments,
+                maximumItems: RemoteDataLimits.maximumEnvironments,
+                refresh: false,
+                onFresh: { fresh in environments = fresh },
+                fetchPage: { start, limit in
+                    let response = try await client.environments.list(
+                        query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
+                }
+            ) ?? []
+            guard envs.count <= RemoteDataLimits.maximumEnvironments else {
+                throw RemoteDataLimitError.collectionTooLarge(
+                    maximumItems: RemoteDataLimits.maximumEnvironments
+                )
+            }
+            environments = envs
+            environmentLoadError = nil
+        } catch {
+            environments = []
+            environmentLoadError = friendlyErrorMessage(error)
+        }
     }
 }
 

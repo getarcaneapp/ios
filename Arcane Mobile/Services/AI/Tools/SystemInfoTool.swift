@@ -23,8 +23,12 @@ struct SystemInfoTool: Tool {
         let path = context.client.rest.environmentPath(context.envID, "system/docker/info")
         let dockerInfo: DockerInfo
         do {
-            let rawData = try await context.client.transport.rawRequest(path, body: Optional<String>.none)
-            dockerInfo = try JSONDecoder().decode(DockerInfo.self, from: rawData)
+            dockerInfo = try await RemoteDataLimits.boundedDirectResponse(
+                client: context.client,
+                path: path,
+                as: DockerInfo.self,
+                maximumBytes: RemoteDataLimits.maximumInspectBytes
+            )
         } catch {
             return ToolSupport.friendlyFailure(error, reading: "host info")
         }

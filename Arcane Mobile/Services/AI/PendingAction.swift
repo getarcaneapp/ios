@@ -234,7 +234,10 @@ struct AIPendingAction: Identifiable, Sendable {
                 ? "Updated \(name)."
                 : "\(name) is already up to date (checked \(result.checked))."
         case .runUpdaterAll:
-            let result = try await client.updater.run(nil, envID: envID)
+            let result = try await RemoteDataLimits.runBoundedUpdater(
+                client: client,
+                environmentID: envID
+            )
             let failed = result.failed > 0 ? ", \(result.failed) failed" : ""
             return "Updater finished: checked \(result.checked), updated \(result.updated), skipped \(result.skipped)\(failed)."
         }

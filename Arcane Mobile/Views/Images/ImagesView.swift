@@ -25,6 +25,7 @@ struct ImagesView: View {
     @State private var showUploadSheet = false
     @State private var currentPage = 1
     @State private var hasMore = false
+    @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
     @State private var loadGeneration = 0
     @State private var showFilterSheet = false
@@ -151,7 +152,17 @@ struct ImagesView: View {
                 }
             } else {
                 List(selection: $selection) {
-                    StableSectionedList(sections) { image in
+                    StableSectionedList(
+                        sections,
+                        preferredHeaderAccessorySectionID: "used",
+                        headerAccessory: { _ in
+                            ResourceCountLabel(
+                                loadedCount: images.count,
+                                totalCount: totalItemCount,
+                                hasMore: hasMore
+                            )
+                        }
+                    ) { image in
                         imageLink(image)
                     }
 
@@ -482,6 +493,11 @@ struct ImagesView: View {
         }
         currentPage = max(Int(response.pagination.currentPage), 1)
         hasMore = response.pagination.currentPage < response.pagination.totalPages
+        if response.pagination.totalItems >= 0 {
+            totalItemCount = response.pagination.totalItems
+        } else if reset {
+            totalItemCount = nil
+        }
         rebuildSections()
     }
 

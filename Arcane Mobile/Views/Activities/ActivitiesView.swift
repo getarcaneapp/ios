@@ -73,11 +73,19 @@ struct ActivitiesView: View {
                         .listRowBackground(Color.clear)
                     } else {
                         if !store.runningItems.isEmpty {
-                            activitySection(title: "Running", items: store.runningItems)
+                            activitySection(
+                                title: "Running",
+                                items: store.runningItems,
+                                showsCount: true
+                            )
                         }
 
                         if !store.historyItems.isEmpty {
-                            activitySection(title: "History", items: store.historyItems)
+                            activitySection(
+                                title: "History",
+                                items: store.historyItems,
+                                showsCount: store.runningItems.isEmpty
+                            )
                         }
 
                         if store.hasMore && store.searchText.isEmpty {
@@ -218,8 +226,12 @@ struct ActivitiesView: View {
         return count
     }
 
-    private func activitySection(title: String, items: [ActivityCenterItem]) -> some View {
-        Section(title) {
+    private func activitySection(
+        title: String,
+        items: [ActivityCenterItem],
+        showsCount: Bool
+    ) -> some View {
+        Section {
             ForEach(items) { item in
                 switch item {
                 case .activity(let activity):
@@ -237,6 +249,16 @@ struct ActivitiesView: View {
                         ActivityBatchRow(batch: batch)
                     }
                 }
+            }
+        } header: {
+            if showsCount {
+                ResourceCountSectionHeader(
+                    title,
+                    loadedCount: store.filteredActivities.count,
+                    hasMore: store.hasMore
+                )
+            } else {
+                Text(title)
             }
         }
     }

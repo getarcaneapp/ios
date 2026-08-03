@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct DynamicResourceListView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
     let title: String
@@ -22,6 +24,9 @@ struct DynamicResourceListView: View {
     @State private var actionMessage: String?
     @State private var selectedAction: PendingAction?
     @State private var showCreateSheet = false
+    @State private var pagination = ProgressivePaginationState()
+    @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
 
     private var filteredItems: [DynamicResource] {
         items
@@ -49,22 +54,46 @@ struct DynamicResourceListView: View {
                                 .foregroundStyle(.green)
                         }
                     }
-                    ForEach(filteredItems) { item in
-                        NavigationLink {
-                            DynamicResourceDetailView(title: item.title, resource: item, actions: actionsForRow(item))
-                        } label: {
-                            DynamicResourceRow(item: item, systemImage: systemImage)
-                        }
-                        .contextMenu {
-                            ForEach(actionsForRow(item)) { action in
-                                Button(role: action.destructive ? .destructive : nil) {
-                                    selectedAction = PendingAction(action: action, item: item)
-                                } label: {
-                                    Label(action.title, systemImage: action.systemImage)
+                    Section {
+                        ForEach(filteredItems) { item in
+                            NavigationLink {
+                                DynamicResourceDetailView(title: item.title, resource: item, actions: actionsForRow(item))
+                            } label: {
+                                DynamicResourceRow(item: item, systemImage: systemImage)
+                            }
+                            .contextMenu {
+                                ForEach(actionsForRow(item)) { action in
+                                    Button(role: action.destructive ? .destructive : nil) {
+                                        selectedAction = PendingAction(action: action, item: item)
+                                    } label: {
+                                        Label(action.title, systemImage: action.systemImage)
+                                    }
+                                    .tint(action.destructive ? Color.red : nil)
                                 }
-                                .tint(action.destructive ? Color.red : nil)
                             }
                         }
+
+                        if pagination.hasMore {
+                            if loadMoreError != nil {
+                                Button("Retry loading more") {
+                                    Task { await loadMore() }
+                                }
+                                .frame(maxWidth: .infinity)
+                            } else {
+                                SkeletonListRow()
+                                    .skeletonShimmer()
+                                    .onAppear {
+                                        Task { await loadMore() }
+                                    }
+                            }
+                        }
+                    } header: {
+                        ResourceCountSectionHeader(
+                            title,
+                            loadedCount: items.count,
+                            totalCount: pagination.totalItems,
+                            hasMore: pagination.hasMore
+                        )
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -73,6 +102,9 @@ struct DynamicResourceListView: View {
         .navigationTitle(title)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search \(title.lowercased())")
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .onChange(of: debouncedSearchText) {
+            Task { await load(refresh: true) }
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
@@ -174,14 +206,74 @@ struct DynamicResourceListView: View {
 
     private func load(refresh: Bool = false) async {
         guard let client = manager.client else { return }
+        let generation = pagination.reset()
+        isLoadingMore = false
         if items.isEmpty { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
+        loadMoreError = nil
+        defer {
+            if pagination.accepts(generation) {
+                isLoading = false
+            }
+        }
         do {
-            items = try await ArcaneAPIHelpers.loadList(client: client, path: path(manager, client))
+            let response: PaginatedResponse<DynamicResource> = try await client.rest.paginated(
+                path(manager, client),
+                start: 0,
+                limit: Self.pageSize,
+                query: debouncedSearchText.isEmpty
+                    ? []
+                    : [URLQueryItem(name: "search", value: debouncedSearchText)]
+            )
+            applyPage(response, reset: true, requestedStart: 0, generation: generation)
         } catch {
+            guard pagination.accepts(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func loadMore() async {
+        guard pagination.hasMore, !isLoadingMore, let client = manager.client else { return }
+        isLoadingMore = true
+        loadMoreError = nil
+        let generation = pagination.generation
+        let start = pagination.nextStart
+        defer {
+            if pagination.accepts(generation) {
+                isLoadingMore = false
+            }
+        }
+        do {
+            let response: PaginatedResponse<DynamicResource> = try await client.rest.paginated(
+                path(manager, client),
+                start: start,
+                limit: Self.pageSize,
+                query: debouncedSearchText.isEmpty
+                    ? []
+                    : [URLQueryItem(name: "search", value: debouncedSearchText)]
+            )
+            applyPage(response, reset: false, requestedStart: start, generation: generation)
+        } catch {
+            guard pagination.accepts(generation) else { return }
+            loadMoreError = friendlyErrorMessage(error)
+        }
+    }
+
+    private func applyPage(
+        _ response: PaginatedResponse<DynamicResource>,
+        reset: Bool,
+        requestedStart: Int,
+        generation: Int
+    ) {
+        guard pagination.receive(
+            pagination: response.pagination,
+            itemCount: response.data.count,
+            requestedStart: requestedStart,
+            requestedLimit: Self.pageSize,
+            generation: generation
+        ) else { return }
+        items = PaginationLoader.merge(current: items, incoming: response.data, reset: reset)
+        loadMoreError = nil
     }
 
     private func run(_ pending: PendingAction) async {

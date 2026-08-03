@@ -12,15 +12,17 @@ struct SeverityBar: View {
 
     private var segments: [(label: String, count: Int, color: Color)] {
         [
-            ("Critical", critical, .red),
-            ("High", high, .orange),
-            ("Med", medium, .yellow),
-            ("Low", low, .blue),
-            ("?", unknown, .gray),
+            ("Critical", RemoteDataLimits.nonnegative(critical), .red),
+            ("High", RemoteDataLimits.nonnegative(high), .orange),
+            ("Med", RemoteDataLimits.nonnegative(medium), .yellow),
+            ("Low", RemoteDataLimits.nonnegative(low), .blue),
+            ("?", RemoteDataLimits.nonnegative(unknown), .gray),
         ]
     }
 
-    private var total: Int { critical + high + medium + low + unknown }
+    private var total: Int {
+        segments.reduce(0) { RemoteDataLimits.saturatingAdd($0, $1.count) }
+    }
 
     var body: some View {
         VStack(spacing: 8) {

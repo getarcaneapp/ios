@@ -56,6 +56,7 @@ struct StatusEntry: TimelineEntry {
             snapshot: WidgetSnapshot(
                 generatedAt: Date(),
                 serverConfigured: true,
+                serverOrigin: nil,
                 isDemo: false,
                 accentHex: nil,
                 activeEnvironmentID: "0",

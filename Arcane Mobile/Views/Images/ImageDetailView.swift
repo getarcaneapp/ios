@@ -282,9 +282,16 @@ struct ImageDetailView: View {
         guard let client = manager.client, let cached = manager.cached else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "containers")
-            if let all = try await cached.getList(
-                path, elementType: ContainerSummary.self, policy: .containersList,
-                envID: environmentID
+            if let all = try await cached.getAllPages(
+                path: path, elementType: ContainerSummary.self, policy: .containersList,
+                envID: environmentID,
+                fetchPage: { start, limit in
+                    let response = try await client.containers.list(
+                        envID: environmentID,
+                        query: .init(start: start, limit: limit)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
+                }
             ) {
                 usingContainers = all.filter(usesThisImage)
             }

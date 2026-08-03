@@ -184,8 +184,8 @@ private extension DashboardPinnedSection {
         guard let client = manager.client, let cached = manager.cached, !pinned.isEmpty else { return [] }
         let path = client.rest.environmentPath(envID, "containers")
         do {
-            let result: [ContainerSummary]? = try await cached.getList(
-                path,
+            let result: [ContainerSummary]? = try await cached.getAllPages(
+                path: path,
                 elementType: ContainerSummary.self,
                 policy: .containersList,
                 envID: envID,
@@ -193,6 +193,13 @@ private extension DashboardPinnedSection {
                 onFresh: { fresh in
                     guard loadGeneration == generation, envID == environmentID else { return }
                     containers = fresh.filter { pinned.contains($0.id) }
+                },
+                fetchPage: { start, limit in
+                    let response = try await client.containers.list(
+                        envID: envID,
+                        query: .init(start: start, limit: limit)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
                 }
             )
             guard loadGeneration == generation, envID == environmentID else { return [] }
@@ -209,12 +216,10 @@ private extension DashboardPinnedSection {
     ) async -> [ProjectDetails] {
         let pinned = pinnedStore.pinnedIDs(kind: .project, envID: envID)
         guard let client = manager.client, let cached = manager.cached, !pinned.isEmpty else { return [] }
-        let query = SearchPaginationSort(start: 0, limit: 500)
         let base = client.rest.environmentPath(envID, "projects")
-        let path = ArcaneAPIHelpers.queryPath(base, items: query.queryItems)
         do {
-            let result: [ProjectDetails]? = try await cached.getListCustom(
-                path: path,
+            let result: [ProjectDetails]? = try await cached.getAllPages(
+                path: base,
                 elementType: ProjectDetails.self,
                 policy: .projects,
                 envID: envID,
@@ -223,8 +228,12 @@ private extension DashboardPinnedSection {
                     guard loadGeneration == generation, envID == environmentID else { return }
                     projects = fresh.filter { pinned.contains($0.id) }
                 },
-                fetcher: {
-                    try await client.projects.list(envID: envID, query: query).data
+                fetchPage: { start, limit in
+                    let response = try await client.projects.list(
+                        envID: envID,
+                        query: .init(start: start, limit: limit)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
                 }
             )
             guard loadGeneration == generation, envID == environmentID else { return [] }

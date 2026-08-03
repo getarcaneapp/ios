@@ -25,6 +25,7 @@ struct NetworksView: View {
     @State private var sortOrder = ListSortOrder.ascending
     @State private var currentPage = 1
     @State private var hasMore = false
+    @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
     @State private var loadGeneration = 0
     @State private var systemNetworks: [NetworkSummary] = []
@@ -128,13 +129,18 @@ struct NetworksView: View {
                                 }
                             }
                         } header: {
-                            Text("Built-in")
+                            ResourceCountSectionHeader(
+                                "Built-in",
+                                loadedCount: networks.count,
+                                totalCount: totalItemCount,
+                                hasMore: hasMore
+                            )
                         } footer: {
                             Text("Built-in Docker networks can't be removed.")
                         }
                     }
                     if !userNetworks.isEmpty {
-                        Section(systemNetworks.isEmpty ? "" : "Custom") {
+                        Section {
                             ForEach(userNetworks) { network in
                                 NavigationLink(value: network) {
                                     NetworkRow(network: network)
@@ -159,6 +165,17 @@ struct NetworksView: View {
                                     }
                                     .tint(.red)
                                 }
+                            }
+                        } header: {
+                            if systemNetworks.isEmpty {
+                                ResourceCountSectionHeader(
+                                    "Custom",
+                                    loadedCount: networks.count,
+                                    totalCount: totalItemCount,
+                                    hasMore: hasMore
+                                )
+                            } else {
+                                Text("Custom")
                             }
                         }
                     }
@@ -356,6 +373,11 @@ struct NetworksView: View {
         }
         currentPage = max(Int(response.pagination.currentPage), 1)
         hasMore = response.pagination.currentPage < response.pagination.totalPages
+        if response.pagination.totalItems >= 0 {
+            totalItemCount = response.pagination.totalItems
+        } else if reset {
+            totalItemCount = nil
+        }
         rebuildSections()
     }
 

@@ -12,7 +12,7 @@ struct ContainerTerminalView: View {
     @State private var outputText = ""
     @State private var outputRevision: UInt64 = 0
     @State private var input: String = ""
-    @State private var session: TerminalSession?
+    @State private var session: BoundedTerminalSession?
     @State private var connectError: String?
     @State private var isConnecting = false
     @State private var isConnected = false
@@ -192,7 +192,7 @@ struct ContainerTerminalView: View {
         isConnecting = true
         connectError = nil
         do {
-            let terminalSession = try await client.containers.exec(
+            let terminalSession = try await client.boundedExec(
                 envID: environmentID,
                 id: container.id,
                 shell: shell
@@ -218,7 +218,7 @@ struct ContainerTerminalView: View {
 private extension ContainerTerminalView {
     @concurrent
     func consumeOutput(
-        from terminalSession: TerminalSession,
+        from terminalSession: BoundedTerminalSession,
         processor: TerminalOutputProcessor
     ) async {
         let clock = ContinuousClock()

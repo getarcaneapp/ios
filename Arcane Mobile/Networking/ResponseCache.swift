@@ -12,8 +12,13 @@ import CryptoKit
 nonisolated struct CacheKey: Hashable, Codable, Sendable {
     let serverIdentity: String // canonical scheme + host + effective port + base path
     let userID: String       // currentUser?.id ?? "anon" (multi-account safety)
+    let sessionIdentity: String // rotates for every authenticated session
     let envID: String        // active environment raw value
     let pathWithQuery: String
+
+    var allowsDiskPersistence: Bool {
+        !pathWithQuery.split(separator: "/").contains("projects")
+    }
 }
 
 nonisolated enum ResponseCacheError: Error {
@@ -50,6 +55,7 @@ actor ResponseCache {
     private var inFlight: [CacheKey: Task<any Sendable, Error>] = [:]
     // Disk tier bounds — trimmed lazily on first use per launch (LRU by mtime).
     private let diskByteCap = 50 * 1024 * 1024        // 50 MB
+    private let maximumEntryBytes = RemoteDataLimits.maximumResponseBytes
     private let diskMaxAge: TimeInterval = 7 * 24 * 60 * 60  // 7 days
     private var didTrim = false
     private let encoder: JSONEncoder
@@ -59,9 +65,12 @@ actor ResponseCache {
     private init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let legacyDirectory = caches.appendingPathComponent("ResponseCache", isDirectory: true)
-        diskDirectory = caches.appendingPathComponent("ResponseCache-v2", isDirectory: true)
-        try? FileManager.default.removeItem(at: legacyDirectory)
+        let legacyDirectories = ["ResponseCache", "ResponseCache-v2"]
+            .map { caches.appendingPathComponent($0, isDirectory: true) }
+        diskDirectory = caches.appendingPathComponent("ResponseCache-v3", isDirectory: true)
+        for legacyDirectory in legacyDirectories {
+            try? FileManager.default.removeItem(at: legacyDirectory)
+        }
         try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
         let enc = JSONEncoder()
         enc.dateEncodingStrategy = .iso8601
@@ -74,8 +83,15 @@ actor ResponseCache {
     // MARK: - Disk Non-Blocking Helpers
 
     private func readDisk(at url: URL) async -> Data? {
-        await withCheckedContinuation { continuation in
+        let entryByteLimit = maximumEntryBytes
+        return await withCheckedContinuation { continuation in
             ioQueue.async {
+                guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+                      let size = values.fileSize,
+                      size <= entryByteLimit else {
+                    continuation.resume(returning: nil)
+                    return
+                }
                 let data = try? Data(contentsOf: url, options: .mappedIfSafe)
                 continuation.resume(returning: data)
             }
@@ -83,6 +99,7 @@ actor ResponseCache {
     }
 
     private func writeDisk(_ data: Data, to url: URL) async {
+        guard data.count <= maximumEntryBytes else { return }
         await withCheckedContinuation { continuation in
             ioQueue.async {
                 try? data.write(to: url, options: .atomic)
@@ -146,6 +163,7 @@ actor ResponseCache {
             guard let value = entry.value as? T else { return nil }
             return (value, age)
         }
+        guard key.allowsDiskPersistence else { return nil }
         let url = diskURL(for: key)
         guard let data = await readDisk(at: url) else { return nil }
         // Cheap header parse first to avoid decoding the full payload on collision/expiry.
@@ -193,7 +211,9 @@ actor ResponseCache {
                 }
                 alive.append((url, mtime, size))
             }
-            var total = alive.reduce(0) { $0 + $1.size }
+            var total = alive.reduce(0) {
+                RemoteDataLimits.saturatingAdd($0, $1.size, maximum: Int.max)
+            }
             guard total > byteCap else { return }
             for entry in alive.sorted(by: { $0.mtime < $1.mtime }) {
                 try? fm.removeItem(at: entry.url)
@@ -208,6 +228,7 @@ actor ResponseCache {
     func set<T: Codable & Sendable>(_ key: CacheKey, value: T) async {
         let storedAt = Date()
         insertHot(key, value: value, storedAt: storedAt)
+        guard key.allowsDiskPersistence else { return }
         let env = ValueEnvelope(key: key, storedAt: storedAt, value: value)
         guard let data = try? encoder.encode(env) else { return }
         let url = diskURL(for: key)
@@ -265,7 +286,7 @@ actor ResponseCache {
     // MARK: - Disk helpers
 
     private func diskURL(for key: CacheKey) -> URL {
-        let stable = "\(key.serverIdentity)|\(key.userID)|\(key.envID)|\(key.pathWithQuery)"
+        let stable = "\(key.serverIdentity)|\(key.userID)|\(key.sessionIdentity)|\(key.envID)|\(key.pathWithQuery)"
         let digest = SHA256.hash(data: Data(stable.utf8))
         let name = digest.map { String(format: "%02x", $0) }.joined()
         return diskDirectory.appendingPathComponent(name + ".json")

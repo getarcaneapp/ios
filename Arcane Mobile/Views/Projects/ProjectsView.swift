@@ -26,6 +26,7 @@ struct ProjectsView: View {
     @State private var loadGeneration = 0
     @State private var currentPage = 1
     @State private var hasMore = false
+    @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
     @State private var statusFilter = ProjectStatusFilter.all
     @State private var updateFilter = ResourceUpdateFilter.all
@@ -143,7 +144,17 @@ struct ProjectsView: View {
 
     private var projectsList: some View {
         List {
-            StableSectionedList(sections) { project in
+            StableSectionedList(
+                sections,
+                preferredHeaderAccessorySectionID: "active",
+                headerAccessory: { _ in
+                    ResourceCountLabel(
+                        loadedCount: projects.count,
+                        totalCount: totalItemCount,
+                        hasMore: hasMore
+                    )
+                }
+            ) { project in
                 projectLink(project)
             }
 
@@ -333,6 +344,11 @@ struct ProjectsView: View {
         }
         currentPage = max(Int(response.pagination.currentPage), 1)
         hasMore = response.pagination.currentPage < response.pagination.totalPages
+        if response.pagination.totalItems >= 0 {
+            totalItemCount = response.pagination.totalItems
+        } else if reset {
+            totalItemCount = nil
+        }
         rebuildSections()
     }
 

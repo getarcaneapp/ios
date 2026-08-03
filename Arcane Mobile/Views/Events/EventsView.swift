@@ -102,6 +102,13 @@ struct EventsView: View {
                                     }
                                 }
                             }
+                        } header: {
+                            ResourceCountSectionHeader(
+                                "Events",
+                                loadedCount: store.events.count,
+                                totalCount: store.totalItemCount,
+                                hasMore: store.hasMore
+                            )
                         }
                     }
 

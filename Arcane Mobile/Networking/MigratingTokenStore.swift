@@ -2,49 +2,54 @@ import Foundation
 import Arcane
 import Security
 
-/// Token store that migrates the session from the app's private keychain item
-/// to the shared access group (readable by the widget/intents extension)
-/// WITHOUT ever risking a sign-out:
-///
-/// - The legacy private item stays the source of truth: every save writes it
-///   first, and only that write can fail the operation. If the shared group
-///   is unavailable (entitlement missing, provisioning hiccup), behavior is
-///   exactly the pre-migration behavior.
-/// - Loads inspect every copy, select the latest non-expired credential, and
-///   heal older copies opportunistically.
-/// - Keeping both in sync means a rollback to an older build still finds a
-///   valid (rotated) refresh token in the legacy item.
+/// Origin-bound token store shared with widgets and App Intents. Legacy items
+/// are consulted only during the one-time upgrade migration, then removed so
+/// credentials can never follow a user to a differently configured server.
 nonisolated struct MigratingTokenStore: TokenStore {
-    private let shared: any TokenStore
+    private let origin: String
+    private let originStore: any TokenStore
     private let legacy: any TokenStore
     private let legacyAppGroup: any TokenStore
+    private let allowsLegacyMigration: Bool
+    private let credentialOrigin: @Sendable () -> String?
 
-    init() {
-        shared = SharedKeychain.sharedStore
+    init(origin: String, allowsLegacyMigration: Bool = false) {
+        self.origin = origin
+        originStore = SharedKeychain.sharedStore(for: origin)
         legacy = SharedKeychain.legacyStore
         legacyAppGroup = SharedKeychain.legacyAppGroupStore
+        self.allowsLegacyMigration = allowsLegacyMigration
+        credentialOrigin = { SharedKeychain.credentialOrigin }
     }
 
     init(
-        shared: any TokenStore,
+        origin: String,
+        originStore: any TokenStore,
         legacy: any TokenStore,
-        legacyAppGroup: any TokenStore
+        legacyAppGroup: any TokenStore,
+        allowsLegacyMigration: Bool = false,
+        credentialOrigin: @escaping @Sendable () -> String? = { SharedKeychain.credentialOrigin }
     ) {
-        self.shared = shared
+        self.origin = origin
+        self.originStore = originStore
         self.legacy = legacy
         self.legacyAppGroup = legacyAppGroup
-    }
-
-    private var allStores: [any TokenStore] {
-        [shared, legacy, legacyAppGroup]
+        self.allowsLegacyMigration = allowsLegacyMigration
+        self.credentialOrigin = credentialOrigin
     }
 
     func loadTokens() async throws -> TokenPair? {
+        guard credentialOrigin() == origin else { return nil }
+        if let tokens = try await originStore.loadTokens() {
+            return tokens
+        }
+        guard allowsLegacyMigration else { return nil }
+
         var candidates: [TokenPair] = []
         var successfulReads = 0
         var firstError: Error?
 
-        for store in allStores {
+        for store in [legacy, legacyAppGroup] {
             do {
                 let tokens = try await store.loadTokens()
                 successfulReads += 1
@@ -66,27 +71,27 @@ nonisolated struct MigratingTokenStore: TokenStore {
         guard let selected = (nonExpired.isEmpty ? candidates : nonExpired)
             .max(by: { $0.expiresAt < $1.expiresAt }) else { return nil }
 
-        for store in allStores {
-            try? await store.saveTokens(selected)
-        }
+        try await originStore.saveTokens(selected)
+        try? await legacy.clearTokens()
+        try? await legacyAppGroup.clearTokens()
         return selected
     }
 
     func saveTokens(_ tokens: TokenPair) async throws {
-        try await legacy.saveTokens(tokens)
-        try? await shared.saveTokens(tokens)
-        try? await legacyAppGroup.saveTokens(tokens)
+        try await originStore.saveTokens(tokens)
+        SharedKeychain.bindCredentials(to: origin)
     }
 
     func clearTokens() async throws {
         var firstError: Error?
-        for store in allStores {
+        for store in [originStore, legacy, legacyAppGroup] {
             do {
                 try await store.clearTokens()
             } catch {
                 if firstError == nil { firstError = error }
             }
         }
+        SharedKeychain.unbindCredentials(matching: origin)
         if let firstError { throw firstError }
     }
 }

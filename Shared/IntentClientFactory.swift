@@ -5,12 +5,15 @@ import Arcane
 /// failures.
 nonisolated enum IntentClientError: Error, CustomLocalizedStringResourceConvertible {
     case notConfigured
+    case authenticationRequired
     case demoMode
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
         case .notConfigured:
             return "Open Arcane and connect to a server first."
+        case .authenticationRequired:
+            return "Open Arcane and sign in to this server first."
         case .demoMode:
             return "This action isn't available while Arcane is in demo mode."
         }
@@ -30,8 +33,12 @@ nonisolated enum IntentClientFactory {
         }
         guard let urlString = AppGroup.defaults?.string(forKey: AppGroup.Keys.serverURL),
               !urlString.isEmpty,
-              let url = URL(string: urlString) else {
+              let url = URL(string: urlString),
+              let origin = AppGroup.canonicalServerOrigin(for: url) else {
             throw IntentClientError.notConfigured
+        }
+        guard SharedKeychain.credentialOrigin == origin else {
+            throw IntentClientError.authenticationRequired
         }
 
         let configuration = URLSessionConfiguration.ephemeral
@@ -42,7 +49,7 @@ nonisolated enum IntentClientFactory {
 
         return ArcaneClient(configuration: .init(
             baseURL: url,
-            tokenStore: SharedKeychain.sharedStore,
+            tokenStore: SharedKeychain.sharedStore(for: origin),
             defaultEnvironmentID: activeEnvironmentID,
             urlSession: URLSession(configuration: configuration),
             retryPolicy: .init(maxAttempts: 2, baseBackoff: .milliseconds(300), maxBackoff: .seconds(1))
@@ -50,7 +57,16 @@ nonisolated enum IntentClientFactory {
     }
 
     static var activeEnvironmentID: EnvironmentID {
+        guard serverOrigin != nil,
+              WidgetSnapshotStore.load()?.serverOrigin == serverOrigin else {
+            return .localDocker
+        }
         let raw = AppGroup.defaults?.string(forKey: AppGroup.Keys.activeEnvironmentID)
         return raw.map { EnvironmentID(rawValue: $0) } ?? .localDocker
+    }
+
+    static var serverOrigin: String? {
+        guard let raw = AppGroup.defaults?.string(forKey: AppGroup.Keys.serverURL) else { return nil }
+        return AppGroup.canonicalServerOrigin(for: raw)
     }
 }

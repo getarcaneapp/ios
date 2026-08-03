@@ -75,7 +75,8 @@ actor ImageCache {
                 self.cache.setObject(img, forKey: keyString as NSString, cost: cost)
                 return img
             }
-            guard let data = await fetcher(urlString) else { return nil }
+            guard let data = await fetcher(urlString),
+                  data.count <= RemoteDataLimits.maximumImageBytes else { return nil }
             self.writeToDisk(urlString, data: data)
             guard let img = Self.decode(data: data, maxPixelSize: maxPixelSize) else { return nil }
             let cost = Self.approximateCost(of: img)
@@ -88,7 +89,8 @@ actor ImageCache {
         return result
     }
 
-    private static func decode(data: Data, maxPixelSize: Int) -> UIImage? {
+    nonisolated static func decode(data: Data, maxPixelSize: Int) -> UIImage? {
+        guard data.count <= RemoteDataLimits.maximumImageBytes else { return nil }
         guard maxPixelSize > 0 else { return UIImage(data: data) }
         guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
             return UIImage(data: data)
@@ -107,7 +109,8 @@ actor ImageCache {
 
     private static func approximateCost(of img: UIImage) -> Int {
         let pixels = img.size.width * img.size.height * img.scale * img.scale
-        return Int(pixels) * 4
+        guard pixels.isFinite, pixels > 0 else { return 0 }
+        return Int(min(pixels, CGFloat(Int.max / 4))) * 4
     }
 
     // MARK: - Disk tier
@@ -120,7 +123,10 @@ actor ImageCache {
 
     private nonisolated func loadFromDisk(_ key: String, maxPixelSize: Int) -> (UIImage, Int)? {
         let url = diskURL(for: key)
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+              let fileSize = values.fileSize,
+              fileSize <= RemoteDataLimits.maximumImageBytes,
+              let data = try? Data(contentsOf: url, options: .mappedIfSafe),
               let img = Self.decode(data: data, maxPixelSize: maxPixelSize) else { return nil }
         // Touch mtime so LRU-by-mtime trim keeps recently-used files alive.
         try? FileManager.default.setAttributes(
@@ -130,6 +136,7 @@ actor ImageCache {
     }
 
     private nonisolated func writeToDisk(_ key: String, data: Data) {
+        guard data.count <= RemoteDataLimits.maximumImageBytes else { return }
         try? data.write(to: diskURL(for: key), options: .atomic)
     }
 
@@ -144,7 +151,7 @@ actor ImageCache {
         for url in entries {
             if let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]),
                let size = v.totalFileAllocatedSize {
-                total += size
+                total = RemoteDataLimits.saturatingAdd(total, size, maximum: Int.max)
             }
         }
         return total
@@ -170,7 +177,9 @@ actor ImageCache {
             }
             alive.append((url, mtime, size))
         }
-        var total = alive.reduce(0) { $0 + $1.size }
+        var total = alive.reduce(0) {
+            RemoteDataLimits.saturatingAdd($0, $1.size, maximum: Int.max)
+        }
         guard total > diskByteCap else { return }
         for entry in alive.sorted(by: { $0.mtime < $1.mtime }) {
             try? fm.removeItem(at: entry.url)

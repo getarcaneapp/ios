@@ -78,7 +78,7 @@ struct ProjectDetailView: View {
             LogsView(
                 title: currentProject.displayName,
                 logStream: { timestamps in
-                    manager.client?.projects.logs(
+                    manager.client?.boundedProjectLogs(
                         envID: environmentID,
                         projectID: project.id,
                         timestamps: timestamps
@@ -492,18 +492,18 @@ struct ProjectDetailView: View {
     }
 
     private func loadProject(refresh: Bool = false) async {
-        guard let client = manager.client, let cached = manager.cached else { return }
+        guard let client = manager.client else { return }
         if refreshedProject == nil { isLoading = true }
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)")
-            if let result: ProjectDetails = try await cached.get(
-                path, as: ProjectDetails.self, policy: .projects,
-                envID: environmentID, refresh: refresh,
-                onFresh: { fresh in refreshedProject = fresh }
-            ) {
-                refreshedProject = result
-            }
+            let result: ProjectDetails = try await RemoteDataLimits.boundedAPIResponse(
+                client: client,
+                path: path,
+                as: ProjectDetails.self,
+                maximumBytes: RemoteDataLimits.maximumInspectBytes
+            )
+            refreshedProject = result
             errorMessage = nil
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -538,10 +538,17 @@ struct ProjectDetailView: View {
             let ids = Set((runtime.runtimeServices ?? []).compactMap { $0.containerId }.filter { !$0.isEmpty })
 
             let path = client.rest.environmentPath(environmentID, "containers")
-            if let all: [ContainerSummary] = try await cached.getList(
-                path, elementType: ContainerSummary.self, policy: .containersList,
+            if let all: [ContainerSummary] = try await cached.getAllPages(
+                path: path, elementType: ContainerSummary.self, policy: .containersList,
                 envID: environmentID, refresh: refresh,
-                onFresh: { fresh in projectContainers = filterProjectContainers(fresh, ids: ids) }
+                onFresh: { fresh in projectContainers = filterProjectContainers(fresh, ids: ids) },
+                fetchPage: { start, limit in
+                    let response = try await client.containers.list(
+                        envID: environmentID,
+                        query: .init(start: start, limit: limit)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
+                }
             ) {
                 projectContainers = filterProjectContainers(all, ids: ids)
             }
@@ -752,7 +759,13 @@ struct CreateProjectView: View {
     private func applyTemplate(id: String) async {
         guard canBrowseTemplates, !id.isEmpty, let client = manager.client else { return }
         do {
-            let content = try await client.templates.getContent(id: id)
+            let escapedID = ArcaneAPIHelpers.escapedPathComponent(id)
+            let content = try await RemoteDataLimits.boundedAPIResponse(
+                client: client,
+                path: "templates/\(escapedID)/content",
+                as: TemplateContent.self,
+                maximumBytes: RemoteDataLimits.maximumTemplateBytes
+            )
             composeContent = content.content
             envContent = content.envContent
             if name.isEmpty {

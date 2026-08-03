@@ -19,17 +19,31 @@ nonisolated struct LenientArray<Element: Codable & Sendable>: Codable, Sendable 
     nonisolated init(from decoder: any Decoder) throws {
         var container = try decoder.unkeyedContainer()
         var collected: [Element] = []
+        var processedCount = 0
         if let count = container.count {
-            collected.reserveCapacity(count)
+            guard count <= RemoteDataLimits.maximumCollectionItems else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Array exceeds the supported item limit"
+                )
+            }
+            collected.reserveCapacity(min(count, RemoteDataLimits.maximumCollectionItems))
         }
         while !container.isAtEnd {
+            guard processedCount < RemoteDataLimits.maximumCollectionItems else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Array exceeds the supported item limit"
+                )
+            }
+            processedCount += 1
             do {
                 let item = try container.decode(Element.self)
                 collected.append(item)
             } catch {
                 _ = try? container.decode(JSONValue.self)
                 Self.logger.warning(
-                    "Skipping malformed \(String(describing: Element.self), privacy: .public) element at index \(collected.count): \(String(describing: error), privacy: .public)"
+                    "Skipping malformed \(String(describing: Element.self), privacy: .public) element at index \(processedCount - 1): \(String(describing: error), privacy: .public)"
                 )
             }
         }

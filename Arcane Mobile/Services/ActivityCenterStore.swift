@@ -218,7 +218,11 @@ final class ActivityCenterStore {
 
         let environments = await resolveEnvironments(client: client)
         environmentIDs = environments.map(\.id.rawValue)
-        environmentNames = Dictionary(uniqueKeysWithValues: environments.map { ($0.id.rawValue, $0.name) })
+        environmentNames = environments.reduce(into: [:]) { names, environment in
+            if names[environment.id.rawValue] == nil {
+                names[environment.id.rawValue] = environment.name
+            }
+        }
 
         var buckets: [String: [Activity]] = [:]
         var anyHasMore = false
@@ -548,10 +552,14 @@ final class ActivityCenterStore {
     }
 
     private func resolveEnvironments(client: ArcaneClient) async -> [ActivityEnvironment] {
-        let response = try? await client.environments.list(
-            query: SearchPaginationSort(start: 0, limit: 100, sortOrder: .ascending)
-        )
-        let items = response?.data ?? []
+        let items: [Arcane.Environment] = (try? await PaginationLoader.collect(
+            maximumItems: RemoteDataLimits.maximumEnvironments
+        ) { start, limit in
+            let response = try await client.environments.list(
+                query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
+            )
+            return ResourcePage(items: response.data, pagination: response.pagination)
+        }) ?? []
         return items.map { environment in
             ActivityEnvironment(
                 id: EnvironmentID(rawValue: environment.id),

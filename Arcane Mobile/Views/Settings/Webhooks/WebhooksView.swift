@@ -24,8 +24,9 @@ struct WebhooksView: View {
                 }
             } else {
                 List {
-                    ForEach(webhooks) { webhook in
-                        WebhookRow(webhook: webhook)
+                    Section {
+                        ForEach(webhooks) { webhook in
+                            WebhookRow(webhook: webhook)
                             .contextMenu {
                                 Button {
                                     Task { await toggleWebhook(webhook) }
@@ -64,6 +65,12 @@ struct WebhooksView: View {
                                 }
                                 .tint(webhook.enabled ? .orange : .green)
                             }
+                        }
+                    } header: {
+                        ResourceCountSectionHeader(
+                            "Webhooks",
+                            loadedCount: webhooks.count
+                        )
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -451,13 +458,22 @@ struct CreateWebhookView: View {
         loadingTargets = true
         defer { loadingTargets = false }
         let envID = manager.activeEnvironmentID
-        // Pull a generous page each — the webhook target pickers don't paginate.
-        let containerQuery = SearchPaginationSort(start: 0, limit: 500)
-        let projectQuery = SearchPaginationSort(start: 0, limit: 500)
-        async let containersResult = client.containers.list(envID: envID, query: containerQuery)
-        async let projectsResult = client.projects.list(envID: envID, query: projectQuery)
-        containers = (try? await containersResult.data) ?? []
-        projects = (try? await projectsResult.data) ?? []
+        async let containersResult: [ContainerSummary]? = try? PaginationLoader.collect { start, limit in
+            let response = try await client.containers.list(
+                envID: envID,
+                query: .init(start: start, limit: limit)
+            )
+            return ResourcePage(items: response.data, pagination: response.pagination)
+        }
+        async let projectsResult: [ProjectDetails]? = try? PaginationLoader.collect { start, limit in
+            let response = try await client.projects.list(
+                envID: envID,
+                query: .init(start: start, limit: limit)
+            )
+            return ResourcePage(items: response.data, pagination: response.pagination)
+        }
+        containers = await containersResult ?? []
+        projects = await projectsResult ?? []
     }
 
     private func createWebhook() async {

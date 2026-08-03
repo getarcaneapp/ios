@@ -158,7 +158,11 @@ struct StageTaskTool: Tool {
         }
         let resolved: ContainerDetails
         do {
-            resolved = try await context.client.containers.inspect(envID: context.envID, id: target)
+            resolved = try await RemoteDataLimits.boundedContainerInspect(
+                client: context.client,
+                environmentID: context.envID,
+                containerID: target
+            )
         } catch {
             return "No container with id “\(target)” — call listContainers and use an id from there."
         }

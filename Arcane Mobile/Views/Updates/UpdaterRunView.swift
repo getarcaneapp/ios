@@ -223,7 +223,7 @@ struct UpdaterRunView: View {
         VStack(alignment: .leading, spacing: 14) {
             cardHeader(title: title, icon: icon, tint: tint)
             VStack(spacing: 0) {
-                ForEach(Array(ids.enumerated()), id: \.element) { index, id in
+                ForEach(Array(ids.enumerated()), id: \.offset) { index, id in
                     HStack(spacing: 12) {
                         Image(systemName: "arrow.triangle.2.circlepath")
                             .font(.caption.weight(.semibold))
@@ -302,7 +302,10 @@ struct UpdaterRunView: View {
 
         let runHandle = Task {
             do {
-                let result = try await client.updater.run(envID: environmentID)
+                let result = try await RemoteDataLimits.runBoundedUpdater(
+                    client: client,
+                    environmentID: environmentID
+                )
                 pollHandle.cancel()
                 await MainActor.run {
                     phase = .completed(result)
@@ -328,7 +331,10 @@ struct UpdaterRunView: View {
 
         while !Task.isCancelled {
             do {
-                let status = try await client.updater.status(envID: environmentID)
+                let status = try await RemoteDataLimits.loadBoundedUpdaterStatus(
+                    client: client,
+                    environmentID: environmentID
+                )
                 if Task.isCancelled { return }
                 await MainActor.run {
                     liveStatus = status
@@ -340,6 +346,7 @@ struct UpdaterRunView: View {
             try? await Task.sleep(for: .milliseconds(1500))
         }
     }
+
 }
 
 private struct UpdaterRunItemRow: View {

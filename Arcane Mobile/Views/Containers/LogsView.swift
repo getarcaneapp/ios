@@ -4,7 +4,7 @@ import Arcane
 
 struct LogsView: View {
     let title: String
-    let logStream: (Bool) -> LogStream?
+    let logStream: (Bool) -> BoundedLogStream?
     var embedded: Bool = false
 
     @State private var lines: [IdentifiedLogLine] = []
@@ -256,7 +256,14 @@ private extension LogsView {
         newEntries.reserveCapacity(newLines.count)
         var newFiltered: [IdentifiedLogLine] = []
 
-        for line in newLines {
+        for var line in newLines.prefix(50) {
+            line.text = RemoteDataLimits.boundedText(
+                line.text,
+                maximumBytes: RemoteDataLimits.maximumStreamLineBytes
+            )
+            line.timestamp = line.timestamp.map { RemoteDataLimits.boundedText($0, maximumBytes: 256) }
+            line.level = line.level.map { RemoteDataLimits.boundedText($0, maximumBytes: 64) }
+            line.service = line.service.map { RemoteDataLimits.boundedText($0, maximumBytes: 256) }
             let entry = IdentifiedLogLine(id: nextLineID, line: line)
             nextLineID &+= 1
             newEntries.append(entry)
@@ -272,7 +279,11 @@ private extension LogsView {
 
         trimRetainedWindowIfNeeded()
         if !autoScroll {
-            newLinesWhilePaused += newLines.count
+            newLinesWhilePaused = RemoteDataLimits.saturatingAdd(
+                newLinesWhilePaused,
+                newEntries.count,
+                maximum: 5000
+            )
         }
     }
 

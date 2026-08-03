@@ -49,7 +49,7 @@ struct ImageUpdatesView: View {
             }
 
             if !taggedRefs.isEmpty {
-                Section("Images") {
+                Section {
                     ForEach(taggedRefs, id: \.self) { ref in
                         UpdateRow(
                             ref: ref,
@@ -58,6 +58,11 @@ struct ImageUpdatesView: View {
                             recheck: { Task { await recheck(ref: ref) } }
                         )
                     }
+                } header: {
+                    ResourceCountSectionHeader(
+                        "Images",
+                        loadedCount: taggedRefs.count
+                    )
                 }
             }
 

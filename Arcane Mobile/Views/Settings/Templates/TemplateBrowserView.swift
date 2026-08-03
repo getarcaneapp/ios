@@ -66,8 +66,9 @@ struct TemplateBrowserView: View {
                         }
                         .listRowBackground(Color.clear)
                     } else {
-                        ForEach(groupedTemplates, id: \.name) { group in
-                            Section(group.name) {
+                        let groups = groupedTemplates
+                        ForEach(groups, id: \.name) { group in
+                            Section {
                                 ForEach(group.templates) { template in
                                     if canReadTemplates {
                                         NavigationLink {
@@ -78,6 +79,17 @@ struct TemplateBrowserView: View {
                                     } else {
                                         TemplateRow(template: template)
                                     }
+                                }
+                            } header: {
+                                if group.name == groups.first?.name {
+                                    ResourceCountSectionHeader(
+                                        group.name,
+                                        loadedCount: store.templates.count,
+                                        totalCount: store.totalItemCount,
+                                        hasMore: store.hasMore
+                                    )
+                                } else {
+                                    Text(group.name)
                                 }
                             }
                         }

@@ -113,7 +113,10 @@ struct GetOpsInfoTool: Tool {
 
     private func updaterText() async -> String {
         do {
-            let status = try await context.client.updater.status(envID: context.envID)
+            let status = try await RemoteDataLimits.loadBoundedUpdaterStatus(
+                client: context.client,
+                environmentID: context.envID
+            )
             var lines: [String] = []
             if status.updatingContainers > 0 || status.updatingProjects > 0 {
                 lines.append("Updater is running: \(status.updatingContainers) container(s), \(status.updatingProjects) project(s) updating now.")

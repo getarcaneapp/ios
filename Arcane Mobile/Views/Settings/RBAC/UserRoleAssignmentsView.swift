@@ -139,12 +139,20 @@ struct UserRoleAssignmentsView: View {
         defer { isLoading = false }
         do {
             async let assignmentsTask = client.users.getRoleAssignments(userId: user.id)
-            async let rolesTask = client.roles.listPaginated(limit: 100)
-            async let envsTask = client.environments.list(query: .init(start: 0, limit: 100))
+            async let rolesTask: [Role] = PaginationLoader.collect { start, limit in
+                let response = try await client.roles.listPaginated(start: start, limit: limit)
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
+            async let envsTask: [Arcane.Environment] = PaginationLoader.collect { start, limit in
+                let response = try await client.environments.list(
+                    query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
+                )
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
             let (a, r, e) = try await (assignmentsTask, rolesTask, envsTask)
             assignments = a
-            availableRoles = r.data
-            availableEnvironments = e.data
+            availableRoles = r
+            availableEnvironments = e
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

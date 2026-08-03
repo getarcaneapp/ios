@@ -43,7 +43,11 @@ struct InspectContainerTool: Tool {
         context.status.report("Inspecting container…")
         let d: ContainerDetails
         do {
-            d = try await context.client.containers.inspect(envID: context.envID, id: id)
+            d = try await RemoteDataLimits.boundedContainerInspect(
+                client: context.client,
+                environmentID: context.envID,
+                containerID: id
+            )
         } catch {
             return ToolSupport.friendlyFailure(error, reading: "container “\(id)”")
         }

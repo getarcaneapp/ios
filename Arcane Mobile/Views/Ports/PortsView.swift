@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct PortsView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environmentID: EnvironmentID
 
@@ -13,6 +15,9 @@ struct PortsView: View {
     // Filtered + grouped result cached here so body doesn't re-run the
     // filter/group/sort pipeline on every evaluation (see rebuildSections()).
     @State private var sections: [PortGroup] = []
+    @State private var pagination = ProgressivePaginationState()
+    @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
 
     private struct PortGroup: Identifiable {
         let container: String
@@ -75,7 +80,31 @@ struct PortsView: View {
                                 Text("(\(group.ports.count))")
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
+                                Spacer(minLength: 8)
+                                if group.id == sections.first?.id {
+                                    ResourceCountLabel(
+                                        loadedCount: ports.count,
+                                        totalCount: pagination.totalItems,
+                                        hasMore: pagination.hasMore
+                                    )
+                                }
                             }
+                            .textCase(nil)
+                        }
+                    }
+
+                    if pagination.hasMore {
+                        if loadMoreError != nil {
+                            Button("Retry loading more") {
+                                Task { await loadMore() }
+                            }
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            SkeletonListRow()
+                                .skeletonShimmer()
+                                .onAppear {
+                                    Task { await loadMore() }
+                                }
                         }
                     }
                 }
@@ -85,7 +114,9 @@ struct PortsView: View {
         .navigationTitle("Ports")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search ports")
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
-        .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: debouncedSearchText) {
+            Task { await load(refresh: true) }
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
@@ -101,21 +132,76 @@ struct PortsView: View {
 
     private func load(refresh: Bool = false) async {
         guard let client = manager.client else { return }
+        let generation = pagination.reset()
+        isLoadingMore = false
         if ports.isEmpty { isLoading = true }
-        if refresh { errorMessage = nil }
-        defer { isLoading = false }
+        errorMessage = nil
+        loadMoreError = nil
+        defer {
+            if pagination.accepts(generation) {
+                isLoading = false
+            }
+        }
         do {
-            // The list endpoint paginates; surface the full set in one shot.
             let response = try await client.ports.list(
                 envID: environmentID,
-                query: .init(start: 0, limit: 500)
+                query: .init(
+                    search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                    start: 0,
+                    limit: Self.pageSize
+                )
             )
-            ports = response.data
-            rebuildSections()
-            errorMessage = nil
+            applyPage(response, reset: true, requestedStart: 0, generation: generation)
         } catch {
+            guard pagination.accepts(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func loadMore() async {
+        guard pagination.hasMore, !isLoadingMore, let client = manager.client else { return }
+        isLoadingMore = true
+        loadMoreError = nil
+        let generation = pagination.generation
+        let start = pagination.nextStart
+        defer {
+            if pagination.accepts(generation) {
+                isLoadingMore = false
+            }
+        }
+        do {
+            let response = try await client.ports.list(
+                envID: environmentID,
+                query: .init(
+                    search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                    start: start,
+                    limit: Self.pageSize
+                )
+            )
+            applyPage(response, reset: false, requestedStart: start, generation: generation)
+        } catch {
+            guard pagination.accepts(generation) else { return }
+            loadMoreError = friendlyErrorMessage(error)
+        }
+    }
+
+    private func applyPage(
+        _ response: PaginatedResponse<PortMapping>,
+        reset: Bool,
+        requestedStart: Int,
+        generation: Int
+    ) {
+        guard pagination.receive(
+            pagination: response.pagination,
+            itemCount: response.data.count,
+            requestedStart: requestedStart,
+            requestedLimit: Self.pageSize,
+            generation: generation
+        ) else { return }
+        ports = PaginationLoader.merge(current: ports, incoming: response.data, reset: reset)
+        loadMoreError = nil
+        errorMessage = nil
+        rebuildSections()
     }
 }
 

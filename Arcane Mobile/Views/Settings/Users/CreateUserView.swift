@@ -132,11 +132,14 @@ struct CreateUserView: View {
         isLoadingRoles = true
         defer { isLoadingRoles = false }
         do {
-            let page = try await client.roles.listPaginated(limit: 100)
-            availableRoles = page.data
+            let roles = try await PaginationLoader.collect { start, limit in
+                let response = try await client.roles.listPaginated(start: start, limit: limit)
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
+            availableRoles = roles
             if selectedRoleId.isEmpty {
-                selectedRoleId = page.data.first(where: { $0.id == Role.BuiltIn.viewer })?.id
-                    ?? page.data.first?.id
+                selectedRoleId = roles.first(where: { $0.id == Role.BuiltIn.viewer })?.id
+                    ?? roles.first?.id
                     ?? ""
             }
         } catch {
@@ -146,4 +149,3 @@ struct CreateUserView: View {
 }
 
 // MARK: - API Keys View
-

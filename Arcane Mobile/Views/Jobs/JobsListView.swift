@@ -43,7 +43,8 @@ struct JobsListView: View {
                 ContentUnavailableView("No Jobs", systemImage: "play.square.stack")
             } else {
                 List {
-                    ForEach(grouped, id: \.category) { group in
+                    let groups = grouped
+                    ForEach(groups, id: \.category) { group in
                         Section {
                             ForEach(group.jobs) { job in
                                 NavigationLink {
@@ -100,7 +101,14 @@ struct JobsListView: View {
                                 }
                             }
                         } header: {
-                            Text(group.category.capitalized)
+                            if group.category == groups.first?.category {
+                                ResourceCountSectionHeader(
+                                    group.category.capitalized,
+                                    loadedCount: filteredJobs.count
+                                )
+                            } else {
+                                Text(group.category.capitalized)
+                            }
                         }
                     }
                 }

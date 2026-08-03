@@ -53,9 +53,7 @@ final class AIAssistantService {
         self.invalidate = invalidate
         let sink = AIPendingActionSink()
         let budget = AIContextBudget()
-        let boundedEnvironmentName = ToolSupport.safeText(context.envName, maximumBytes: 80)
         let instructionText = AIInstructions.build(
-            environmentName: boundedEnvironmentName,
             capabilities: context.capabilities
         )
         self.sink = sink

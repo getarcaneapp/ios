@@ -249,7 +249,7 @@ struct ContainerStatsView: View {
 
     private func rateString(_ bytesPerSec: Double?) -> String {
         guard let bps = bytesPerSec, bps.isFinite else { return "—" }
-        let value = Int64(max(0, bps))
+        let value = Int64(min(max(0, bps), 1_000_000_000_000_000))
         return "\(value.byteString)/s"
     }
 

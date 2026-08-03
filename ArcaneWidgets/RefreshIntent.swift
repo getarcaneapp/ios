@@ -36,7 +36,8 @@ struct RefreshDashboardIntent: AppIntent {
 
         let previous = WidgetSnapshotStore.load()
         let previousByID = Dictionary(
-            uniqueKeysWithValues: (previous?.environments ?? []).map { ($0.id, $0) }
+            (previous?.environments ?? []).map { ($0.id, $0) },
+            uniquingKeysWith: { current, _ in current }
         )
         let summaries = await loadSummaries(
             environments: environments,
@@ -46,6 +47,7 @@ struct RefreshDashboardIntent: AppIntent {
         WidgetSnapshotStore.saveAndReloadIfChanged(WidgetSnapshot(
             generatedAt: Date(),
             serverConfigured: true,
+            serverOrigin: IntentClientFactory.serverOrigin,
             isDemo: previous?.isDemo ?? false,
             accentHex: AppGroup.defaults?.string(forKey: AppGroup.Keys.accentColorHex),
             activeEnvironmentID: IntentClientFactory.activeEnvironmentID.rawValue,
@@ -108,7 +110,7 @@ struct RefreshDashboardIntent: AppIntent {
         let displayName = trimmedName.isEmpty ? environment.id : trimmedName
         let environmentID = EnvironmentID(rawValue: environment.id)
 
-        guard let dockerInfo = try? await client.system.dockerInfo(envID: environmentID) else {
+        guard let dockerInfo = try? await boundedDockerInfo(client: client, environmentID: environmentID) else {
             return .init(
                 id: environment.id,
                 name: displayName,
@@ -146,6 +148,26 @@ struct RefreshDashboardIntent: AppIntent {
     }
 
     private static func dockerCount(_ key: String, in info: DockerInfo) -> Int {
-        Int(info.info?[key]?.int64Value ?? 0)
+        let value = info.info?[key]?.int64Value ?? 0
+        return Int(min(max(value, 0), Int64(WidgetSnapshot.maximumCount)))
+    }
+
+    private static func boundedDockerInfo(
+        client: ArcaneClient,
+        environmentID: EnvironmentID
+    ) async throws -> DockerInfo {
+        let maximumBytes = 4 * 1_024 * 1_024
+        let path = client.rest.environmentPath(environmentID, "system/docker/info")
+        let (bytes, response) = try await client.transport.byteStream(path: path)
+        guard (200..<300).contains(response.statusCode),
+              response.expectedContentLength <= Int64(maximumBytes) else {
+            throw IntentClientError.notConfigured
+        }
+        var data = Data()
+        for try await byte in bytes {
+            guard data.count < maximumBytes else { throw IntentClientError.notConfigured }
+            data.append(byte)
+        }
+        return try ArcaneJSON.makeDecoder().decode(DockerInfo.self, from: data)
     }
 }

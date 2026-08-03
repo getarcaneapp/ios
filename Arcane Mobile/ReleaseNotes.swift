@@ -53,13 +53,18 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.6.1",
+            new: [
+                .init("Resource section headers show loaded and total item counts.")
+            ],
             changed: [
                 .init("OIDC role mappings and Git repositories move behind management buttons in Roles and GitOps.")
             ],
             fixed: [
                 .init("Project and image operation logs match Docker output, wrap cleanly, and reconnect reliably."),
                 .init("Image uploads report the server result correctly."),
-                .init("Reliable OIDC sign-in when identity providers repeat callbacks.")
+                .init("Reliable OIDC sign-in when identity providers repeat callbacks."),
+                .init("Resource lists and pickers load every available item."),
+                .init("Hardened sessions, widgets, remote images, and server-provided data.")
             ]
         ),
         ReleaseNote(

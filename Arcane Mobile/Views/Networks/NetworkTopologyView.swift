@@ -85,7 +85,18 @@ struct NetworkTopologyView: View {
         defer { isLoading = false }
 
         do {
-            let response = try await client.networks.topology(envID: environmentID)
+            let path = client.rest.environmentPath(environmentID, "networks/topology")
+            let response = try await RemoteDataLimits.boundedAPIResponse(
+                client: client,
+                path: path,
+                as: NetworkTopology.self
+            )
+            guard response.nodes.count <= RemoteDataLimits.maximumTopologyNodes,
+                  response.edges.count <= RemoteDataLimits.maximumTopologyEdges else {
+                throw RemoteDataLimitError.collectionTooLarge(
+                    maximumItems: RemoteDataLimits.maximumTopologyEdges
+                )
+            }
             topology = response
             errorMessage = nil
             selectedNode = nil

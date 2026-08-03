@@ -125,7 +125,7 @@ struct TemplatePreviewView: View {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let loaded = try await client.templates.getContent(id: displayedTemplate.id)
+            let loaded = try await loadBoundedContent(client: client, id: displayedTemplate.id)
             content = loaded
             composeContent = loaded.content
             envContent = loaded.envContent
@@ -140,7 +140,7 @@ struct TemplatePreviewView: View {
         defer { isDownloading = false }
         do {
             let downloaded = try await client.templates.download(id: displayedTemplate.id)
-            let loaded = try await client.templates.getContent(id: downloaded.id)
+            let loaded = try await loadBoundedContent(client: client, id: downloaded.id)
             downloadedTemplate = loaded.template
             content = loaded
             composeContent = loaded.content
@@ -149,6 +149,16 @@ struct TemplatePreviewView: View {
         } catch {
             showToast(.error(friendlyErrorMessage(error)))
         }
+    }
+
+    private func loadBoundedContent(client: ArcaneClient, id: String) async throws -> TemplateContent {
+        let escapedID = ArcaneAPIHelpers.escapedPathComponent(id)
+        return try await RemoteDataLimits.boundedAPIResponse(
+            client: client,
+            path: "templates/\(escapedID)/content",
+            as: TemplateContent.self,
+            maximumBytes: RemoteDataLimits.maximumTemplateBytes
+        )
     }
 }
 

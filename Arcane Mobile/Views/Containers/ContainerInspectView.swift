@@ -94,7 +94,11 @@ struct ContainerInspectView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let details = try await client.containers.inspect(envID: environmentID, id: container.id)
+            let details = try await RemoteDataLimits.boundedContainerInspect(
+                client: client,
+                environmentID: environmentID,
+                containerID: container.id
+            )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             let data = try encoder.encode(details)

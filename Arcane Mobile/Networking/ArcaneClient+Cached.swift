@@ -13,7 +13,8 @@ extension ArcaneClientManager {
         return CachedClient(
             client: client,
             serverIdentity: identity,
-            userID: currentUser?.id ?? "anon"
+            userID: currentUser?.id ?? "anon",
+            sessionIdentity: cacheSessionIdentity
         )
     }
 }

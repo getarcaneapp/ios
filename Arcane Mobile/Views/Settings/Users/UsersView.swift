@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct UsersView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var users: [User] = []
     @State private var pendingDeleteUser: User?
@@ -9,11 +11,22 @@ struct UsersView: View {
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
     @State private var showCreateSheet = false
+    @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    @State private var pagination = ProgressivePaginationState()
+    @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
 
     var body: some View {
         Group {
             if isLoading && users.isEmpty {
                 ProgressView("Loading users...").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage, users.isEmpty {
+                ContentUnavailableView(
+                    "Couldn't Load Users",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(errorMessage)
+                )
             } else if users.isEmpty {
                 ContentUnavailableView {
                     Label("No Users", systemImage: "person.slash")
@@ -24,24 +37,57 @@ struct UsersView: View {
                 }
             } else {
                 List {
-                    ForEach(users) { user in
-                        NavigationLink(destination: UserDetailView(user: user, onUpdate: { await loadUsers() })) {
-                            UserRow(user: user)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button {
-                                pendingDeleteUser = user
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                    Section {
+                        ForEach(users) { user in
+                            NavigationLink(destination: UserDetailView(user: user, onUpdate: { await loadUsers() })) {
+                                UserRow(user: user)
                             }
-                            .tint(.red)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button {
+                                    pendingDeleteUser = user
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                .tint(.red)
+                            }
                         }
+
+                        if pagination.hasMore {
+                            if loadMoreError != nil {
+                                Button("Retry loading more") {
+                                    Task { await loadMore() }
+                                }
+                                .frame(maxWidth: .infinity)
+                            } else {
+                                SkeletonListRow()
+                                    .skeletonShimmer()
+                                    .onAppear {
+                                        Task { await loadMore() }
+                                    }
+                            }
+                        }
+                    } header: {
+                        ResourceCountSectionHeader(
+                            "Users",
+                            loadedCount: users.count,
+                            totalCount: pagination.totalItems,
+                            hasMore: pagination.hasMore
+                        )
                     }
                 }
                 .listStyle(.insetGrouped)
             }
         }
         .navigationTitle("Users")
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search users"
+        )
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .onChange(of: debouncedSearchText) {
+            Task { await loadUsers(refresh: true) }
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add User")
@@ -80,19 +126,69 @@ struct UsersView: View {
     }
 
     private func loadUsers(refresh: Bool = false) async {
-        guard let cached = manager.cached else { return }
+        guard let client = manager.client else { return }
+        let generation = pagination.reset()
+        isLoadingMore = false
         if users.isEmpty { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
-        do {
-            if let result: [User] = try await cached.getListGlobal(
-                "users", elementType: User.self, policy: .users,
-                refresh: refresh,
-                onFresh: { fresh in users = fresh }
-            ) {
-                users = result
+        loadMoreError = nil
+        defer {
+            if pagination.accepts(generation) {
+                isLoading = false
             }
-        } catch { errorMessage = friendlyErrorMessage(error) }
+        }
+        do {
+            let response = try await client.users.listPaginated(
+                search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                start: 0,
+                limit: Self.pageSize
+            )
+            applyPage(response, reset: true, requestedStart: 0, generation: generation)
+        } catch {
+            guard pagination.accepts(generation) else { return }
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    private func loadMore() async {
+        guard pagination.hasMore, !isLoadingMore, let client = manager.client else { return }
+        isLoadingMore = true
+        loadMoreError = nil
+        let generation = pagination.generation
+        let start = pagination.nextStart
+        defer {
+            if pagination.accepts(generation) {
+                isLoadingMore = false
+            }
+        }
+        do {
+            let response = try await client.users.listPaginated(
+                search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                start: start,
+                limit: Self.pageSize
+            )
+            applyPage(response, reset: false, requestedStart: start, generation: generation)
+        } catch {
+            guard pagination.accepts(generation) else { return }
+            loadMoreError = friendlyErrorMessage(error)
+        }
+    }
+
+    private func applyPage(
+        _ response: PaginatedResponse<User>,
+        reset: Bool,
+        requestedStart: Int,
+        generation: Int
+    ) {
+        guard pagination.receive(
+            pagination: response.pagination,
+            itemCount: response.data.count,
+            requestedStart: requestedStart,
+            requestedLimit: Self.pageSize,
+            generation: generation
+        ) else { return }
+        users = PaginationLoader.merge(current: users, incoming: response.data, reset: reset)
+        loadMoreError = nil
     }
 
     private func deleteUser(_ user: User) async {
@@ -105,6 +201,7 @@ struct UsersView: View {
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["users", "users/*"])
             }
+            await loadUsers(refresh: true)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -142,4 +239,3 @@ struct UserRow: View {
         .padding(.vertical, 2)
     }
 }
-

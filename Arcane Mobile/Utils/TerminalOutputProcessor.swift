@@ -6,6 +6,7 @@ nonisolated struct TerminalDecodedChunk: Sendable, Equatable {
 }
 
 nonisolated struct TerminalFrameDecoder: Sendable {
+    private static let maximumControlSequenceBytes = 1_024
     private enum EscapeState: Sendable {
         case text
         case escape
@@ -23,7 +24,7 @@ nonisolated struct TerminalFrameDecoder: Sendable {
         var output = String()
         var dsrReplyCount = 0
 
-        for byte in data {
+        for byte in data.prefix(RemoteDataLimits.maximumTerminalFrameBytes) {
             switch escapeState {
             case .text:
                 consumeTextState(byte, output: &output)
@@ -80,9 +81,11 @@ nonisolated struct TerminalFrameDecoder: Sendable {
                 dsrReplyCount += 1
             }
             escapeState = .text
-        } else {
+        } else if parameters.count < Self.maximumControlSequenceBytes {
             parameters.append(byte)
             escapeState = .csi(parameters)
+        } else {
+            escapeState = .text
         }
     }
 

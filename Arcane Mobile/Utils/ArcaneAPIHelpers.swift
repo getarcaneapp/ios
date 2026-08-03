@@ -1,7 +1,7 @@
 import Foundation
 import Arcane
 
-enum ArcaneAPIHelpers {
+nonisolated enum ArcaneAPIHelpers {
     static func environmentPath(_ client: ArcaneClient, envID: EnvironmentID, _ suffix: String) -> String {
         client.rest.environmentPath(envID, suffix)
     }
@@ -10,13 +10,6 @@ enum ArcaneAPIHelpers {
         var allowed = CharacterSet.urlPathAllowed
         allowed.remove(charactersIn: "/")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
-    }
-
-    static func queryPath(_ path: String, items: [URLQueryItem]) -> String {
-        guard !items.isEmpty else { return path }
-        var components = URLComponents()
-        components.queryItems = items
-        return path + (components.percentEncodedQuery.map { "?\($0)" } ?? "")
     }
 
     static func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
@@ -42,11 +35,6 @@ enum ArcaneAPIHelpers {
         case "http": return 80
         default: return nil
         }
-    }
-
-    static func loadList(client: ArcaneClient, path: String) async throws -> [DynamicResource] {
-        let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
-        return try JSONDecoder().decode(DynamicListEnvelope.self, from: raw).items
     }
 
     static func loadObject(client: ArcaneClient, path: String) async throws -> DynamicResource {

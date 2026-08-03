@@ -86,7 +86,7 @@ struct ContainerDetailView: View {
                     LogsView(
                         title: displayedName,
                         logStream: { timestamps in
-                            manager.client?.containers.logs(
+                            manager.client?.boundedContainerLogs(
                                 envID: environmentID,
                                 id: container.id,
                                 timestamps: timestamps
@@ -456,7 +456,11 @@ struct ContainerDetailView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            details = try await client.containers.inspect(envID: environmentID, id: container.id)
+            details = try await RemoteDataLimits.boundedContainerInspect(
+                client: client,
+                environmentID: environmentID,
+                containerID: container.id
+            )
         } catch {
             // Ignore inspect errors — show what we have
         }

@@ -179,8 +179,12 @@ struct SystemInfoDetailView: View {
         async let infoTask: DockerInfo? = {
             do {
                 let path = client.rest.environmentPath(environmentID, "system/docker/info")
-                let raw = try await client.transport.rawRequest(path, body: Optional<String>.none)
-                return try JSONDecoder().decode(DockerInfo.self, from: raw)
+                return try await RemoteDataLimits.boundedDirectResponse(
+                    client: client,
+                    path: path,
+                    as: DockerInfo.self,
+                    maximumBytes: RemoteDataLimits.maximumInspectBytes
+                )
             } catch {
                 return nil
             }

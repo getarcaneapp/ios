@@ -19,6 +19,7 @@ struct AllEnvironmentsImageUpdatesView: View {
     @State private var buckets: [EnvUpdateBucket] = []
     @State private var isLoading = false
     @State private var hasLoadedOnce = false
+    @State private var environmentLoadError: String?
 
     /// `envID::ref` currently being rechecked against its registry.
     @State private var checkingKeys: Set<String> = []
@@ -30,13 +31,26 @@ struct AllEnvironmentsImageUpdatesView: View {
     @State private var detailTarget: ImageDetailTarget?
 
     private static let maxConcurrentEnvs = 4
-    private static let imagesPageSize: Int = 500
+
+    private var updateItemCount: Int {
+        buckets.reduce(into: 0) { count, bucket in
+            count += outdatedImages(in: bucket).count
+        }
+    }
 
     var body: some View {
         Group {
             if !hasLoadedOnce && isLoading {
                 ProgressView("Loading updates…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let environmentLoadError, buckets.isEmpty {
+                ContentUnavailableView {
+                    Label("Couldn't Load Environments", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(environmentLoadError)
+                } actions: {
+                    Button("Try Again") { Task { await loadAll(refresh: true) } }
+                }
             } else if hasLoadedOnce && buckets.isEmpty {
                 ContentUnavailableView(
                     "No Environments",
@@ -46,6 +60,11 @@ struct AllEnvironmentsImageUpdatesView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 16) {
+                        ResourceCountSectionHeader(
+                            "Available Updates",
+                            loadedCount: updateItemCount
+                        )
+
                         ForEach(buckets) { bucket in
                             environmentCard(for: bucket)
                         }
@@ -692,17 +711,22 @@ struct AllEnvironmentsImageUpdatesView: View {
         return targets.filter { seen.insert($0.id).inserted }
     }
 
-    /// Fetches the environment's containers through the cached **lenient**
-    /// list path — the same recipe every container list in the app uses. The
-    /// SDK's strict paginated decode can fail on a single odd container,
-    /// which silently emptied this list and blocked updates.
+    /// Fetches every container page through the SDK's lenient container-list
+    /// response and caches only the completed collection.
     private func freshContainers(in bucket: EnvUpdateBucket) async -> [ContainerSummary] {
         guard let client = manager.client, let cached = manager.cached else { return [] }
         let envID = EnvironmentID(rawValue: bucket.env.id)
         let path = client.rest.environmentPath(envID, "containers")
-        return (try? await cached.getList(
-            path, elementType: ContainerSummary.self, policy: .containersList,
-            envID: envID, refresh: true
+        return (try? await cached.getAllPages(
+            path: path, elementType: ContainerSummary.self, policy: .containersList,
+            envID: envID, refresh: true,
+            fetchPage: { start, limit in
+                let response = try await client.containers.list(
+                    envID: envID,
+                    query: .init(start: start, limit: limit)
+                )
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
         )) ?? []
     }
 
@@ -759,11 +783,33 @@ struct AllEnvironmentsImageUpdatesView: View {
             hasLoadedOnce = true
         }
 
-        let envs: [Arcane.Environment] = (try? await cached.getListGlobal(
-            "environments", elementType: Arcane.Environment.self,
-            policy: .environments, refresh: refresh,
-            onFresh: { _ in }
-        )) ?? []
+        let envs: [Arcane.Environment]
+        do {
+            envs = try await cached.getAllPagesGlobal(
+                path: "environments", elementType: Arcane.Environment.self,
+                policy: .environments,
+                maximumItems: RemoteDataLimits.maximumEnvironments,
+                refresh: refresh,
+                onFresh: { _ in },
+                fetchPage: { start, limit in
+                    let response = try await client.environments.list(
+                        query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
+                }
+            ) ?? []
+            guard envs.count <= RemoteDataLimits.maximumEnvironments else {
+                throw RemoteDataLimitError.collectionTooLarge(
+                    maximumItems: RemoteDataLimits.maximumEnvironments
+                )
+            }
+            environmentLoadError = nil
+        } catch {
+            environmentLoadError = friendlyErrorMessage(error)
+            buckets = []
+            publishUpdateCount()
+            return
+        }
 
         if Task.isCancelled { return }
 
@@ -773,8 +819,6 @@ struct AllEnvironmentsImageUpdatesView: View {
             return
         }
 
-        let pageSize = Self.imagesPageSize
-
         await withTaskGroup(of: EnvLoadResult.self) { group in
             var iterator = envs.enumerated().makeIterator()
             let initial = min(Self.maxConcurrentEnvs, envs.count)
@@ -782,7 +826,7 @@ struct AllEnvironmentsImageUpdatesView: View {
                 guard let (index, env) = iterator.next() else { break }
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
-                    await Self.fetchEnv(index: index, envID: envID, client: client, pageSize: pageSize)
+                    await Self.fetchEnv(index: index, envID: envID, client: client)
                 }
             }
             for await result in group {
@@ -791,7 +835,7 @@ struct AllEnvironmentsImageUpdatesView: View {
                 if let (index, env) = iterator.next() {
                     let envID = EnvironmentID(rawValue: env.id)
                     group.addTask {
-                        await Self.fetchEnv(index: index, envID: envID, client: client, pageSize: pageSize)
+                        await Self.fetchEnv(index: index, envID: envID, client: client)
                     }
                 }
             }
@@ -812,7 +856,7 @@ struct AllEnvironmentsImageUpdatesView: View {
     }
 
     private nonisolated static func fetchEnv(
-        index: Int, envID: EnvironmentID, client: ArcaneClient, pageSize: Int
+        index: Int, envID: EnvironmentID, client: ArcaneClient
     ) async -> EnvLoadResult {
         let summary: ImageUpdateSummary? = try? await client.images.updateSummary(envID: envID)
 
@@ -820,10 +864,14 @@ struct AllEnvironmentsImageUpdatesView: View {
         let totalImages: Int
         let listError: String?
         do {
-            let query = SearchPaginationSort(start: 0, limit: pageSize)
-            let response = try await client.images.list(envID: envID, query: query)
-            images = response.data
-            totalImages = Int(response.pagination.totalItems)
+            images = try await PaginationLoader.collect { start, limit in
+                let response = try await client.images.list(
+                    envID: envID,
+                    query: .init(start: start, limit: limit)
+                )
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
+            totalImages = images.count
             listError = nil
         } catch {
             images = []
@@ -831,7 +879,7 @@ struct AllEnvironmentsImageUpdatesView: View {
             listError = (error as? ArcaneError)?.localizedDescription ?? error.localizedDescription
         }
 
-        let refs = images.flatMap { $0.repoTags }.filter { $0 != "<none>:<none>" }
+        let refs = Array(Set(images.flatMap { $0.repoTags }.filter { $0 != "<none>:<none>" }))
 
         // Seed byRef from each image's inline updateInfo (server-populated on
         // the list endpoint). This decouples per-row update state from the
@@ -850,11 +898,14 @@ struct AllEnvironmentsImageUpdatesView: View {
 
         // Merge with the by-refs API. Its keys take precedence when present —
         // it has the freshest cached check results.
-        if !refs.isEmpty,
-           let map = try? await client.images.updateInfoByRefs(envID: envID, imageRefs: refs) {
-            for (ref, info) in map {
-                guard let info else { continue }
-                byRef[ref] = info.asUpdateResponse
+        for offset in stride(from: 0, to: refs.count, by: 100) {
+            let end = min(offset + 100, refs.count)
+            let batch = Array(refs[offset..<end])
+            if let map = try? await client.images.updateInfoByRefs(envID: envID, imageRefs: batch) {
+                for (ref, info) in map {
+                    guard let info else { continue }
+                    byRef[ref] = info.asUpdateResponse
+                }
             }
         }
 
@@ -887,7 +938,7 @@ struct AllEnvironmentsImageUpdatesView: View {
 
         guard let index = buckets.firstIndex(where: { $0.id == bucket.id }) else { return }
         var result = await Self.fetchEnv(
-            index: index, envID: envID, client: client, pageSize: Self.imagesPageSize
+            index: index, envID: envID, client: client
         )
         if let map = postedMap {
             // The synchronous check result is the freshest data available.
@@ -913,9 +964,12 @@ struct AllEnvironmentsImageUpdatesView: View {
     }
 
     private func publishUpdateCount() {
-        let counts = Dictionary(uniqueKeysWithValues: buckets.map { bucket in
-            (bucket.id, updateCount(in: bucket))
-        })
+        let counts = buckets.reduce(into: [:]) { counts, bucket in
+            counts[bucket.id] = RemoteDataLimits.saturatingAdd(
+                counts[bucket.id] ?? 0,
+                updateCount(in: bucket)
+            )
+        }
         imageUpdateCountStore.setCounts(
             counts,
             client: manager.client,

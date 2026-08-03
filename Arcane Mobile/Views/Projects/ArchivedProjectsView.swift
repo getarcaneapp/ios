@@ -14,6 +14,7 @@ struct ArchivedProjectsView: View {
     @State private var unarchivingID: String?
     @State private var currentPage = 1
     @State private var hasMore = false
+    @State private var totalItemCount: Int64?
     @State private var loadGeneration = 0
 
     private var sortedProjects: [ProjectDetails] {
@@ -45,30 +46,39 @@ struct ArchivedProjectsView: View {
                 )
             } else {
                 List {
-                    ForEach(sortedProjects) { project in
-                        ArchivedProjectRow(project: project)
-                            .contextMenu {
-                                Button {
-                                    Task { await unarchive(project) }
-                                } label: {
-                                    Label("Unarchive", systemImage: "tray.and.arrow.up")
+                    Section {
+                        ForEach(sortedProjects) { project in
+                            ArchivedProjectRow(project: project)
+                                .contextMenu {
+                                    Button {
+                                        Task { await unarchive(project) }
+                                    } label: {
+                                        Label("Unarchive", systemImage: "tray.and.arrow.up")
+                                    }
                                 }
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button {
-                                    Task { await unarchive(project) }
-                                } label: {
-                                    Label("Unarchive", systemImage: "tray.and.arrow.up")
+                                .swipeActions(edge: .trailing) {
+                                    Button {
+                                        Task { await unarchive(project) }
+                                    } label: {
+                                        Label("Unarchive", systemImage: "tray.and.arrow.up")
+                                    }
+                                    .tint(.indigo)
                                 }
-                                .tint(.indigo)
-                            }
-                    }
-
-                    if hasMore {
-                        Button("Load More") {
-                            Task { await loadMore() }
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
+
+                        if hasMore {
+                            Button("Load More") {
+                                Task { await loadMore() }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                        }
+                    } header: {
+                        ResourceCountSectionHeader(
+                            "Archived Projects",
+                            loadedCount: projects.count,
+                            totalCount: totalItemCount,
+                            hasMore: hasMore
+                        )
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -122,6 +132,11 @@ struct ArchivedProjectsView: View {
         }
         currentPage = max(Int(response.pagination.currentPage), 1)
         hasMore = response.pagination.currentPage < response.pagination.totalPages
+        if response.pagination.totalItems >= 0 {
+            totalItemCount = response.pagination.totalItems
+        } else if reset {
+            totalItemCount = nil
+        }
     }
 
     private func loadMore() async {

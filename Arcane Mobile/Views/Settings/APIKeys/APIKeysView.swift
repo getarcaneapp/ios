@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct APIKeysView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var apiKeys: [APIKey] = []
     @State private var isLoading = false
@@ -10,6 +12,11 @@ struct APIKeysView: View {
     @State private var createdKey: String?
     @State private var actionErrorMessage: String?
     @State private var pendingDeleteKey: APIKey?
+    @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    @State private var pagination = ProgressivePaginationState()
+    @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
 
     var body: some View {
         Group {
@@ -33,24 +40,57 @@ struct APIKeysView: View {
                 }
             } else {
                 List {
-                    ForEach(apiKeys) { key in
-                        APIKeyRow(apiKey: key)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                if key.isProtected != true {
-                                    Button {
-                                        pendingDeleteKey = key
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
+                    Section {
+                        ForEach(apiKeys) { key in
+                            APIKeyRow(apiKey: key)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    if key.isProtected != true {
+                                        Button {
+                                            pendingDeleteKey = key
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                        .tint(.red)
                                     }
-                                    .tint(.red)
                                 }
+                        }
+
+                        if pagination.hasMore {
+                            if loadMoreError != nil {
+                                Button("Retry loading more") {
+                                    Task { await loadMore() }
+                                }
+                                .frame(maxWidth: .infinity)
+                            } else {
+                                SkeletonListRow()
+                                    .skeletonShimmer()
+                                    .onAppear {
+                                        Task { await loadMore() }
+                                    }
                             }
+                        }
+                    } header: {
+                        ResourceCountSectionHeader(
+                            "API Keys",
+                            loadedCount: apiKeys.count,
+                            totalCount: pagination.totalItems,
+                            hasMore: pagination.hasMore
+                        )
                     }
                 }
                 .listStyle(.insetGrouped)
             }
         }
         .navigationTitle("API Keys")
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search API keys"
+        )
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .onChange(of: debouncedSearchText) {
+            Task { await loadKeys(refresh: true) }
+        }
         .deleteConfirmation(
             item: $pendingDeleteKey,
             title: { _ in "Delete API Key" },
@@ -95,22 +135,70 @@ struct APIKeysView: View {
     }
 
     private func loadKeys(refresh: Bool = false) async {
-        guard let cached = manager.cached else { return }
+        guard let client = manager.client else { return }
+        let generation = pagination.reset()
+        isLoadingMore = false
         if apiKeys.isEmpty { isLoading = true }
-        if refresh { errorMessage = nil }
-        defer { isLoading = false }
-        do {
-            if let result: [APIKey] = try await cached.getListGlobal(
-                "api-keys", elementType: APIKey.self, policy: .apiKeys,
-                refresh: refresh,
-                onFresh: { fresh in apiKeys = fresh }
-            ) {
-                apiKeys = result
+        errorMessage = nil
+        loadMoreError = nil
+        defer {
+            if pagination.accepts(generation) {
+                isLoading = false
             }
-            errorMessage = nil
+        }
+        do {
+            let response = try await client.apiKeys.listPaginated(
+                search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                start: 0,
+                limit: Self.pageSize
+            )
+            applyPage(response, reset: true, requestedStart: 0, generation: generation)
         } catch {
+            guard pagination.accepts(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func loadMore() async {
+        guard pagination.hasMore, !isLoadingMore, let client = manager.client else { return }
+        isLoadingMore = true
+        loadMoreError = nil
+        let generation = pagination.generation
+        let start = pagination.nextStart
+        defer {
+            if pagination.accepts(generation) {
+                isLoadingMore = false
+            }
+        }
+        do {
+            let response = try await client.apiKeys.listPaginated(
+                search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                start: start,
+                limit: Self.pageSize
+            )
+            applyPage(response, reset: false, requestedStart: start, generation: generation)
+        } catch {
+            guard pagination.accepts(generation) else { return }
+            loadMoreError = friendlyErrorMessage(error)
+        }
+    }
+
+    private func applyPage(
+        _ response: PaginatedResponse<APIKey>,
+        reset: Bool,
+        requestedStart: Int,
+        generation: Int
+    ) {
+        guard pagination.receive(
+            pagination: response.pagination,
+            itemCount: response.data.count,
+            requestedStart: requestedStart,
+            requestedLimit: Self.pageSize,
+            generation: generation
+        ) else { return }
+        apiKeys = PaginationLoader.merge(current: apiKeys, incoming: response.data, reset: reset)
+        loadMoreError = nil
+        errorMessage = nil
     }
 
     private func deleteKey(_ key: APIKey) async {
@@ -123,6 +211,7 @@ struct APIKeysView: View {
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["api-keys", "api-keys/*"])
             }
+            await loadKeys(refresh: true)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -155,4 +244,3 @@ struct APIKeyRow: View {
         .padding(.vertical, 2)
     }
 }
-

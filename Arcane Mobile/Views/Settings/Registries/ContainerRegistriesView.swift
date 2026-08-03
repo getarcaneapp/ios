@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct ContainerRegistriesView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var registries: [ContainerRegistry] = []
     @State private var isLoading = false
@@ -10,6 +12,11 @@ struct ContainerRegistriesView: View {
     @State private var editingRegistry: ContainerRegistry?
     @State private var actionErrorMessage: String?
     @State private var pendingDeleteRegistry: ContainerRegistry?
+    @State private var searchText = ""
+    @State private var debouncedSearchText = ""
+    @State private var pagination = ProgressivePaginationState()
+    @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
 
     var body: some View {
         Group {
@@ -35,26 +42,59 @@ struct ContainerRegistriesView: View {
                 }
             } else {
                 List {
-                    ForEach(registries) { registry in
-                        PressableRegistryRow(
-                            registry: registry,
-                            onEdit: { editingRegistry = registry },
-                            onDelete: { pendingDeleteRegistry = registry }
-                        )
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button {
-                                pendingDeleteRegistry = registry
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                    Section {
+                        ForEach(registries) { registry in
+                            PressableRegistryRow(
+                                registry: registry,
+                                onEdit: { editingRegistry = registry },
+                                onDelete: { pendingDeleteRegistry = registry }
+                            )
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button {
+                                    pendingDeleteRegistry = registry
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                .tint(.red)
                             }
-                            .tint(.red)
                         }
+
+                        if pagination.hasMore {
+                            if loadMoreError != nil {
+                                Button("Retry loading more") {
+                                    Task { await loadMore() }
+                                }
+                                .frame(maxWidth: .infinity)
+                            } else {
+                                SkeletonListRow()
+                                    .skeletonShimmer()
+                                    .onAppear {
+                                        Task { await loadMore() }
+                                    }
+                            }
+                        }
+                    } header: {
+                        ResourceCountSectionHeader(
+                            "Container Registries",
+                            loadedCount: registries.count,
+                            totalCount: pagination.totalItems,
+                            hasMore: pagination.hasMore
+                        )
                     }
                 }
                 .listStyle(.insetGrouped)
             }
         }
         .navigationTitle("Container Registries")
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search registries"
+        )
+        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .onChange(of: debouncedSearchText) {
+            Task { await loadRegistries(refresh: true) }
+        }
         .deleteConfirmation(
             item: $pendingDeleteRegistry,
             title: { _ in "Delete Registry" },
@@ -109,22 +149,74 @@ struct ContainerRegistriesView: View {
     }
 
     private func loadRegistries(refresh: Bool = false) async {
-        guard manager.currentUser?.isAdmin == true, let cached = manager.cached else { return }
+        guard manager.currentUser?.isAdmin == true, let client = manager.client else { return }
+        let generation = pagination.reset()
+        isLoadingMore = false
         if registries.isEmpty { isLoading = true }
-        if refresh { errorMessage = nil }
-        defer { isLoading = false }
-        do {
-            if let result: [ContainerRegistry] = try await cached.getListGlobal(
-                "container-registries", elementType: ContainerRegistry.self,
-                policy: .registries, refresh: refresh,
-                onFresh: { fresh in registries = fresh }
-            ) {
-                registries = result
+        errorMessage = nil
+        loadMoreError = nil
+        defer {
+            if pagination.accepts(generation) {
+                isLoading = false
             }
-            errorMessage = nil
+        }
+        do {
+            let response = try await client.registries.listPaginated(
+                search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                start: 0,
+                limit: Self.pageSize
+            )
+            applyPage(response, reset: true, requestedStart: 0, generation: generation)
         } catch {
+            guard pagination.accepts(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func loadMore() async {
+        guard pagination.hasMore, !isLoadingMore, let client = manager.client else { return }
+        isLoadingMore = true
+        loadMoreError = nil
+        let generation = pagination.generation
+        let start = pagination.nextStart
+        defer {
+            if pagination.accepts(generation) {
+                isLoadingMore = false
+            }
+        }
+        do {
+            let response = try await client.registries.listPaginated(
+                search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                start: start,
+                limit: Self.pageSize
+            )
+            applyPage(response, reset: false, requestedStart: start, generation: generation)
+        } catch {
+            guard pagination.accepts(generation) else { return }
+            loadMoreError = friendlyErrorMessage(error)
+        }
+    }
+
+    private func applyPage(
+        _ response: PaginatedResponse<ContainerRegistry>,
+        reset: Bool,
+        requestedStart: Int,
+        generation: Int
+    ) {
+        guard pagination.receive(
+            pagination: response.pagination,
+            itemCount: response.data.count,
+            requestedStart: requestedStart,
+            requestedLimit: Self.pageSize,
+            generation: generation
+        ) else { return }
+        registries = PaginationLoader.merge(
+            current: registries,
+            incoming: response.data,
+            reset: reset
+        )
+        loadMoreError = nil
+        errorMessage = nil
     }
 
     private func deleteRegistry(_ registry: ContainerRegistry) async {
@@ -137,6 +229,7 @@ struct ContainerRegistriesView: View {
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["container-registries", "container-registries/*"])
             }
+            await loadRegistries(refresh: true)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }

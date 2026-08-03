@@ -226,6 +226,11 @@ struct StartProjectIntent: AppIntent {
     var project: ProjectEntity
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        try await requestConfirmation(
+            conditions: [],
+            actionName: .do,
+            dialog: "Start \(project.name)? This deploys its Compose services."
+        )
         let client = try IntentClientFactory.makeClient()
         try await client.projects.deploy(
             envID: EnvironmentID(rawValue: project.environmentID),

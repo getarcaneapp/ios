@@ -139,8 +139,9 @@ struct DashboardView: View {
     @State private var showImageUpdates = false
     @State private var showUpdateAll = false
     @State private var liveCountsRefreshTask: Task<Void, Never>?
+    @State private var visibleEnvironmentCount = 50
 
-    private static let maxEnvironments = 50
+    private static let environmentBatchSize = 50
     private static let maxConcurrentPerEnvFetches = 4
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
@@ -440,8 +441,15 @@ struct DashboardView: View {
                 .padding(.bottom, 4)
             }
 
-            if rawEnvironmentCount > Self.maxEnvironments {
-                truncationFooter
+            if environments.count < rawEnvironmentCount {
+                ProgressView("Loading more environments…")
+                    .font(.caption)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .id(environments.count)
+                    .onAppear {
+                        showNextEnvironmentBatch()
+                    }
             }
         }
     }
@@ -464,15 +472,6 @@ struct DashboardView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .dashboardCardBackground(cornerRadius: Radius.nested)
-    }
-
-    private var truncationFooter: some View {
-        Text("Showing \(Self.maxEnvironments) of \(rawEnvironmentCount) environments.")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 4)
-            .padding(.top, 4)
     }
 
     private var dashboardHeader: some View {
@@ -818,6 +817,9 @@ struct DashboardView: View {
     private func loadData(refresh: Bool = false) async {
         guard let client = manager.client else { return }
         if refresh { cardRefreshToken += 1 }
+        if refresh || allEnvironments.isEmpty {
+            visibleEnvironmentCount = Self.environmentBatchSize
+        }
         // These values describe the current fleet. Clear them before each pass
         // so a failed or incomplete refresh cannot leave an older number on
         // screen looking live.
@@ -849,13 +851,12 @@ struct DashboardView: View {
         if envResult != nil { hasLoadedEnvironments = true }
         rawEnvironmentCount = envs.count
         allEnvironments = envs
-        let bounded = dashboardEnvironments(from: envs)
-        environments = bounded
-        // Cards and live sparklines stay bounded, but the backend dashboard
-        // stream must track every enabled environment so its aggregate tiles
-        // are true fleet totals.
+        let visibleEnvironments = dashboardEnvironments(from: envs)
+        environments = visibleEnvironments
+        // Cards and live sparklines follow the currently revealed batch, while
+        // the backend dashboard stream tracks the complete fleet.
         streamStore.reconcile(environments: envs)
-        statsHistory.reconcile(environments: bounded)
+        statsHistory.reconcile(environments: visibleEnvironments)
         if let reqData {
             overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
                 ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
@@ -869,9 +870,8 @@ struct DashboardView: View {
         hasLoadedOnce = true
         isLoading = false
 
-        // The card list is intentionally capped, but the overview totals must
-        // still represent every environment the Updates and Volumes screens
-        // include.
+        // Overview totals represent every environment, independent of how many
+        // cards have been revealed so far.
         let enabledEnvironments = envs.filter(\.enabled)
         async let volumesResult = loadVolumesTotal(envs: enabledEnvironments)
         async let updatesResult = loadImageUpdatesTotal(envs: enabledEnvironments)
@@ -902,11 +902,15 @@ struct DashboardView: View {
     /// snapshot. Cheap to call; the publisher debounces the actual write.
     private func publishWidgetSnapshot() {
         guard manager.client != nil, hasLoadedEnvironments else { return }
-        let enabledEnvironments = allEnvironments.filter(\.enabled)
-        guard environmentLiveStates.count == enabledEnvironments.count else { return }
+        let allEnabledEnvironments = allEnvironments.filter(\.enabled)
+        let enabledEnvironments = Array(
+            allEnabledEnvironments.prefix(WidgetSnapshot.maximumEnvironments)
+        )
+        guard allEnabledEnvironments.allSatisfy({ environmentLiveStates[$0.id] != nil }) else { return }
 
         let previousByID = Dictionary(
-            uniqueKeysWithValues: (WidgetSnapshotStore.load()?.environments ?? []).map { ($0.id, $0) }
+            (WidgetSnapshotStore.load()?.environments ?? []).map { ($0.id, $0) },
+            uniquingKeysWith: { current, _ in current }
         )
         let summaries: [WidgetSnapshot.EnvSummary] = enabledEnvironments.map { env in
             let state = streamStore.state(for: env.id)
@@ -947,6 +951,7 @@ struct DashboardView: View {
         WidgetSnapshotPublisher.shared.schedule(WidgetSnapshot(
             generatedAt: Date(),
             serverConfigured: true,
+            serverOrigin: manager.parsedServerURL.flatMap(AppGroup.canonicalServerOrigin(for:)),
             isDemo: manager.isDemoActive,
             accentHex: UserDefaults.standard.string(forKey: "accentColorHex"),
             activeEnvironmentID: manager.activeEnvironmentID.rawValue,
@@ -958,10 +963,7 @@ struct DashboardView: View {
     private func loadFailedWork() async -> [Activity] {
         guard manager.supportsActivities, let client = manager.client else { return [] }
 
-        let envResponse = try? await client.environments.list(
-            query: SearchPaginationSort(start: 0, limit: 100, sortOrder: .ascending)
-        )
-        let targets: [(id: EnvironmentID, name: String)] = (envResponse?.data ?? []).map { environment in
+        let targets: [(id: EnvironmentID, name: String)] = allEnvironments.map { environment in
             let name = environment.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return (
                 id: EnvironmentID(rawValue: environment.id),
@@ -978,7 +980,8 @@ struct DashboardView: View {
                         envID: environment.id,
                         order: .descending,
                         start: 0,
-                        limit: 20
+                        limit: 3,
+                        status: .failed
                     )
                     return (response?.data ?? []).map { activity in
                         var normalized = activity
@@ -998,9 +1001,6 @@ struct DashboardView: View {
         }
 
         return merged
-            .filter { activity in
-                activity.status == .failed
-            }
             .sorted { lhs, rhs in
                 return lhs.sortTime > rhs.sortTime
             }
@@ -1194,15 +1194,15 @@ struct DashboardView: View {
         client: ArcaneClient,
         envID: EnvironmentID
     ) async -> DockerInfo? {
-        try? await client.system.dockerInfo(envID: envID)
+        try? await RemoteDataLimits.boundedDockerInfo(client: client, environmentID: envID)
     }
 
     /// Nil means the fetch failed (or no client yet) — distinct from a
     /// successful load of zero environments.
     private func loadEnvironmentsCached(refresh: Bool) async -> [Arcane.Environment]? {
-        guard let cached = manager.cached else { return nil }
-        return try? await cached.getListGlobal(
-            "environments", elementType: Arcane.Environment.self,
+        guard let cached = manager.cached, let client = manager.client else { return nil }
+        return try? await cached.getAllPagesGlobal(
+            path: "environments", elementType: Arcane.Environment.self,
             policy: .environments, refresh: refresh,
             onFresh: { fresh in
                 hasLoadedEnvironments = true
@@ -1211,6 +1211,16 @@ struct DashboardView: View {
                 environments = dashboardEnvironments(from: fresh)
                 streamStore.reconcile(environments: fresh)
                 statsHistory.reconcile(environments: environments)
+            },
+            fetchPage: { start, limit in
+                let response = try await client.environments.list(
+                    query: .init(
+                        start: start,
+                        limit: limit,
+                        sortOrder: .ascending
+                    )
+                )
+                return ResourcePage(items: response.data, pagination: response.pagination)
             }
         )
     }
@@ -1222,7 +1232,17 @@ struct DashboardView: View {
             let active = ordered.remove(at: activeIndex)
             ordered.insert(active, at: 0)
         }
-        return Array(ordered.prefix(Self.maxEnvironments))
+        return Array(ordered.prefix(visibleEnvironmentCount))
+    }
+
+    private func showNextEnvironmentBatch() {
+        guard environments.count < allEnvironments.count else { return }
+        visibleEnvironmentCount = min(
+            visibleEnvironmentCount + Self.environmentBatchSize,
+            allEnvironments.count
+        )
+        environments = dashboardEnvironments(from: allEnvironments)
+        statsHistory.reconcile(environments: environments)
     }
 }
 

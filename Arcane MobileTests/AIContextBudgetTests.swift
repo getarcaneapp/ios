@@ -170,7 +170,7 @@ final class AIContextBudgetTests: XCTestCase {
                 sink: AIPendingActionSink(),
                 budget: budget
             )
-            let text = AIInstructions.build(environmentName: "Test", capabilities: capability)
+            let text = AIInstructions.build(capabilities: capability)
             async let instructionTokens = model.tokenCount(for: Instructions(text))
             async let toolTokens = model.tokenCount(for: tools)
             let baseTokens = try await instructionTokens + toolTokens

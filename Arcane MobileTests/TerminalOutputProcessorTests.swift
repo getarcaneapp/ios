@@ -37,6 +37,22 @@ final class TerminalOutputProcessorTests: XCTestCase {
         }
     }
 
+    func testDecoderBoundsSingleFrameWork() {
+        var decoder = TerminalFrameDecoder()
+        let decoded = decoder.decode(Data(repeating: 0x78, count: 300_000))
+
+        XCTAssertEqual(decoded.text.utf8.count, 256 * 1_024)
+    }
+
+    func testDecoderDropsOversizedCSIState() {
+        var decoder = TerminalFrameDecoder()
+        let sequence = "\u{001B}[" + String(repeating: "1", count: 2_000) + "mOK"
+        let decoded = decoder.decode(Data(sequence.utf8))
+
+        XCTAssertTrue(decoded.text.hasSuffix("OK"))
+        XCTAssertLessThan(decoded.text.utf8.count, sequence.utf8.count)
+    }
+
     func testOutputBufferBoundsLinesCharactersAndKeepsStableIDs() {
         var buffer = TerminalOutputBuffer(maxLines: 3, maxCharacters: 12)
         buffer.append("one\ntwo")

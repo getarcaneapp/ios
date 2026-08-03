@@ -58,24 +58,31 @@ struct TemplateRegistriesView: View {
                 }
             } else {
                 List {
-                    ForEach(registries) { registry in
-                        PressableTemplateRegistryRow(
-                            registry: registry,
-                            canEdit: canUpdateRegistries,
-                            canDelete: canDeleteRegistries,
-                            onEdit: { editingRegistry = registry },
-                            onDelete: { pendingDeleteRegistry = registry }
-                        )
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            if canDeleteRegistries {
-                                Button {
-                                    pendingDeleteRegistry = registry
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                    Section {
+                        ForEach(registries) { registry in
+                            PressableTemplateRegistryRow(
+                                registry: registry,
+                                canEdit: canUpdateRegistries,
+                                canDelete: canDeleteRegistries,
+                                onEdit: { editingRegistry = registry },
+                                onDelete: { pendingDeleteRegistry = registry }
+                            )
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if canDeleteRegistries {
+                                    Button {
+                                        pendingDeleteRegistry = registry
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                    .tint(.red)
                                 }
-                                .tint(.red)
                             }
                         }
+                    } header: {
+                        ResourceCountSectionHeader(
+                            "Template Registries",
+                            loadedCount: registries.count
+                        )
                     }
 
                     // One-tap add for the official community registry when it
@@ -149,7 +156,18 @@ struct TemplateRegistriesView: View {
         if refresh { errorMessage = nil }
         defer { isLoading = false }
         do {
-            registries = try await client.templates.listRegistries()
+            let loaded = try await RemoteDataLimits.boundedAPIResponse(
+                client: client,
+                path: "templates/registries",
+                as: [TemplateRegistry].self,
+                maximumBytes: RemoteDataLimits.maximumTemplateBytes
+            )
+            guard loaded.count <= RemoteDataLimits.maximumTemplateRegistries else {
+                throw RemoteDataLimitError.collectionTooLarge(
+                    maximumItems: RemoteDataLimits.maximumTemplateRegistries
+                )
+            }
+            registries = loaded
             errorMessage = nil
         } catch {
             errorMessage = friendlyErrorMessage(error)

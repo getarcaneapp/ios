@@ -43,6 +43,7 @@ final class TemplateBrowserStore {
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     private(set) var hasMore = false
+    private(set) var totalItemCount: Int64?
     private(set) var errorMessage: String?
 
     var searchText = ""
@@ -66,6 +67,7 @@ final class TemplateBrowserStore {
         clientTransportIdentity = nextIdentity
         templates = []
         hasMore = false
+        totalItemCount = nil
         errorMessage = nil
     }
 
@@ -90,6 +92,9 @@ final class TemplateBrowserStore {
             guard requestedQuery == queryKey else { return }
             templates = response.data
             hasMore = Int64(response.data.count) < response.pagination.totalItems
+            totalItemCount = response.pagination.totalItems >= 0
+                ? response.pagination.totalItems
+                : nil
             errorMessage = nil
         } catch is CancellationError {
             return
@@ -120,6 +125,9 @@ final class TemplateBrowserStore {
             let existingIDs = Set(templates.map(\.id))
             templates.append(contentsOf: response.data.filter { !existingIDs.contains($0.id) })
             hasMore = Int64(templates.count) < response.pagination.totalItems
+            if response.pagination.totalItems >= 0 {
+                totalItemCount = response.pagination.totalItems
+            }
             errorMessage = nil
         } catch is CancellationError {
             return

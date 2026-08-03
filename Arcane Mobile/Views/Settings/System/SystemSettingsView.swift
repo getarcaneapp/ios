@@ -481,9 +481,15 @@ struct SettingsCategoryView: View {
     /// Non-fatal on failure — the picker still shows already-excluded names.
     private func loadContainers() async {
         guard let client = manager.client else { return }
+        let envID = manager.activeEnvironmentID
         do {
-            let path = client.rest.environmentPath(manager.activeEnvironmentID, "containers")
-            let list: [ContainerSummary] = try await client.rest.get(path)
+            let list = try await PaginationLoader.collect { start, limit in
+                let response = try await client.containers.list(
+                    envID: envID,
+                    query: .init(start: start, limit: limit)
+                )
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
             runningContainers = list
                 .filter { $0.isRunning }
                 .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }

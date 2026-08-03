@@ -2,6 +2,8 @@ import SwiftUI
 import Arcane
 
 struct ContainersView: View {
+    private static let pageSize = 50
+
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
@@ -28,6 +30,9 @@ struct ContainersView: View {
     @State private var selection = Set<String>()
     @State private var isBulkRunning = false
     @State private var bulkRunningActionID: String?
+    @State private var pagination = ProgressivePaginationState()
+    @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
 
     private enum ContainerStateFilter: String, CaseIterable {
         case all = "All", running = "Running", stopped = "Stopped"
@@ -227,8 +232,33 @@ struct ContainersView: View {
                 }
             } else {
                 List(selection: $selection) {
-                    StableSectionedList(sections) { container in
+                    StableSectionedList(
+                        sections,
+                        preferredHeaderAccessorySectionID: "running",
+                        headerAccessory: { _ in
+                            ResourceCountLabel(
+                                loadedCount: containers.count,
+                                totalCount: pagination.totalItems,
+                                hasMore: pagination.hasMore
+                            )
+                        }
+                    ) { container in
                         containerLink(container)
+                    }
+
+                    if pagination.hasMore {
+                        if loadMoreError != nil {
+                            Button("Retry loading more") {
+                                Task { await loadMore() }
+                            }
+                            .frame(maxWidth: .infinity)
+                        } else {
+                            SkeletonListRow()
+                                .skeletonShimmer()
+                                .onAppear {
+                                    Task { await loadMore() }
+                                }
+                        }
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -361,7 +391,7 @@ struct ContainersView: View {
             LogsView(
                 title: container.displayName,
                 logStream: { timestamps in
-                    manager.client?.containers.logs(
+                    manager.client?.boundedContainerLogs(
                         envID: environmentID,
                         id: container.id,
                         timestamps: timestamps
@@ -383,7 +413,9 @@ struct ContainersView: View {
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadContainers(refresh: true) }
         }
-        .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: debouncedSearchText) {
+            Task { await loadContainers(refresh: true) }
+        }
         .onChange(of: stateFilter) { rebuildSections(animated: true) }
         .onChange(of: updateFilter) { rebuildSections(animated: true) }
         .onChange(of: sortOrder) { rebuildSections(animated: true) }
@@ -591,23 +623,91 @@ struct ContainersView: View {
     }
 
     private func loadContainers(refresh: Bool = false) async {
-        guard let client = manager.client, let cached = manager.cached else { return }
+        guard let client = manager.client else { return }
+        let generation = pagination.reset()
+        let start = 0
+        isLoadingMore = false
         if containers.isEmpty { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
-        do {
-            let path = client.rest.environmentPath(environmentID, "containers")
-            if let result: [ContainerSummary] = try await cached.getList(
-                path, elementType: ContainerSummary.self, policy: .containersList,
-                envID: environmentID, refresh: refresh,
-                onFresh: { fresh in containers = fresh; rebuildSections() }
-            ) {
-                containers = result
-                rebuildSections()
+        loadMoreError = nil
+        defer {
+            if pagination.accepts(generation) {
+                isLoading = false
             }
+        }
+        do {
+            let response = try await client.containers.list(
+                envID: environmentID,
+                query: .init(
+                    search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                    start: start,
+                    limit: Self.pageSize
+                )
+            )
+            applyContainersPage(
+                response,
+                reset: true,
+                requestedStart: start,
+                generation: generation
+            )
         } catch {
+            guard pagination.accepts(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func loadMore() async {
+        guard pagination.hasMore, !isLoadingMore, let client = manager.client else { return }
+        isLoadingMore = true
+        loadMoreError = nil
+        let generation = pagination.generation
+        let start = pagination.nextStart
+        defer {
+            if pagination.accepts(generation) {
+                isLoadingMore = false
+            }
+        }
+        do {
+            let response = try await client.containers.list(
+                envID: environmentID,
+                query: .init(
+                    search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
+                    start: start,
+                    limit: Self.pageSize
+                )
+            )
+            applyContainersPage(
+                response,
+                reset: false,
+                requestedStart: start,
+                generation: generation
+            )
+        } catch {
+            guard pagination.accepts(generation) else { return }
+            loadMoreError = friendlyErrorMessage(error)
+        }
+    }
+
+    private func applyContainersPage(
+        _ response: ContainerListResponse,
+        reset: Bool,
+        requestedStart: Int,
+        generation: Int
+    ) {
+        guard pagination.receive(
+            pagination: response.pagination,
+            itemCount: response.data.count,
+            requestedStart: requestedStart,
+            requestedLimit: Self.pageSize,
+            generation: generation
+        ) else { return }
+        containers = PaginationLoader.merge(
+            current: containers,
+            incoming: response.data,
+            reset: reset
+        )
+        loadMoreError = nil
+        rebuildSections()
     }
 
     private func startContainer(_ container: ContainerSummary) async {

@@ -73,15 +73,27 @@ struct ListNetworksTool: Tool {
     private func topologyText() async -> String {
         let topology: NetworkTopology
         do {
-            topology = try await context.client.networks.topology(envID: context.envID)
+            let path = context.client.rest.environmentPath(context.envID, "networks/topology")
+            topology = try await RemoteDataLimits.boundedAPIResponse(
+                client: context.client,
+                path: path,
+                as: NetworkTopology.self
+            )
         } catch {
             return ToolSupport.friendlyFailure(error, reading: "the network topology")
         }
-        let names = Dictionary(uniqueKeysWithValues: topology.nodes.map { ($0.id, $0.name) })
-        let networks = topology.nodes.filter { $0.type == .network }
+        var names: [String: String] = [:]
+        for node in topology.nodes.prefix(RemoteDataLimits.maximumTopologyNodes)
+            where names[node.id] == nil {
+            names[node.id] = node.name
+        }
+        let networks = topology.nodes
+            .prefix(RemoteDataLimits.maximumTopologyNodes)
+            .filter { $0.type == .network }
+        let edges = topology.edges.prefix(RemoteDataLimits.maximumTopologyEdges)
         var lines = ["Network topology of \(context.envName):"]
         for net in networks.prefix(20) {
-            let attached = topology.edges
+            let attached = edges
                 .filter { $0.source == net.id }
                 .compactMap { names[$0.target] }
             if attached.isEmpty {

@@ -13,6 +13,7 @@ struct CachedClient: Sendable {
     let client: ArcaneClient
     let serverIdentity: String
     let userID: String
+    let sessionIdentity: String
 
     /// Returns a cached value (if fresh) and triggers a background revalidate;
     /// otherwise fetches synchronously through the dedup layer and returns fresh.
@@ -34,6 +35,7 @@ struct CachedClient: Sendable {
         let key = CacheKey(
             serverIdentity: serverIdentity,
             userID: userID,
+            sessionIdentity: sessionIdentity,
             envID: envID.rawValue,
             pathWithQuery: path
         )
@@ -164,6 +166,61 @@ struct CachedClient: Sendable {
         return result?.elements
     }
 
+    /// Fetches and caches a complete paginated collection. The cache key is
+    /// intentionally separate from an endpoint's legacy first-page entry.
+    @discardableResult
+    func getAllPages<E: Codable & Identifiable & Sendable>(
+        path: String,
+        elementType: E.Type,
+        policy: CachePolicy,
+        envID: EnvironmentID,
+        pageSize: Int = PaginationLoader.defaultPageSize,
+        maximumItems: Int = RemoteDataLimits.maximumCollectionItems,
+        refresh: Bool = false,
+        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil,
+        fetchPage: @Sendable @escaping (_ start: Int, _ limit: Int) async throws -> ResourcePage<E>
+    ) async throws -> [E]? where E.ID: Sendable {
+        try await getListCustom(
+            path: PaginationLoader.cachePath(for: path),
+            elementType: elementType,
+            policy: policy,
+            envID: envID,
+            refresh: refresh,
+            onFresh: onFresh
+        ) {
+            try await PaginationLoader.collect(
+                pageSize: pageSize,
+                maximumItems: maximumItems,
+                fetchPage: fetchPage
+            )
+        }
+    }
+
+    /// Global variant of `getAllPages(...)`.
+    @discardableResult
+    func getAllPagesGlobal<E: Codable & Identifiable & Sendable>(
+        path: String,
+        elementType: E.Type,
+        policy: CachePolicy,
+        pageSize: Int = PaginationLoader.defaultPageSize,
+        maximumItems: Int = RemoteDataLimits.maximumCollectionItems,
+        refresh: Bool = false,
+        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil,
+        fetchPage: @Sendable @escaping (_ start: Int, _ limit: Int) async throws -> ResourcePage<E>
+    ) async throws -> [E]? where E.ID: Sendable {
+        try await getAllPages(
+            path: path,
+            elementType: elementType,
+            policy: policy,
+            envID: EnvironmentID(rawValue: "_global_"),
+            pageSize: pageSize,
+            maximumItems: maximumItems,
+            refresh: refresh,
+            onFresh: onFresh,
+            fetchPage: fetchPage
+        )
+    }
+
     /// Same SWR semantics as `get(...)`, but the caller supplies the fetcher.
     /// Use when the underlying call isn't a plain `client.rest.get(...)`
     /// (e.g. custom raw-decode paths like the Volumes list).
@@ -183,6 +240,7 @@ struct CachedClient: Sendable {
         #endif
         let key = CacheKey(
             serverIdentity: serverIdentity, userID: userID,
+            sessionIdentity: sessionIdentity,
             envID: envID.rawValue, pathWithQuery: path
         )
         if !refresh,
@@ -228,8 +286,12 @@ struct CachedClient: Sendable {
         }
     }
 
-    nonisolated private static func matches(pattern: String, path: String) -> Bool {
-        if pattern == path { return true }
+    nonisolated static func matches(pattern: String, path: String) -> Bool {
+        if pattern == path
+            || path.hasPrefix(pattern + "?")
+            || path.hasPrefix(pattern + "#") {
+            return true
+        }
         if pattern.hasSuffix("*") {
             return path.hasPrefix(String(pattern.dropLast()))
         }

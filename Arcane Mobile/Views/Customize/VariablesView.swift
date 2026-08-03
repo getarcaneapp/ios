@@ -169,7 +169,7 @@ struct VariablesView: View {
                 }
             }
 
-            Section("Variables") {
+            Section {
                 if filteredVariables.isEmpty {
                     ContentUnavailableView.search(text: searchText)
                 } else {
@@ -287,6 +287,11 @@ struct VariablesView: View {
                         }
                     }
                 }
+            } header: {
+                ResourceCountSectionHeader(
+                    "Variables",
+                    loadedCount: filteredVariables.count
+                )
             }
         }
         .listStyle(.insetGrouped)
@@ -733,9 +738,12 @@ private final class VariablesStore {
 
         do {
             async let statusTask = try? client.variables.syncStatus()
-            async let environmentTask = try? client.environments.list(
-                query: SearchPaginationSort(start: 0, limit: 500, sortBy: "name", sortOrder: .ascending)
-            )
+            async let environmentTask: [Arcane.Environment]? = try? PaginationLoader.collect { start, limit in
+                let response = try await client.environments.list(
+                    query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
+                )
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
             let loadedVariables = try await client.variables.list()
             variables = loadedVariables.sorted {
                 $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending
@@ -743,7 +751,7 @@ private final class VariablesStore {
             let loadedStatuses = await statusTask
             let loadedEnvironments = await environmentTask
             syncStatuses = loadedStatuses ?? []
-            environments = loadedEnvironments?.data ?? []
+            environments = loadedEnvironments ?? []
             isUnsupported = false
             requestPollingIfNeeded()
         } catch ArcaneError.notFound {

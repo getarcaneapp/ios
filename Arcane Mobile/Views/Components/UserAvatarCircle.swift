@@ -12,7 +12,11 @@ struct UserAvatarCircle: View {
 
     var body: some View {
         Group {
-            if let data = manager.currentUserAvatarData, let image = UIImage(data: data) {
+            if let data = manager.currentUserAvatarData,
+               let image = ImageCache.decode(
+                   data: data,
+                   maxPixelSize: max(1, Int(ceil(size * UIScreen.main.scale)))
+               ) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()

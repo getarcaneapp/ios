@@ -48,7 +48,8 @@ struct OIDCRoleMappingsView: View {
                 )
             } else {
                 List {
-                    ForEach(mappings) { mapping in
+                    Section {
+                        ForEach(mappings) { mapping in
                         Button {
                             if mapping.sourceKind == .manual {
                                 editingMapping = mapping
@@ -60,17 +61,23 @@ struct OIDCRoleMappingsView: View {
                                 environmentLabel: displayScopeLabel(for: mapping.environmentId, environments: availableEnvironments)
                             )
                         }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            if mapping.sourceKind == .manual {
-                                Button {
-                                    pendingDeleteMapping = mapping
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if mapping.sourceKind == .manual {
+                                    Button {
+                                        pendingDeleteMapping = mapping
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                    .tint(.red)
                                 }
-                                .tint(.red)
                             }
                         }
+                    } header: {
+                        ResourceCountSectionHeader(
+                            "Mappings",
+                            loadedCount: mappings.count
+                        )
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -131,12 +138,20 @@ struct OIDCRoleMappingsView: View {
         defer { isLoading = false }
         do {
             async let mappingsTask = client.oidcRoleMappings.list()
-            async let rolesTask = client.roles.listPaginated(limit: 100)
-            async let envsTask = client.environments.list(query: .init(start: 0, limit: 100))
+            async let rolesTask: [Role] = PaginationLoader.collect { start, limit in
+                let response = try await client.roles.listPaginated(start: start, limit: limit)
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
+            async let envsTask: [Arcane.Environment] = PaginationLoader.collect { start, limit in
+                let response = try await client.environments.list(
+                    query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
+                )
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
             let (m, r, e) = try await (mappingsTask, rolesTask, envsTask)
             mappings = m
-            availableRoles = r.data
-            availableEnvironments = e.data
+            availableRoles = r
+            availableEnvironments = e
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

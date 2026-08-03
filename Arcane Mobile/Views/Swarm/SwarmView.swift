@@ -349,6 +349,11 @@ struct SwarmView: View {
                             }
                         }
                     }
+                } header: {
+                    ResourceCountSectionHeader(
+                        "Nodes",
+                        loadedCount: filteredNodes.count
+                    )
                 }
             }
             .listStyle(.insetGrouped)
@@ -824,14 +829,16 @@ private final class SwarmStore {
     func loadNodes(client: ArcaneClient?, environmentID: EnvironmentID) async {
         guard let client, status?.enabled == true else { return }
         do {
-            let response = try await client.swarm.listNodes(
-                envID: environmentID,
-                sort: "hostname",
-                order: .ascending,
-                start: 0,
-                limit: 250
-            )
-            nodes = response.data
+            nodes = try await PaginationLoader.collect { start, limit in
+                let response = try await client.swarm.listNodes(
+                    envID: environmentID,
+                    sort: "hostname",
+                    order: .ascending,
+                    start: start,
+                    limit: limit
+                )
+                return ResourcePage(items: response.data, pagination: response.pagination)
+            }
             nodeErrorMessage = nil
         } catch {
             nodeErrorMessage = friendlyErrorMessage(error)

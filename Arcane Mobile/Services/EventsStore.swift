@@ -41,6 +41,7 @@ final class EventsStore {
     private(set) var isLoadingMore = false
     private(set) var deletingEventIDs: Set<String> = []
     private(set) var hasMore = false
+    private(set) var totalItemCount: Int64?
     private(set) var errorMessage: String?
 
     var searchText = ""
@@ -68,6 +69,7 @@ final class EventsStore {
         supportsSeverityCounts = true
         deletingEventIDs = []
         hasMore = false
+        totalItemCount = nil
         errorMessage = nil
     }
 
@@ -92,6 +94,9 @@ final class EventsStore {
             guard requestedQuery == queryKey else { return }
             events = response.data
             hasMore = Int64(response.data.count) < response.pagination.totalItems
+            totalItemCount = response.pagination.totalItems >= 0
+                ? response.pagination.totalItems
+                : nil
             errorMessage = nil
         } catch is CancellationError {
             return
@@ -122,6 +127,9 @@ final class EventsStore {
             let existingIDs = Set(events.map(\.id))
             events.append(contentsOf: response.data.filter { !existingIDs.contains($0.id) })
             hasMore = Int64(events.count) < response.pagination.totalItems
+            if response.pagination.totalItems >= 0 {
+                totalItemCount = response.pagination.totalItems
+            }
             errorMessage = nil
         } catch is CancellationError {
             return
@@ -163,6 +171,9 @@ final class EventsStore {
                 limit: max(Self.pageSize, events.count)
             )
             hasMore = Int64(events.count) < response.pagination.totalItems
+            totalItemCount = response.pagination.totalItems >= 0
+                ? response.pagination.totalItems
+                : nil
             errorMessage = nil
         } catch is CancellationError {
             return
