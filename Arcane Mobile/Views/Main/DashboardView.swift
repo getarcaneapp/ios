@@ -93,7 +93,6 @@ struct DashboardView: View {
     @SwiftUI.Environment(ImageUpdateCountStore.self) private var imageUpdateCountStore
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
-    @AppStorage("arcane.showAssistantButton") private var showAssistantButton = true
     @Binding var selectedTab: String
     var showsSidebarButton = false
     var onOpenSidebar: () -> Void = {}
@@ -219,20 +218,6 @@ struct DashboardView: View {
                         }
                         .accessibilityLabel("Open navigation")
                     }
-                }
-
-                if #available(iOS 26, *),
-                   showsSidebarButton,
-                   showAssistantButton,
-                   AIAvailability.canExposeAssistant,
-                   manager.client != nil {
-                    if isNavigationRoot {
-                        ToolbarSpacer(.fixed, placement: .topBarLeading)
-                    }
-                    ToolbarItem(placement: .topBarLeading) {
-                        AIAssistantToolbarButton()
-                    }
-                    ToolbarSpacer(.fixed, placement: .topBarLeading)
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {

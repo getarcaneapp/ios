@@ -52,6 +52,15 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.6.2",
+            changed: [
+                .init("Removed Arcane Assistant.")
+            ],
+            fixed: [
+                .init("Home Screen widgets retain their data after the device locks.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.6.1",
             new: [
                 .init("Resource section headers show loaded and total item counts.")

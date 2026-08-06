@@ -17,7 +17,6 @@ struct ContainerDetailView: View {
     @State private var showTerminal = false
     @State private var showRename = false
     @State private var showInspect = false
-    @State private var showAskAI = false
     @State private var runningActionID: String?
     @State private var selectedTab: DetailTab = .overview
 
@@ -133,19 +132,6 @@ struct ContainerDetailView: View {
         .sheet(isPresented: $showRename) {
             RenameContainerSheet(currentName: displayedName) { newName in
                 await renameContainer(newName: newName)
-            }
-        }
-        .sheet(isPresented: $showAskAI) {
-            if #available(iOS 26, *) {
-                NavigationStack {
-                    AIAssistantView(seed: .container(id: container.id, name: displayedName))
-                        .toolbar {
-                            ToolbarItem(placement: .topBarLeading) {
-                                Button("Done") { showAskAI = false }
-                            }
-                        }
-                        .presentationDragIndicator(.visible)
-                }
             }
         }
         .alert(
@@ -292,11 +278,6 @@ struct ContainerDetailView: View {
         items.append(ActionButtonItem(id: "rename", title: "Rename", systemImage: "pencil", tint: .accentColor) {
             showRename = true
         })
-        if AIAvailability.canExposeAssistant {
-            items.append(ActionButtonItem(id: "ask-ai", title: "Ask AI", systemImage: "sparkles", tint: .purple) {
-                showAskAI = true
-            })
-        }
         items.append(ActionButtonItem(
             id: "delete",
             title: "Delete",

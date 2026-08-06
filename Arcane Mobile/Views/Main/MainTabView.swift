@@ -416,7 +416,6 @@ private struct TabNavigationContainer<Content: View>: View {
     var body: some View {
         NavigationStack(path: $path) {
             content
-                .aiAssistantToolbar()
         }
         .onChange(of: path.isEmpty) { _, isEmpty in
             if isEmpty { morphStore.clearTab(tabID) }

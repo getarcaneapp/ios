@@ -28,10 +28,9 @@ ios/
 │   │   ├── Motion.swift         #   Motion.* animation tokens + PressableButtonStyle
 │   │   ├── Animation+Motion.swift
 │   │   ├── GlassCompat.swift    #   iOS 26 Liquid Glass compatibility shims
-│   │   └── Color+Hex.swift, View+Debounce.swift, View+AIAssistant.swift
+│   │   └── Color+Hex.swift, View+Debounce.swift, View+SidebarNavigation.swift
 │   ├── Networking/              # Caching layer, token store, lenient decoding
 │   ├── Services/                # Observable stores & app services
-│   │   ├── AI/                  #   On-device AI assistant (Foundation Models)
 │   │   ├── DashboardStreamStore.swift, ActivityCenterStore.swift, ...
 │   │   └── DeployLiveActivityController.swift (Live Activities)
 │   ├── Intents/                 # App Intents (Siri / Shortcuts)
@@ -40,8 +39,7 @@ ios/
 │       ├── Main/, Common/, Components/
 │       ├── Containers/, Projects/, Images/, Volumes/, Networks/
 │       ├── Environments/, Events/, Jobs/, Ports/, Swarm/, Updates/
-│       ├── Auth/, Settings/, Customize/, BackendResources/
-│       ├── AIAssistant/, Activities/
+│       ├── Auth/, Settings/, Customize/, BackendResources/, Activities/
 │       └── WhatsNew/            # Renders ReleaseNotes.swift
 ├── ArcaneWidgets/               # Widget extension target (widgets, Live Activities)
 ├── Shared/                      # Code shared between app and widget targets
@@ -70,9 +68,6 @@ ios/
 - Transient feedback uses the toast system: `showToast(.success/.error/.copied/.info)` — not `.alert`.
 - iOS 26 Liquid Glass: `.glassEffect` caches and won't shrink — animate via scale+opacity, not frame resizes; don't toggle glass on interpolated values.
 - **SwiftUI gotcha:** `Text("\(someInt)")` locale-formats integers (9000 → "9,000"). Use `Text(verbatim:)` or `String()` for IDs, ports, counts that must render literally.
-
-### AI assistant
-- On-device assistant (Apple Foundation Models) lives in `Services/AI` + `Views/AIAssistant`. It has a **hard 4096-token context window** — keep tools to ~16 max; extend existing topic enums instead of adding tools.
 
 ### Versioning
 - `MARKETING_VERSION` (e.g. `0.5.1`) is set in the Xcode project build settings; `BuildNumber.xcconfig` holds `CURRENT_PROJECT_VERSION`. Release-note entries key off `MARKETING_VERSION`.

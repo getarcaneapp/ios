@@ -39,7 +39,10 @@ nonisolated enum WidgetSnapshotStore {
             try? FileManager.default.removeItem(at: url)
             return
         }
-        try? data.write(to: url, options: [.atomic, .completeFileProtection])
+        try? data.write(
+            to: url,
+            options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        )
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         var protectedURL = url

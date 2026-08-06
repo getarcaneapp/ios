@@ -79,7 +79,6 @@ struct SettingsView: View {
             .task {
                 await loadVolumeSize()
             }
-            .aiAssistantToolbar()
         }
     }
 

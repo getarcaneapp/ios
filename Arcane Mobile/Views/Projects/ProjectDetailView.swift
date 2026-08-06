@@ -16,7 +16,6 @@ struct ProjectDetailView: View {
     @State private var actionStatus: String?
     @State private var showLogs = false
     @State private var showDeleteConfirm = false
-    @State private var showAskAI = false
     @State private var errorMessage: String?
     @State private var runningActionID: String?
     @State private var projectContainers: [ContainerSummary] = []
@@ -86,19 +85,6 @@ struct ProjectDetailView: View {
                 }
             )
             .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showAskAI) {
-            if #available(iOS 26, *) {
-                NavigationStack {
-                    AIAssistantView(seed: .project(id: project.id, name: currentProject.displayName))
-                        .toolbar {
-                            ToolbarItem(placement: .topBarLeading) {
-                                Button("Done") { showAskAI = false }
-                            }
-                        }
-                }
-                .presentationDragIndicator(.visible)
-            }
         }
         .sheet(item: $filesSheet) { request in
             NavigationStack {
@@ -373,11 +359,6 @@ struct ProjectDetailView: View {
         } else {
             items.append(ActionButtonItem(id: "archive", title: "Archive Project", systemImage: "archivebox", tint: .accentColor) {
                 Task { await archiveProject() }
-            })
-        }
-        if AIAvailability.canExposeAssistant {
-            items.append(ActionButtonItem(id: "ask-ai", title: "Ask AI", systemImage: "sparkles", tint: .purple) {
-                showAskAI = true
             })
         }
         // `role: nil` + red tint: keeps the view's bespoke two-option delete

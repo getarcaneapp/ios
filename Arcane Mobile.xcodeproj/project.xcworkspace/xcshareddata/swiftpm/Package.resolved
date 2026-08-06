@@ -6,6 +6,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/getarcaneapp/libarcane-swift.git",
       "state" : {
+        "branch" : "main",
         "revision" : "fd574950bfdfdfc83f7101a02ec3948ebb1571bd"
       }
     },

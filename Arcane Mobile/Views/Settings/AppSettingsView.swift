@@ -3,7 +3,6 @@ import Arcane
 
 struct AppSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @AppStorage("arcane.showAssistantButton") private var showAssistantButton = true
     @AppStorage("arcane.rememberLastTab") private var rememberLastTab = true
     @AppStorage("arcane.activityToastScope")
     private var activityToastScopeRawValue = ActivityToastScope.userInitiated.rawValue
@@ -82,11 +81,6 @@ struct AppSettingsView: View {
             }
             Toggle(isOn: $rememberLastTab) {
                 SettingsRow(title: "Remember Last Tab", systemImage: "arrow.uturn.backward.square", color: .indigo)
-            }
-            if #available(iOS 26, *), AIAvailability.canExposeAssistant {
-                Toggle(isOn: $showAssistantButton) {
-                    SettingsRow(title: "Arcane Assistant", systemImage: "sparkles", color: .pink)
-                }
             }
         }
     }

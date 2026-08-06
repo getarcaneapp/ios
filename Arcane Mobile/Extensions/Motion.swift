@@ -49,11 +49,6 @@ enum Motion {
     /// lag behind streaming text and read as rubber-banding.
     static let follow: Animation = .linear(duration: 0.1)
 
-    /// Ambient, self-reversing gradient drift (assistant icon). The one token
-    /// that loops forever — reserved for slow background shimmer, never for
-    /// state changes. Always gate behind Reduce Motion at the call site.
-    static let shimmer: Animation = .easeInOut(duration: 3.5).repeatForever(autoreverses: true)
-
     /// A quick fade used as the Reduce-Motion fallback where *some* motion is
     /// still wanted (transient overlays — toast, delete card) instead of an
     /// instant cut.
