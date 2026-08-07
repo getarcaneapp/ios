@@ -836,66 +836,6 @@ struct ContainersView: View {
     }
 }
 
-struct ResourceSearchControls: View {
-    @Binding var searchText: String
-    @Binding var sortOrder: ListSortOrder
-    let prompt: String
-    let filterActive: Bool
-    let onFilter: () -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(prompt, text: $searchText)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 44)
-            .glassEffectCompat(in: .capsule)
-
-            Menu {
-                Picker("Sort", selection: $sortOrder) {
-                    ForEach(ListSortOrder.allCases) { order in
-                        Label(order.title, systemImage: order.systemImage).tag(order)
-                    }
-                }
-            } label: {
-                Image(systemName: "arrow.up.arrow.down")
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.accentColor)
-            .glassEffectCompat(in: .circle)
-
-            Button(action: onFilter) {
-                Image(
-                    systemName: filterActive
-                        ? "line.3.horizontal.decrease.circle.fill"
-                        : "line.3.horizontal.decrease.circle"
-                )
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.accentColor)
-            .glassEffectCompat(in: .circle)
-        }
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-    }
-}
-
 struct ContainerRow: View {
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let container: ContainerSummary

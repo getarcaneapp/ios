@@ -270,7 +270,7 @@ struct InstallStreamSheet: View {
                         .frame(width: 46, height: 46)
                         .background(Self.buttonFill, in: .circle)
                 }
-                .buttonStyle(.pressable)
+                .buttonStyle(.plain)
                 .disabled(operation.lines.isEmpty)
                 .opacity(operation.lines.isEmpty ? 0.4 : 1)
                 .accessibilityLabel("Copy log to clipboard")
@@ -313,7 +313,7 @@ struct InstallStreamSheet: View {
                 .frame(height: 46)
                 .background(fill, in: .capsule)
         }
-        .buttonStyle(.pressable)
+        .buttonStyle(.plain)
     }
 
     private var doneLabel: String {

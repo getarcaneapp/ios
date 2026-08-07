@@ -228,7 +228,7 @@ private struct NetworkTopologyDiagram: View {
                 .frame(width: 40, height: 40)
                 .background(.regularMaterial, in: .circle)
         }
-        .buttonStyle(.pressable)
+        .buttonStyle(.plain)
         .accessibilityLabel("Fit topology to screen")
     }
 
@@ -447,7 +447,7 @@ private struct TopologyNodeCard: View {
             .compositingGroup()
             .clipShape(.rect(cornerRadius: Radius.standard))
         }
-        .buttonStyle(.pressable)
+        .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
         .accessibilityHint("Shows topology details")

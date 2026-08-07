@@ -315,7 +315,7 @@ private struct EventSeverityChip: View {
                     .stroke(isSelected ? tint.opacity(0.45) : .clear, lineWidth: 1)
             }
         }
-        .buttonStyle(.pressable)
+        .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title), \(count.formatted()) events")
         .accessibilityAddTraits(isSelected ? .isSelected : [])

@@ -132,7 +132,7 @@ struct VolumeBrowserView: View {
                         .font(.subheadline.weight(.semibold))
                         .frame(width: 34, height: 34)
                 }
-                .buttonStyle(.pressable)
+                .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
                 .glassEffectCompat(interactive: true, in: .capsule)
                 .accessibilityLabel("Up one level")
@@ -186,7 +186,7 @@ struct VolumeBrowserView: View {
                 .frame(height: 34)
         }
         .id(id)
-        .buttonStyle(.pressable)
+        .buttonStyle(.plain)
         .foregroundStyle(isCurrent ? .white : .primary)
         .modifier(VolumeBreadcrumbChrome(isCurrent: isCurrent))
         .accessibilityLabel(title == "/" ? "Root folder" : title)

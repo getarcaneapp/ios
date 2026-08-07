@@ -397,7 +397,7 @@ struct DashboardView: View {
                         Label("Update All", systemImage: "arrow.up.circle.fill")
                             .font(.subheadline.weight(.semibold))
                     }
-                    .buttonStyle(.pressable)
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Update All")
                 }
             }
@@ -452,7 +452,7 @@ struct DashboardView: View {
             Spacer()
             Button("Retry") { streamStore.retry() }
                 .font(.caption.weight(.semibold))
-                .buttonStyle(.pressable)
+                .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -735,7 +735,7 @@ struct DashboardView: View {
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.orange)
             }
-            .buttonStyle(.pressable(scales: false))
+            .buttonStyle(.plain)
             .padding(.horizontal, 4)
             .accessibilityHint("Shows which environment counts could not be loaded")
             .popover(item: $countAvailabilityPresentation) { availability in
@@ -1322,7 +1322,7 @@ struct DashboardGlassTile: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .dashboardCardBackground(cornerRadius: Radius.card)
         }
-        .buttonStyle(.pressable)
+        .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(value)")
         .accessibilityAddTraits(.isButton)

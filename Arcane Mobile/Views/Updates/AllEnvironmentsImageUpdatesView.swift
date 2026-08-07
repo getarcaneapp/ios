@@ -255,8 +255,7 @@ struct AllEnvironmentsImageUpdatesView: View {
                 }
                 .contentShape(Rectangle())
             }
-            // List-row rule: opacity-only press, no scale.
-            .buttonStyle(.pressable(scales: false))
+            .buttonStyle(.plain)
 
             if isUpdating {
                 ProgressView()

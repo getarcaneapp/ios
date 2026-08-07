@@ -13,9 +13,6 @@ import SwiftUI
 // (see Animation+Motion.swift) or `Motion.reduced(_:reduceMotion:)`.
 
 enum Motion {
-    /// Button press in/out. Snappy, no bounce.
-    static let press: Animation = .spring(response: 0.28, dampingFraction: 0.82)
-
     /// Default content / state / tint swap.
     static let state: Animation = .smooth(duration: 0.25)
 
@@ -59,55 +56,6 @@ enum Motion {
     /// collapses to an instant change for users who opt out of motion.
     static func reduced(_ animation: Animation, reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : animation
-    }
-}
-
-// MARK: - Pressable button style
-
-/// Restrained press feedback for standalone buttons, cards, tiles, and chips:
-/// a subtle scale + opacity dip on press, contained to the control (no shadow,
-/// tint, or glow change). Motion-aware — under Reduce Motion the scale is
-/// dropped and only the opacity dip remains.
-///
-/// Do NOT apply to `NavigationLink` rows that carry `.matchedTransitionSource`:
-/// a scaling style snapshots a transformed frame and makes the hero zoom
-/// stutter, and it competes with the list cell's swipe / context-menu gestures.
-/// List rows keep their native highlight.
-struct PressableButtonStyle: ButtonStyle {
-    /// Plays a light haptic on press-down. Off by default — reserve haptics for
-    /// meaningful actions, not high-frequency chips.
-    var hapticOnPress: Bool = false
-    /// Whether the press dips the scale. Set `false` for a view that is also a
-    /// `.matchedTransitionSource` hero-zoom source: a geometry change there can
-    /// disturb the zoom snapshot, so it gets an opacity-only press instead.
-    var scaleOnPress: Bool = true
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var pressedScale: CGFloat {
-        (reduceMotion || !scaleOnPress) ? 1 : 0.97
-    }
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? pressedScale : 1)
-            .opacity(configuration.isPressed ? 0.92 : 1)
-            .animation(Motion.press, value: configuration.isPressed)
-            .onChange(of: configuration.isPressed) { _, pressed in
-                if pressed && hapticOnPress { HapticsManager.light() }
-            }
-    }
-}
-
-extension ButtonStyle where Self == PressableButtonStyle {
-    /// Restrained press feedback (scale + opacity). See `PressableButtonStyle`.
-    static var pressable: PressableButtonStyle { PressableButtonStyle() }
-
-    /// Pressable with options: `haptic` plays a light tap on press-down (for
-    /// meaningful actions); `scales: false` gives an opacity-only press for
-    /// hero-zoom source views.
-    static func pressable(haptic: Bool = false, scales: Bool = true) -> PressableButtonStyle {
-        PressableButtonStyle(hapticOnPress: haptic, scaleOnPress: scales)
     }
 }
 

@@ -121,12 +121,18 @@ struct MainTabView: View {
             ZStack(alignment: .bottom) {
                 // Dim + tap-to-cancel behind the expanded picker. Always mounted;
                 // only catches touches (and dims) while a replace is in flight.
-                Color.black
-                    .opacity(swapTarget != nil ? 0.15 : 0)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(swapTarget != nil)
-                    .onTapGesture { swapTarget = nil }
-                    .motionAwareAnimation(Motion.state, value: swapTarget != nil)
+                Button {
+                    swapTarget = nil
+                } label: {
+                    Color.black
+                        .opacity(swapTarget != nil ? 0.15 : 0)
+                        .ignoresSafeArea()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss Tab Picker")
+                .accessibilityHidden(swapTarget == nil)
+                .allowsHitTesting(swapTarget != nil)
+                .motionAwareAnimation(Motion.state, value: swapTarget != nil)
 
                 TabReplaceMorphBar(
                     tabs: morphTabs,
@@ -140,8 +146,6 @@ struct MainTabView: View {
                     onPick: handleMorphPick
                 )
                 .padding(.bottom, 18)
-
-
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
             .ignoresSafeArea()

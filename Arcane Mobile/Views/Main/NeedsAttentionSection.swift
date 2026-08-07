@@ -81,8 +81,7 @@ struct NeedsAttentionSection: View {
             .padding(.vertical, 9)
             .contentShape(Rectangle())
         }
-        // List-row rule: opacity-only press, no scale.
-        .buttonStyle(.pressable(scales: false))
+        .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(item.title): \(item.count)")
         .accessibilityAddTraits(.isButton)

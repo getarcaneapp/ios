@@ -224,7 +224,7 @@ struct LoginView: View {
             .padding(.vertical, 9)
             .contentShape(.capsule)
         }
-        .buttonStyle(.pressable())
+        .buttonStyle(.plain)
         .glassEffectCompat(in: .capsule)
         .accessibilityLabel("Server \(serverDisplayName). Change server")
     }
@@ -577,7 +577,7 @@ struct LoginView: View {
             .padding(.vertical, 10)
             .contentShape(.capsule)
         }
-        .buttonStyle(.pressable(haptic: true))
+        .buttonStyle(.plain)
         .glassEffectCompat(in: .capsule)
         .padding(.top, 4)
         .padding(.bottom, 12)

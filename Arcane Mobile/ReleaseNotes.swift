@@ -60,7 +60,8 @@ enum ReleaseNotes {
                 .init("Repository names for container registries.")
             ],
             changed: [
-                .init("Removed Arcane Assistant.")
+                .init("Removed Arcane Assistant."),
+                .init("Native controls throughout forms and actions.")
             ],
             fixed: [
                 .init("Home Screen widgets retain their data after the device locks."),

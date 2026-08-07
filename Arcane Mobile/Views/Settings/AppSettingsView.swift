@@ -208,21 +208,24 @@ struct AppSettingsView: View {
     /// Compact replacement for the old "Version" section rows; tapping copies
     /// the full version string since the rows it replaced were copyable.
     private var versionFooter: some View {
-        VStack(spacing: 2) {
-            Text("Arcane Mobile")
-                .fontWeight(.medium)
-            Text("Version \(appVersionString) (\(appBuildString))")
-                .monospacedDigit()
-        }
-        .font(.caption2)
-        .foregroundStyle(.tertiary)
-        .frame(maxWidth: .infinity)
-        .padding(.top, 12)
-        .contentShape(Rectangle())
-        .onTapGesture {
+        Button {
             UIPasteboard.general.string = "\(appVersionString) (\(appBuildString))"
             showToast(.copied("Version copied"))
+        } label: {
+            VStack(spacing: 2) {
+                Text("Arcane Mobile")
+                    .fontWeight(.medium)
+                Text("Version \(appVersionString) (\(appBuildString))")
+                    .monospacedDigit()
+            }
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
+            .contentShape(.rect)
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Copy version \(appVersionString), build \(appBuildString)")
     }
 
     @ViewBuilder

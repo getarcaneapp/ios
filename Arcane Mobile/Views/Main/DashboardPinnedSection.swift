@@ -103,7 +103,7 @@ struct DashboardPinnedSection: View {
                 DashboardPinnedRowContent(item: item)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.pressable(scales: false))
+            .buttonStyle(.plain)
 
             Button {
                 Task { await runAction(for: item) }
@@ -121,7 +121,7 @@ struct DashboardPinnedSection: View {
                 .frame(width: 32, height: 32)
                 .contentShape(Circle())
             }
-            .buttonStyle(.pressable)
+            .buttonStyle(.plain)
             .glassEffectCompat(interactive: true, in: .circle)
             .disabled(runningID != nil)
             .accessibilityLabel(item.actionTitle)

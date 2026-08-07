@@ -32,7 +32,6 @@ struct FormTextField: View {
     // Reflects `.disabled(...)` applied by an ancestor (e.g. a whole Section):
     // TextField text isn't grayed by `.disabled` alone, so we dim the value.
     @Environment(\.isEnabled) private var isEnabled
-    @FocusState private var isFocused: Bool
 
     /// Long-form fields (multi-line, or URLs that tend to overflow) stack; short
     /// single-line fields sit inline.
@@ -69,7 +68,6 @@ struct FormTextField: View {
                     // LabeledContent dims its content to secondary; editable
                     // values must read primary (except when disabled).
                     .foregroundStyle(valueColor)
-                    .focused($isFocused)
                     .keyboardType(keyboardType)
                     .textContentType(textContentType)
                     .textInputAutocapitalization(autocapitalization)
@@ -79,9 +77,6 @@ struct FormTextField: View {
             }
             helperCaption
         }
-        .contentShape(Rectangle())
-        // Whole-row tap focuses the field — the value area is small when empty.
-        .onTapGesture { isFocused = true }
     }
 
     private var stackedBody: some View {
@@ -123,7 +118,6 @@ struct FormSecureField: View {
     var disabled = false
 
     @Environment(\.isEnabled) private var isEnabled
-    @FocusState private var isFocused: Bool
 
     private var valueColor: Color {
         (isEnabled && !disabled) ? .primary : .secondary
@@ -135,7 +129,6 @@ struct FormSecureField: View {
                 SecureField(placeholder, text: $text)
                     .multilineTextAlignment(.trailing)
                     .foregroundStyle(valueColor)
-                    .focused($isFocused)
                     .textContentType(textContentType)
                     .disabled(disabled)
             }
@@ -146,8 +139,6 @@ struct FormSecureField: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture { isFocused = true }
     }
 }
 
@@ -166,7 +157,6 @@ struct FormNumberField: View {
     var disabled = false
 
     @Environment(\.isEnabled) private var isEnabled
-    @FocusState private var isFocused: Bool
 
     private var floor: Int { minValue ?? 0 }
 
@@ -193,7 +183,6 @@ struct FormNumberField: View {
                         .multilineTextAlignment(.trailing)
                         .keyboardType(.numberPad)
                         .foregroundStyle(valueColor)
-                        .focused($isFocused)
                         .disabled(disabled)
                     Stepper {
                         EmptyView()

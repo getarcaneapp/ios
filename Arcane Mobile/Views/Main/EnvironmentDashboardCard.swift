@@ -117,8 +117,7 @@ struct EnvironmentDashboardCard: View {
                     .stroke(isActive ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 2)
             )
         }
-        // Opacity-only press keeps scrolling geometry stable.
-        .buttonStyle(.pressable(scales: false))
+        .buttonStyle(.plain)
         // Round the context-menu preview to match the card; the default
         // square-cornered preview reads noticeably boxy against it.
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
