@@ -49,8 +49,16 @@ struct ContentView: View {
         .sheet(isPresented: $showActivityCenter) {
             NavigationStack {
                 ActivitiesView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") {
+                                showActivityCenter = false
+                            }
+                        }
+                    }
             }
             .toastHost(reservesTabBarSpace: false)
+            .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
         // Deployment activity host: the floating progress pill and the stream

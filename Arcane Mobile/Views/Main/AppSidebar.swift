@@ -11,6 +11,9 @@ nonisolated enum SidebarUtilityDestination: String {
 /// Settings so titles, symbols, permissions, and backend capability gates stay
 /// consistent across every navigation surface.
 struct AppSidebar: View {
+    @ScaledMetric(relativeTo: .largeTitle) private var logoHeight: CGFloat = 34
+    @ScaledMetric(relativeTo: .largeTitle) private var logoLineHeight: CGFloat = 41
+
     private struct SidebarGroupData: Identifiable {
         let id: AppTab.Section
         let title: String
@@ -46,12 +49,15 @@ struct AppSidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("Arcane")
-                .font(.largeTitle.bold())
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Image("ArcaneSidebarLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: .infinity, maxHeight: logoHeight, alignment: .leading)
+                .frame(height: logoLineHeight, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
                 .padding(.bottom, 16)
+                .accessibilityLabel("Arcane")
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 24) {
@@ -219,6 +225,8 @@ struct CompactSidebarDrawer<Sidebar: View, Content: View>: View {
     @State private var dragTranslation: CGFloat = 0
     @State private var dragIntent: DragIntent?
 
+    private let edgeGestureWidth: CGFloat = 12
+
     var body: some View {
         GeometryReader { proxy in
             let drawerWidth = min(proxy.size.width * 0.82, 340)
@@ -267,7 +275,19 @@ struct CompactSidebarDrawer<Sidebar: View, Content: View>: View {
                     .frame(maxHeight: .infinity)
                     .contentShape(.rect)
                     .offset(x: drawerWidth)
+                    .simultaneousGesture(closeDrawerGesture(width: drawerWidth))
                     .accessibilityLabel("Close navigation")
+                } else if isNavigationRoot {
+                    // Keep the open gesture on the physical screen edge. A
+                    // drag recognizer on this entire container competes with
+                    // every button, row, and switch after only a few points of
+                    // finger movement.
+                    Color.clear
+                        .frame(width: edgeGestureWidth)
+                        .frame(maxHeight: .infinity)
+                        .contentShape(.rect)
+                        .gesture(openDrawerGesture(width: drawerWidth))
+                        .accessibilityHidden(true)
                 }
             }
             // Expand the drawer layer rather than its GeometryReader. The
@@ -275,10 +295,6 @@ struct CompactSidebarDrawer<Sidebar: View, Content: View>: View {
             // spacer while `proxy.safeAreaInsets` remains available above for
             // the independently inset sidebar.
             .ignoresSafeArea(.container)
-            // Own the drag at the container level so it survives the clear
-            // tap-dismiss button. `drawerGesture` limits closing to gestures
-            // that begin on the exposed main-content card.
-            .simultaneousGesture(drawerGesture(width: drawerWidth))
             .animation(Motion.reduced(Motion.overlay, reduceMotion: reduceMotion), value: isPresented)
             .onChange(of: isNavigationRoot) { _, isRoot in
                 if !isRoot { settleSidebar(presented: false) }
@@ -296,47 +312,15 @@ struct CompactSidebarDrawer<Sidebar: View, Content: View>: View {
         settleSidebar(presented: false)
     }
 
-    private func drawerGesture(width: CGFloat) -> some Gesture {
+    private func openDrawerGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
-                if isPresented {
-                    guard value.startLocation.x >= width else { return }
-                    lockDragIntent(for: value)
-                    guard dragIntent == .horizontal,
-                          value.translation.width < 0 else { return }
-                    dragTranslation = max(value.translation.width, -width)
-                    return
-                }
-
-                guard isNavigationRoot,
-                      value.startLocation.x <= 24 else { return }
                 lockDragIntent(for: value)
                 guard dragIntent == .horizontal,
                       value.translation.width > 0 else { return }
                 dragTranslation = min(value.translation.width, width)
             }
             .onEnded { value in
-                if isPresented {
-                    guard value.startLocation.x >= width else {
-                        resetDragState()
-                        return
-                    }
-                    let isHorizontal = dragIntent == .horizontal
-                    dragIntent = nil
-                    let projectedTranslation = min(
-                        value.translation.width,
-                        value.predictedEndTranslation.width
-                    )
-                    let shouldClose = isHorizontal && projectedTranslation < -24
-                    settleSidebar(presented: !shouldClose)
-                    return
-                }
-
-                guard isNavigationRoot,
-                      value.startLocation.x <= 24 else {
-                    resetDragState()
-                    return
-                }
                 let isHorizontal = dragIntent == .horizontal
                 dragIntent = nil
                 let shouldOpen = isHorizontal
@@ -346,19 +330,32 @@ struct CompactSidebarDrawer<Sidebar: View, Content: View>: View {
             }
     }
 
+    private func closeDrawerGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                lockDragIntent(for: value)
+                guard dragIntent == .horizontal,
+                      value.translation.width < 0 else { return }
+                dragTranslation = max(value.translation.width, -width)
+            }
+            .onEnded { value in
+                let isHorizontal = dragIntent == .horizontal
+                dragIntent = nil
+                let projectedTranslation = min(
+                    value.translation.width,
+                    value.predictedEndTranslation.width
+                )
+                let shouldClose = isHorizontal && projectedTranslation < -24
+                settleSidebar(presented: !shouldClose)
+            }
+    }
+
     private func lockDragIntent(for value: DragGesture.Value) {
         guard dragIntent == nil else { return }
         let horizontal = abs(value.translation.width)
         let vertical = abs(value.translation.height)
         guard max(horizontal, vertical) >= 12 else { return }
         dragIntent = horizontal > vertical * 1.35 ? .horizontal : .vertical
-    }
-
-    private func resetDragState() {
-        dragIntent = nil
-        if dragTranslation != 0 {
-            settleSidebar(presented: isPresented)
-        }
     }
 
     private func settleSidebar(presented: Bool) {

@@ -15,6 +15,8 @@ struct NotificationProviderFormView: View {
     @State private var isTesting = false
     @State private var errorMessage: String?
     @State private var selectedTestType = NotificationTestType.simple
+    @State private var isAdvancedExpanded = false
+    @State private var showsSaveBeforeTestConfirmation = false
 
     init(
         provider: NotificationProvider,
@@ -30,7 +32,7 @@ struct NotificationProviderFormView: View {
     }
 
     private var hasChanges: Bool { state != originalState }
-    private var isValid: Bool { state.isValid(for: provider) }
+    private var isValid: Bool { !state.enabled || state.isValid(for: provider) }
 
     var body: some View {
         Form {
@@ -38,8 +40,10 @@ struct NotificationProviderFormView: View {
                 Toggle("Enabled", isOn: $state.enabled)
             }
 
-            configurationSections
-            eventSection
+            if state.enabled {
+                configurationSections
+                eventSection
+            }
 
             if let errorMessage {
                 Section {
@@ -48,38 +52,76 @@ struct NotificationProviderFormView: View {
                 }
             }
 
-            Section {
-                Picker("Test Type", selection: $selectedTestType) {
-                    ForEach(NotificationTestType.allCases, id: \.rawValue) { type in
-                        Text(type.displayName).tag(type)
+            Section("Actions") {
+                if state.enabled {
+                    Picker("Test Type", selection: $selectedTestType) {
+                        ForEach(NotificationTestType.allCases, id: \.rawValue) { type in
+                            Text(type.displayName).tag(type)
+                        }
                     }
                 }
 
-                Button {
-                    Task { _ = await save(dismissAfterSave: true) }
-                } label: {
-                    centeredAction(
-                        title: existing == nil ? "Save" : "Update",
-                        systemImage: nil,
-                        isLoading: isSaving
-                    )
+                if state.enabled {
+                    Button("Send Test Notification", systemImage: "paperplane") {
+                        if hasChanges {
+                            showsSaveBeforeTestConfirmation = true
+                        } else {
+                            Task { await testNotification() }
+                        }
+                    }
+                    .disabled(isSaving || isTesting || !isValid)
                 }
-                .disabled(isSaving || isTesting || !isValid || !hasChanges)
 
-                Button {
-                    Task { await testNotification() }
-                } label: {
-                    centeredAction(
-                        title: "Send Test Notification",
-                        systemImage: "paperplane",
-                        isLoading: isTesting
-                    )
+                if isTesting {
+                    ProgressView("Sending test…")
                 }
-                .disabled(isSaving || isTesting || !state.enabled || !isValid)
             }
         }
         .navigationTitle(provider.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            saveButton
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+                .padding(.bottom, 18)
+        }
+        .confirmationDialog(
+            "Save Changes Before Testing?",
+            isPresented: $showsSaveBeforeTestConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Save and Send Test") {
+                Task { await testNotification() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The provider must be saved before Arcane can test the updated configuration.")
+        }
+    }
+
+    private var saveButton: some View {
+        Button {
+            Task { _ = await save(dismissAfterSave: true) }
+        } label: {
+            ZStack {
+                if isSaving {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: "checkmark")
+                        .font(.title.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(width: 52, height: 52)
+        .contentShape(.circle)
+        .glassChipCompat(tint: Color.accentColor, interactive: true, in: .circle)
+        .accessibilityLabel(existing == nil ? "Save" : "Update")
+        .disabled(isSaving || isTesting || !isValid || !hasChanges)
+        .opacity(!isSaving && (isTesting || !isValid || !hasChanges) ? 0.6 : 1)
     }
 
     @ViewBuilder
@@ -87,26 +129,32 @@ struct NotificationProviderFormView: View {
         switch provider {
         case .discord:
             Section("Discord") {
-                textField("Webhook ID", text: $state.webhookID)
+                textField("Webhook ID", prompt: "Required", text: $state.webhookID)
                 secureField("Webhook Token", text: $state.token)
-                textField("Username", text: $state.username)
-                urlField("Avatar URL", text: $state.avatarURL)
+                advancedSection {
+                    textField("Username", text: $state.username)
+                    urlField("Avatar URL", text: $state.avatarURL)
+                }
             }
         case .email:
             Section("SMTP Server") {
-                textField("Host", text: $state.host)
+                textField("Host", prompt: "Required", text: $state.host)
                 numberField("Port", text: $state.port)
-                textField("Username", text: $state.smtpUsername)
-                secureField("Password", text: $state.password)
                 emailField("From Address", text: $state.fromAddress)
-                Picker("TLS", selection: $state.tlsMode) {
-                    ForEach(EmailTLSMode.allCases, id: \.rawValue) { mode in
-                        Text(mode.rawValue.uppercased()).tag(mode.rawValue)
+                advancedSection {
+                    textField("Username", text: $state.smtpUsername)
+                    secureField("Password", text: $state.password)
+                    Picker("TLS", selection: $state.tlsMode) {
+                        Text("None").tag(EmailTLSMode.none.rawValue)
+                        Text("StartTLS").tag(EmailTLSMode.starttls.rawValue)
+                        Text("SSL/TLS").tag(EmailTLSMode.ssl.rawValue)
                     }
-                }
-                Picker("Authentication", selection: $state.authMode) {
-                    ForEach(EmailAuthMode.allCases, id: \.rawValue) { mode in
-                        Text(mode.rawValue.uppercased()).tag(mode.rawValue)
+                    Picker("Authentication", selection: $state.authMode) {
+                        Text("Auto").tag(EmailAuthMode.auto.rawValue)
+                        Text("None").tag(EmailAuthMode.none.rawValue)
+                        Text("PLAIN").tag(EmailAuthMode.plain.rawValue)
+                        Text("LOGIN").tag(EmailAuthMode.login.rawValue)
+                        Text("CRAM-MD5").tag(EmailAuthMode.crammd5.rawValue)
                     }
                 }
             }
@@ -119,10 +167,12 @@ struct NotificationProviderFormView: View {
         case .telegram:
             Section("Telegram") {
                 secureField("Bot Token", text: $state.token)
-                Toggle("Link Preview", isOn: $state.preview)
-                Toggle("Send Notification", isOn: $state.notification)
-                textField("Parse Mode", text: $state.parseMode)
-                textField("Title", text: $state.title)
+                advancedSection {
+                    textField("Title", text: $state.title)
+                    textField("Parse Mode", text: $state.parseMode)
+                    Toggle("Link Previews", isOn: $state.preview)
+                    Toggle("Notification Sound", isOn: $state.notification)
+                }
             }
             valueRows(
                 "Chat IDs",
@@ -132,13 +182,15 @@ struct NotificationProviderFormView: View {
             )
         case .signal:
             Section("Signal Server") {
-                textField("Host", text: $state.host)
+                textField("Host", prompt: "Required", text: $state.host)
                 numberField("Port", text: $state.port)
-                textField("User", text: $state.user)
-                secureField("Password", text: $state.password)
-                secureField("Token", text: $state.token)
-                textField("Source", text: $state.source)
-                Toggle("Disable TLS", isOn: $state.disableTLS)
+                textField("Source", prompt: "+15551234567", text: $state.source)
+                advancedSection {
+                    textField("User", text: $state.user)
+                    secureField("Password", text: $state.password)
+                    secureField("Token", text: $state.token)
+                    Toggle("Use HTTP", isOn: $state.disableTLS)
+                }
             }
             valueRows(
                 "Recipients",
@@ -149,27 +201,37 @@ struct NotificationProviderFormView: View {
         case .slack:
             Section("Slack") {
                 secureField("Token", text: $state.token)
-                textField("Bot Name", text: $state.botName)
-                textField("Icon", text: $state.icon)
-                textField("Color", text: $state.color)
-                textField("Title", text: $state.title)
                 textField("Channel", text: $state.channel)
-                textField("Thread Timestamp", text: $state.threadTS)
+                advancedSection {
+                    textField("Bot Name", text: $state.botName)
+                    textField("Icon", text: $state.icon)
+                    textField("Color", text: $state.color)
+                    textField("Title", text: $state.title)
+                    textField("Thread Timestamp", text: $state.threadTS)
+                }
             }
         case .ntfy:
             Section("Ntfy Server") {
-                textField("Host", text: $state.host)
-                numberField("Port", text: $state.port)
-                textField("Topic", text: $state.topic)
-                textField("Username", text: $state.username)
-                secureField("Password", text: $state.password)
-                textField("Title", text: $state.title)
-                textField("Priority", text: $state.priority)
-                urlField("Icon URL", text: $state.icon)
-                Toggle("Cache", isOn: $state.cache)
-                Toggle("Firebase", isOn: $state.firebase)
-                Toggle("Disable TLS", isOn: $state.disableTLS)
-                Toggle("Disable TLS Verification", isOn: $state.disableTLSVerification)
+                textField("Host", prompt: "ntfy.sh", text: $state.host)
+                textField("Topic", prompt: "Required", text: $state.topic)
+                Picker("Priority", selection: $state.priority) {
+                    Text("Min (1)").tag("min")
+                    Text("Low (2)").tag("low")
+                    Text("Default (3)").tag("default")
+                    Text("High (4)").tag("high")
+                    Text("Max/Urgent (5)").tag("max")
+                }
+                advancedSection {
+                    numberField("Port", text: $state.port)
+                    textField("Username", text: $state.username)
+                    secureField("Password", text: $state.password)
+                    textField("Title", text: $state.title)
+                    urlField("Icon URL", text: $state.icon)
+                    Toggle("Cache Messages", isOn: $state.cache)
+                    Toggle("Forward to Firebase", isOn: $state.firebase)
+                    Toggle("Use HTTP", isOn: $state.disableTLS)
+                    Toggle("Skip TLS Verification", isOn: $state.disableTLSVerification)
+                }
             }
             valueRows(
                 "Tags",
@@ -180,9 +242,15 @@ struct NotificationProviderFormView: View {
         case .pushover:
             Section("Pushover") {
                 secureField("API Token", text: $state.token)
-                textField("User Key", text: $state.user)
-                numberField("Priority", text: $state.priority)
-                textField("Title", text: $state.title)
+                textField("User Key", prompt: "Required", text: $state.user)
+                advancedSection {
+                    Picker("Priority", selection: $state.priority) {
+                        ForEach(-2...2, id: \.self) { priority in
+                            Text(verbatim: String(priority)).tag(String(priority))
+                        }
+                    }
+                    textField("Title", text: $state.title)
+                }
             }
             valueRows(
                 "Devices",
@@ -192,28 +260,36 @@ struct NotificationProviderFormView: View {
             )
         case .gotify:
             Section("Gotify") {
-                textField("Host", text: $state.host)
-                numberField("Port", text: $state.port)
+                textField("Host", prompt: "Required", text: $state.host)
                 secureField("App Token", text: $state.token)
-                textField("Path", text: $state.path)
-                numberField("Priority", text: $state.priority)
-                textField("Title", text: $state.title)
-                Toggle("Disable TLS", isOn: $state.disableTLS)
-                Toggle("Skip TLS Verification", isOn: $state.insecureSkipVerify)
-                Toggle("Send Token in Header", isOn: $state.useHeader)
+                Picker("Priority", selection: $state.priority) {
+                    ForEach(-2...10, id: \.self) { priority in
+                        Text(verbatim: String(priority)).tag(String(priority))
+                    }
+                }
+                advancedSection {
+                    numberField("Port", text: $state.port)
+                    textField("Path", text: $state.path)
+                    textField("Title", text: $state.title)
+                    Toggle("Use HTTP", isOn: $state.disableTLS)
+                    Toggle("Skip TLS Verification", isOn: $state.insecureSkipVerify)
+                    Toggle("Send Token in Header", isOn: $state.useHeader)
+                }
             }
         case .matrix:
             Section("Matrix") {
-                textField("Host", text: $state.host)
-                numberField("Port", text: $state.port)
-                textField("Rooms", text: $state.rooms)
-                textField("Username", text: $state.username)
-                secureField("Password", text: $state.password)
-                Toggle("Disable TLS Verification", isOn: $state.disableTLSVerification)
+                textField("Host", prompt: "Required", text: $state.host)
+                textField("Rooms", prompt: "Required", text: $state.rooms)
+                advancedSection {
+                    numberField("Port", text: $state.port)
+                    textField("Username", text: $state.username)
+                    secureField("Password", text: $state.password)
+                    Toggle("Skip TLS Verification", isOn: $state.disableTLSVerification)
+                }
             }
         case .googlechat:
             Section("Google Chat") {
-                secureField("Webhook URL", text: $state.webhookURL)
+                urlField("Webhook URL", text: $state.webhookURL)
             }
         case .generic:
             Section("Request") {
@@ -223,27 +299,28 @@ struct NotificationProviderFormView: View {
                     Text("PUT").tag("PUT")
                     Text("PATCH").tag("PATCH")
                 }
-                textField("Content Type", text: $state.contentType)
-                Toggle("Disable TLS", isOn: $state.disableTLS)
+                advancedSection {
+                    textField("Content Type", text: $state.contentType)
+                    Toggle("Use HTTP", isOn: $state.disableTLS)
+                    if manager.supportsPost26MobileFeatures {
+                        textField("Title Key", text: $state.titleKey)
+                        textField("Message Key", text: $state.messageKey)
+                        TextField(
+                            "Payload Template",
+                            text: $state.payloadTemplate,
+                            prompt: Text("JSON payload template"),
+                            axis: .vertical
+                        )
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .lineLimit(4...10)
+                        textField("Expected Response Contains", text: $state.successBodyContains)
+                    }
+                }
             }
 
-            headerRows
-
-            if manager.supportsPost26MobileFeatures {
-                Section("Payload") {
-                    textField("Title Key", text: $state.titleKey)
-                    textField("Message Key", text: $state.messageKey)
-                    FormTextField(
-                        title: "Payload Template",
-                        placeholder: "JSON payload template",
-                        text: $state.payloadTemplate,
-                        autocapitalization: .never,
-                        autocorrectionDisabled: true,
-                        axis: .vertical,
-                        lineLimit: 4...10
-                    )
-                    textField("Expected Response Contains", text: $state.successBodyContains)
-                }
+            if isAdvancedExpanded {
+                headerRows
             }
         }
     }
@@ -265,31 +342,28 @@ struct NotificationProviderFormView: View {
     private var headerRows: some View {
         Section {
             ForEach($state.headers) { $header in
-                VStack(spacing: 8) {
-                    HStack {
-                        TextField("Header name", text: $header.name)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Button(role: .destructive) {
-                            state.headers.removeAll { $0.id == header.id }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Remove header")
-                    }
-                    TextField("Header value", text: $header.value)
+                VStack(alignment: .leading) {
+                    TextField("Header Name", text: $header.name)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Header Value", text: $header.value)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
             }
-            Button {
+            .onDelete { offsets in
+                state.headers.remove(atOffsets: offsets)
+            }
+
+            Button("Add Header", systemImage: "plus") {
                 state.headers.append(NotificationHeaderRow())
-            } label: {
-                Label("Add Header", systemImage: "plus")
             }
         } header: {
             Text("Headers")
+        } footer: {
+            if !state.headers.isEmpty {
+                Text("Swipe left on a header to remove it.")
+            }
         }
     }
 
@@ -301,95 +375,86 @@ struct NotificationProviderFormView: View {
     ) -> some View {
         Section {
             ForEach(rows) { $row in
-                HStack {
-                    TextField(placeholder, text: $row.value)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button(role: .destructive) {
-                        rows.wrappedValue.removeAll { $0.id == row.id }
-                    } label: {
-                        Image(systemName: "minus.circle.fill")
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Remove \(title.lowercased()) row")
-                }
+                TextField(placeholder, text: $row.value)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
             }
-            Button {
+            .onDelete { offsets in
+                rows.wrappedValue.remove(atOffsets: offsets)
+            }
+
+            Button(addTitle, systemImage: "plus") {
                 rows.wrappedValue.append(NotificationValueRow())
-            } label: {
-                Label(addTitle, systemImage: "plus")
             }
         } header: {
             Text(title)
+        } footer: {
+            if !rows.wrappedValue.isEmpty {
+                Text("Swipe left on a row to remove it.")
+            }
         }
     }
 
-    private func textField(_ title: String, text: Binding<String>) -> some View {
-        FormTextField(
-            title: title,
-            placeholder: "Optional",
-            text: text,
-            autocapitalization: .never,
-            autocorrectionDisabled: true
-        )
+    private func advancedSection<Content: View>(
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        DisclosureGroup("Advanced", isExpanded: $isAdvancedExpanded) {
+            content()
+        }
+    }
+
+    private func textField(
+        _ title: String,
+        prompt: String = "Optional",
+        text: Binding<String>
+    ) -> some View {
+        LabeledContent(title) {
+            TextField(prompt, text: text)
+                .multilineTextAlignment(.trailing)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
     }
 
     private func secureField(_ title: String, text: Binding<String>) -> some View {
-        FormSecureField(
-            title: title,
-            placeholder: existing == nil ? "Required" : "Leave unchanged to keep current value",
-            text: text
-        )
+        LabeledContent(title) {
+            SecureField(
+                existing == nil ? "Required" : "Keep current value",
+                text: text
+            )
+            .multilineTextAlignment(.trailing)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        }
     }
 
     private func numberField(_ title: String, text: Binding<String>) -> some View {
-        FormTextField(
-            title: title,
-            placeholder: "Optional",
-            text: text,
-            keyboardType: .numberPad
-        )
+        LabeledContent(title) {
+            TextField("Optional", text: text)
+                .multilineTextAlignment(.trailing)
+                .keyboardType(.numberPad)
+        }
     }
 
     private func urlField(_ title: String, text: Binding<String>) -> some View {
-        FormTextField(
-            title: title,
-            placeholder: "https://…",
-            text: text,
-            keyboardType: .URL,
-            textContentType: .URL,
-            autocapitalization: .never,
-            autocorrectionDisabled: true
-        )
+        LabeledContent(title) {
+            TextField("https://…", text: text)
+                .multilineTextAlignment(.trailing)
+                .keyboardType(.URL)
+                .textContentType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
     }
 
     private func emailField(_ title: String, text: Binding<String>) -> some View {
-        FormTextField(
-            title: title,
-            placeholder: "name@example.com",
-            text: text,
-            keyboardType: .emailAddress,
-            textContentType: .emailAddress,
-            autocapitalization: .never,
-            autocorrectionDisabled: true
-        )
-    }
-
-    private func centeredAction(
-        title: String,
-        systemImage: String?,
-        isLoading: Bool
-    ) -> some View {
-        HStack {
-            Spacer()
-            if isLoading {
-                ProgressView().scaleEffect(0.8)
-            } else if let systemImage {
-                Label(title, systemImage: systemImage)
-            } else {
-                Text(title)
-            }
-            Spacer()
+        LabeledContent(title) {
+            TextField("name@example.com", text: text)
+                .multilineTextAlignment(.trailing)
+                .keyboardType(.emailAddress)
+                .textContentType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
         }
     }
 

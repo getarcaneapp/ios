@@ -14,6 +14,10 @@ extension View {
                     }
                     .accessibilityLabel("Open navigation")
                 }
+
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarLeading)
+                }
             }
         }
     }

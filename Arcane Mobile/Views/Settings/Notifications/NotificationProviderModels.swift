@@ -147,11 +147,13 @@ struct NotificationProviderFormState: Equatable {
         case .signal:
             port = "8080"
         case .ntfy:
-            port = "443"
+            host = "ntfy.sh"
+            port = "0"
+            priority = "default"
         case .pushover:
             priority = "0"
         case .gotify:
-            priority = "5"
+            priority = "0"
         default:
             break
         }
@@ -209,7 +211,7 @@ struct NotificationProviderFormState: Equatable {
             username = config.username ?? ""
             password = config.password ?? ""
             title = config.title ?? ""
-            priority = config.priority ?? ""
+            priority = config.priority ?? "default"
             tags = (config.tags ?? []).map { NotificationValueRow(value: $0) }
             icon = config.icon ?? ""
             cache = config.cache
@@ -229,7 +231,7 @@ struct NotificationProviderFormState: Equatable {
             port = config.port.map(String.init) ?? ""
             token = config.token ?? ""
             path = config.path ?? ""
-            priority = config.priority.map(String.init) ?? ""
+            priority = config.priority.map(String.init) ?? "0"
             title = config.title ?? ""
             disableTLS = config.disableTls
             insecureSkipVerify = config.insecureSkipVerify

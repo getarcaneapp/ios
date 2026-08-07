@@ -61,11 +61,15 @@ enum ReleaseNotes {
             ],
             changed: [
                 .init("Removed Arcane Assistant."),
-                .init("Native controls throughout forms and actions.")
+                .init("Native controls throughout forms, notification providers, actions, and modal sheets."),
+                .init("Floating circular Liquid Glass save actions for notification providers."),
+                .init("Arcane wordmark in sidebar navigation.")
             ],
             fixed: [
                 .init("Home Screen widgets retain their data after the device locks."),
-                .init("Passkey sign-in completes through the server reliably.")
+                .init("Passkey sign-in completes through the server reliably."),
+                .init("Reliable taps on buttons and switches in sidebar navigation."),
+                .init("Separate sidebar and page actions in the top navigation bar.")
             ]
         ),
         ReleaseNote(
