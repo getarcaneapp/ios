@@ -17,6 +17,7 @@ struct RegistryFormView: View {
     @State private var awsAccessKeyId = ""
     @State private var awsSecretAccessKey = ""
     @State private var awsRegion = ""
+    @State private var repositoryNameRows: [StableStringRow] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
 
@@ -49,6 +50,8 @@ struct RegistryFormView: View {
             || awsRegion != (registry.awsRegion ?? "")
             || !token.isEmpty
             || !awsSecretAccessKey.isEmpty
+            || (manager.supportsPost26MobileFeatures
+                && repositoryNames != registry.repositoryNames)
     }
 
     var body: some View {
@@ -129,6 +132,34 @@ struct RegistryFormView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
+                if manager.supportsPost26MobileFeatures {
+                    Section {
+                        ForEach($repositoryNameRows) { $row in
+                            HStack {
+                                TextField("owner/image", text: $row.value)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                Button(role: .destructive) {
+                                    repositoryNameRows.removeAll { $0.id == row.id }
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Remove repository name")
+                            }
+                        }
+                        Button {
+                            repositoryNameRows.append(StableStringRow())
+                        } label: {
+                            Label("Add Repository Name", systemImage: "plus")
+                        }
+                    } header: {
+                        Text("Repository Names")
+                    } footer: {
+                        Text("Limit registry checks to these repositories, in the order shown.")
+                    }
+                }
+
                 if let error = errorMessage {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
@@ -157,6 +188,7 @@ struct RegistryFormView: View {
         registryType = registry.registryType
         awsAccessKeyId = registry.awsAccessKeyId ?? ""
         awsRegion = registry.awsRegion ?? ""
+        repositoryNameRows = registry.repositoryNames.map { StableStringRow(value: $0) }
     }
 
     private func saveRegistry() async {
@@ -175,7 +207,11 @@ struct RegistryFormView: View {
                     registryType: registryType.nilIfEmpty,
                     awsAccessKeyId: awsAccessKeyId.nilIfEmpty,
                     awsSecretAccessKey: awsSecretAccessKey.nilIfEmpty,
-                    awsRegion: awsRegion.nilIfEmpty
+                    awsRegion: awsRegion.nilIfEmpty,
+                    repositoryNames: registryRepositoryNames(
+                        rows: repositoryNameRows,
+                        supported: manager.supportsPost26MobileFeatures
+                    )
                 )
                 let _: ContainerRegistry = try await client.rest.put("container-registries/\(registry.id)", body: body)
             } else {
@@ -189,12 +225,31 @@ struct RegistryFormView: View {
                     registryType: registryType.isEmpty ? "custom" : registryType,
                     awsAccessKeyId: awsAccessKeyId,
                     awsSecretAccessKey: awsSecretAccessKey,
-                    awsRegion: awsRegion
+                    awsRegion: awsRegion,
+                    repositoryNames: registryRepositoryNames(
+                        rows: repositoryNameRows,
+                        supported: manager.supportsPost26MobileFeatures
+                    )
                 )
                 let _: ContainerRegistry = try await client.rest.post("container-registries", body: body)
             }
             await onSuccess(); dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
+    }
+
+    private var repositoryNames: [String] {
+        repositoryNameRows.compactMap { row in
+            let value = row.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        }
+    }
+}
+
+func registryRepositoryNames(rows: [StableStringRow], supported: Bool) -> [String]? {
+    guard supported else { return nil }
+    return rows.compactMap { row in
+        let value = row.value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 }
 

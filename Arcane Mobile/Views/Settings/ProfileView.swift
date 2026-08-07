@@ -91,6 +91,18 @@ struct ProfileView: View {
                 passwordSection
             }
 
+            if manager.supportsPost26MobileFeatures {
+                Section {
+                    NavigationLink {
+                        PasskeysMFAView()
+                    } label: {
+                        Label("Passkeys & MFA", systemImage: "person.badge.key.fill")
+                    }
+                } header: {
+                    Text("Security")
+                }
+            }
+
             Section {
                 LabeledContent("Language") {
                     Text("English")

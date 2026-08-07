@@ -1,284 +1,445 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 extension NotificationProvider: @retroactive Identifiable {
     public var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .discord: return "Discord"
-        case .email: return "Email"
-        case .telegram: return "Telegram"
-        case .signal: return "Signal"
-        case .slack: return "Slack"
-        case .ntfy: return "Ntfy"
-        case .pushover: return "Pushover"
-        case .gotify: return "Gotify"
-        case .matrix: return "Matrix"
-        case .generic: return "Generic"
+        case .discord: "Discord"
+        case .email: "Email"
+        case .telegram: "Telegram"
+        case .signal: "Signal"
+        case .slack: "Slack"
+        case .ntfy: "Ntfy"
+        case .pushover: "Pushover"
+        case .gotify: "Gotify"
+        case .matrix: "Matrix"
+        case .googlechat: "Google Chat"
+        case .generic: "Generic"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .discord: return "bubble.left.fill"
-        case .email: return "envelope.fill"
-        case .telegram: return "paperplane.fill"
-        case .signal: return "lock.fill"
-        case .slack: return "number"
-        case .ntfy: return "bell.fill"
-        case .pushover: return "iphone.radiowaves.left.and.right"
-        case .gotify: return "arrow.up.message.fill"
-        case .matrix: return "square.grid.3x3.fill"
-        case .generic: return "link"
+        case .discord: "bubble.left.fill"
+        case .email: "envelope.fill"
+        case .telegram: "paperplane.fill"
+        case .signal: "lock.fill"
+        case .slack: "number"
+        case .ntfy: "bell.fill"
+        case .pushover: "iphone.radiowaves.left.and.right"
+        case .gotify: "arrow.up.message.fill"
+        case .matrix: "square.grid.3x3.fill"
+        case .googlechat: "message.fill"
+        case .generic: "link"
         }
     }
 
     var iconColor: Color {
         switch self {
-        case .discord: return .indigo
-        case .email: return .blue
-        case .telegram: return .cyan
-        case .signal: return .blue
-        case .slack: return .purple
-        case .ntfy: return .green
-        case .pushover: return .teal
-        case .gotify: return .orange
-        case .matrix: return .green
-        case .generic: return .gray
+        case .discord: .indigo
+        case .email: .blue
+        case .telegram: .cyan
+        case .signal: .blue
+        case .slack: .purple
+        case .ntfy: .green
+        case .pushover: .teal
+        case .gotify: .orange
+        case .matrix: .green
+        case .googlechat: .blue
+        case .generic: .gray
         }
     }
 }
 
-// MARK: - Dynamic Form Field Descriptors
-
-enum ProviderFieldKind {
-    case text
-    case email
-    case password
-    case number
-    case url
-    case toggle
-    case textarea
-    case picker([PickerOption])
-}
-
-struct PickerOption: Identifiable {
-    let label: String
-    let value: String
-    var id: String { value }
-}
-
-struct ProviderFieldDescriptor: Identifiable {
-    let key: String
-    let label: String
-    let placeholder: String
-    let kind: ProviderFieldKind
-    let required: Bool
-    let defaultValue: String
-
-    var id: String { key }
-
-    init(key: String, label: String, placeholder: String = "", kind: ProviderFieldKind = .text, required: Bool = false, defaultValue: String = "") {
-        self.key = key
-        self.label = label
-        self.placeholder = placeholder
-        self.kind = kind
-        self.required = required
-        self.defaultValue = defaultValue
-    }
-}
+typealias NotificationValueRow = StableStringRow
+typealias NotificationHeaderRow = StableHeaderRow
 
 struct EventSubscriptions: Equatable {
-    var imageUpdate: Bool = true
-    var containerUpdate: Bool = true
-    var vulnerabilityFound: Bool = true
-    var pruneReport: Bool = false
-    var autoHeal: Bool = false
+    var imageUpdate = true
+    var containerUpdate = true
+    var vulnerabilityFound = true
+    var pruneReport = false
+    var autoHeal = false
 
-    struct Key: Identifiable {
-        let key: String
-        let label: String
-        var id: String { key }
+    init(events: NotificationEvents = .defaults) {
+        imageUpdate = events.imageUpdate
+        containerUpdate = events.containerUpdate
+        vulnerabilityFound = events.vulnerabilityFound
+        pruneReport = events.pruneReport
+        autoHeal = events.autoHeal
     }
 
-    static let keys: [Key] = [
-        .init(key: "imageUpdate", label: "Image Updates"),
-        .init(key: "containerUpdate", label: "Container Updates"),
-        .init(key: "vulnerabilityFound", label: "Vulnerabilities"),
-        .init(key: "pruneReport", label: "Prune Reports"),
-        .init(key: "autoHeal", label: "Auto-Heal"),
-    ]
-
-    /// Build an EventSubscriptions from a flat string map (the form's values).
-    static func from(_ values: [String: String]) -> EventSubscriptions {
-        EventSubscriptions(
-            imageUpdate: values["imageUpdate"].map { $0 == "true" } ?? true,
-            containerUpdate: values["containerUpdate"].map { $0 == "true" } ?? true,
-            vulnerabilityFound: values["vulnerabilityFound"].map { $0 == "true" } ?? true,
-            pruneReport: values["pruneReport"].map { $0 == "true" } ?? false,
-            autoHeal: values["autoHeal"].map { $0 == "true" } ?? false
+    var sdkValue: NotificationEvents {
+        NotificationEvents(
+            imageUpdate: imageUpdate,
+            containerUpdate: containerUpdate,
+            vulnerabilityFound: vulnerabilityFound,
+            pruneReport: pruneReport,
+            autoHeal: autoHeal
         )
     }
-
-    /// Read/write subscript by key string. Used by event toggle bindings.
-    subscript(key: String) -> Bool {
-        get {
-            switch key {
-            case "imageUpdate": return imageUpdate
-            case "containerUpdate": return containerUpdate
-            case "vulnerabilityFound": return vulnerabilityFound
-            case "pruneReport": return pruneReport
-            case "autoHeal": return autoHeal
-            default: return false
-            }
-        }
-        set {
-            switch key {
-            case "imageUpdate": imageUpdate = newValue
-            case "containerUpdate": containerUpdate = newValue
-            case "vulnerabilityFound": vulnerabilityFound = newValue
-            case "pruneReport": pruneReport = newValue
-            case "autoHeal": autoHeal = newValue
-            default: break
-            }
-        }
-    }
 }
 
-func fieldsForProvider(_ provider: NotificationProvider) -> [ProviderFieldDescriptor] {
-    switch provider {
-    case .discord:
-        return [
-            .init(key: "webhookUrl", label: "Webhook URL", placeholder: "https://discord.com/api/webhooks/...", kind: .url, required: true),
-            .init(key: "username", label: "Username", placeholder: "Arcane Bot"),
-            .init(key: "avatarUrl", label: "Avatar URL", placeholder: "https://...", kind: .url),
-        ]
-    case .email:
-        return [
-            .init(key: "smtpHost", label: "SMTP Host", placeholder: "smtp.example.com", required: true),
-            .init(key: "smtpPort", label: "SMTP Port", placeholder: "587", kind: .number, required: true, defaultValue: "587"),
-            .init(key: "smtpUser", label: "Username", placeholder: "user@example.com", kind: .email),
-            .init(key: "smtpPassword", label: "Password", kind: .password),
-            .init(key: "from", label: "From Address", placeholder: "arcane@example.com", kind: .email, required: true),
-            .init(key: "to", label: "To Address(es)", placeholder: "alerts@example.com (comma-separated for multiple)", required: true),
-            .init(key: "tls", label: "Use TLS", kind: .toggle, defaultValue: "true"),
-        ]
-    case .telegram:
-        return [
-            .init(key: "botToken", label: "Bot Token", placeholder: "123456:ABC...", kind: .password, required: true),
-            .init(key: "chatId", label: "Chat ID", placeholder: "-1001234567890", required: true),
-        ]
-    case .signal:
-        return [
-            .init(key: "apiUrl", label: "Signal API URL", placeholder: "https://signal.example.com", kind: .url, required: true),
-            .init(key: "number", label: "Signal Number", placeholder: "+1234567890", required: true),
-            .init(key: "recipients", label: "Recipients", placeholder: "+1987654321 (comma-separated)", required: true),
-        ]
-    case .slack:
-        return [
-            .init(key: "webhookUrl", label: "Webhook URL", placeholder: "https://hooks.slack.com/services/...", kind: .url, required: true),
-            .init(key: "channel", label: "Channel Override", placeholder: "#alerts"),
-            .init(key: "username", label: "Username Override", placeholder: "Arcane"),
-        ]
-    case .ntfy:
-        return [
-            .init(key: "serverUrl", label: "Server URL", placeholder: "https://ntfy.sh", kind: .url, required: true, defaultValue: "https://ntfy.sh"),
-            .init(key: "topic", label: "Topic", placeholder: "arcane-alerts", required: true),
-            .init(key: "username", label: "Username (optional)"),
-            .init(key: "password", label: "Password (optional)", kind: .password),
-        ]
-    case .pushover:
-        return [
-            .init(key: "userKey", label: "User Key", required: true),
-            .init(key: "apiToken", label: "API Token", kind: .password, required: true),
-            .init(key: "priority", label: "Priority", kind: .picker([
-                .init(label: "Lowest", value: "-2"),
-                .init(label: "Low", value: "-1"),
-                .init(label: "Normal", value: "0"),
-                .init(label: "High", value: "1"),
-                .init(label: "Emergency", value: "2"),
-            ]), defaultValue: "0"),
-        ]
-    case .gotify:
-        return [
-            .init(key: "serverUrl", label: "Server URL", placeholder: "https://gotify.example.com", kind: .url, required: true),
-            .init(key: "token", label: "App Token", kind: .password, required: true),
-            .init(key: "priority", label: "Priority", kind: .number, defaultValue: "5"),
-        ]
-    case .matrix:
-        return [
-            .init(key: "homeserverUrl", label: "Homeserver URL", placeholder: "https://matrix.org", kind: .url, required: true),
-            .init(key: "accessToken", label: "Access Token", kind: .password, required: true),
-            .init(key: "roomId", label: "Room ID", placeholder: "!roomId:matrix.org", required: true),
-        ]
-    case .generic:
-        return [
-            .init(key: "url", label: "Webhook URL", kind: .url, required: true),
-            .init(key: "method", label: "HTTP Method", kind: .picker([
-                .init(label: "POST", value: "POST"),
-                .init(label: "PUT", value: "PUT"),
-                .init(label: "PATCH", value: "PATCH"),
-            ]), defaultValue: "POST"),
-            .init(key: "customHeaders", label: "Custom Headers", placeholder: "key1:value1, key2:value2", kind: .textarea),
-        ]
-    }
-}
+struct NotificationProviderFormState: Equatable {
+    var enabled = false
+    var events = EventSubscriptions()
 
-// MARK: - Config Payload helpers
+    var webhookID = ""
+    var webhookURL = ""
+    var token = ""
+    var username = ""
+    var password = ""
+    var title = ""
+    var host = ""
+    var port = ""
+    var path = ""
+    var priority = "0"
+    var disableTLS = false
+    var disableTLSVerification = false
 
-/// Extract a flat `[String: String]` from the SDK's tolerant `[String: JSONValue]`
-/// notification config payload. Used by the UI form to populate fields.
-func extractConfigValues(_ config: [String: JSONValue]) -> [String: String] {
-    var result: [String: String] = [:]
-    for (key, value) in config {
-        switch value {
-        case let .string(s): result[key] = s
-        case let .bool(b): result[key] = String(b)
-        case let .number(n):
-            if n.truncatingRemainder(dividingBy: 1) == 0 {
-                result[key] = String(Int(n))
-            } else {
-                result[key] = String(n)
-            }
+    var avatarURL = ""
+
+    var smtpUsername = ""
+    var fromAddress = ""
+    var tlsMode = EmailTLSMode.starttls.rawValue
+    var authMode = EmailAuthMode.auto.rawValue
+    var recipients: [NotificationValueRow] = []
+
+    var preview = true
+    var notification = true
+    var parseMode = ""
+
+    var user = ""
+    var source = ""
+
+    var botName = ""
+    var icon = ""
+    var color = ""
+    var channel = ""
+    var threadTS = ""
+
+    var topic = ""
+    var tags: [NotificationValueRow] = []
+    var cache = true
+    var firebase = true
+
+    var devices: [NotificationValueRow] = []
+
+    var insecureSkipVerify = false
+    var useHeader = false
+
+    var rooms = ""
+
+    var method = "POST"
+    var contentType = "application/json"
+    var titleKey = "title"
+    var messageKey = "message"
+    var headers: [NotificationHeaderRow] = []
+    var successBodyContains = ""
+    var payloadTemplate = ""
+
+    init(provider: NotificationProvider, existing: NotificationSettings?) {
+        switch provider {
+        case .email:
+            port = "587"
+        case .signal:
+            port = "8080"
+        case .ntfy:
+            port = "443"
+        case .pushover:
+            priority = "0"
+        case .gotify:
+            priority = "5"
         default:
-            continue
+            break
+        }
+        guard let existing else { return }
+        enabled = existing.enabled
+
+        switch existing.config {
+        case .discord(let config):
+            webhookID = config.webhookId
+            token = config.token ?? ""
+            username = config.username ?? ""
+            avatarURL = config.avatarUrl ?? ""
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .email(let config):
+            host = config.smtpHost
+            port = String(config.smtpPort)
+            smtpUsername = config.smtpUsername
+            password = config.smtpPassword ?? ""
+            fromAddress = config.fromAddress
+            recipients = config.toAddresses.map { NotificationValueRow(value: $0) }
+            tlsMode = config.tlsMode.rawValue
+            authMode = (config.authMode ?? .auto).rawValue
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .telegram(let config):
+            token = config.botToken ?? ""
+            recipients = config.chatIds.map { NotificationValueRow(value: $0) }
+            preview = config.preview
+            notification = config.notification
+            parseMode = config.parseMode ?? ""
+            title = config.title ?? ""
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .signal(let config):
+            host = config.host
+            port = String(config.port)
+            user = config.user ?? ""
+            password = config.password ?? ""
+            token = config.token ?? ""
+            source = config.source
+            recipients = config.recipients.map { NotificationValueRow(value: $0) }
+            disableTLS = config.disableTls
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .slack(let config):
+            token = config.token ?? ""
+            botName = config.botName ?? ""
+            icon = config.icon ?? ""
+            color = config.color ?? ""
+            title = config.title ?? ""
+            channel = config.channel ?? ""
+            threadTS = config.threadTs ?? ""
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .ntfy(let config):
+            host = config.host
+            port = String(config.port)
+            topic = config.topic
+            username = config.username ?? ""
+            password = config.password ?? ""
+            title = config.title ?? ""
+            priority = config.priority ?? ""
+            tags = (config.tags ?? []).map { NotificationValueRow(value: $0) }
+            icon = config.icon ?? ""
+            cache = config.cache
+            firebase = config.firebase
+            disableTLS = config.disableTls
+            disableTLSVerification = config.disableTlsVerification
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .pushover(let config):
+            token = config.token ?? ""
+            user = config.user
+            devices = (config.devices ?? []).map { NotificationValueRow(value: $0) }
+            priority = String(config.priority)
+            title = config.title ?? ""
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .gotify(let config):
+            host = config.host
+            port = config.port.map(String.init) ?? ""
+            token = config.token ?? ""
+            path = config.path ?? ""
+            priority = config.priority.map(String.init) ?? ""
+            title = config.title ?? ""
+            disableTLS = config.disableTls
+            insecureSkipVerify = config.insecureSkipVerify
+            useHeader = config.useHeader
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .matrix(let config):
+            host = config.host
+            port = config.port.map(String.init) ?? ""
+            rooms = config.rooms
+            username = config.username ?? ""
+            password = config.password ?? ""
+            disableTLSVerification = config.disableTlsVerification
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .googlechat(let config):
+            webhookURL = config.webhookUrl ?? ""
+            events = EventSubscriptions(events: config.events ?? .defaults)
+        case .generic(let config):
+            webhookURL = config.webhookUrl
+            method = config.method ?? "POST"
+            contentType = config.contentType ?? "application/json"
+            titleKey = config.titleKey ?? "title"
+            messageKey = config.messageKey ?? "message"
+            headers = (config.customHeaders ?? [:])
+                .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
+                .map { NotificationHeaderRow(name: $0.key, value: $0.value) }
+            disableTLS = config.disableTls
+            successBodyContains = config.successBodyContains ?? ""
+            payloadTemplate = config.payloadTemplate ?? ""
+            events = EventSubscriptions(events: config.events ?? .defaults)
         }
     }
-    return result
+
+    func configuration(
+        for provider: NotificationProvider,
+        supportsPost26Features: Bool = true
+    ) -> NotificationConfiguration {
+        switch provider {
+        case .discord:
+            .discord(DiscordNotificationConfiguration(
+                webhookId: webhookID,
+                token: token.nilIfEmpty,
+                username: username.nilIfEmpty,
+                avatarUrl: avatarURL.nilIfEmpty,
+                events: events.sdkValue
+            ))
+        case .email:
+            .email(EmailNotificationConfiguration(
+                smtpHost: host,
+                smtpPort: Int(port) ?? 0,
+                smtpUsername: smtpUsername,
+                smtpPassword: password.nilIfEmpty,
+                fromAddress: fromAddress,
+                toAddresses: recipients.values,
+                tlsMode: EmailTLSMode(rawValue: tlsMode) ?? .starttls,
+                authMode: EmailAuthMode(rawValue: authMode) ?? .auto,
+                events: events.sdkValue
+            ))
+        case .telegram:
+            .telegram(TelegramNotificationConfiguration(
+                botToken: token.nilIfEmpty,
+                chatIds: recipients.values,
+                preview: preview,
+                notification: notification,
+                parseMode: parseMode.nilIfEmpty,
+                title: title.nilIfEmpty,
+                events: events.sdkValue
+            ))
+        case .signal:
+            .signal(SignalNotificationConfiguration(
+                host: host,
+                port: Int(port) ?? 0,
+                user: user.nilIfEmpty,
+                password: password.nilIfEmpty,
+                token: token.nilIfEmpty,
+                source: source,
+                recipients: recipients.values,
+                disableTls: disableTLS,
+                events: events.sdkValue
+            ))
+        case .slack:
+            .slack(SlackNotificationConfiguration(
+                token: token.nilIfEmpty,
+                botName: botName.nilIfEmpty,
+                icon: icon.nilIfEmpty,
+                color: color.nilIfEmpty,
+                title: title.nilIfEmpty,
+                channel: channel.nilIfEmpty,
+                threadTs: threadTS.nilIfEmpty,
+                events: events.sdkValue
+            ))
+        case .ntfy:
+            .ntfy(NtfyNotificationConfiguration(
+                host: host,
+                port: Int(port) ?? 0,
+                topic: topic,
+                username: username.nilIfEmpty,
+                password: password.nilIfEmpty,
+                title: title.nilIfEmpty,
+                priority: priority.nilIfEmpty,
+                tags: tags.values.nilIfEmpty,
+                icon: icon.nilIfEmpty,
+                cache: cache,
+                firebase: firebase,
+                disableTls: disableTLS,
+                disableTlsVerification: disableTLSVerification,
+                events: events.sdkValue
+            ))
+        case .pushover:
+            .pushover(PushoverNotificationConfiguration(
+                token: token.nilIfEmpty,
+                user: user,
+                devices: devices.values.nilIfEmpty,
+                priority: Int(priority) ?? 0,
+                title: title.nilIfEmpty,
+                events: events.sdkValue
+            ))
+        case .gotify:
+            .gotify(GotifyNotificationConfiguration(
+                host: host,
+                port: Int(port),
+                token: token.nilIfEmpty,
+                path: path.nilIfEmpty,
+                priority: Int(priority),
+                title: title.nilIfEmpty,
+                disableTls: disableTLS,
+                insecureSkipVerify: insecureSkipVerify,
+                useHeader: useHeader,
+                events: events.sdkValue
+            ))
+        case .matrix:
+            .matrix(MatrixNotificationConfiguration(
+                host: host,
+                port: Int(port),
+                rooms: rooms,
+                username: username.nilIfEmpty,
+                password: password.nilIfEmpty,
+                disableTlsVerification: disableTLSVerification,
+                events: events.sdkValue
+            ))
+        case .googlechat:
+            .googlechat(GoogleChatNotificationConfiguration(
+                webhookUrl: webhookURL.nilIfEmpty,
+                events: events.sdkValue
+            ))
+        case .generic:
+            .generic(GenericNotificationConfiguration(
+                webhookUrl: webhookURL,
+                method: method.nilIfEmpty,
+                contentType: supportsPost26Features ? contentType.nilIfEmpty : nil,
+                titleKey: supportsPost26Features ? titleKey.nilIfEmpty : nil,
+                messageKey: supportsPost26Features ? messageKey.nilIfEmpty : nil,
+                customHeaders: headers.dictionary.nilIfEmpty,
+                disableTls: disableTLS,
+                events: events.sdkValue,
+                successBodyContains: supportsPost26Features
+                    ? successBodyContains.nilIfEmpty
+                    : nil,
+                payloadTemplate: supportsPost26Features ? payloadTemplate.nilIfEmpty : nil
+            ))
+        }
+    }
+
+    func isValid(for provider: NotificationProvider) -> Bool {
+        switch provider {
+        case .discord: !webhookID.isEmpty
+        case .email:
+            !host.isEmpty && Int(port) != nil && !fromAddress.isEmpty && !recipients.values.isEmpty
+        case .telegram: !recipients.values.isEmpty
+        case .signal: !host.isEmpty && Int(port) != nil && !source.isEmpty && !recipients.values.isEmpty
+        case .slack: !token.isEmpty
+        case .ntfy: !host.isEmpty && Int(port) != nil && !topic.isEmpty
+        case .pushover: !user.isEmpty
+        case .gotify: !host.isEmpty
+        case .matrix: !host.isEmpty && !rooms.isEmpty
+        case .googlechat: !webhookURL.isEmpty
+        case .generic: !webhookURL.isEmpty
+        }
+    }
 }
 
-/// Build a SDK-shaped notification config payload (`[String: JSONValue]`) from
-/// the form's `[String: String]` field map. Coerces toggle/number kinds.
-func buildConfigPayload(_ values: [String: String], provider: NotificationProvider, events: EventSubscriptions) -> [String: JSONValue] {
-    var props: [String: JSONValue] = [:]
-    let fields = fieldsForProvider(provider)
+private extension String {
+    var nilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
 
-    for (key, value) in values {
-        guard !value.isEmpty else { continue }
-        let field = fields.first { $0.key == key }
-        switch field?.kind {
-        case .toggle:
-            props[key] = .bool(value == "true")
-        case .number:
-            if let intVal = Int(value) {
-                props[key] = .number(Double(intVal))
-            } else if let dblVal = Double(value) {
-                props[key] = .number(dblVal)
-            } else {
-                props[key] = .string(value)
-            }
-        default:
-            props[key] = .string(value)
+private extension Array where Element == String {
+    var nilIfEmpty: [String]? { isEmpty ? nil : self }
+}
+
+private extension Array where Element == NotificationValueRow {
+    var values: [String] {
+        compactMap { row in
+            let value = row.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
         }
     }
+}
 
-    // Event subscription flags
-    props["imageUpdate"] = .bool(events.imageUpdate)
-    props["containerUpdate"] = .bool(events.containerUpdate)
-    props["vulnerabilityFound"] = .bool(events.vulnerabilityFound)
-    props["pruneReport"] = .bool(events.pruneReport)
-    props["autoHeal"] = .bool(events.autoHeal)
+private extension Array where Element == NotificationHeaderRow {
+    var dictionary: [String: String] {
+        reduce(into: [:]) { result, row in
+            let name = row.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return }
+            result[name] = row.value
+        }
+    }
+}
 
-    return props
+private extension Dictionary {
+    var nilIfEmpty: Self? { isEmpty ? nil : self }
 }

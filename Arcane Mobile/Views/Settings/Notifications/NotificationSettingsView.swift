@@ -12,6 +12,10 @@ struct NotificationSettingsView: View {
         configuredProviders.first { $0.provider == provider }
     }
 
+    private var availableProviders: [NotificationProvider] {
+        notificationProviders(supportsPost26Features: manager.supportsPost26MobileFeatures)
+    }
+
     var body: some View {
         Group {
             if isLoading && configuredProviders.isEmpty {
@@ -46,10 +50,9 @@ struct NotificationSettingsView: View {
             title: { _ in "Delete Provider" },
             message: { "Remove the “\($0.displayName)” notification provider? You'll stop receiving its notifications." },
             icon: "trash",
-            confirmTitle: "Delete"
-        ) { provider in
-            Task { await deleteProvider(provider) }
-        }
+            confirmTitle: "Delete",
+            onConfirm: { provider in Task { await deleteProvider(provider) } }
+        )
     }
 
     // MARK: - Providers Section
@@ -57,7 +60,7 @@ struct NotificationSettingsView: View {
     @ViewBuilder
     private var providersSection: some View {
         Section {
-            ForEach(NotificationProvider.allCases) { provider in
+            ForEach(availableProviders) { provider in
                 let existing = configuredResponse(for: provider)
                 NavigationLink(destination: NotificationProviderFormView(
                     provider: provider,
@@ -107,9 +110,9 @@ struct NotificationSettingsView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/settings")
-            let rawData = try await client.transport.rawRequest(path, body: Optional<String>.none)
-            configuredProviders = try JSONDecoder().decode([NotificationSettings].self, from: rawData)
+            configuredProviders = try await client.notifications.listSettings(
+                envID: manager.activeEnvironmentID
+            )
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -118,11 +121,19 @@ struct NotificationSettingsView: View {
     private func deleteProvider(_ provider: NotificationProvider) async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(manager.activeEnvironmentID, "notifications/settings/\(provider.rawValue)")
-            try await client.rest.deleteVoid(path)
+            try await client.notifications.deleteSettings(
+                provider: provider,
+                envID: manager.activeEnvironmentID
+            )
             configuredProviders.removeAll { $0.provider == provider }
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+}
+
+func notificationProviders(supportsPost26Features: Bool) -> [NotificationProvider] {
+    NotificationProvider.allCases.filter {
+        $0 != .googlechat || supportsPost26Features
     }
 }

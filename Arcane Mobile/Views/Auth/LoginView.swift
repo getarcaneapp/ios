@@ -15,6 +15,7 @@ struct LoginView: View {
     @State private var serverURL: String = ""
     @State private var username: String = ""
     @State private var password: String = ""
+    @State private var recoveryCode: String = ""
     @State private var showSetup: Bool = false
 
     @State private var showsPasswordForm: Bool = false
@@ -23,13 +24,13 @@ struct LoginView: View {
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Field: Hashable {
-        case serverURL, username, password
+        case serverURL, username, password, recoveryCode
     }
 
     private var isSetupMode: Bool { mode == .setup || showSetup }
 
     private var oidcRefreshTaskID: String {
-        "\(isSetupMode)-\(manager.serverURL)"
+        "\(isSetupMode)-\(manager.serverURL)-\(manager.clientGeneration)"
     }
 
     // When OIDC is enabled, the password form is hidden behind a disclosure
@@ -71,7 +72,9 @@ struct LoginView: View {
                         .transition(.opacity)
                 }
 
-                demoCard
+                if manager.pendingMFAChallenge == nil {
+                    demoCard
+                }
 
                 Spacer(minLength: 0)
             }
@@ -103,11 +106,18 @@ struct LoginView: View {
         .animation(Motion.entrance, value: manager.errorMessage)
         .animation(Motion.entrance, value: manager.isStartingDemo)
         .animation(Motion.state, value: manager.isLoading)
+        .animation(Motion.entrance, value: manager.pendingMFAChallenge)
         .onAppear {
             serverURL = manager.serverURL
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 if !manager.isStartingDemo {
-                    focusedField = isSetupMode ? .serverURL : .username
+                    if isSetupMode {
+                        focusedField = .serverURL
+                    } else if manager.pendingMFAChallenge != nil {
+                        focusedField = .recoveryCode
+                    } else {
+                        focusedField = .username
+                    }
                 }
             }
         }
@@ -116,7 +126,7 @@ struct LoginView: View {
         }
         .task(id: oidcRefreshTaskID) {
             guard !isSetupMode, !manager.serverURL.isEmpty else { return }
-            await manager.refreshOIDCStatus()
+            await manager.refreshLoginCapabilities()
         }
     }
 
@@ -166,7 +176,9 @@ struct LoginView: View {
         if manager.isStartingDemo {
             return "Setting things up for you…"
         }
-        return isSetupMode ? "Connect to your Arcane server" : nil
+        if isSetupMode { return "Connect to your Arcane server" }
+        if manager.pendingMFAChallenge != nil { return "Verify your sign-in" }
+        return nil
     }
 
     // MARK: - Form
@@ -180,6 +192,9 @@ struct LoginView: View {
                         insertion: .move(edge: .leading).combined(with: .opacity),
                         removal: .move(edge: .trailing).combined(with: .opacity)
                     ))
+            } else if manager.pendingMFAChallenge != nil {
+                mfaForm
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else {
                 credentialsForm
                     .transition(.asymmetric(
@@ -271,6 +286,39 @@ struct LoginView: View {
         .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
+    private var mfaForm: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Multi-Factor Authentication", systemImage: "checkmark.shield")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("Use a passkey or one of your recovery codes to finish signing in.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+
+            Divider().padding(.leading, 16)
+
+            FieldRow(icon: "key.viewfinder", label: "Recovery Code") {
+                TextField(
+                    "",
+                    text: $recoveryCode,
+                    prompt: Text("Enter recovery code").foregroundStyle(.secondary)
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textContentType(.oneTimeCode)
+                .focused($focusedField, equals: .recoveryCode)
+                .submitLabel(.go)
+                .onSubmit { completeMFAWithRecoveryCode() }
+            }
+        }
+        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
+    }
+
     private func infoBanner(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle.fill")
@@ -314,7 +362,11 @@ struct LoginView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.extraLarge)
                 .disabled(serverURL.isEmpty || manager.isLoading)
+            } else if manager.pendingMFAChallenge != nil {
+                mfaActions
             } else {
+                passkeyButton
+
                 if manager.isOIDCAvailable {
                     if !showsPasswordForm {
                         oidcPrimaryButton
@@ -348,6 +400,69 @@ struct LoginView: View {
                 .tint(.secondary)
             }
         }
+    }
+
+    @ViewBuilder
+    private var mfaActions: some View {
+        Button(action: completeMFAWithPasskey) {
+            ZStack {
+                Label("Continue with Passkey", systemImage: "person.badge.key.fill")
+                    .opacity(manager.isPasskeySigningIn ? 0 : 1)
+                if manager.isPasskeySigningIn {
+                    ProgressView().controlSize(.regular)
+                }
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.extraLarge)
+        .disabled(manager.isLoading || manager.isPasskeySigningIn)
+
+        Button(action: completeMFAWithRecoveryCode) {
+            ZStack {
+                Label("Use Recovery Code", systemImage: "key.viewfinder")
+                    .opacity(manager.isLoading ? 0 : 1)
+                if manager.isLoading {
+                    ProgressView().controlSize(.regular)
+                }
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.extraLarge)
+        .disabled(
+            recoveryCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || manager.isLoading
+                || manager.isPasskeySigningIn
+        )
+
+        Button("Back to Sign In") {
+            focusedField = nil
+            recoveryCode = ""
+            manager.cancelPendingMFA()
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.large)
+        .tint(.secondary)
+    }
+
+    private var passkeyButton: some View {
+        Button(action: signInWithPasskey) {
+            ZStack {
+                Label("Continue with Passkey", systemImage: "person.badge.key.fill")
+                    .opacity(manager.isPasskeySigningIn ? 0 : 1)
+                if manager.isPasskeySigningIn {
+                    ProgressView().controlSize(.regular)
+                }
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.extraLarge)
+        .disabled(manager.isLoading || manager.isOIDCSigningIn || manager.isPasskeySigningIn)
     }
 
     private var providerDisplayName: String {
@@ -465,12 +580,29 @@ struct LoginView: View {
 
     private func signInWithOIDC() {
         focusedField = nil
-        let anchor = OIDCPresentationAnchorProvider.current()
+        let anchor = AuthenticationPresentationAnchorProvider.current()
         Task { await manager.loginWithOIDC(anchor: anchor) }
+    }
+
+    private func signInWithPasskey() {
+        focusedField = nil
+        let anchor = AuthenticationPresentationAnchorProvider.current()
+        Task { await manager.loginWithPasskey(anchor: anchor) }
+    }
+
+    private func completeMFAWithPasskey() {
+        focusedField = nil
+        let anchor = AuthenticationPresentationAnchorProvider.current()
+        Task { await manager.completePendingMFAWithPasskey(anchor: anchor) }
+    }
+
+    private func completeMFAWithRecoveryCode() {
+        focusedField = nil
+        Task { await manager.completePendingMFAWithRecoveryCode(recoveryCode) }
     }
 }
 
-private enum OIDCPresentationAnchorProvider {
+enum AuthenticationPresentationAnchorProvider {
     @MainActor
     static func current() -> ASPresentationAnchor {
         let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
@@ -483,7 +615,7 @@ private enum OIDCPresentationAnchorProvider {
             }
         }
         guard let scene = windowScenes.first else {
-            preconditionFailure("OIDC sign-in invoked with no connected window scene")
+            preconditionFailure("Authentication invoked with no connected window scene")
         }
         return ASPresentationAnchor(windowScene: scene)
     }

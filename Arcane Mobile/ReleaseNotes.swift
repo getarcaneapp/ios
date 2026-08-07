@@ -53,11 +53,18 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.6.2",
+            new: [
+                .init("Passkey sign-in and multi-factor authentication."),
+                .init("Notification provider configuration parity."),
+                .init("Configurable project deploy options."),
+                .init("Repository names for container registries.")
+            ],
             changed: [
                 .init("Removed Arcane Assistant.")
             ],
             fixed: [
-                .init("Home Screen widgets retain their data after the device locks.")
+                .init("Home Screen widgets retain their data after the device locks."),
+                .init("Passkey sign-in completes through the server reliably.")
             ]
         ),
         ReleaseNote(

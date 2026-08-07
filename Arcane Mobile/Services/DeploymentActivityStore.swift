@@ -78,6 +78,9 @@ final class DeploymentOperation: Identifiable {
     /// Containers a `.containerUpdate` runs over (one entry per container,
     /// updated sequentially). Empty for every other kind.
     let updateTargets: [UpdateTarget]
+    /// Immutable options captured when a project deploy begins. Nil for every
+    /// non-deploy operation and for the existing one-tap Deploy action.
+    let deployOptions: DeployOptions?
     let startedAt = Date()
 
     fileprivate(set) var lines: [InstallStreamLine] = []
@@ -113,13 +116,15 @@ final class DeploymentOperation: Identifiable {
 
     init(kind: DeploymentActionKind, envID: EnvironmentID, targetID: String,
          targetName: String, environmentName: String,
-         updateTargets: [UpdateTarget] = []) {
+         updateTargets: [UpdateTarget] = [],
+         deployOptions: DeployOptions? = nil) {
         self.kind = kind
         self.envID = envID
         self.targetID = targetID
         self.targetName = targetName
         self.environmentName = environmentName
         self.updateTargets = updateTargets
+        self.deployOptions = deployOptions
         self.activityLookupTargetID = targetID
     }
 
@@ -198,6 +203,7 @@ final class DeploymentActivityStore {
                manager: ArcaneClientManager,
                mutationStore: ResourceMutationStore,
                updateTargets: [DeploymentOperation.UpdateTarget] = [],
+               deployOptions: DeployOptions? = nil,
                presentSheet: Bool? = nil) -> Bool {
         guard !isRunning else {
             showToast(.info("Another deployment is running"))
@@ -229,7 +235,8 @@ final class DeploymentActivityStore {
         let operation = DeploymentOperation(
             kind: kind, envID: envID, targetID: targetID,
             targetName: targetName, environmentName: environmentName,
-            updateTargets: updateTargets
+            updateTargets: updateTargets,
+            deployOptions: kind == .up ? deployOptions : nil
         )
         self.operation = operation
         // Request-backed kinds (container redeploy/update) have no stream
@@ -503,7 +510,11 @@ final class DeploymentActivityStore {
                             client: ArcaneClient) throws -> NDJSONStream<OperationStreamEvent> {
         switch operation.kind {
         case .up:
-            try client.projects.deployStream(envID: operation.envID, projectID: operation.targetID)
+            try client.projects.deployStream(
+                envID: operation.envID,
+                projectID: operation.targetID,
+                options: operation.deployOptions
+            )
         case .redeploy:
             client.projects.redeployStream(envID: operation.envID, projectID: operation.targetID)
         case .pull:

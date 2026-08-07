@@ -1,6 +1,7 @@
 import Foundation
 import Arcane
 import ArcaneOIDC
+import ArcanePasskeys
 import AuthenticationServices
 import CryptoKit
 import Darwin
@@ -83,6 +84,12 @@ final class ArcaneClientManager {
     }
     var oidcInfo: OIDCDisplayInfo?
     var isOIDCSigningIn: Bool = false
+
+    // MARK: - Passkeys and post-2.6 features
+    var isPasskeySigningIn = false
+    var pendingMFAChallenge: MFAChallenge?
+    private(set) var supportsPost26MobileFeatures = false
+    private var passkeyAuthenticator: ArcanePasskeyAuthenticator?
 
     // MARK: - Demo mode
     var isDemoActive: Bool = false
@@ -177,6 +184,8 @@ final class ArcaneClientManager {
         currentUser = nil
         serverCapabilities = nil
         permissionsManifest = nil
+        clearPendingAuthentication()
+        supportsPost26MobileFeatures = false
         currentUserAvatarData = nil
         avatarFetchKey = nil
         lastBootstrapDNSAddresses = []
@@ -188,23 +197,26 @@ final class ArcaneClientManager {
         oidcInfo = nil
         mirrorToAppGroup()
         Task { await ResponseCache.shared.invalidateAll() }
-        Task { await refreshOIDCStatus() }
+        Task { await refreshLoginCapabilities() }
     }
 
     func refreshOIDCStatus() async {
-        guard client != nil else {
+        await refreshLoginCapabilities()
+    }
+
+    /// Loads the unauthenticated OIDC details and applies them only if the user
+    /// is still looking at the same configured client.
+    func refreshLoginCapabilities() async {
+        guard let capturedClient = client else {
             oidcInfo = nil
             return
         }
-        do {
-            oidcInfo = try await withNetworkSessionRefreshRetry { client in
-                try await self.fetchOIDCDisplayInfo(using: client)
-            }
-            needsConnectionBootstrapRetry = false
-        } catch {
-            needsConnectionBootstrapRetry = shouldRefreshNetworkSession(after: error)
-            oidcInfo = nil
-        }
+        let generation = clientGeneration
+
+        let nextOIDCInfo = await fetchOIDCDisplayInfoIfAvailable(using: capturedClient)
+
+        guard generation == clientGeneration else { return }
+        oidcInfo = nextOIDCInfo
     }
 
     func retryConnectionBootstrapIfNeeded() async {
@@ -220,7 +232,7 @@ final class ArcaneClientManager {
         if (try? await client.authManager.hasRefreshCredential()) == true {
             await checkExistingAuth()
         } else {
-            await refreshOIDCStatus()
+            await refreshLoginCapabilities()
         }
     }
 
@@ -265,20 +277,19 @@ final class ArcaneClientManager {
             errorMessage = "No server configured"
             return
         }
+        let configuredServer = serverURL
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let response = try await withNetworkSessionRefreshRetry { client in
-                try await client.auth.login(username: username, password: password)
+            let result = try await withNetworkSessionRefreshRetry { client in
+                try await client.auth.authenticate(username: username, password: password)
             }
-            await completeAuthenticatedBootstrap(
-                user: response.user,
-                capabilities: ServerCapabilities(mode: ServerCapabilities.detect(from: response.user)),
-                client: self.client ?? client
-            )
+            guard configuredServer == serverURL else { return }
+            await applyAuthenticationResult(result, client: self.client ?? client)
             needsConnectionBootstrapRetry = false
         } catch {
+            guard configuredServer == serverURL else { return }
             needsConnectionBootstrapRetry = shouldRefreshNetworkSession(after: error)
             errorMessage = connectionAwareErrorMessage(error, passwordLogin: true)
         }
@@ -290,6 +301,7 @@ final class ArcaneClientManager {
             errorMessage = "No server configured"
             return
         }
+        let generation = clientGeneration
         errorMessage = nil
         isOIDCSigningIn = true
         defer { isOIDCSigningIn = false }
@@ -300,9 +312,15 @@ final class ArcaneClientManager {
                 redirectURI: ArcaneMobileOIDC.redirectURI,
                 presenting: anchor
             )
+            guard generation == clientGeneration else { return }
             let capabilities = await client.serverCapabilities()
+            guard generation == clientGeneration else { return }
             await completeAuthenticatedBootstrap(user: result.user, capabilities: capabilities, client: client)
             needsConnectionBootstrapRetry = false
+        } catch let error as MFARequiredError {
+            guard generation == clientGeneration else { return }
+            pendingMFAChallenge = error.challenge
+            authState = .login
         } catch is CancellationError {
             // The caller ended the sign-in task — no error message needed.
             return
@@ -310,8 +328,113 @@ final class ArcaneClientManager {
             // User cancelled the system sheet — no error message needed.
             return
         } catch {
+            guard generation == clientGeneration else { return }
             errorMessage = loginErrorMessage(error)
         }
+    }
+
+    @MainActor
+    func loginWithPasskey(anchor: ASPresentationAnchor) async {
+        guard let client else {
+            errorMessage = "No server configured"
+            return
+        }
+        let generation = clientGeneration
+        let authenticator = ArcanePasskeyAuthenticator(client: client)
+        passkeyAuthenticator = authenticator
+        isPasskeySigningIn = true
+        errorMessage = nil
+        defer {
+            if passkeyAuthenticator === authenticator {
+                passkeyAuthenticator = nil
+                isPasskeySigningIn = false
+            }
+        }
+
+        do {
+            let result = try await authenticator.authenticateLogin(presenting: anchor)
+            guard generation == clientGeneration else { return }
+            await applyAuthenticationResult(result, client: client)
+        } catch is CancellationError {
+            return
+        } catch ArcanePasskeyAuthenticator.CeremonyError.cancelled {
+            return
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            return
+        } catch {
+            guard generation == clientGeneration else { return }
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    @MainActor
+    func completePendingMFAWithPasskey(anchor: ASPresentationAnchor) async {
+        guard let client, let challenge = pendingMFAChallenge else { return }
+        let generation = clientGeneration
+        let authenticator = ArcanePasskeyAuthenticator(client: client)
+        passkeyAuthenticator = authenticator
+        isPasskeySigningIn = true
+        errorMessage = nil
+        defer {
+            if passkeyAuthenticator === authenticator {
+                passkeyAuthenticator = nil
+                isPasskeySigningIn = false
+            }
+        }
+
+        do {
+            let response = try await authenticator.completeMFA(
+                transactionId: challenge.transactionId,
+                presenting: anchor
+            )
+            guard generation == clientGeneration else { return }
+            pendingMFAChallenge = nil
+            await completeAuthenticatedBootstrap(
+                user: response.user,
+                capabilities: ServerCapabilities(
+                    mode: ServerCapabilities.detect(from: response.user)
+                ),
+                client: client
+            )
+        } catch is CancellationError {
+            return
+        } catch ArcanePasskeyAuthenticator.CeremonyError.cancelled {
+            return
+        } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
+            return
+        } catch {
+            guard generation == clientGeneration else { return }
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    func completePendingMFAWithRecoveryCode(_ code: String) async {
+        guard let client, let challenge = pendingMFAChallenge else { return }
+        let generation = clientGeneration
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            let result = try await client.passkeys.finishRecovery(
+                transactionId: challenge.transactionId,
+                code: code.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            guard generation == clientGeneration else { return }
+            await applyAuthenticationResult(result, client: client)
+        } catch {
+            guard generation == clientGeneration else { return }
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    func cancelPendingMFA() {
+        passkeyAuthenticator?.cancel()
+        passkeyAuthenticator = nil
+        pendingMFAChallenge = nil
+        errorMessage = nil
+        isPasskeySigningIn = false
+        authState = .login
     }
 
     func logout() async {
@@ -427,6 +550,8 @@ final class ArcaneClientManager {
         avatarFetchKey = nil
         serverCapabilities = nil
         permissionsManifest = nil
+        clearPendingAuthentication()
+        supportsPost26MobileFeatures = false
         isDemoActive = false
         demoEndsAt = nil
         needsConnectionBootstrapRetry = false
@@ -528,6 +653,8 @@ final class ArcaneClientManager {
         avatarFetchKey = nil
         serverCapabilities = nil
         permissionsManifest = nil
+        clearPendingAuthentication()
+        supportsPost26MobileFeatures = false
         cacheSessionIdentity = UUID().uuidString
         authState = .login
         errorMessage = connectionAwareErrorMessage(error)
@@ -543,6 +670,8 @@ final class ArcaneClientManager {
         avatarFetchKey = nil
         serverCapabilities = nil
         permissionsManifest = nil
+        clearPendingAuthentication()
+        supportsPost26MobileFeatures = false
         needsConnectionBootstrapRetry = false
         let origin = parsedServerURL.flatMap(AppGroup.canonicalServerOrigin(for:))
         SharedKeychain.unbindCredentials(matching: origin)
@@ -567,6 +696,9 @@ final class ArcaneClientManager {
         } else {
             permissionsManifest = nil
         }
+        let versionInfo = try? await client.version.appVersion()
+        supportsPost26MobileFeatures = versionInfo?.supportsPost26MobileFeatures == true
+        pendingMFAChallenge = nil
         authState = .authenticated
     }
 
@@ -689,6 +821,7 @@ final class ArcaneClientManager {
         // bootstrap round-trip (OIDC probe, login, session restore) used to
         // tear the session down and rebuild it, killing in-flight streams.
         if !force, client != nil, configuredClientURL == url { return }
+        clearPendingAuthentication()
         clientSession?.finishTasksAndInvalidate()
         let bundle = Self.makeClient(
             url: url,
@@ -715,6 +848,37 @@ final class ArcaneClientManager {
             providerName: dict["oidcProviderName"] ?? "",
             providerLogoUrl: dict["oidcProviderLogoUrl"] ?? ""
         )
+    }
+
+    private func fetchOIDCDisplayInfoIfAvailable(using client: ArcaneClient) async -> OIDCDisplayInfo? {
+        try? await fetchOIDCDisplayInfo(using: client)
+    }
+
+    private func applyAuthenticationResult(
+        _ result: AuthenticationResult,
+        client: ArcaneClient
+    ) async {
+        switch result {
+        case .authenticated(let response):
+            pendingMFAChallenge = nil
+            await completeAuthenticatedBootstrap(
+                user: response.user,
+                capabilities: ServerCapabilities(
+                    mode: ServerCapabilities.detect(from: response.user)
+                ),
+                client: client
+            )
+        case .mfaRequired(let challenge):
+            pendingMFAChallenge = challenge
+            authState = .login
+        }
+    }
+
+    private func clearPendingAuthentication() {
+        passkeyAuthenticator?.cancel()
+        passkeyAuthenticator = nil
+        pendingMFAChallenge = nil
+        isPasskeySigningIn = false
     }
 
     private func withNetworkSessionRefreshRetry<T: Sendable>(

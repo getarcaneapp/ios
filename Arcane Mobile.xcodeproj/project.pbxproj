@@ -14,6 +14,7 @@
 		BFD5112C2FF73F4200EF7E76 /* ArcaneWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BFD5111C2FF73F4100EF7E76 /* ArcaneWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EA2FAC44530016681B /* Arcane */; };
 		FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EE2FAC44530016681B /* ArcaneOIDC */; };
+		FD6FF5F02FAC44530016681B /* ArcanePasskeys in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5F12FAC44530016681B /* ArcanePasskeys */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -126,6 +127,7 @@
 			files = (
 				FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */,
 				FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */,
+				FD6FF5F02FAC44530016681B /* ArcanePasskeys in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -236,6 +238,7 @@
 			packageProductDependencies = (
 				FD6FF5EA2FAC44530016681B /* Arcane */,
 				FD6FF5EE2FAC44530016681B /* ArcaneOIDC */,
+				FD6FF5F12FAC44530016681B /* ArcanePasskeys */,
 			);
 			productName = "Arcane Mobile";
 			productReference = FD6FF5D92FAC434D0016681B /* Arcane Mobile.app */;
@@ -766,6 +769,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
 			productName = ArcaneOIDC;
+		};
+		FD6FF5F12FAC44530016681B /* ArcanePasskeys */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
+			productName = ArcanePasskeys;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

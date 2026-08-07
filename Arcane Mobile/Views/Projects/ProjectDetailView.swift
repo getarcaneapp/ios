@@ -16,6 +16,7 @@ struct ProjectDetailView: View {
     @State private var actionStatus: String?
     @State private var showLogs = false
     @State private var showDeleteConfirm = false
+    @State private var showDeployOptions = false
     @State private var errorMessage: String?
     @State private var runningActionID: String?
     @State private var projectContainers: [ContainerSummary] = []
@@ -93,6 +94,16 @@ struct ProjectDetailView: View {
                     environmentID: environmentID,
                     initialSelection: request.selection
                 )
+            }
+        }
+        .sheet(isPresented: $showDeployOptions) {
+            DeployOptionsSheet(
+                serverOrigin: manager.parsedServerURL.flatMap(
+                    AppGroup.canonicalServerOrigin(for:)
+                ) ?? manager.serverURL,
+                environmentID: environmentID
+            ) { options in
+                startStreamingAction(kind: .up, deployOptions: options)
             }
         }
         .deleteConfirmation(isPresented: $showDeleteConfirm, config: DeleteConfirmationConfig(
@@ -344,6 +355,16 @@ struct ProjectDetailView: View {
 
     private var morphOverflow: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
+        if manager.supportsPost26MobileFeatures {
+            items.append(ActionButtonItem(
+                id: "deploy-options",
+                title: "Deploy Options",
+                systemImage: "slider.horizontal.3",
+                tint: .green
+            ) {
+                showDeployOptions = true
+            })
+        }
         if hasBuild {
             items.append(ActionButtonItem(id: "build", title: "Build", systemImage: "hammer.fill", tint: .indigo) {
                 startStreamingAction(kind: .build)
@@ -376,7 +397,10 @@ struct ProjectDetailView: View {
     /// root sheet, the floating pill, and the Live Activity. Completion bumps
     /// the projects mutation version, which this view already observes to
     /// reload itself.
-    private func startStreamingAction(kind: DeploymentActionKind) {
+    private func startStreamingAction(
+        kind: DeploymentActionKind,
+        deployOptions: DeployOptions? = nil
+    ) {
         errorMessage = nil
         actionStatus = nil
         DeploymentActivityStore.shared.start(
@@ -386,7 +410,8 @@ struct ProjectDetailView: View {
             targetName: currentProject.displayName,
             environmentName: manager.activeEnvironmentName,
             manager: manager,
-            mutationStore: mutationStore
+            mutationStore: mutationStore,
+            deployOptions: deployOptions
         )
     }
 
@@ -561,6 +586,149 @@ struct ProjectDetailView: View {
             client.rest.environmentPath(environmentID, "containers"),
             client.rest.environmentPath(environmentID, "containers/*")
         ])
+    }
+}
+
+struct ProjectDeployOptionsDraft: Equatable {
+    var pullPolicy: String
+    var forceRecreate: Bool
+    var recreateVolumes = false
+
+    mutating func consume() -> DeployOptions {
+        defer { recreateVolumes = false }
+        return DeployOptions(
+            pullPolicy: pullPolicy,
+            forceRecreate: forceRecreate,
+            recreateVolumes: recreateVolumes
+        )
+    }
+}
+
+private struct DeployOptionsSheet: View {
+    @SwiftUI.Environment(\.dismiss) private var dismiss
+
+    let serverOrigin: String
+    let environmentID: EnvironmentID
+    let deploy: (DeployOptions) -> Void
+
+    @State private var draft: ProjectDeployOptionsDraft
+    @State private var showsVolumeWarning = false
+
+    init(
+        serverOrigin: String,
+        environmentID: EnvironmentID,
+        deploy: @escaping (DeployOptions) -> Void
+    ) {
+        self.serverOrigin = serverOrigin
+        self.environmentID = environmentID
+        self.deploy = deploy
+        let stored = ProjectDeployOptionsPreferences.load(
+            serverOrigin: serverOrigin,
+            environmentID: environmentID
+        )
+        _draft = State(initialValue: ProjectDeployOptionsDraft(
+            pullPolicy: stored.pullPolicy,
+            forceRecreate: stored.forceRecreate
+        ))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Image Pull Policy") {
+                    Picker("Pull Images", selection: $draft.pullPolicy) {
+                        Text("If Missing").tag("missing")
+                        Text("Always").tag("always")
+                        Text("Never").tag("never")
+                    }
+                }
+
+                Section {
+                    Toggle("Force Recreation", isOn: $draft.forceRecreate)
+                    Toggle("Recreate Volumes", isOn: $draft.recreateVolumes)
+                } header: {
+                    Text("Container Recreation")
+                } footer: {
+                    Text("Recreating volumes permanently deletes their current data.")
+                }
+            }
+            .navigationTitle("Deploy Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Deploy") {
+                        if draft.recreateVolumes {
+                            showsVolumeWarning = true
+                        } else {
+                            beginDeploy()
+                        }
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Recreate Volumes?",
+                isPresented: $showsVolumeWarning,
+                titleVisibility: .visible
+            ) {
+                Button("Deploy and Delete Volume Data", role: .destructive) {
+                    beginDeploy()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Existing project volume data will be permanently lost.")
+            }
+        }
+    }
+
+    private func beginDeploy() {
+        let options = draft.consume()
+        ProjectDeployOptionsPreferences.save(
+            pullPolicy: draft.pullPolicy,
+            forceRecreate: draft.forceRecreate,
+            serverOrigin: serverOrigin,
+            environmentID: environmentID
+        )
+        deploy(options)
+        dismiss()
+    }
+}
+
+private enum ProjectDeployOptionsPreferences {
+    struct Values {
+        let pullPolicy: String
+        let forceRecreate: Bool
+    }
+
+    static func load(serverOrigin: String, environmentID: EnvironmentID) -> Values {
+        let defaults = UserDefaults.standard
+        let key = keyPrefix(serverOrigin: serverOrigin, environmentID: environmentID)
+        return Values(
+            pullPolicy: defaults.string(forKey: "\(key).pullPolicy") ?? "missing",
+            forceRecreate: defaults.bool(forKey: "\(key).forceRecreate")
+        )
+    }
+
+    static func save(
+        pullPolicy: String,
+        forceRecreate: Bool,
+        serverOrigin: String,
+        environmentID: EnvironmentID
+    ) {
+        let defaults = UserDefaults.standard
+        let key = keyPrefix(serverOrigin: serverOrigin, environmentID: environmentID)
+        defaults.set(pullPolicy, forKey: "\(key).pullPolicy")
+        defaults.set(forceRecreate, forKey: "\(key).forceRecreate")
+    }
+
+    private static func keyPrefix(
+        serverOrigin: String,
+        environmentID: EnvironmentID
+    ) -> String {
+        let encodedOrigin = Data(serverOrigin.utf8).base64EncodedString()
+        return "arcane.deployOptions.\(encodedOrigin).\(environmentID.rawValue)"
     }
 }
 
