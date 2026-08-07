@@ -51,29 +51,28 @@ struct LoginView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: 0) {
                 Spacer(minLength: 0)
 
                 headerSection
 
                 if !manager.isStartingDemo {
-                    formCard
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    VStack(spacing: 12) {
+                        formCard
+                            .transition(.opacity.combined(with: .move(edge: .top)))
 
-                    if let error = manager.errorMessage {
-                        ErrorBanner(message: error)
+                        if let error = manager.errorMessage {
+                            ErrorBanner(message: error)
+                        }
+
+                        if let info = manager.demoExpiredMessage {
+                            infoBanner(info)
+                        }
+
+                        actions
                     }
-
-                    if let info = manager.demoExpiredMessage {
-                        infoBanner(info)
-                    }
-
-                    actions
-                        .transition(.opacity)
-                }
-
-                if manager.pendingMFAChallenge == nil {
-                    demoCard
+                    .padding(.top, 28)
+                    .transition(.opacity)
                 }
 
                 Spacer(minLength: 0)
@@ -85,6 +84,11 @@ struct LoginView: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if manager.pendingMFAChallenge == nil {
+                demoBanner
+            }
+        }
         .background(
             ZStack {
                 LinearGradient(
@@ -107,6 +111,7 @@ struct LoginView: View {
         .animation(Motion.entrance, value: manager.isStartingDemo)
         .animation(Motion.state, value: manager.isLoading)
         .animation(Motion.entrance, value: manager.pendingMFAChallenge)
+        .animation(Motion.entrance, value: manager.isOIDCAvailable)
         .onAppear {
             serverURL = manager.serverURL
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
@@ -115,7 +120,7 @@ struct LoginView: View {
                         focusedField = .serverURL
                     } else if manager.pendingMFAChallenge != nil {
                         focusedField = .recoveryCode
-                    } else {
+                    } else if shouldShowPasswordFields {
                         focusedField = .username
                     }
                 }
@@ -123,6 +128,11 @@ struct LoginView: View {
         }
         .onChange(of: manager.isStartingDemo) { _, isStarting in
             if isStarting { focusedField = nil }
+        }
+        .onChange(of: shouldShowPasswordFields) { _, shows in
+            // Capabilities resolve after the initial focus fires; drop the
+            // keyboard if the fields it targeted just went behind OIDC.
+            if !shows { focusedField = nil }
         }
         .task(id: oidcRefreshTaskID) {
             guard !isSetupMode, !manager.serverURL.isEmpty else { return }
@@ -133,19 +143,18 @@ struct LoginView: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             Image("ArcaneLogo")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 72, height: 72)
+                .frame(width: 76, height: 76)
                 .padding(20)
                 .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
                 .overlay(
                     RoundedRectangle(cornerRadius: Radius.hero, style: .continuous)
                         .stroke(.white.opacity(0.12), lineWidth: 1)
                 )
-                .shadow(color: brandColor.opacity(0.12), radius: 28, y: 10)
-                .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+                .shadow(color: .black.opacity(0.10), radius: 10, y: 4)
                 .scaleEffect(logoAppeared || reduceMotion ? 1.0 : 0.7)
                 .opacity(logoAppeared || reduceMotion ? 1.0 : 0.0)
                 .onAppear {
@@ -158,15 +167,22 @@ struct LoginView: View {
                     }
                 }
 
-            VStack(spacing: 4) {
+            VStack(spacing: 8) {
                 Text("Arcane")
                     .font(.title.bold())
 
                 if let subtitle = headerSubtitle {
                     Text(subtitle)
-                        .font(.subheadline)
+                        .font(.body)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                         .contentTransition(.opacity)
+                }
+
+                // The connected server doubles as the "change server" control,
+                // so neither needs a row of its own in the form or the actions.
+                if showsServerChip {
+                    serverChip
                 }
             }
         }
@@ -177,8 +193,49 @@ struct LoginView: View {
             return "Setting things up for you…"
         }
         if isSetupMode { return "Connect to your Arcane server" }
-        if manager.pendingMFAChallenge != nil { return "Verify your sign-in" }
-        return nil
+        if manager.pendingMFAChallenge != nil {
+            return "Use a passkey or a recovery code to finish signing in"
+        }
+        return "Sign in to continue"
+    }
+
+    private var showsServerChip: Bool {
+        !isSetupMode && !manager.isStartingDemo && manager.pendingMFAChallenge == nil
+    }
+
+    private var serverChip: some View {
+        Button {
+            focusedField = nil
+            withAnimation(Motion.entrance) { showSetup = true }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "server.rack")
+                    .font(.footnote)
+                Text(serverDisplayName)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.pressable())
+        .glassEffectCompat(in: .capsule)
+        .accessibilityLabel("Server \(serverDisplayName). Change server")
+    }
+
+    /// Host (and port) only — the scheme is noise once connected, and the full
+    /// URL is what made the old server row wrap on small screens.
+    private var serverDisplayName: String {
+        let raw = manager.serverURL
+        guard let url = URL(string: raw), let host = url.host() else { return raw }
+        if let port = url.port { return "\(host):\(port)" }
+        return host
     }
 
     // MARK: - Form
@@ -195,7 +252,7 @@ struct LoginView: View {
             } else if manager.pendingMFAChallenge != nil {
                 mfaForm
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
-            } else {
+            } else if shouldShowPasswordFields {
                 credentialsForm
                     .transition(.asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -206,102 +263,72 @@ struct LoginView: View {
     }
 
     private var serverURLForm: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(spacing: 0) {
-                FieldRow(icon: "server.rack", label: "Server URL") {
-                    TextField(
-                        "",
-                        text: $serverURL,
-                        prompt: Text("https://arcane.example.com").foregroundStyle(.secondary)
-                    )
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .focused($focusedField, equals: .serverURL)
-                    .submitLabel(.go)
-                    .onSubmit { connectToServer() }
-                    .onChange(of: serverURL) { _, _ in
-                        // Drop a stale validation error the moment the user edits the URL.
-                        if manager.errorMessage != nil { manager.errorMessage = nil }
-                    }
+        VStack(spacing: 8) {
+            FieldRow(icon: "server.rack", label: "Server URL") {
+                TextField(
+                    "",
+                    text: $serverURL,
+                    prompt: Text("arcane.example.com").foregroundStyle(.secondary)
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .textContentType(.URL)
+                .focused($focusedField, equals: .serverURL)
+                .submitLabel(.go)
+                .onSubmit { connectToServer() }
+                .onChange(of: serverURL) { _, _ in
+                    // Drop a stale validation error the moment the user edits the URL.
+                    if manager.errorMessage != nil { manager.errorMessage = nil }
                 }
             }
             .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
 
-            Text("For a local server, include the scheme — e.g. http://192.168.1.50:3000")
-                .font(.caption)
+            Text("Include the scheme for a local server — http://192.168.1.50:3000")
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 4)
         }
     }
 
     private var credentialsForm: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Label("Server", systemImage: "server.rack")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(manager.serverURL)
-                    .font(.subheadline)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(shouldShowPasswordFields ? .primary : .secondary)
+            FieldRow(icon: "person", label: "Username") {
+                TextField(
+                    "",
+                    text: $username,
+                    prompt: Text("Username").foregroundStyle(.secondary)
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textContentType(.username)
+                .focused($focusedField, equals: .username)
+                .submitLabel(.next)
+                .onSubmit { focusedField = .password }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.vertical, shouldShowPasswordFields ? 12 : 10)
 
-            if shouldShowPasswordFields {
-                Divider().padding(.leading, 16)
+            Divider().padding(.leading, 16)
 
-                FieldRow(icon: "person", label: "Username") {
-                    TextField(
-                        "",
-                        text: $username,
-                        prompt: Text("Username").foregroundStyle(.secondary)
-                    )
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .focused($focusedField, equals: .username)
-                    .submitLabel(.next)
-                    .onSubmit { focusedField = .password }
-                }
-
-                Divider().padding(.leading, 16)
-
-                FieldRow(icon: "lock", label: "Password") {
-                    SecureField(
-                        "",
-                        text: $password,
-                        prompt: Text("Password").foregroundStyle(.secondary)
-                    )
-                    .focused($focusedField, equals: .password)
-                    .submitLabel(.go)
-                    .onSubmit { signIn() }
-                }
+            FieldRow(icon: "lock", label: "Password") {
+                SecureField(
+                    "",
+                    text: $password,
+                    prompt: Text("Password").foregroundStyle(.secondary)
+                )
+                .textContentType(.password)
+                .focused($focusedField, equals: .password)
+                .submitLabel(.go)
+                .onSubmit { signIn() }
             }
         }
         .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
+    // The "what is this" copy lives in the header subtitle, so the card carries
+    // only the one thing the user has to type.
     private var mfaForm: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Label("Multi-Factor Authentication", systemImage: "checkmark.shield")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("Use a passkey or one of your recovery codes to finish signing in.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-
-            Divider().padding(.leading, 16)
-
             FieldRow(icon: "key.viewfinder", label: "Recovery Code") {
                 TextField(
                     "",
@@ -337,8 +364,8 @@ struct LoginView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(12)
-        .background(.blue.opacity(0.12), in: .rect(cornerRadius: Radius.nested))
+        .padding(14)
+        .background(.blue.opacity(0.12), in: .rect(cornerRadius: Radius.standard))
         .transition(.scale(scale: 0.95).combined(with: .opacity))
     }
 
@@ -348,90 +375,104 @@ struct LoginView: View {
     private var actions: some View {
         VStack(spacing: 10) {
             if isSetupMode {
-                Button(action: connectToServer) {
-                    ZStack {
-                        Label("Connect", systemImage: "arrow.right")
-                            .opacity(manager.isLoading && !manager.isStartingDemo ? 0 : 1)
-                        if manager.isLoading && !manager.isStartingDemo {
-                            ProgressView().controlSize(.regular)
-                        }
-                    }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.extraLarge)
-                .disabled(serverURL.isEmpty || manager.isLoading)
+                setupActions
             } else if manager.pendingMFAChallenge != nil {
                 mfaActions
             } else {
-                passkeyButton
+                signInActions
+            }
+        }
+    }
 
-                if manager.isOIDCAvailable {
-                    if !showsPasswordForm {
-                        oidcPrimaryButton
-                    }
-                    passwordDisclosure
-                }
+    @ViewBuilder
+    private var setupActions: some View {
+        primaryButton(
+            "Connect",
+            icon: "arrow.right",
+            loading: manager.isLoading && !manager.isStartingDemo,
+            action: connectToServer
+        )
+        .disabled(serverURL.isEmpty || manager.isLoading)
 
-                if shouldShowPasswordFields {
-                    Button(action: signIn) {
-                        ZStack {
-                            Label("Sign In", systemImage: "person.fill.checkmark")
-                                .opacity(manager.isLoading ? 0 : 1)
-                            if manager.isLoading {
-                                ProgressView().controlSize(.regular)
-                            }
-                        }
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.extraLarge)
-                    .disabled(username.isEmpty || password.isEmpty || manager.isLoading)
-                }
+        // Only reachable when the user opened setup from an existing session.
+        if mode == .login {
+            Button("Cancel") {
+                focusedField = nil
+                serverURL = manager.serverURL
+                withAnimation(Motion.entrance) { showSetup = false }
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.large)
+            .tint(.secondary)
+        }
+    }
 
-                Button("Change Server") {
-                    focusedField = nil
-                    withAnimation(Motion.entrance) { showSetup = true }
+    // One prominent action, with every alternative demoted to a single compact
+    // row underneath — the old stack put three full-width slabs in a column.
+    @ViewBuilder
+    private var signInActions: some View {
+        if manager.isOIDCAvailable && !showsPasswordForm {
+            primaryButton(
+                "Continue with \(providerDisplayName)",
+                icon: "key.fill",
+                loading: manager.isOIDCSigningIn,
+                action: signInWithOIDC
+            )
+            .disabled(manager.isLoading || manager.isOIDCSigningIn)
+        } else {
+            primaryButton(
+                "Sign In",
+                icon: "person.fill.checkmark",
+                loading: manager.isLoading,
+                action: signIn
+            )
+            .disabled(username.isEmpty || password.isEmpty || manager.isLoading)
+        }
+
+        HStack(spacing: 10) {
+            secondaryButton(
+                "Passkey",
+                icon: "person.badge.key.fill",
+                loading: manager.isPasskeySigningIn,
+                action: signInWithPasskey
+            )
+
+            if manager.isOIDCAvailable {
+                if showsPasswordForm {
+                    secondaryButton(
+                        providerDisplayName,
+                        icon: "key.fill",
+                        loading: manager.isOIDCSigningIn,
+                        action: signInWithOIDC
+                    )
+                } else {
+                    secondaryButton(
+                        "Password",
+                        icon: "lock.fill",
+                        loading: false,
+                        action: revealPasswordForm
+                    )
                 }
-                .buttonStyle(.borderless)
-                .controlSize(.large)
-                .tint(.secondary)
             }
         }
     }
 
     @ViewBuilder
     private var mfaActions: some View {
-        Button(action: completeMFAWithPasskey) {
-            ZStack {
-                Label("Continue with Passkey", systemImage: "person.badge.key.fill")
-                    .opacity(manager.isPasskeySigningIn ? 0 : 1)
-                if manager.isPasskeySigningIn {
-                    ProgressView().controlSize(.regular)
-                }
-            }
-            .font(.headline)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.extraLarge)
+        primaryButton(
+            "Continue with Passkey",
+            icon: "person.badge.key.fill",
+            loading: manager.isPasskeySigningIn,
+            action: completeMFAWithPasskey
+        )
         .disabled(manager.isLoading || manager.isPasskeySigningIn)
 
-        Button(action: completeMFAWithRecoveryCode) {
-            ZStack {
-                Label("Use Recovery Code", systemImage: "key.viewfinder")
-                    .opacity(manager.isLoading ? 0 : 1)
-                if manager.isLoading {
-                    ProgressView().controlSize(.regular)
-                }
-            }
-            .font(.headline)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.extraLarge)
+        secondaryButton(
+            "Use Recovery Code",
+            icon: "key.viewfinder",
+            loading: manager.isLoading,
+            action: completeMFAWithRecoveryCode
+        )
         .disabled(
             recoveryCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 || manager.isLoading
@@ -448,118 +489,98 @@ struct LoginView: View {
         .tint(.secondary)
     }
 
-    private var passkeyButton: some View {
-        Button(action: signInWithPasskey) {
-            ZStack {
-                Label("Continue with Passkey", systemImage: "person.badge.key.fill")
-                    .opacity(manager.isPasskeySigningIn ? 0 : 1)
-                if manager.isPasskeySigningIn {
-                    ProgressView().controlSize(.regular)
-                }
-            }
-            .font(.headline)
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.extraLarge)
-        .disabled(manager.isLoading || manager.isOIDCSigningIn || manager.isPasskeySigningIn)
-    }
-
     private var providerDisplayName: String {
         let name = manager.oidcInfo?.providerName ?? ""
         return name.isEmpty ? "OIDC" : name
     }
 
-    @ViewBuilder
-    private var oidcPrimaryButton: some View {
-        Button(action: signInWithOIDC) {
+    // MARK: - Action building blocks
+
+    // Both button tiers are plain `.extraLarge` native controls — no forced
+    // heights, no custom border shapes. The system sizes them.
+    private func primaryButton(
+        _ title: String,
+        icon: String,
+        loading: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             ZStack {
-                Label("Continue with \(providerDisplayName)", systemImage: "key.fill")
-                    .opacity(manager.isOIDCSigningIn ? 0 : 1)
-                if manager.isOIDCSigningIn {
+                Label(title, systemImage: icon)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .opacity(loading ? 0 : 1)
+
+                if loading {
                     ProgressView().controlSize(.regular)
                 }
             }
             .font(.headline)
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .glassProminentButtonStyleCompat()
         .controlSize(.extraLarge)
-        .disabled(manager.isLoading || manager.isOIDCSigningIn)
     }
 
-    @ViewBuilder
-    private var passwordDisclosure: some View {
-        Button {
-            focusedField = nil
-            withAnimation(Motion.entrance) {
-                showsPasswordForm.toggle()
-            }
-            if showsPasswordForm {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    focusedField = .username
+    private func secondaryButton(
+        _ title: String,
+        icon: String,
+        loading: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            ZStack {
+                Label(title, systemImage: icon)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .opacity(loading ? 0 : 1)
+
+                if loading {
+                    ProgressView().controlSize(.regular)
                 }
             }
-        } label: {
-            Label(
-                showsPasswordForm ? "Hide password sign in" : "Sign in with username and password",
-                systemImage: showsPasswordForm ? "chevron.up" : "chevron.down"
-            )
-            .font(.subheadline.weight(.semibold))
+            .font(.headline)
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.large)
-        .tint(.secondary)
-        .disabled(manager.isLoading || manager.isOIDCSigningIn)
+        .glassButtonStyleCompat()
+        .controlSize(.extraLarge)
+        .disabled(manager.isLoading || manager.isOIDCSigningIn || manager.isPasskeySigningIn)
     }
 
-    private var demoCard: some View {
+    // Pinned above the scroll content: the demo is an offer, not a peer of the
+    // sign-in action, so it sits out of the form's vertical rhythm entirely.
+    private var demoBanner: some View {
         Button {
             Task { await manager.startDemo() }
         } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(brandColor.opacity(0.18))
-                    Image(systemName: "sparkles")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(brandColor)
-                }
-                .frame(width: 40, height: 40)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(manager.isStartingDemo ? "Starting demo…" : "Try the demo")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(manager.isStartingDemo
-                         ? "This usually takes about 30 seconds."
-                         : "Temporary instance for ~10 minutes. No account needed.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
+            HStack(spacing: 8) {
                 if manager.isStartingDemo {
                     ProgressView().controlSize(.small)
                 } else {
-                    Image(systemName: "arrow.right")
+                    Image(systemName: "sparkles")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(brandColor)
                 }
+
+                Text(manager.isStartingDemo ? "Starting demo…" : "Try the demo")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                if !manager.isStartingDemo {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
-            .padding(.vertical, 14)
             .padding(.horizontal, 16)
-            .contentShape(.rect)
+            .padding(.vertical, 10)
+            .contentShape(.capsule)
         }
-        .buttonStyle(.plain)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-                .stroke(brandColor.opacity(0.22), lineWidth: 1)
-        )
+        .buttonStyle(.pressable(haptic: true))
+        .glassEffectCompat(in: .capsule)
+        .padding(.top, 4)
+        .padding(.bottom, 12)
         .disabled(manager.isLoading)
         .opacity(manager.isLoading && !manager.isStartingDemo ? 0.5 : 1)
         .animation(Motion.state, value: manager.isStartingDemo)
@@ -576,6 +597,14 @@ struct LoginView: View {
     private func signIn() {
         focusedField = nil
         Task { await manager.login(username: username, password: password) }
+    }
+
+    private func revealPasswordForm() {
+        focusedField = nil
+        withAnimation(Motion.entrance) { showsPasswordForm = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            focusedField = .username
+        }
     }
 
     private func signInWithOIDC() {
@@ -621,21 +650,27 @@ enum AuthenticationPresentationAnchorProvider {
     }
 }
 
+/// A single-line field: leading glyph, then the control. The old two-line
+/// variant (caption label stacked over the field) put three type sizes in one
+/// card. Sized by its content — no fixed row height.
 private struct FieldRow<Content: View>: View {
     let icon: String
     let label: String
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label(label, systemImage: icon)
-                .font(.caption.weight(.semibold))
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.body)
                 .foregroundStyle(.secondary)
+                .frame(width: 22)
+                .accessibilityHidden(true)
+
             content
                 .font(.body)
+                .accessibilityLabel(label)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 18)
     }
 }
