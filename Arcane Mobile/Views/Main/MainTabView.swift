@@ -3,11 +3,6 @@ import UIKit
 import TipKit
 import Arcane
 
-private enum FloatingBottomBarMetrics {
-    static let rootContentClearance: CGFloat = 88
-    static let detailContentClearance: CGFloat = 108
-}
-
 struct MainTabView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -472,10 +467,8 @@ private struct SidebarDestinationContainer: View {
         morphStore.isMorphed || !morphStore.activeRootActions.isEmpty
     }
 
-    private var bottomActionClearance: CGFloat {
-        morphStore.isMorphed
-            ? FloatingBottomBarMetrics.detailContentClearance
-            : FloatingBottomBarMetrics.rootContentClearance
+    private var showsRootBottomActions: Bool {
+        !morphStore.isMorphed && !morphStore.activeRootActions.isEmpty
     }
 
     var body: some View {
@@ -483,10 +476,19 @@ private struct SidebarDestinationContainer: View {
             destination
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .environment(\.currentTabID, selectedID)
+                .environment(
+                    \.sidebarDetailBottomInset,
+                    max(0, FloatingBottomBarMetrics.detailContentClearance - proxy.safeAreaInsets.bottom)
+                )
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if showsBottomActions {
+                    if showsRootBottomActions {
                         Color.clear
-                            .frame(height: max(0, bottomActionClearance - proxy.safeAreaInsets.bottom))
+                            .frame(
+                                height: max(
+                                    0,
+                                    FloatingBottomBarMetrics.rootContentClearance - proxy.safeAreaInsets.bottom
+                                )
+                            )
                             .accessibilityHidden(true)
                     }
                 }

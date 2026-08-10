@@ -16,6 +16,16 @@ extension EnvironmentValues {
         get { self[CurrentTabIDKey.self] }
         set { self[CurrentTabIDKey.self] = newValue }
     }
+
+    /// Additional bottom space applied directly to pushed detail content when
+    /// sidebar navigation overlays the floating action bar. Dock navigation
+    /// reserves this globally through its tab-bar controller instead.
+    @Entry var sidebarDetailBottomInset: CGFloat = 0
+}
+
+enum FloatingBottomBarMetrics {
+    static let rootContentClearance: CGFloat = 88
+    static let detailContentClearance: CGFloat = 108
 }
 
 // MARK: - Morph store
@@ -189,6 +199,7 @@ private struct MorphingActionsModifier: ViewModifier {
     let payload: TabBarMorphStore.Payload
     let active: Bool
     @SwiftUI.Environment(\.currentTabID) private var tabID
+    @SwiftUI.Environment(\.sidebarDetailBottomInset) private var sidebarDetailBottomInset
     @State private var token = UUID()
 
     /// Cheap key that changes exactly when the rendered controls should: action
@@ -204,6 +215,13 @@ private struct MorphingActionsModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if active, sidebarDetailBottomInset > 0 {
+                    Color.clear
+                        .frame(height: sidebarDetailBottomInset)
+                        .accessibilityHidden(true)
+                }
+            }
             .onAppear {
                 updateRegistration()
             }
