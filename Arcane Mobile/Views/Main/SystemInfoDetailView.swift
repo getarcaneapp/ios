@@ -15,6 +15,20 @@ struct SystemInfoDetailView: View {
         case docker = "Docker Info"
         case system = "System Info"
         var id: String { rawValue }
+
+        var systemImage: String {
+            switch self {
+            case .docker: "shippingbox.fill"
+            case .system: "server.rack"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .docker: .blue
+            case .system: .purple
+            }
+        }
     }
 
     var body: some View {
@@ -22,12 +36,19 @@ struct SystemInfoDetailView: View {
             LazyVStack(spacing: 16) {
                 headerCard
 
-                Picker("", selection: $selectedTab) {
-                    ForEach(Tab.allCases) { tab in
-                        Text(tab.rawValue).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
+                ScrollableTabBar(
+                    selection: $selectedTab,
+                    options: Tab.allCases.map {
+                        ScrollableTabOption(
+                            $0,
+                            title: $0.rawValue,
+                            systemImage: $0.systemImage,
+                            tint: $0.tint
+                        )
+                    },
+                    accessibilityLabel: "System information sections",
+                    addsHorizontalContentInset: false
+                )
 
                 if let info = dockerInfo {
                     Group {

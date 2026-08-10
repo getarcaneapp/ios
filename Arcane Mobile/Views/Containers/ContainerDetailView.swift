@@ -30,6 +30,22 @@ struct ContainerDetailView: View {
             case .logs: return "Logs"
             }
         }
+
+        var systemImage: String {
+            switch self {
+            case .overview: "info.circle.fill"
+            case .stats: "chart.xyaxis.line"
+            case .logs: "text.alignleft"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .overview: .purple
+            case .stats: .blue
+            case .logs: .teal
+            }
+        }
     }
 
     private var containerMutationVersion: Int {
@@ -63,15 +79,18 @@ struct ContainerDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Section", selection: $selectedTab) {
-                ForEach(DetailTab.allCases) { tab in
-                    Text(tab.title).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
+            ScrollableTabBar(
+                selection: $selectedTab,
+                options: DetailTab.allCases.map {
+                    ScrollableTabOption(
+                        $0,
+                        title: $0.title,
+                        systemImage: $0.systemImage,
+                        tint: $0.tint
+                    )
+                },
+                accessibilityLabel: "Container detail sections"
+            )
 
             ZStack {
                 switch selectedTab {
@@ -156,6 +175,9 @@ struct ContainerDetailView: View {
             }
 
             if let details {
+                Section {
+                    AdaptiveMetadataGrid(items: containerMetadata(details))
+                }
                 configSection(details.config)
                 stateSection(details.state)
                 hostConfigSection(details.hostConfig)
@@ -235,6 +257,17 @@ struct ContainerDetailView: View {
 
     private var morphInline: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
+        if container.updateInfo?.hasUpdate == true,
+           manager.permissions.has(Permission.Containers.autoUpdate, in: environmentID) {
+            items.append(ActionButtonItem(
+                id: "update",
+                title: "Update",
+                systemImage: "arrow.up.circle.fill",
+                tint: .blue
+            ) {
+                startContainerUpdate()
+            })
+        }
         if isRunning && !isPaused {
             items.append(ActionButtonItem(id: "restart", title: "Restart", systemImage: "arrow.clockwise", tint: .orange) {
                 Task { await performAction(.restart, actionID: "restart") }
@@ -244,6 +277,20 @@ struct ContainerDetailView: View {
             startRedeploy()
         })
         return items
+    }
+
+    private func startContainerUpdate() {
+        errorMessage = nil
+        DeploymentActivityStore.shared.start(
+            kind: .containerUpdate,
+            envID: environmentID,
+            targetID: container.id,
+            targetName: displayedName,
+            environmentName: manager.activeEnvironmentName,
+            manager: manager,
+            mutationStore: mutationStore,
+            updateTargets: [.init(id: container.id, name: displayedName)]
+        )
     }
 
     /// Container redeploy runs through the app-level deployment store so it
@@ -292,15 +339,15 @@ struct ContainerDetailView: View {
     }
 
     private func configSection(_ config: ContainerConfig) -> some View {
-        Section("Configuration") {
+        Section {
             if let img = config.image {
-                LabeledContent("Image", value: img)
+                LabeledContent("Image") { MonospacedValue(value: img) }
             }
             if let cmd = config.cmd, !cmd.isEmpty {
-                LabeledContent("Command", value: cmd.joined(separator: " "))
+                LabeledContent("Command") { MonospacedValue(value: cmd.joined(separator: " ")) }
             }
             if let wd = config.workingDir, !wd.isEmpty {
-                LabeledContent("Working Dir", value: wd)
+                LabeledContent("Working Dir") { MonospacedValue(value: wd) }
             }
             if let user = config.user, !user.isEmpty {
                 LabeledContent("User", value: user)
@@ -315,11 +362,13 @@ struct ContainerDetailView: View {
                     LabelsView(labels: labels)
                 }
             }
+        } header: {
+            ResourceSectionHeader(title: "Execution", systemImage: "terminal")
         }
     }
 
     private func stateSection(_ state: ContainerState) -> some View {
-        Section("State") {
+        Section {
             LabeledContent("Status", value: state.status.capitalized)
             if let startedAt = state.startedAt {
                 LabeledContent("Started", value: startedAt.formattedDate)
@@ -330,6 +379,8 @@ struct ContainerDetailView: View {
             if let exitCode = state.exitCode, !isRunning {
                 LabeledContent("Exit Code", value: "\(exitCode)")
             }
+        } header: {
+            ResourceSectionHeader(title: "Runtime", systemImage: "waveform.path.ecg")
         }
     }
 
@@ -372,6 +423,30 @@ struct ContainerDetailView: View {
                 }
             }
         }
+    }
+
+    private func containerMetadata(_ details: ContainerDetails) -> [ResourceMetadataItem] {
+        let primaryAddress = details.networkSettings.networks
+            .sorted { $0.key < $1.key }
+            .compactMap { nonEmptyResourceValue($0.value.ipAddress) }
+            .first ?? "Unavailable"
+        let health = nonEmptyResourceValue(details.state.health?.status) ?? "Not configured"
+        var uptimeStatus = container.status
+        for token in ["(healthy)", "(unhealthy)", "(health: starting)"] {
+            uptimeStatus = uptimeStatus.replacingOccurrences(of: token, with: "", options: [.caseInsensitive])
+        }
+        uptimeStatus = uptimeStatus.trimmingCharacters(in: .whitespaces)
+        return [
+            ResourceMetadataItem(label: "Image", value: nonEmptyResourceValue(details.image) ?? container.image, systemImage: "photo.stack"),
+            ResourceMetadataItem(label: "Uptime / Status", value: nonEmptyResourceValue(uptimeStatus) ?? statusString, systemImage: "clock"),
+            ResourceMetadataItem(label: "Address", value: primaryAddress, systemImage: "network", monospaced: true),
+            ResourceMetadataItem(
+                label: "Health",
+                value: health.capitalized,
+                systemImage: "heart.text.square",
+                tint: health.lowercased() == "healthy" ? .green : .secondary
+            )
+        ]
     }
 
     // MARK: - Actions

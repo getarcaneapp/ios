@@ -60,16 +60,18 @@ struct SwarmView: View {
                 }
             } else {
                 VStack(spacing: 0) {
-                    Picker("Swarm Section", selection: $selectedSection) {
-                        ForEach(SwarmSection.allCases) { section in
-                            Label(section.title, systemImage: section.systemImage).tag(section)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
-
-                    Divider()
+                    ScrollableTabBar(
+                        selection: $selectedSection,
+                        options: SwarmSection.allCases.map {
+                            ScrollableTabOption(
+                                $0,
+                                title: $0.title,
+                                systemImage: $0.systemImage,
+                                tint: $0.tint
+                            )
+                        },
+                        accessibilityLabel: "Swarm sections"
+                    )
 
                     switch selectedSection {
                     case .cluster:
@@ -419,6 +421,13 @@ private enum SwarmSection: String, CaseIterable, Identifiable {
         switch self {
         case .cluster: "square.stack.3d.up"
         case .nodes: "server.rack"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .cluster: .purple
+        case .nodes: .blue
         }
     }
 }

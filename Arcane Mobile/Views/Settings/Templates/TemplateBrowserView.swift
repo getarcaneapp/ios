@@ -48,13 +48,19 @@ struct TemplateBrowserView: View {
             } else {
                 List {
                     Section {
-                        Picker("Source", selection: source) {
-                            ForEach(TemplateSourceSelection.allCases) { option in
-                                Label(option.title, systemImage: option.icon).tag(option)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .accessibilityLabel("Template source")
+                        ScrollableTabBar(
+                            selection: source,
+                            options: TemplateSourceSelection.allCases.map {
+                                ScrollableTabOption(
+                                    $0,
+                                    title: $0.title,
+                                    systemImage: $0.icon,
+                                    tint: templateSourceTint($0)
+                                )
+                            },
+                            accessibilityLabel: "Template source",
+                            addsHorizontalContentInset: false
+                        )
                     }
 
                     if store.templates.isEmpty {
@@ -162,6 +168,14 @@ struct TemplateBrowserView: View {
         .refreshable {
             guard canListTemplates else { return }
             await store.reload()
+        }
+    }
+
+    private func templateSourceTint(_ source: TemplateSourceSelection) -> Color {
+        switch source {
+        case .all: .purple
+        case .local: .green
+        case .remote: .blue
         }
     }
 

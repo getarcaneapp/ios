@@ -9,6 +9,7 @@ struct ImageAttestationsView: View {
     let imageID: String
     let imageDisplayName: String
     let environmentID: EnvironmentID
+    var embedded = false
 
     @State private var result: ImageAttestationList?
     @State private var isLoading = false
@@ -65,7 +66,7 @@ struct ImageAttestationsView: View {
                 .listStyle(.insetGrouped)
             }
         }
-        .navigationTitle("Attestations")
+        .navigationTitle(embedded ? "" : "Attestations")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if predicateTypes.count > 1 {

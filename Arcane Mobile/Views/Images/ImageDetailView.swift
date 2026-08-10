@@ -13,48 +13,59 @@ struct ImageDetailView: View {
     @State private var errorMessage: String?
     @State private var updateInfo: ImageUpdateResponse?
     @State private var isCheckingUpdate = false
-    @State private var vulnSummary: ScanSummary?
-    @State private var scannerStatus: ScannerStatus?
     @State private var usingContainers: [ContainerSummary] = []
+    @State private var selectedSection: DetailSection = .overview
 
-    var body: some View {
-        List {
-            Section {
-                imageHeader
-            }
+    private enum DetailSection: String, CaseIterable, Identifiable {
+        case overview, history, attestations, vulnerabilities
+        var id: String { rawValue }
+        var title: String { rawValue.capitalized }
 
-            if !usingContainers.isEmpty {
-                Section("Used By") {
-                    ForEach(usingContainers) { container in
-                        NavigationLink {
-                            ContainerDetailView(container: container, environmentID: environmentID)
-                        } label: {
-                            HStack(spacing: 10) {
-                                StatusIcon(status: container.status, isLive: container.isRunning)
-                                Text(container.displayName)
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let details {
-                if details.repoTags.count > 1 {
-                    let tags = details.repoTags
-                    Section("Tags") {
-                        ForEach(tags, id: \.self) { tag in
-                            Text(tag).font(.caption.monospaced())
-                        }
-                    }
-                }
-
-                imageConfigSection(details.config)
-                attestationsSection
-
-                vulnerabilitiesSection
+        var systemImage: String {
+            switch self {
+            case .overview: "info.circle.fill"
+            case .history: "square.stack.3d.down.right.fill"
+            case .attestations: "checkmark.seal.fill"
+            case .vulnerabilities: "shield.lefthalf.filled"
             }
         }
-        .listStyle(.insetGrouped)
+
+        var tint: Color {
+            switch self {
+            case .overview: .purple
+            case .history: .blue
+            case .attestations: .green
+            case .vulnerabilities: .orange
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            detailSectionTabs
+
+            switch selectedSection {
+            case .overview:
+                overview
+            case .history:
+                ImageHistoryView(imageID: image.id, environmentID: environmentID)
+            case .attestations:
+                ImageAttestationsView(
+                    imageID: image.id,
+                    imageDisplayName: image.displayName,
+                    environmentID: environmentID,
+                    embedded: true
+                )
+            case .vulnerabilities:
+                ImageVulnerabilitiesView(
+                    imageID: image.id,
+                    imageDisplayName: image.displayName,
+                    environmentID: environmentID,
+                    embedded: true
+                )
+            }
+        }
+        .motionAwareAnimation(Motion.state, value: selectedSection)
         .morphingActions(
             primary: ActionButtonItem(
                 id: "recheck",
@@ -95,6 +106,84 @@ struct ImageDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var detailSectionTabs: some View {
+        ScrollableTabBar(
+            selection: $selectedSection,
+            options: DetailSection.allCases.map {
+                ScrollableTabOption(
+                    $0,
+                    title: $0.title,
+                    systemImage: $0.systemImage,
+                    tint: $0.tint
+                )
+            },
+            accessibilityLabel: "Image detail sections"
+        )
+    }
+
+    private var overview: some View {
+        List {
+            Section {
+                imageHeader
+            }
+
+            if let details {
+                Section {
+                    AdaptiveMetadataGrid(items: metadataItems(details))
+                }
+
+                Section {
+                    LabeledContent("Image ID") { MonospacedValue(value: details.id, lineLimit: 1) }
+                    if !details.repoTags.isEmpty {
+                        LabeledContent("Tags") { MonospacedValue(value: details.repoTags.joined(separator: "\n")) }
+                    }
+                } header: {
+                    ResourceSectionHeader(title: "Identity", systemImage: "number")
+                }
+            }
+
+            if !usingContainers.isEmpty {
+                Section("Used By") {
+                    ForEach(usingContainers) { container in
+                        NavigationLink {
+                            ContainerDetailView(container: container, environmentID: environmentID)
+                        } label: {
+                            HStack(spacing: 10) {
+                                StatusIcon(status: container.status, isLive: container.isRunning)
+                                Text(container.displayName)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let details {
+                if details.repoTags.count > 1 {
+                    let tags = details.repoTags
+                    Section("Tags") {
+                        ForEach(tags, id: \.self) { tag in
+                            Text(tag).font(.caption.monospaced())
+                        }
+                    }
+                }
+
+                imageConfigSection(details.config)
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+
+    private func metadataItems(_ details: ImageDetailSummary) -> [ResourceMetadataItem] {
+        [
+            ResourceMetadataItem(label: "Size", value: details.size.byteString, systemImage: "internaldrive"),
+            ResourceMetadataItem(label: "Created", value: headerDate(details.created), systemImage: "calendar"),
+            ResourceMetadataItem(label: "Platform", value: "\(details.os)/\(details.architecture)", systemImage: "cpu"),
+            ResourceMetadataItem(label: "Author", value: nonEmptyResourceValue(details.author) ?? "Unknown", systemImage: "person"),
+            ResourceMetadataItem(label: "Docker", value: nonEmptyResourceValue(details.dockerVersion) ?? "Unknown", systemImage: "shippingbox"),
+            ResourceMetadataItem(label: "Consumers", value: String(usingContainers.count), systemImage: "cube.box")
+        ]
     }
 
     private var imageHeader: some View {
@@ -152,13 +241,13 @@ struct ImageDetailView: View {
     private func imageConfigSection(_ config: ImageDetailConfig) -> some View {
         Section("Image Config") {
             if let cmd = config.cmd, !cmd.isEmpty {
-                LabeledContent("CMD", value: cmd.joined(separator: " "))
+                LabeledContent("CMD") { MonospacedValue(value: cmd.joined(separator: " ")) }
             }
             if let ep = config.entrypoint, !ep.isEmpty {
-                LabeledContent("Entrypoint", value: ep.joined(separator: " "))
+                LabeledContent("Entrypoint") { MonospacedValue(value: ep.joined(separator: " ")) }
             }
             if let wd = config.workingDir, !wd.isEmpty {
-                LabeledContent("Working Dir", value: wd)
+                LabeledContent("Working Dir") { MonospacedValue(value: wd) }
             }
             if let user = config.user, !user.isEmpty {
                 LabeledContent("User", value: user)
@@ -185,44 +274,6 @@ struct ImageDetailView: View {
         return .upToDate
     }
 
-    @ViewBuilder
-    private var vulnerabilitiesSection: some View {
-        Section("Vulnerabilities") {
-            if let summary = vulnSummary {
-                NavigationLink(destination: ImageVulnerabilitiesView(imageID: image.id, imageDisplayName: image.displayName, environmentID: environmentID)) {
-                    SeveritySummaryRow(
-                        summary: summary.summary,
-                        scanTime: summary.scanTime,
-                        status: summary.status,
-                        error: summary.error
-                    )
-                }
-            } else if scannerStatus?.available == false {
-                Label("Scanner unavailable on host", systemImage: "shield.slash")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-            } else {
-                NavigationLink(destination: ImageVulnerabilitiesView(imageID: image.id, imageDisplayName: image.displayName, environmentID: environmentID)) {
-                    Label("Not scanned yet — open to scan", systemImage: "shield")
-                }
-            }
-        }
-    }
-
-    private var attestationsSection: some View {
-        Section("Supply Chain") {
-            NavigationLink(
-                destination: ImageAttestationsView(
-                    imageID: image.id,
-                    imageDisplayName: image.displayName,
-                    environmentID: environmentID
-                )
-            ) {
-                Label("Attestations", systemImage: "checkmark.seal")
-            }
-        }
-    }
-
     private func loadDetails(refresh: Bool = false) async {
         guard let client = manager.client, let cached = manager.cached else { return }
         if details == nil { isLoading = true }
@@ -237,15 +288,6 @@ struct ImageDetailView: View {
                 details = result
             }
         } catch {}
-        await loadVulnerabilitySummary()
-    }
-
-    private func loadVulnerabilitySummary() async {
-        guard let client = manager.client else { return }
-        async let statusTask: ScannerStatus? = try? client.rest.get(client.rest.environmentPath(environmentID, "vulnerabilities/scanner-status"))
-        async let summaryTask: ScanSummary? = try? client.rest.get(client.rest.environmentPath(environmentID, "images/\(image.id)/vulnerabilities/summary"))
-        scannerStatus = await statusTask
-        vulnSummary = await summaryTask
     }
 
     private func checkForUpdate() async {

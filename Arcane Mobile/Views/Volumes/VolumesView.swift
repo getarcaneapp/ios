@@ -670,6 +670,7 @@ struct VolumeDetailView: View {
     @State private var loadingSize = false
     @State private var errorMessage: String?
     @State private var route: VolumeRoute?
+    @State private var resolvedContainersByID: [String: ContainerSummary] = [:]
 
     private enum VolumeRoute: Hashable { case browse, backups }
 
@@ -691,26 +692,44 @@ struct VolumeDetailView: View {
             }
 
             Section("Details") {
-                LabeledContent("Driver", value: volume.driver)
-                LabeledContent("Scope", value: volume.scope.capitalized)
-                if !volume.mountpoint.isEmpty { LabeledContent("Mount Point", value: volume.mountpoint) }
-                LabeledContent("Created", value: volume.createdAt)
-                HStack {
-                    Text("Size")
-                    Spacer()
-                    if let sizeBytes {
-                        Text(sizeBytes.byteString).foregroundStyle(.secondary)
-                    } else if loadingSize {
-                        ProgressView().scaleEffect(0.7)
-                    } else {
-                        Text("—").foregroundStyle(.secondary)
-                    }
+                AdaptiveMetadataGrid(items: volumeMetadata)
+                if !volume.mountpoint.isEmpty {
+                    LabeledContent("Mount Point") { MonospacedValue(value: volume.mountpoint) }
                 }
                 NavigationLink("Browse Files") {
                     VolumeBrowserView(environmentID: environmentID, volumeName: volume.name)
                 }
                 NavigationLink("Backups") {
                     VolumeBackupsView(environmentID: environmentID, volumeName: volume.name)
+                }
+            }
+
+            if !volume.containers.isEmpty {
+                Section {
+                    ForEach(volume.containers, id: \.self) { containerID in
+                        if let container = resolvedContainer(for: containerID) {
+                            NavigationLink {
+                                ContainerDetailView(container: container, environmentID: environmentID)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    StatusIcon(status: container.status, isLive: container.isRunning)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(container.displayName)
+                                        Text(verbatim: containerID)
+                                            .font(.caption2.monospaced())
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                        } else {
+                            LabeledContent("Unavailable container") {
+                                MonospacedValue(value: containerID, lineLimit: 1)
+                            }
+                        }
+                    }
+                } header: {
+                    ResourceSectionHeader(title: "Consumers", systemImage: "cube.box", count: volume.containers.count)
                 }
             }
 
@@ -776,7 +795,11 @@ struct VolumeDetailView: View {
                 VolumeBackupsView(environmentID: environmentID, volumeName: volume.name)
             }
         }
-        .task { await loadSize() }
+        .task {
+            async let size: Void = loadSize()
+            async let consumers: Void = loadConsumers()
+            _ = await (size, consumers)
+        }
         .alert(
             "Error",
             isPresented: Binding(
@@ -787,6 +810,44 @@ struct VolumeDetailView: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    private var volumeMetadata: [ResourceMetadataItem] {
+        [
+            ResourceMetadataItem(label: "Driver", value: volume.driver, systemImage: "gearshape"),
+            ResourceMetadataItem(label: "Scope", value: volume.scope.capitalized, systemImage: "scope"),
+            ResourceMetadataItem(label: "Created", value: volume.createdAt, systemImage: "calendar"),
+            ResourceMetadataItem(label: "Size", value: sizeBytes?.byteString ?? (loadingSize ? "Loading" : "Unavailable"), systemImage: "internaldrive")
+        ]
+    }
+
+    private func resolvedContainer(for id: String) -> ContainerSummary? {
+        resolvedContainersByID[id] ?? resolvedContainersByID.values.first { container in
+            container.id.hasPrefix(id) || id.hasPrefix(container.id)
+        }
+    }
+
+    private func loadConsumers() async {
+        guard let client = manager.client, let cached = manager.cached, !volume.containers.isEmpty else { return }
+        do {
+            let path = client.rest.environmentPath(environmentID, "containers")
+            guard let containers = try await cached.getAllPages(
+                path: path,
+                elementType: ContainerSummary.self,
+                policy: .containersList,
+                envID: environmentID,
+                fetchPage: { start, limit in
+                    let response = try await client.containers.list(
+                        envID: environmentID,
+                        query: .init(start: start, limit: limit)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
+                }
+            ) else { return }
+            resolvedContainersByID = Dictionary(uniqueKeysWithValues: containers.map { ($0.id, $0) })
+        } catch {
+            // Preserve stable container IDs as fallbacks when resolution fails.
         }
     }
 

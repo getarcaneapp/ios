@@ -6,18 +6,19 @@ struct SettingsView: View {
     @State private var volumeSizeBytes: Int64? = nil
     @State private var loadingVolumeSize = false
     @State private var navPath = NavigationPath()
+    var showsSidebarButton = false
+    var onOpenSidebar: () -> Void = {}
+    var onNavigationRootChange: (Bool) -> Void = { _ in }
 
     var body: some View {
-        // Manager / NavTabsStore reads happen exactly once per body evaluation.
+        // Manager access-catalog reads happen exactly once per body evaluation.
         // They must stay inside body (not init or stored props) so @Observable
-        // access tracking re-fires on currentUser / serverCapabilities /
-        // pinned-tab changes. The sections below are Equatable value views, so
+        // access tracking re-fires on currentUser / serverCapabilities changes.
+        // The sections below are Equatable value views, so
         // SwiftUI skips their bodies whenever these inputs are unchanged.
         let availableTabs = Set(
-            AppTab.allCases.filter { $0.showsInNavigationMenus && manager.canAccess($0) }
+            AppTab.allCases.filter(manager.canAccess)
         )
-        let pinned = Set(NavTabsStore.shared.pinnedTabs)  // getter reads `version` for tracking
-
         NavigationStack(path: $navPath) {
             List {
                 Section {
@@ -31,20 +32,29 @@ struct SettingsView: View {
 
                 SettingsTabSection(
                     title: "Management",
-                    tabs: Self.visibleTabs(.management, pinned: pinned, availableTabs: availableTabs)
+                    tabs: Self.visibleTabs(.management, availableTabs: availableTabs),
+                    availableTabs: availableTabs
                 )
                 SettingsResourcesSection(
-                    tabs: Self.visibleTabs(.resources, pinned: pinned, availableTabs: availableTabs),
+                    tabs: Self.visibleTabs(.resources, availableTabs: availableTabs),
+                    availableTabs: availableTabs,
                     volumeSizeBytes: volumeSizeBytes,
                     loadingVolumeSize: loadingVolumeSize
                 )
                 SettingsTabSection(
                     title: "Swarm",
-                    tabs: Self.visibleTabs(.swarm, pinned: pinned, availableTabs: availableTabs)
+                    tabs: Self.visibleTabs(.swarm, availableTabs: availableTabs),
+                    availableTabs: availableTabs
                 )
                 SettingsTabSection(
                     title: "Administration",
-                    tabs: Self.visibleTabs(.administration, pinned: pinned, availableTabs: availableTabs)
+                    tabs: Self.visibleTabs(.administration, availableTabs: availableTabs),
+                    availableTabs: availableTabs
+                )
+                SettingsTabSection(
+                    title: "Settings",
+                    tabs: AppTab.settings.children.filter(availableTabs.contains),
+                    availableTabs: availableTabs
                 )
             }
             .listStyle(.insetGrouped)
@@ -66,6 +76,8 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .sidebarNavigationToolbar(isVisible: showsSidebarButton && navPath.isEmpty, action: onOpenSidebar)
+            .preservesSidebarNavigationBarMargins(isEnabled: showsSidebarButton)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink {
@@ -79,17 +91,20 @@ struct SettingsView: View {
             .task {
                 await loadVolumeSize()
             }
+            .onChange(of: navPath.isEmpty, initial: true) { _, isRoot in
+                onNavigationRootChange(isRoot)
+            }
         }
     }
 
     private static func visibleTabs(
         _ section: AppTab.Section,
-        pinned: Set<AppTab>,
         availableTabs: Set<AppTab>
     ) -> [AppTab] {
         AppTab.allCases.filter { tab in
             tab.section == section
-                && !pinned.contains(tab)
+                && tab.showsInNavigationMenus
+                && tab != .settings
                 && availableTabs.contains(tab)
         }
     }
@@ -127,18 +142,13 @@ struct SettingsView: View {
 struct SettingsTabSection: View, Equatable {
     let title: String
     let tabs: [AppTab]
+    let availableTabs: Set<AppTab>
 
     var body: some View {
         if !tabs.isEmpty {
             Section(title) {
                 ForEach(tabs) { tab in
-                    NavigationLink(value: tab) {
-                        SettingsRow(
-                            title: tab.title,
-                            systemImage: tab.systemImage,
-                            color: tab.iconColor
-                        )
-                    }
+                    SettingsCatalogRow(tab: tab, availableTabs: availableTabs)
                 }
             }
         }
@@ -148,6 +158,7 @@ struct SettingsTabSection: View, Equatable {
 /// Resources section: tab rows plus the volumes size badge.
 struct SettingsResourcesSection: View, Equatable {
     let tabs: [AppTab]
+    let availableTabs: Set<AppTab>
     let volumeSizeBytes: Int64?
     let loadingVolumeSize: Bool
 
@@ -155,30 +166,70 @@ struct SettingsResourcesSection: View, Equatable {
         if !tabs.isEmpty {
             Section("Resources") {
                 ForEach(tabs) { tab in
-                    NavigationLink(value: tab) {
-                        resourceRow(tab)
-                    }
+                    SettingsCatalogRow(
+                        tab: tab,
+                        availableTabs: availableTabs,
+                        trailingValue: tab == .volumes ? volumeTrailingValue : nil,
+                        showsProgress: tab == .volumes && loadingVolumeSize && volumeSizeBytes == nil
+                    )
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private func resourceRow(_ tab: AppTab) -> some View {
-        if tab == .volumes {
+    private var volumeTrailingValue: String? {
+        volumeSizeBytes?.byteString
+    }
+}
+
+/// One shared-catalog row. Parents remain selectable while the system
+/// disclosure control reveals their authorized child destinations.
+private struct SettingsCatalogRow: View, Equatable {
+    let tab: AppTab
+    let availableTabs: Set<AppTab>
+    var trailingValue: String?
+    var showsProgress = false
+
+    private var children: [AppTab] {
+        tab.children.filter(availableTabs.contains)
+    }
+
+    var body: some View {
+        if children.isEmpty {
+            destinationLink(tab, trailingValue: trailingValue, showsProgress: showsProgress)
+        } else {
+            DisclosureGroup {
+                ForEach(children) { child in
+                    destinationLink(child)
+                        .padding(.leading, 8)
+                }
+            } label: {
+                destinationLink(tab, trailingValue: trailingValue, showsProgress: showsProgress)
+            }
+        }
+    }
+
+    private func destinationLink(
+        _ destination: AppTab,
+        trailingValue: String? = nil,
+        showsProgress: Bool = false
+    ) -> some View {
+        NavigationLink(value: destination) {
             HStack {
-                SettingsRow(title: tab.title, systemImage: tab.systemImage, color: tab.iconColor)
+                SettingsRow(
+                    title: destination.title,
+                    systemImage: destination.systemImage,
+                    color: destination.iconColor
+                )
                 Spacer()
-                if let size = volumeSizeBytes {
-                    Text(size.byteString)
+                if let trailingValue {
+                    Text(trailingValue)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                } else if loadingVolumeSize {
+                } else if showsProgress {
                     ProgressView().scaleEffect(0.7)
                 }
             }
-        } else {
-            SettingsRow(title: tab.title, systemImage: tab.systemImage, color: tab.iconColor)
         }
     }
 }

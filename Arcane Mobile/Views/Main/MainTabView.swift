@@ -3,6 +3,11 @@ import UIKit
 import TipKit
 import Arcane
 
+private enum FloatingBottomBarMetrics {
+    static let rootContentClearance: CGFloat = 88
+    static let detailContentClearance: CGFloat = 108
+}
+
 struct MainTabView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -14,6 +19,7 @@ struct MainTabView: View {
     @State private var store = NavTabsStore.shared
     @State private var router = QuickActionRouter.shared
     @State private var morphStore = TabBarMorphStore.shared
+    @State private var fleetStore = FleetStore()
     @AppStorage("accentColorHex") private var accentColorHex = ""
     @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
 
@@ -56,18 +62,18 @@ struct MainTabView: View {
     /// destination the current user and backend can access is available as a
     /// top-level row. Nested destinations remain reachable from their parent.
     private var sidebarTabs: [AppTab] {
-        availableTabs.filter(\.showsInNavigationMenus)
+        availableTabs
     }
 
     private var allowedDestinationIDs: [String] {
         if sidebarNavigationEnabled {
             return sidebarTabs.map(\.id) + [
                 SidebarUtilityDestination.profile.rawValue,
-                SidebarUtilityDestination.settings.rawValue
+                SidebarUtilityDestination.appSettings.rawValue
             ]
         }
 
-        return visibleTabs.map(\.id) + [SidebarUtilityDestination.settings.rawValue]
+        return visibleTabs.map(\.id) + [AppTab.settings.id]
     }
 
     /// Tabs for the morphing bar: the visible set plus the locked Settings slot.
@@ -84,6 +90,13 @@ struct MainTabView: View {
             environmentSuffix = "global"
         }
         return "\(selectedTab)#\(sidebarResetToken)#\(environmentSuffix)"
+    }
+
+    private var dockContentClearance: CGFloat {
+        guard !sidebarNavigationEnabled else { return 0 }
+        return morphStore.isMorphed
+            ? FloatingBottomBarMetrics.detailContentClearance
+            : FloatingBottomBarMetrics.rootContentClearance
     }
 
     @ViewBuilder
@@ -225,12 +238,13 @@ struct MainTabView: View {
 
     var body: some View {
         navigationContent
+            .environment(fleetStore)
             // Keep the installer outside the dock/sidebar branch so toggling
             // sidebar mode updates the existing controller to zero before the
-            // dock hierarchy is removed. This prevents its 88pt clearance from
+            // dock hierarchy is removed. This prevents its bottom clearance from
             // leaking into sidebar pages as empty bottom space.
             .background {
-                BottomBarInsetInstaller(barTop: sidebarNavigationEnabled ? 0 : 88)
+                BottomBarInsetInstaller(barTop: dockContentClearance)
             }
             // Destructive-action confirmation for the morph bar's controls.
             // Mounted here (full-screen) rather than on the bar itself so the
@@ -367,7 +381,7 @@ struct MainTabView: View {
     private func ensureSelectedTabVisible() {
         let allowed = Set(allowedDestinationIDs)
         if !allowed.contains(selectedTab) {
-            selectedTab = allowedDestinationIDs.first ?? SidebarUtilityDestination.settings.rawValue
+            selectedTab = allowedDestinationIDs.first ?? AppTab.settings.id
         }
     }
 }
@@ -458,6 +472,12 @@ private struct SidebarDestinationContainer: View {
         morphStore.isMorphed || !morphStore.activeRootActions.isEmpty
     }
 
+    private var bottomActionClearance: CGFloat {
+        morphStore.isMorphed
+            ? FloatingBottomBarMetrics.detailContentClearance
+            : FloatingBottomBarMetrics.rootContentClearance
+    }
+
     var body: some View {
         GeometryReader { proxy in
             destination
@@ -466,7 +486,7 @@ private struct SidebarDestinationContainer: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     if showsBottomActions {
                         Color.clear
-                            .frame(height: max(0, 88 - proxy.safeAreaInsets.bottom))
+                            .frame(height: max(0, bottomActionClearance - proxy.safeAreaInsets.bottom))
                             .accessibilityHidden(true)
                     }
                 }
@@ -500,7 +520,7 @@ private struct SidebarDestinationContainer: View {
                 onNavigationRootChange(isRoot)
                 if isRoot { morphStore.clearTab(selectedID) }
             }
-        } else if selectedID == SidebarUtilityDestination.settings.rawValue {
+        } else if selectedID == SidebarUtilityDestination.appSettings.rawValue {
             NavigationStack(path: $path) {
                 AppSettingsView()
                     .sidebarNavigationToolbar(isVisible: showsMenuButton && path.isEmpty, action: openSidebar)
@@ -510,6 +530,12 @@ private struct SidebarDestinationContainer: View {
                 onNavigationRootChange(isRoot)
                 if isRoot { morphStore.clearTab(selectedID) }
             }
+        } else if selectedID == AppTab.settings.id {
+            SettingsView(
+                showsSidebarButton: showsMenuButton,
+                onOpenSidebar: openSidebar,
+                onNavigationRootChange: onNavigationRootChange
+            )
         } else if selectedTab == .dashboard {
             // Dashboard owns its NavigationStack and mounts the combined
             // menu-first toolbar directly on its root content.
@@ -659,7 +685,7 @@ private struct SidebarNavigationBarMarginInstaller: UIViewRepresentable {
     }
 }
 
-private extension View {
+extension View {
     func preservesSidebarNavigationBarMargins(isEnabled: Bool) -> some View {
         background {
             SidebarNavigationBarMarginInstaller(isEnabled: isEnabled)

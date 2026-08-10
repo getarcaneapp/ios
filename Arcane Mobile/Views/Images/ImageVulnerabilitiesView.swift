@@ -6,6 +6,7 @@ struct ImageVulnerabilitiesView: View {
     let imageID: String
     let imageDisplayName: String
     let environmentID: EnvironmentID
+    var embedded = false
 
     @State private var status: ScannerStatus?
     @State private var summary: ScanSummary?
@@ -42,7 +43,7 @@ struct ImageVulnerabilitiesView: View {
                 scanList
             }
         }
-        .navigationTitle("Vulnerabilities")
+        .navigationTitle(embedded ? "" : "Vulnerabilities")
         .navigationBarTitleDisplayMode(.inline)
         .task { await initialLoad() }
         .refreshable { await reload() }

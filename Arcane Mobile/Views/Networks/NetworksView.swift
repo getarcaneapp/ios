@@ -499,9 +499,8 @@ struct NetworkDetailView: View {
             }
 
             Section("Details") {
-                LabeledContent("ID", value: String(network.id.prefix(12)))
-                LabeledContent("Driver", value: network.driver)
-                LabeledContent("Scope", value: network.scope.capitalized)
+                AdaptiveMetadataGrid(items: networkMetadata)
+                LabeledContent("ID") { MonospacedValue(value: network.id, lineLimit: 1) }
                 if let inspect {
                     if inspect.`internal` { LabeledContent("Internal", value: "Yes") }
                     LabeledContent("Attachable", value: inspect.attachable ? "Yes" : "No")
@@ -510,6 +509,36 @@ struct NetworkDetailView: View {
                 }
                 NavigationLink("Topology") {
                     NetworkTopologyView(environmentID: environmentID)
+                }
+            }
+
+            if let inspect, !inspect.peerList.isEmpty {
+                Section {
+                    ForEach(inspect.peerList) { peer in
+                        LabeledContent(peer.name) { MonospacedValue(value: peer.address) }
+                    }
+                } header: {
+                    ResourceSectionHeader(title: "Peers", systemImage: "globe", count: inspect.peerList.count)
+                }
+            }
+
+            if let inspect, !inspect.serviceList.isEmpty {
+                Section {
+                    ForEach(inspect.serviceList) { service in
+                        VStack(alignment: .leading, spacing: 5) {
+                            MonospacedValue(value: service.name)
+                            if let vip = service.vip {
+                                LabeledContent("VIP") { MonospacedValue(value: vip) }
+                            }
+                            if !service.ports.isEmpty {
+                                LabeledContent("Ports") {
+                                    MonospacedValue(value: service.ports.joined(separator: ", "))
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    ResourceSectionHeader(title: "Services", systemImage: "square.stack.3d.up", count: inspect.serviceList.count)
                 }
             }
 
@@ -527,17 +556,17 @@ struct NetworkDetailView: View {
                         let config = item.config
                         if let subnet = config.subnet, !subnet.isEmpty {
                             LabeledContent("Subnet") {
-                                Text(subnet).font(.body.monospaced())
+                                MonospacedValue(value: subnet)
                             }
                         }
                         if let gw = config.gateway, !gw.isEmpty {
                             LabeledContent("Gateway") {
-                                Text(gw).font(.body.monospaced())
+                                MonospacedValue(value: gw)
                             }
                         }
                         if let range = config.ipRange, !range.isEmpty {
                             LabeledContent("IP Range") {
-                                Text(range).font(.body.monospaced())
+                                MonospacedValue(value: range)
                             }
                         }
                     }
@@ -545,6 +574,22 @@ struct NetworkDetailView: View {
             }
 
             connectedContainersSection
+
+            if let inspect, !inspect.labels.isEmpty {
+                Section("Labels") {
+                    ForEach(inspect.labels.keys.sorted(), id: \.self) { key in
+                        LabeledContent(key, value: inspect.labels[key] ?? "")
+                    }
+                }
+            }
+
+            if let inspect, !inspect.options.isEmpty {
+                Section("Options") {
+                    ForEach(inspect.options.keys.sorted(), id: \.self) { key in
+                        LabeledContent(key, value: inspect.options[key] ?? "")
+                    }
+                }
+            }
 
             if isLoadingInspect && inspect == nil {
                 Section {
@@ -602,6 +647,15 @@ struct NetworkDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var networkMetadata: [ResourceMetadataItem] {
+        [
+            ResourceMetadataItem(label: "Driver", value: network.driver, systemImage: "gearshape"),
+            ResourceMetadataItem(label: "Scope", value: network.scope.capitalized, systemImage: "scope"),
+            ResourceMetadataItem(label: "Created", value: network.created.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar"),
+            ResourceMetadataItem(label: "Status", value: network.inUse ? "In use" : "Unused", systemImage: "circle.fill", tint: network.inUse ? .green : .secondary)
+        ]
     }
 
     @ViewBuilder

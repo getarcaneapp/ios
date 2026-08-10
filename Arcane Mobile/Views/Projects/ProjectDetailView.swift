@@ -6,6 +6,7 @@ struct ProjectDetailView: View {
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
+    @SwiftUI.Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Namespace private var heroTransition
     let project: ProjectDetails
     let environmentID: EnvironmentID
@@ -14,12 +15,13 @@ struct ProjectDetailView: View {
     @State private var isLoading = false
     @State private var isActioning = false
     @State private var actionStatus: String?
-    @State private var showLogs = false
     @State private var showDeleteConfirm = false
     @State private var showDeployOptions = false
     @State private var errorMessage: String?
     @State private var runningActionID: String?
     @State private var projectContainers: [ContainerSummary] = []
+    @State private var runtimeServices: [RuntimeService] = []
+    @State private var workspaceSection: WorkspaceSection = .services
     @State private var servicesLoading = false
     @State private var fileBrowserFiles: [ProjectFile]?
     @State private var fileBrowserLoading = false
@@ -34,6 +36,26 @@ struct ProjectDetailView: View {
         let selection: ProjectFilesWorkspaceDestination
     }
 
+    private enum WorkspaceSection: String, CaseIterable, Identifiable {
+        case services, logs
+        var id: String { rawValue }
+        var title: String { rawValue.capitalized }
+
+        var systemImage: String {
+            switch self {
+            case .services: "shippingbox.fill"
+            case .logs: "text.alignleft"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .services: .blue
+            case .logs: .teal
+            }
+        }
+    }
+
     private var currentProject: ProjectDetails { refreshedProject ?? project }
     private var isRunning: Bool { currentProject.status.lowercased() == "running" }
     private var hasBuild: Bool { currentProject.hasBuildDirective == true }
@@ -41,7 +63,7 @@ struct ProjectDetailView: View {
     private var projectMutationVersion: Int { mutationStore.version(kind: .projects, envID: environmentID) }
 
     var body: some View {
-        servicesTab
+        workspace
         .morphingActions(
             primary: morphPrimary,
             inline: morphInline,
@@ -73,19 +95,6 @@ struct ProjectDetailView: View {
         .navigationDestination(for: ContainerSummary.self) { container in
             ContainerDetailView(container: container, environmentID: environmentID)
                 .navigationTransition(.zoom(sourceID: container.id, in: heroTransition))
-        }
-        .sheet(isPresented: $showLogs) {
-            LogsView(
-                title: currentProject.displayName,
-                logStream: { timestamps in
-                    manager.client?.boundedProjectLogs(
-                        envID: environmentID,
-                        projectID: project.id,
-                        timestamps: timestamps
-                    )
-                }
-            )
-            .presentationDragIndicator(.visible)
         }
         .sheet(item: $filesSheet) { request in
             NavigationStack {
@@ -121,6 +130,55 @@ struct ProjectDetailView: View {
         ))
     }
 
+    @ViewBuilder
+    private var workspace: some View {
+        if horizontalSizeClass == .regular {
+            HStack(spacing: 0) {
+                servicesTab
+                    .frame(maxWidth: .infinity)
+                Divider()
+                projectLogs
+                    .frame(maxWidth: .infinity)
+            }
+        } else {
+            VStack(spacing: 0) {
+                ScrollableTabBar(
+                    selection: $workspaceSection,
+                    options: WorkspaceSection.allCases.map {
+                        ScrollableTabOption(
+                            $0,
+                            title: $0.title,
+                            systemImage: $0.systemImage,
+                            tint: $0.tint
+                        )
+                    },
+                    accessibilityLabel: "Project workspace sections"
+                )
+
+                if workspaceSection == .services {
+                    servicesTab
+                } else {
+                    projectLogs
+                }
+            }
+            .motionAwareAnimation(Motion.state, value: workspaceSection)
+        }
+    }
+
+    private var projectLogs: some View {
+        LogsView(
+            title: currentProject.displayName,
+            logStream: { timestamps in
+                manager.client?.boundedProjectLogs(
+                    envID: environmentID,
+                    projectID: project.id,
+                    timestamps: timestamps
+                )
+            },
+            embedded: true
+        )
+    }
+
     private var servicesTab: some View {
         List {
             Section {
@@ -150,26 +208,33 @@ struct ProjectDetailView: View {
 
             projectFilesSection
 
-            Section("Services") {
-                if servicesLoading && projectContainers.isEmpty {
+            Section {
+                if servicesLoading && runtimeServices.isEmpty {
                     HStack(spacing: 10) {
                         ProgressView().scaleEffect(0.8)
                         Text("Loading services…")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                } else if projectContainers.isEmpty {
-                    Text("No running services")
+                } else if runtimeServices.isEmpty {
+                    Text("No services")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(projectContainers) { container in
-                        NavigationLink(value: container) {
-                            ContainerRow(container: container)
-                        }
-                        .matchedTransitionSource(id: container.id, in: heroTransition)
+                    ForEach(runtimeRows) { row in
+                        ProjectRuntimeServiceRow(
+                            service: row.service,
+                            container: row.container,
+                            environmentID: environmentID,
+                            transitionNamespace: heroTransition,
+                            onAction: { action in
+                                Task { await performServiceAction(action, row: row) }
+                            }
+                        )
                     }
                 }
+            } header: {
+                ResourceSectionHeader(title: "Services", systemImage: "cube.box", count: runtimeServices.count)
             }
         }
         .listStyle(.insetGrouped)
@@ -371,7 +436,7 @@ struct ProjectDetailView: View {
             })
         }
         items.append(ActionButtonItem(id: "logs", title: "Logs", systemImage: "doc.text.fill", tint: .secondary) {
-            showLogs = true
+            workspaceSection = .logs
         })
         if currentProject.isArchived {
             items.append(ActionButtonItem(id: "unarchive", title: "Unarchive Project", systemImage: "tray.and.arrow.up", tint: .accentColor) {
@@ -531,17 +596,18 @@ struct ProjectDetailView: View {
         }
     }
 
-    /// Loads the project's containers for the Services tab. The project `runtime`
-    /// endpoint is the authoritative source of which container IDs belong to this
-    /// project; we intersect that set with the (cache-warm) environment container
-    /// list so the rows reuse `ContainerRow` + the standard container navigation.
+    /// Loads runtime services first so Compose entries without containers remain
+    /// visible, then resolves their IDs against the complete cached container list
+    /// to support the standard container-detail navigation.
     private func loadServices(refresh: Bool = false) async {
         guard let client = manager.client, let cached = manager.cached else { return }
         if projectContainers.isEmpty { servicesLoading = true }
         defer { servicesLoading = false }
         do {
             let runtime = try await client.projects.runtime(envID: environmentID, projectID: project.id)
-            let ids = Set((runtime.runtimeServices ?? []).compactMap { $0.containerId }.filter { !$0.isEmpty })
+            let services = runtime.runtimeServices ?? []
+            runtimeServices = services
+            let ids = Set(services.compactMap { $0.containerId }.filter { !$0.isEmpty })
 
             let path = client.rest.environmentPath(environmentID, "containers")
             if let all: [ContainerSummary] = try await cached.getAllPages(
@@ -561,6 +627,153 @@ struct ProjectDetailView: View {
         } catch {
             // Non-fatal: the project info still renders; the Services section just
             // shows its empty state.
+        }
+    }
+
+    private struct RuntimeRow: Identifiable {
+        let service: RuntimeService
+        let container: ContainerSummary?
+        var id: String { service.name }
+    }
+
+    private var runtimeRows: [RuntimeRow] {
+        runtimeServices.map { service in
+            let container = service.containerId.flatMap { serviceID in
+                projectContainers.first { container in
+                    container.id == serviceID || container.id.hasPrefix(serviceID) || serviceID.hasPrefix(container.id)
+                }
+            }
+            return RuntimeRow(service: service, container: container)
+        }
+    }
+
+    private enum ServiceAction { case start, stop, restart, remove }
+
+    private struct ProjectRuntimeServiceRow: View {
+        @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+        @SwiftUI.Environment(\.colorScheme) private var colorScheme
+        let service: RuntimeService
+        let container: ContainerSummary?
+        let environmentID: EnvironmentID
+        let transitionNamespace: Namespace.ID
+        let onAction: (ServiceAction) -> Void
+        @State private var showRemoveConfirmation = false
+
+        private var isRunning: Bool {
+            container?.isRunning == true || service.status.lowercased() == "running"
+        }
+
+        private var iconURL: String? {
+            colorScheme == .dark
+                ? service.iconDarkUrl ?? service.iconUrl
+                : service.iconLightUrl ?? service.iconUrl
+        }
+
+        var body: some View {
+            HStack(spacing: 10) {
+                if let container {
+                    NavigationLink(value: container) {
+                        rowContent
+                    }
+                    .matchedTransitionSource(id: container.id, in: transitionNamespace)
+                } else {
+                    rowContent
+                }
+
+                if container != nil {
+                    Menu {
+                        if isRunning {
+                            if manager.permissions.has(Permission.Containers.stop, in: environmentID) {
+                                Button("Stop", systemImage: "stop.fill") { onAction(.stop) }
+                            }
+                        } else if manager.permissions.has(Permission.Containers.start, in: environmentID) {
+                            Button("Start", systemImage: "play.fill") { onAction(.start) }
+                        }
+                        if manager.permissions.has(Permission.Projects.restart, in: environmentID) {
+                            Button("Restart", systemImage: "arrow.clockwise") { onAction(.restart) }
+                        }
+                        if manager.permissions.has(Permission.Containers.delete, in: environmentID) {
+                            Button(role: .destructive) { showRemoveConfirmation = true } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Actions for \(service.name)")
+                }
+            }
+            .confirmationDialog(
+                "Remove \(service.name)?",
+                isPresented: $showRemoveConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Remove Container", role: .destructive) { onAction(.remove) }
+            } message: {
+                Text("This removes the service container. The Compose service remains in the project.")
+            }
+        }
+
+        private var rowContent: some View {
+            HStack(spacing: 10) {
+                CachedAsyncImage(url: iconURL, size: 36) {
+                    Image(systemName: "cube.box.fill")
+                        .foregroundStyle(isRunning ? .green : .secondary)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(service.name).font(.subheadline.weight(.semibold))
+                        StatusBadge(status: nonEmptyResourceValue(service.health) ?? service.status)
+                    }
+                    Text(nonEmptyResourceValue(service.image) ?? "Image unavailable")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if let ports = service.ports, !ports.isEmpty {
+                        Text(ports.joined(separator: ", "))
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    if container == nil {
+                        Text("Container not created")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .contentShape(.rect)
+        }
+
+    }
+
+    private func performServiceAction(_ action: ServiceAction, row: RuntimeRow) async {
+        guard let client = manager.client else { return }
+        do {
+            switch action {
+            case .start:
+                guard let id = row.container?.id else { return }
+                _ = try await client.containers.start(envID: environmentID, id: id)
+            case .stop:
+                guard let id = row.container?.id else { return }
+                _ = try await client.containers.stop(envID: environmentID, id: id)
+            case .restart:
+                _ = try await client.projects.restart(
+                    envID: environmentID,
+                    projectID: project.id,
+                    services: [row.service.name]
+                )
+            case .remove:
+                guard let id = row.container?.id else { return }
+                _ = try await client.containers.delete(envID: environmentID, id: id, force: true)
+            }
+            await invalidateProjectCaches()
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
+            await loadServices(refresh: true)
+            showToast(.success("Service action complete"))
+        } catch {
+            showToast(.error(friendlyErrorMessage(error)))
         }
     }
 

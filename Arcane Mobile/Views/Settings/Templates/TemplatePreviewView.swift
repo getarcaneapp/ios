@@ -38,15 +38,24 @@ struct TemplatePreviewView: View {
                 VStack(spacing: 0) {
                     TemplateContentSummary(template: displayedTemplate, content: content)
 
-                    Picker("File", selection: $selectedTab) {
-                        Text("compose.yml").tag(0)
-                        Text(".env").tag(1)
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-
-                    Divider()
+                    ScrollableTabBar(
+                        selection: $selectedTab,
+                        options: [
+                            ScrollableTabOption(
+                                0,
+                                title: "compose.yml",
+                                systemImage: "doc.text.fill",
+                                tint: .blue
+                            ),
+                            ScrollableTabOption(
+                                1,
+                                title: ".env",
+                                systemImage: "key.fill",
+                                tint: .orange
+                            )
+                        ],
+                        accessibilityLabel: "Template files"
+                    )
 
                     if selectedTab == 0 {
                         CodeEditorView(text: $composeContent, language: .yaml)

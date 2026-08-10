@@ -1,8 +1,9 @@
 import SwiftUI
+import Arcane
 
 nonisolated enum SidebarUtilityDestination: String {
     case profile
-    case settings
+    case appSettings = "app-settings"
 }
 
 /// Top-level navigation used by the optional sidebar mode.
@@ -11,6 +12,8 @@ nonisolated enum SidebarUtilityDestination: String {
 /// Settings so titles, symbols, permissions, and backend capability gates stay
 /// consistent across every navigation surface.
 struct AppSidebar: View {
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(FleetStore.self) private var fleet
     @ScaledMetric(relativeTo: .largeTitle) private var logoHeight: CGFloat = 34
     @ScaledMetric(relativeTo: .largeTitle) private var logoLineHeight: CGFloat = 41
 
@@ -23,8 +26,12 @@ struct AppSidebar: View {
     let selectedID: String
     let accentColor: Color
     let onSelect: (String) -> Void
+    @State private var expandedTabs: Set<AppTab> = [.images, .networks, .customize, .settings]
+    @State private var activityStore = ActivityCenterStore()
+    @State private var showUpgrade = false
 
     private let groups: [SidebarGroupData]
+    private let availableTabs: Set<AppTab>
 
     init(
         tabs: [AppTab],
@@ -35,29 +42,52 @@ struct AppSidebar: View {
         self.selectedID = selectedID
         self.accentColor = accentColor
         self.onSelect = onSelect
-        groups = [
-            SidebarGroupData(id: .management, title: "Management", tabs: tabs.filter { $0.section == .management }),
-            SidebarGroupData(id: .resources, title: "Resources", tabs: tabs.filter { $0.section == .resources }),
-            SidebarGroupData(id: .swarm, title: "Swarm", tabs: tabs.filter { $0.section == .swarm }),
-            SidebarGroupData(
-                id: .administration,
-                title: "Administration",
-                tabs: tabs.filter { $0.section == .administration }
-            )
-        ].filter { !$0.tabs.isEmpty }
+        let available = Set(tabs)
+        availableTabs = available
+        groups = AppTab.Section.allCases.compactMap { section in
+            let roots = AppTab.allCases.filter {
+                $0.section == section && $0.showsInNavigationMenus && available.contains($0)
+            }
+            guard !roots.isEmpty else { return nil }
+            return SidebarGroupData(id: section, title: section.title, tabs: roots)
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            Image("ArcaneSidebarLogo")
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: logoHeight, alignment: .leading)
-                .frame(height: logoLineHeight, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 16)
-                .accessibilityLabel("Arcane")
+            HStack(spacing: 12) {
+                Image("ArcaneSidebarLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: logoHeight, alignment: .leading)
+                    .accessibilityLabel("Arcane")
+
+                SidebarActivityButton(failureCount: failedActivityCount)
+            }
+            .frame(height: logoLineHeight)
+            .padding(.leading, 20)
+            .padding(.trailing, 14)
+            .padding(.top, 18)
+            .padding(.bottom, 16)
+
+            environmentSwitcher
+                .padding(.horizontal, 12)
+                .padding(.bottom, 10)
+
+            if showsUpgradeBanner {
+                Button {
+                    showUpgrade = true
+                } label: {
+                    Label("Arcane update available", systemImage: "arrow.up.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(.orange.opacity(0.12), in: .rect(cornerRadius: Radius.standard))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+            }
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 24) {
@@ -67,6 +97,8 @@ struct AppSidebar: View {
                             tabs: group.tabs,
                             selectedID: selectedID,
                             accentColor: accentColor,
+                            availableTabs: availableTabs,
+                            expandedTabs: $expandedTabs,
                             onSelect: onSelect
                         )
                     }
@@ -88,10 +120,10 @@ struct AppSidebar: View {
                 Spacer(minLength: 0)
 
                 SidebarSettingsButton(
-                    isSelected: selectedID == SidebarUtilityDestination.settings.rawValue,
+                    isSelected: selectedID == SidebarUtilityDestination.appSettings.rawValue,
                     accentColor: accentColor
                 ) {
-                    onSelect(SidebarUtilityDestination.settings.rawValue)
+                    onSelect(SidebarUtilityDestination.appSettings.rawValue)
                 }
             }
             .padding(.horizontal, 18)
@@ -100,6 +132,107 @@ struct AppSidebar: View {
         .background(Color(uiColor: .systemBackground))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Navigation")
+        .task(id: manager.client.map { ObjectIdentifier($0.transport) }) {
+            await fleet.load(manager: manager)
+            fleet.setVisible(true, consumer: "sidebar", supportsDashboardStream: manager.supportsActivities)
+            guard manager.supportsActivities else { return }
+            activityStore.configure(client: manager.client)
+            await activityStore.load()
+            activityStore.startStream()
+        }
+        .onDisappear {
+            activityStore.stopStream()
+            fleet.setVisible(false, consumer: "sidebar", supportsDashboardStream: manager.supportsActivities)
+        }
+        .sheet(isPresented: $showUpgrade) {
+            NavigationStack { SystemUpgradeView(environmentID: manager.activeEnvironmentID) }
+        }
+    }
+
+    private var environmentSwitcher: some View {
+        Menu {
+            ForEach(fleet.environments) { environment in
+                Button {
+                    manager.setActiveEnvironment(
+                        id: EnvironmentID(rawValue: environment.id),
+                        name: environment.name ?? environment.id
+                    )
+                } label: {
+                    if environment.id == manager.activeEnvironmentID.rawValue {
+                        Label(environment.name ?? environment.id, systemImage: "checkmark")
+                    } else {
+                        Text(environment.name ?? environment.id)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "server.rack")
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Environment")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(manager.activeEnvironmentName)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: Radius.standard))
+        }
+        .buttonStyle(.plain)
+        .disabled(fleet.environments.isEmpty)
+        .accessibilityLabel("Active environment: \(manager.activeEnvironmentName)")
+    }
+
+    private var failedActivityCount: Int {
+        activityStore.historyItems.reduce(0) { total, item in
+            switch item {
+            case .activity(let activity): return total + (activity.status == .failed ? 1 : 0)
+            case .batch(let batch): return total + batch.failedCount
+            }
+        }
+    }
+
+    private var showsUpgradeBanner: Bool {
+        guard manager.permissions.has(Permission.System.upgrade),
+              let state = fleet.dashboardStream.state(for: manager.activeEnvironmentID.rawValue),
+              state.hasLoaded else { return false }
+        return state.snapshot?.versionInfo?.updateAvailable == true
+    }
+}
+
+private struct SidebarActivityButton: View {
+    @State private var router = QuickActionRouter.shared
+    let failureCount: Int
+
+    var body: some View {
+        Button {
+            router.openActivityCenter()
+        } label: {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.title2.weight(.semibold))
+                .overlay(alignment: .topTrailing) {
+                    if failureCount > 0 {
+                        Text(failureCount > 99 ? "99+" : String(failureCount))
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(.red, in: .capsule)
+                            .offset(x: 9, y: -8)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .contentShape(.circle)
+        .accessibilityLabel(failureCount > 0 ? "Activity Center, \(failureCount) failures" : "Activity Center")
     }
 }
 
@@ -152,6 +285,8 @@ private struct SidebarGroup: View {
     let tabs: [AppTab]
     let selectedID: String
     let accentColor: Color
+    let availableTabs: Set<AppTab>
+    @Binding var expandedTabs: Set<AppTab>
     let onSelect: (String) -> Void
 
     var body: some View {
@@ -162,13 +297,41 @@ private struct SidebarGroup: View {
                 .padding(.horizontal, 8)
 
             ForEach(tabs) { tab in
-                SidebarDestinationButton(
-                    title: tab.title,
-                    systemImage: tab.systemImage,
-                    isSelected: selectedID == tab.id,
-                    accentColor: accentColor
-                ) {
-                    onSelect(tab.id)
+                let children = tab.children.filter(availableTabs.contains)
+                VStack(spacing: 4) {
+                    SidebarDestinationButton(
+                        title: tab.title,
+                        systemImage: tab.systemImage,
+                        isSelected: selectedID == tab.id,
+                        accentColor: accentColor,
+                        disclosureExpanded: children.isEmpty ? nil : expandedTabs.contains(tab),
+                        disclosureAction: children.isEmpty ? nil : {
+                            withAnimation(Motion.state) {
+                                if expandedTabs.contains(tab) {
+                                    expandedTabs.remove(tab)
+                                } else {
+                                    expandedTabs.insert(tab)
+                                }
+                            }
+                        }
+                    ) {
+                        onSelect(tab.id)
+                    }
+
+                    if expandedTabs.contains(tab) {
+                        ForEach(children) { child in
+                            SidebarDestinationButton(
+                                title: child.title,
+                                systemImage: child.systemImage,
+                                isSelected: selectedID == child.id,
+                                accentColor: accentColor,
+                                isChild: true
+                            ) {
+                                onSelect(child.id)
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
                 }
             }
         }
@@ -180,29 +343,48 @@ private struct SidebarDestinationButton: View {
     let systemImage: String
     let isSelected: Bool
     let accentColor: Color
+    var isChild = false
+    var disclosureExpanded: Bool?
+    var disclosureAction: (() -> Void)?
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Label {
-                Text(title)
-                    .font(.body.weight(isSelected ? .semibold : .regular))
-                    .foregroundStyle(.primary)
-            } icon: {
-                Image(systemName: systemImage)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(isSelected ? accentColor : .primary)
-                    .frame(width: 28)
+        HStack(spacing: 0) {
+            Button(action: action) {
+                Label {
+                    Text(title)
+                        .font(.body.weight(isSelected ? .semibold : .regular))
+                        .foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: systemImage)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(isSelected ? accentColor : .primary)
+                        .frame(width: 28)
+                }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(.rect)
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+            if let disclosureExpanded {
+                Button(action: { disclosureAction?() }) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(disclosureExpanded ? 90 : 0))
+                        .frame(width: 38, height: 44)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(disclosureExpanded ? "Collapse \(title)" : "Expand \(title)")
             }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .padding(.horizontal, 10)
-            .background(isSelected ? accentColor.opacity(0.12) : .clear)
-            .clipShape(.rect(cornerRadius: Radius.standard))
-            .contentShape(.rect)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .padding(.leading, isChild ? 32 : 10)
+        .padding(.trailing, disclosureExpanded == nil ? 10 : 2)
+        .background(isSelected ? accentColor.opacity(0.12) : .clear)
+        .clipShape(.rect(cornerRadius: Radius.standard))
     }
 }
 

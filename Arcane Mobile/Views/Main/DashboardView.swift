@@ -92,6 +92,7 @@ struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ImageUpdateCountStore.self) private var imageUpdateCountStore
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
+    @SwiftUI.Environment(FleetStore.self) private var fleet
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @Binding var selectedTab: String
     var showsSidebarButton = false
@@ -117,8 +118,6 @@ struct DashboardView: View {
     /// Pushes AllVulnerabilitiesView for the environment named in the route.
     @State private var vulnerabilityRoute: EnvironmentDetailRoute?
     @State private var showAPIKeys = false
-    @State private var streamStore = DashboardStreamStore()
-    @State private var statsHistory = SystemStatsHistoryStore()
     @State private var quickActionRouter = QuickActionRouter.shared
     /// Guards the scenePhase handler — hidden tab pages also receive scene
     /// phase changes and must not start their own stream.
@@ -130,7 +129,7 @@ struct DashboardView: View {
     /// "No Environments" empty state so a cancelled/failed first load can't
     /// flash it before data arrives.
     @State private var hasLoadedEnvironments = false
-    /// Bumped on pull-to-refresh so per-environment cards force-refetch their own
+    /// Bumped on pull-to-refresh so per-environment rows force-refetch their own
     /// `system/docker/info` — their `.task` does not re-run on a parent refresh.
     @State private var cardRefreshToken = 0
     @State private var showPruneSheet = false
@@ -144,6 +143,8 @@ struct DashboardView: View {
     private static let maxConcurrentPerEnvFetches = 4
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
+    private var streamStore: DashboardStreamStore { fleet.dashboardStream }
+    private var statsHistory: SystemStatsHistoryStore { fleet.statsHistory }
 
     private var canPrune: Bool {
         manager.permissions.has(Permission.System.prune, in: envID)
@@ -220,32 +221,6 @@ struct DashboardView: View {
                     }
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if manager.supportsActivities {
-                        Button { quickActionRouter.openActivityCenter() } label: {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .overlay(alignment: .topTrailing) {
-                                    if failedActivityBadgeCount > 0 {
-                                        Text(failedActivityBadgeText)
-                                            .font(.caption2.weight(.bold))
-                                            .foregroundStyle(.white)
-                                            .padding(.horizontal, failedActivityBadgeCount > 9 ? 5 : 4)
-                                            .frame(minWidth: 18, minHeight: 18)
-                                            .background(.red, in: .capsule)
-                                            .offset(x: 10, y: -8)
-                                            .accessibilityHidden(true)
-                                            .allowsHitTesting(false)
-                                    }
-                                }
-                        }
-                        .accessibilityLabel(activityButtonAccessibilityLabel)
-                    }
-                }
-
-                if #available(iOS 26, *), manager.supportsActivities, canPrune {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                }
-
                 if canPrune {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button { showPruneSheet = true } label: {
@@ -312,21 +287,21 @@ struct DashboardView: View {
                 environments = dashboardEnvironments(from: allEnvironments.isEmpty ? environments : allEnvironments)
                 // The active environment moved to the front, which can change
                 // which environments fall inside the history-stream cap.
-                statsHistory.reconcile(environments: environments)
+                fleet.prioritizeStats(activeEnvironmentID: manager.activeEnvironmentID.rawValue)
+            }
+            .onChange(of: fleet.environmentCatalogRevision, initial: true) {
+                updateEnvironmentCatalogFromStore()
+            }
+            .onChange(of: fleet.dockerInformationRevision, initial: true) {
+                updateFleetLiveStateFromStore()
             }
             // The aggregated dashboard stream covers all environments over one
             // connection. v1 servers never get the endpoint, so don't attempt
             // it there; v2 servers that predate it 404 once and the store
             // latches into silent legacy mode.
             .task(id: manager.client.map { ObjectIdentifier($0.transport) }) {
-                streamStore.configure(client: manager.client)
-                // Stats history streams work on both v1 and v2 servers (the
-                // per-env stats endpoint predates the aggregated dashboard
-                // stream), so it starts unconditionally.
-                statsHistory.configure(client: manager.client)
-                statsHistory.start()
-                guard manager.supportsActivities else { return }
-                streamStore.start()
+                fleet.configure(client: manager.client)
+                fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
             }
             .onAppear {
                 isDashboardVisible = true
@@ -335,8 +310,7 @@ struct DashboardView: View {
                 isDashboardVisible = false
                 liveCountsRefreshTask?.cancel()
                 liveCountsRefreshTask = nil
-                streamStore.stop()
-                statsHistory.stop()
+                fleet.setVisible(false, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
             }
             .onChange(of: streamStore.aggregate) { previous, current in
                 publishWidgetSnapshot()
@@ -349,14 +323,12 @@ struct DashboardView: View {
                 case .background:
                     liveCountsRefreshTask?.cancel()
                     liveCountsRefreshTask = nil
-                    statsHistory.stop()
-                    if manager.supportsActivities { streamStore.stop() }
+                    fleet.setVisible(false, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
                     publishWidgetSnapshot()
                     WidgetSnapshotPublisher.shared.flush()
                 case .active:
                     if isDashboardVisible {
-                        statsHistory.start()
-                        if manager.supportsActivities { streamStore.start() }
+                        fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
                     }
                 default:
                     break
@@ -367,7 +339,7 @@ struct DashboardView: View {
             // once the server is known to be v2.
             .onChange(of: manager.supportsActivities) { _, supported in
                 if supported, isDashboardVisible {
-                    streamStore.start()
+                    fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: true)
                 }
             }
         }
@@ -407,23 +379,25 @@ struct DashboardView: View {
                 streamFailedBanner
             }
 
-            ForEach(environments) { env in
-                let cardData = overview?.environments?.first(where: { $0.id == env.id })
-                EnvironmentDashboardCard(
-                    environment: env,
-                    cachedCard: cardData,
-                    streamState: streamStore.state(for: env.id),
-                    dockerInfo: environmentLiveStates[env.id]?.dockerInfo,
-                    isActive: env.id == manager.activeEnvironmentID.rawValue,
-                    series: statsHistory.series(for: env.id),
-                    onSelect: {
-                        detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
-                    },
-                    onRefresh: {
-                        await refreshEnvironmentDockerInfo(environmentID: env.id)
-                    }
-                )
-                .padding(.bottom, 4)
+            LazyVStack(spacing: 10) {
+                ForEach(environments) { env in
+                    EnvironmentFleetListRow(
+                        environment: env,
+                        dockerInfo: fleet.dockerInfoByEnvironmentID[env.id],
+                        actionItems: fleet.actionItemsByEnvironmentID[env.id],
+                        streamState: streamStore.state(for: env.id),
+                        series: statsHistory.series(for: env.id),
+                        isActive: env.id == manager.activeEnvironmentID.rawValue,
+                        onOpen: {
+                            detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
+                        },
+                        onRefresh: {
+                            await refreshEnvironmentDockerInfo(environmentID: env.id)
+                        }
+                    )
+                    .padding(.horizontal, 12)
+                    .dashboardEnvironmentOutline()
+                }
             }
 
             if environments.count < rawEnvironmentCount {
@@ -454,9 +428,8 @@ struct DashboardView: View {
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .dashboardCardBackground(cornerRadius: Radius.nested)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 10)
     }
 
     private var dashboardHeader: some View {
@@ -578,28 +551,10 @@ struct DashboardView: View {
         return items
     }
 
-    private var failedActivityBadgeCount: Int {
-        failedActivities.count
-    }
-
-    private var failedActivityBadgeText: String {
-        failedActivityBadgeCount > 9 ? "9+" : "\(failedActivityBadgeCount)"
-    }
-
-    private var activityButtonAccessibilityLabel: String {
-        guard failedActivityBadgeCount > 0 else { return "Activity Center" }
-        return "Activity Center, \(failedActivityBadgeCount) failed activit\(failedActivityBadgeCount == 1 ? "y" : "ies") need attention"
-    }
-
     private var skeletonView: some View {
         VStack(spacing: 16) {
-            Grid(horizontalSpacing: 10, verticalSpacing: 10) {
-                GridRow {
-                    skeletonTile
-                    skeletonTile
-                }
-                GridRow {
-                    skeletonTile
+            VStack(spacing: 2) {
+                ForEach(0..<4, id: \.self) { _ in
                     skeletonTile
                 }
             }
@@ -608,9 +563,12 @@ struct DashboardView: View {
                 SkeletonRect(width: 110, height: 14)
                     .padding(.horizontal, 4)
 
-                ForEach(0..<2, id: \.self) { _ in
-                    skeletonEnvironmentCard
-                        .padding(.bottom, 4)
+                VStack(spacing: 10) {
+                    ForEach(0..<2, id: \.self) { _ in
+                        skeletonEnvironmentRow
+                            .padding(.horizontal, 12)
+                            .dashboardEnvironmentOutline()
+                    }
                 }
             }
             .padding(.top, 8)
@@ -621,22 +579,18 @@ struct DashboardView: View {
     }
 
     private var skeletonTile: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                SkeletonCircle(size: 32)
-                Spacer()
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                SkeletonRect(width: 64, height: 18)
-                SkeletonRect(width: 80, height: 10, cornerRadius: 3)
-            }
+        HStack(spacing: 12) {
+            SkeletonCircle(size: 32)
+            SkeletonRect(width: 88, height: 14)
+            Spacer()
+            SkeletonRect(width: 48, height: 14)
+            SkeletonRect(width: 7, height: 12, cornerRadius: 2)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground(cornerRadius: Radius.card)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 10)
     }
 
-    private var skeletonEnvironmentCard: some View {
+    private var skeletonEnvironmentRow: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -648,31 +602,25 @@ struct DashboardView: View {
                     .frame(width: 56, height: 20)
             }
 
-            // Metric chip stand-ins — same fixed heights as the loaded
-            // sparkline/disk chips so the card frame doesn't jump on load.
-            HStack(spacing: 12) {
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
                 ForEach(0..<2, id: \.self) { _ in
-                    SkeletonRect(height: 69, cornerRadius: Radius.concentric(outer: Radius.card, inset: 10))
+                    GridRow {
+                        SkeletonRect(width: 100, height: 28, cornerRadius: Radius.nested)
+                        SkeletonRect(width: 100, height: 28, cornerRadius: Radius.nested)
+                    }
                 }
             }
-            SkeletonRect(height: 41, cornerRadius: Radius.concentric(outer: Radius.card, inset: 10))
 
-            Divider()
-
-            HStack(spacing: 12) {
+            HStack(spacing: 20) {
                 ForEach(0..<3, id: \.self) { _ in
-                    VStack(spacing: 4) {
-                        SkeletonRect(width: 30, height: 14)
-                        SkeletonRect(width: 50, height: 10, cornerRadius: 3)
-                    }
-                    .frame(maxWidth: .infinity)
+                    SkeletonCircle(size: 48)
                 }
+                Spacer(minLength: 0)
             }
         }
-        .padding(14)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Matches the loaded env card (Radius.card) so corners don't snap on load.
-        .dashboardCardBackground(cornerRadius: Radius.card)
     }
 
     private var overviewGrid: some View {
@@ -683,39 +631,33 @@ struct DashboardView: View {
         let total = liveCounts?.total
         let images = liveCounts?.images
 
-        return Grid(horizontalSpacing: 10, verticalSpacing: 10) {
-            GridRow {
-                DashboardGlassTile(
-                    title: "Updates",
-                    value: imageUpdatesTotal.map { "\($0)" } ?? "—",
-                    icon: "arrow.triangle.2.circlepath",
-                    tint: .green
-                ) { showImageUpdates = true }
-
-                DashboardGlassTile(
-                    title: "Containers",
-                    value: running.flatMap { running in
-                        total.map { "\(running) / \($0)" }
-                    } ?? "—",
-                    icon: "cube.box.fill",
-                    tint: .orange
-                ) { selectedTab = AppTab.containers.id }
-            }
-            GridRow {
-                DashboardGlassTile(
-                    title: "Images",
-                    value: images.map { "\($0)" } ?? "—",
-                    icon: "photo.stack.fill",
-                    tint: .purple
-                ) { selectedTab = AppTab.images.id }
-
-                DashboardGlassTile(
-                    title: "Volumes",
-                    value: volumesTotal.map { "\($0)" } ?? "—",
-                    icon: "externaldrive.fill",
-                    tint: .teal
-                ) { showVolumes = true }
-            }
+        return VStack(spacing: 2) {
+            DashboardGlassTile(
+                title: "Updates",
+                value: imageUpdatesTotal.map { "\($0)" } ?? "—",
+                icon: "arrow.triangle.2.circlepath",
+                tint: .green
+            ) { showImageUpdates = true }
+            DashboardGlassTile(
+                title: "Containers",
+                value: running.flatMap { running in
+                    total.map { "\(running) / \($0)" }
+                } ?? "—",
+                icon: "cube.box.fill",
+                tint: .orange
+            ) { selectedTab = AppTab.containers.id }
+            DashboardGlassTile(
+                title: "Images",
+                value: images.map { "\($0)" } ?? "—",
+                icon: "photo.stack.fill",
+                tint: .purple
+            ) { selectedTab = AppTab.images.id }
+            DashboardGlassTile(
+                title: "Volumes",
+                value: volumesTotal.map { "\($0)" } ?? "—",
+                icon: "externaldrive.fill",
+                tint: .teal
+            ) { showVolumes = true }
         }
     }
 
@@ -829,8 +771,6 @@ struct DashboardView: View {
         async let rawReq = client.transport.rawRequest(path, body: Optional<String>.none)
 
         let envResult = await envTask
-        let reqData = try? await rawReq
-
         if Task.isCancelled { return }
         let envs = envResult ?? []
         if envResult != nil { hasLoadedEnvironments = true }
@@ -838,22 +778,20 @@ struct DashboardView: View {
         allEnvironments = envs
         let visibleEnvironments = dashboardEnvironments(from: envs)
         environments = visibleEnvironments
-        // Cards and live sparklines follow the currently revealed batch, while
-        // the backend dashboard stream tracks the complete fleet.
-        streamStore.reconcile(environments: envs)
-        statsHistory.reconcile(environments: visibleEnvironments)
-        if let reqData {
-            overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
-                ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
-        }
-
-        // Primary content (environment cards + overview) is ready — dismiss the
-        // skeleton now so the dashboard renders immediately instead of waiting
-        // on the slower cross-environment Volumes/Updates aggregation below.
+        // The environment catalog is primary content. Publish it before
+        // awaiting any fleet aggregate: one unreachable environment can make
+        // those backend requests slow, but must not hold the whole Dashboard.
         // Those tiles show "—" until their totals arrive a moment later. The
         // `defer` still clears these on any early return as a safety net.
         hasLoadedOnce = true
         isLoading = false
+
+        let reqData = try? await rawReq
+        if Task.isCancelled { return }
+        if let reqData {
+            overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
+                ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
+        }
 
         // Overview totals represent every environment, independent of how many
         // cards have been revealed so far.
@@ -863,7 +801,6 @@ struct DashboardView: View {
         if refresh, streamStore.isStreaming {
             await streamStore.refresh()
         }
-        let liveStates = await loadLiveCounts(envs: enabledEnvironments)
         let volumes = await volumesResult
         let updates = await updatesResult
         if !Task.isCancelled {
@@ -871,8 +808,7 @@ struct DashboardView: View {
             volumeCountUnavailableEnvironmentIDs = volumes.unavailableEnvironmentIDs
             supplementalImageUpdatesTotal = updates.total
             updateCountUnavailableEnvironmentIDs = updates.unavailableEnvironmentIDs
-            environmentLiveStates = liveStates
-            liveCounts = aggregateLiveCounts(liveStates, expectedCount: enabledEnvironments.count)
+            updateFleetLiveStateFromStore()
             hasLoadedFleetCounts = true
         }
 
@@ -1098,53 +1034,9 @@ struct DashboardView: View {
     }
 
     private func refreshLiveCounts() async {
-        let enabledEnvironments = allEnvironments.filter(\.enabled)
-        let liveStates = await loadLiveCounts(envs: enabledEnvironments)
+        await fleet.refreshDockerInformation(client: manager.client)
         guard !Task.isCancelled else { return }
-        environmentLiveStates = liveStates
-        liveCounts = aggregateLiveCounts(liveStates, expectedCount: enabledEnvironments.count)
-        publishWidgetSnapshot()
-    }
-
-    /// Loads authoritative Docker counts for every enabled environment. The
-    /// per-environment results feed widgets; dashboard totals are only formed
-    /// when every environment is online.
-    private func loadLiveCounts(
-        envs: [Arcane.Environment]
-    ) async -> [String: DashboardEnvironmentLiveState] {
-        guard !Task.isCancelled, let client = manager.client, !envs.isEmpty else { return [:] }
-
-        return await withTaskGroup(
-            of: (String, DockerInfo?).self,
-            returning: [String: DashboardEnvironmentLiveState].self
-        ) { group in
-            var iterator = envs.makeIterator()
-            let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
-            for _ in 0..<initialBatch {
-                guard let env = iterator.next() else { break }
-                let envID = EnvironmentID(rawValue: env.id)
-                _ = group.addTaskUnlessCancelled {
-                    guard !Task.isCancelled else { return (env.id, nil) }
-                    return (env.id, await Self.fetchDockerInfo(client: client, envID: envID))
-                }
-            }
-            var states: [String: DashboardEnvironmentLiveState] = [:]
-            for await (id, info) in group {
-                guard !Task.isCancelled else {
-                    group.cancelAll()
-                    break
-                }
-                states[id] = info.map(DashboardEnvironmentLiveState.online) ?? .offline
-                if let env = iterator.next() {
-                    let envID = EnvironmentID(rawValue: env.id)
-                    _ = group.addTaskUnlessCancelled {
-                        guard !Task.isCancelled else { return (env.id, nil) }
-                        return (env.id, await Self.fetchDockerInfo(client: client, envID: envID))
-                    }
-                }
-            }
-            return states
-        }
+        updateFleetLiveStateFromStore()
     }
 
     private func aggregateLiveCounts(
@@ -1164,50 +1056,48 @@ struct DashboardView: View {
     }
 
     private func refreshEnvironmentDockerInfo(environmentID: String) async {
-        guard let client = manager.client else { return }
-        let info = await Self.fetchDockerInfo(
-            client: client,
-            envID: EnvironmentID(rawValue: environmentID)
-        )
-        environmentLiveStates[environmentID] = info.map(DashboardEnvironmentLiveState.online) ?? .offline
-        let enabledCount = allEnvironments.count(where: \.enabled)
-        liveCounts = aggregateLiveCounts(environmentLiveStates, expectedCount: enabledCount)
-        publishWidgetSnapshot()
+        await fleet.refreshDockerInformation(for: environmentID, client: manager.client)
+        updateFleetLiveStateFromStore()
     }
 
-    private static func fetchDockerInfo(
-        client: ArcaneClient,
-        envID: EnvironmentID
-    ) async -> DockerInfo? {
-        try? await RemoteDataLimits.boundedDockerInfo(client: client, environmentID: envID)
+    private func updateFleetLiveStateFromStore() {
+        let enabledEnvironments = allEnvironments.filter(\.enabled)
+        environmentLiveStates = enabledEnvironments.reduce(into: [:]) { states, environment in
+            if let info = fleet.dockerInfoByEnvironmentID[environment.id] {
+                states[environment.id] = .online(info)
+            } else {
+                states[environment.id] = .offline
+            }
+        }
+        liveCounts = aggregateLiveCounts(
+            environmentLiveStates,
+            expectedCount: enabledEnvironments.count
+        )
+        publishWidgetSnapshot()
     }
 
     /// Nil means the fetch failed (or no client yet) — distinct from a
     /// successful load of zero environments.
     private func loadEnvironmentsCached(refresh: Bool) async -> [Arcane.Environment]? {
-        guard let cached = manager.cached, let client = manager.client else { return nil }
-        return try? await cached.getAllPagesGlobal(
-            path: "environments", elementType: Arcane.Environment.self,
-            policy: .environments, refresh: refresh,
-            onFresh: { fresh in
-                hasLoadedEnvironments = true
-                rawEnvironmentCount = fresh.count
-                allEnvironments = fresh
-                environments = dashboardEnvironments(from: fresh)
-                streamStore.reconcile(environments: fresh)
-                statsHistory.reconcile(environments: environments)
-            },
-            fetchPage: { start, limit in
-                let response = try await client.environments.list(
-                    query: .init(
-                        start: start,
-                        limit: limit,
-                        sortOrder: .ascending
-                    )
-                )
-                return ResourcePage(items: response.data, pagination: response.pagination)
-            }
-        )
+        await fleet.load(manager: manager, refresh: refresh)
+        guard fleet.hasLoaded else { return nil }
+        let fresh = fleet.environments
+        hasLoadedEnvironments = true
+        rawEnvironmentCount = fresh.count
+        allEnvironments = fresh
+        environments = dashboardEnvironments(from: fresh)
+        return fresh
+    }
+
+    private func updateEnvironmentCatalogFromStore() {
+        guard fleet.hasLoaded else { return }
+        let fresh = fleet.environments
+        hasLoadedEnvironments = true
+        rawEnvironmentCount = fresh.count
+        allEnvironments = fresh
+        environments = dashboardEnvironments(from: fresh)
+        hasLoadedOnce = true
+        isLoading = false
     }
 
     private func dashboardEnvironments(from envs: [Arcane.Environment]) -> [Arcane.Environment] {
@@ -1227,7 +1117,6 @@ struct DashboardView: View {
             allEnvironments.count
         )
         environments = dashboardEnvironments(from: allEnvironments)
-        statsHistory.reconcile(environments: environments)
     }
 }
 
@@ -1288,45 +1177,50 @@ struct DashboardGlassTile: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    ZStack {
-                        Circle()
-                            .fill(tint)
-                            .frame(width: 32, height: 32)
-                        Image(systemName: icon)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.secondary.opacity(0.5))
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(tint)
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(value)
-                        .font(.system(.title3, design: .rounded).weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .minimumScaleFactor(0.8)
-                        .lineLimit(1)
-                        .contentTransition(.numericText())
-                        .motionAwareAnimation(Motion.state, value: value)
-                    Text(title)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Text(value)
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .minimumScaleFactor(0.8)
+                    .lineLimit(1)
+                    .contentTransition(.numericText())
+                    .motionAwareAnimation(Motion.state, value: value)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary.opacity(0.5))
             }
-            .padding(12)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .dashboardCardBackground(cornerRadius: Radius.card)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(value)")
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens \(title)")
+    }
+}
+
+private extension View {
+    func dashboardEnvironmentOutline() -> some View {
+        overlay {
+            RoundedRectangle(cornerRadius: Radius.standard, style: .continuous)
+                .strokeBorder(Color(uiColor: .separator), lineWidth: 1)
+                .allowsHitTesting(false)
+        }
     }
 }
 

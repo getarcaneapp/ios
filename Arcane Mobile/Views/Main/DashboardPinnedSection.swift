@@ -77,20 +77,14 @@ struct DashboardPinnedSection: View {
                             .scaleEffect(0.75)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-                .padding(.bottom, 4)
+                .padding(.horizontal, 4)
+                .padding(.bottom, 6)
 
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                ForEach(items) { item in
                     row(item)
-                    if index < items.count - 1 {
-                        Divider().padding(.leading, 54)
-                    }
                 }
             }
-            .padding(.bottom, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .dashboardCardBackground(cornerRadius: Radius.card)
             .motionAwareAnimation(Motion.reflow, value: items.map(\.id))
         }
     }
@@ -126,8 +120,8 @@ struct DashboardPinnedSection: View {
             .disabled(runningID != nil)
             .accessibilityLabel(item.actionTitle)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 10)
     }
 
 }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// One row of the dashboard's "Needs Attention" card. Built by DashboardView
+/// One row of the dashboard's "Needs Attention" section. Built by DashboardView
 /// from data it already holds (stream states, folded action items, failed
 /// activities) — this view stays dumb and does no fetching.
 struct NeedsAttentionItem: Identifiable {
@@ -24,7 +24,7 @@ struct NeedsAttentionItem: Identifiable {
     let action: () -> Void
 }
 
-/// Compact triage card between the overview tiles and the environment cards.
+/// Compact triage section between the overview summary and environment rows.
 /// Renders only when non-empty — there is deliberately no green "all clear"
 /// state; absence is the all-clear.
 struct NeedsAttentionSection: View {
@@ -35,20 +35,14 @@ struct NeedsAttentionSection: View {
             Text("Needs Attention")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-                .padding(.bottom, 4)
+                .padding(.horizontal, 4)
+                .padding(.bottom, 6)
 
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            ForEach(items) { item in
                 row(item)
-                if index < items.count - 1 {
-                    Divider().padding(.leading, 54)
-                }
             }
         }
-        .padding(.bottom, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground(cornerRadius: Radius.card)
     }
 
     private func row(_ item: NeedsAttentionItem) -> some View {
@@ -77,8 +71,8 @@ struct NeedsAttentionSection: View {
                     .font(.caption2.bold())
                     .foregroundStyle(.secondary.opacity(0.5))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 10)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

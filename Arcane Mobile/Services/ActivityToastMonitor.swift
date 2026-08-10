@@ -12,12 +12,14 @@ final class ActivityToastMonitor {
     private var rememberedActivityKeys: Set<String> = []
     private var rememberedActivityOrder: [String] = []
     private var notifiedActivityKeys: Set<String> = []
+    private var initializedSnapshotEnvironmentIDs: Set<String> = []
 
     func reset() {
         transportIdentity = nil
         rememberedActivityKeys.removeAll()
         rememberedActivityOrder.removeAll()
         notifiedActivityKeys.removeAll()
+        initializedSnapshotEnvironmentIDs.removeAll()
     }
 
     func consume(client: ArcaneClient, scope: ActivityToastScope) async {
@@ -27,13 +29,14 @@ final class ActivityToastMonitor {
             rememberedActivityKeys.removeAll()
             rememberedActivityOrder.removeAll()
             notifiedActivityKeys.removeAll()
+            initializedSnapshotEnvironmentIDs.removeAll()
         }
 
         var reconnectAttempt = 0
         while !Task.isCancelled {
             var receivedEvent = false
             do {
-                for try await event in client.activities.stream(limit: 1) {
+                for try await event in client.activities.stream(limit: 50) {
                     guard !Task.isCancelled else { return }
                     receivedEvent = true
                     handle(event, scope: scope)
@@ -57,10 +60,37 @@ final class ActivityToastMonitor {
     }
 
     private func handle(_ event: ActivityStreamEvent, scope: ActivityToastScope) {
-        guard event.type == .activity, let activity = event.activity else { return }
+        switch event.type {
+        case .activity:
+            guard let activity = event.activity else { return }
+            handle(
+                activity,
+                environmentID: event.environmentID ?? activity.sourceEnvironmentKey,
+                scope: scope
+            )
+        case .snapshot:
+            handleSnapshot(event, scope: scope)
+        default:
+            break
+        }
+    }
 
-        let environmentID = event.environmentID ?? activity.sourceEnvironmentKey
-        let key = "\(environmentID)#\(activity.id)"
+    private func handleSnapshot(_ event: ActivityStreamEvent, scope: ActivityToastScope) {
+        let environmentID = event.environmentID ?? "0"
+        let isInitialSnapshot = initializedSnapshotEnvironmentIDs.insert(environmentID).inserted
+
+        for activity in event.activities {
+            let sourceEnvironmentID = event.environmentID ?? activity.sourceEnvironmentKey
+            if isInitialSnapshot {
+                _ = remember(key(for: activity, environmentID: sourceEnvironmentID))
+            } else {
+                handle(activity, environmentID: sourceEnvironmentID, scope: scope)
+            }
+        }
+    }
+
+    private func handle(_ activity: Activity, environmentID: String, scope: ActivityToastScope) {
+        let key = key(for: activity, environmentID: environmentID)
         let progress = activity.progress.map { Double($0) / 100 }
 
         switch activity.status {
@@ -82,6 +112,10 @@ final class ActivityToastMonitor {
         case .unknown:
             break
         }
+    }
+
+    private func key(for activity: Activity, environmentID: String) -> String {
+        "\(environmentID)#\(activity.id)"
     }
 
     private func remember(_ key: String) -> Bool {
