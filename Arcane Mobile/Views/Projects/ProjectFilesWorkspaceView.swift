@@ -468,24 +468,36 @@ struct ProjectFilesWorkspaceView: View {
             hasLoaded = true
         }
         do {
-            async let composeDetails = client.projects.compose(envID: environmentID, projectID: projectID)
-            async let filesDetails = client.projects.files(envID: environmentID, projectID: projectID)
-            let (compose, files) = try await (composeDetails, filesDetails)
+            let compose = try await client.projects.compose(
+                envID: environmentID,
+                projectID: projectID
+            )
             projectName = compose.displayName
-            composeFileName = compose.composeFileName?.isEmpty == false ? (compose.composeFileName ?? "compose.yml") : "compose.yml"
+            composeFileName = compose.composeFileName?.isEmpty == false
+                ? (compose.composeFileName ?? "compose.yml")
+                : "compose.yml"
             composeContent = compose.composeContent ?? ""
             envContent = compose.envContent ?? ""
             originalComposeContent = composeContent
             originalEnvContent = envContent
-            projectFiles = files.projectFiles ?? compose.projectFiles ?? []
-            fileTreeRevision = files.fileTreeRevision ?? compose.fileTreeRevision
+            readOnlyReason = compose.isArchived ? "Archived projects are read-only." :
+                (compose.gitOpsManagedBy != nil ? "GitOps-managed project files are read-only." : nil)
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
+
+        do {
+            let workspace = try await client.projects.workspace(
+                envID: environmentID,
+                projectID: projectID
+            )
+            projectFiles = workspace.files
+            fileTreeRevision = workspace.fileTreeRevision
             stagedChanges = []
             managedFileContents = [:]
             originalManagedFileContents = [:]
             managedFileLoadErrors = [:]
             managedFileLoading = []
-            readOnlyReason = compose.isArchived ? "Archived projects are read-only." :
-                (compose.gitOpsManagedBy != nil ? "GitOps-managed project files are read-only." : nil)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -499,7 +511,11 @@ struct ProjectFilesWorkspaceView: View {
         managedFileLoadErrors[path] = nil
         defer { managedFileLoading.remove(path) }
         do {
-            let file = try await client.projects.file(envID: environmentID, projectID: projectID, relativePath: path)
+            let file = try await client.projects.workspaceFile(
+                envID: environmentID,
+                projectID: projectID,
+                relativePath: path
+            )
             let content = file.content ?? ""
             managedFileContents[path] = content
             originalManagedFileContents[path] = content
@@ -522,16 +538,27 @@ struct ProjectFilesWorkspaceView: View {
         defer { isSaving = false }
 
         let fileChanges = buildProjectFileSaveChanges()
-        let request = UpdateProject(
-            name: nil,
-            composeContent: composeContent != originalComposeContent ? composeContent : nil,
-            envContent: envContent != originalEnvContent ? envContent : nil,
-            fileTreeRevision: fileChanges.isEmpty ? nil : fileTreeRevision,
-            fileChanges: fileChanges.isEmpty ? nil : fileChanges
-        )
-
         do {
-            _ = try await client.projects.update(envID: environmentID, projectID: projectID, request: request)
+            if hasCoreChanges {
+                let request = UpdateProject(
+                    name: nil,
+                    composeContent: composeContent != originalComposeContent ? composeContent : nil,
+                    envContent: envContent != originalEnvContent ? envContent : nil
+                )
+                _ = try await client.projects.update(
+                    envID: environmentID,
+                    projectID: projectID,
+                    request: request
+                )
+            }
+            if !fileChanges.isEmpty {
+                _ = try await client.projects.updateWorkspace(
+                    envID: environmentID,
+                    projectID: projectID,
+                    fileTreeRevision: fileTreeRevision,
+                    changes: fileChanges
+                )
+            }
             showToast(.success("Saved"))
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
@@ -1130,7 +1157,7 @@ enum ProjectFileWorkspaceHelpers {
                 name: file.name.isEmpty ? basename(file.relativePath) : file.name,
                 isDirectory: file.isDirectory,
                 size: file.size,
-                protected: file.protected,
+                protected: file.protected ?? (file.editable == false),
                 pending: false,
                 depth: depth(file.relativePath)
             ))

@@ -54,38 +54,29 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.6.2",
             new: [
-                .init("Passkey sign-in and multi-factor authentication."),
-                .init("Notification provider configuration parity."),
+                .init("Reliable passkey sign-in and multi-factor authentication."),
+                .init("Notification provider configuration with native controls and floating save actions."),
                 .init("Configurable project deploy options."),
                 .init("Repository names for container registries."),
-                .init("Compact environment list rows on Dashboard."),
                 .init("Image layer history.")
             ],
             changed: [
                 .init("Removed Arcane Assistant."),
-                .init("Native controls throughout forms, notification providers, actions, and modal sheets."),
-                .init("Floating circular Liquid Glass save actions for notification providers."),
-                .init("Arcane wordmark in sidebar navigation."),
-                .init("Activity Center access beside the sidebar wordmark."),
-                .init("Dashboard environments use outline-only rows without separators."),
-                .init("Dashboard summaries and resource sections use a flat grouped-row layout."),
+                .init("Native controls across forms, actions, and modal sheets."),
+                .init("Arcane wordmark and Activity Center access in sidebar navigation."),
+                .init("Dashboard uses a flat fleet layout with compact environment rows, smooth well-spaced gauges, grouped sections, and separate prune controls."),
                 .init("Dashboard is the single environment fleet destination."),
-                .init("Sidebar navigation and resource details match Arcane’s consolidated layout."),
+                .init("Sidebar navigation, resource details, and page actions match Arcane’s consolidated layout."),
                 .init("Project services and logs share one workspace.")
             ],
             fixed: [
-                .init("Home Screen widgets retain their data after the device locks."),
-                .init("Passkey sign-in completes through the server reliably."),
+                .init("Home Screen widgets retain data after the device locks."),
                 .init("Activity notifications appear for remote environment updates."),
-                .init("Unavailable environments no longer block the rest of the fleet."),
-                .init("Environment rows appear reliably on initial launch."),
-                .init("Environment update and vulnerability counts match dashboard action items."),
-                .init("Dashboard resource rings transition smoothly between samples."),
+                .init("Dashboard environments load independently with accurate update and vulnerability counts."),
                 .init("Detail content stays clear of the floating tab bar."),
                 .init("Page tab bars scroll without truncating labels."),
-                .init("Separate Dashboard layout and prune toolbar controls."),
-                .init("Reliable taps on buttons and switches in sidebar navigation."),
-                .init("Separate sidebar and page actions in the top navigation bar.")
+                .init("Sidebar buttons and switches respond reliably."),
+                .init("Project compose and custom files open on current Arcane servers.")
             ]
         ),
         ReleaseNote(

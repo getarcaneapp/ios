@@ -587,8 +587,8 @@ struct ProjectDetailView: View {
         fileBrowserErrorMessage = nil
         defer { fileBrowserLoading = false }
         do {
-            let files = try await client.projects.files(envID: environmentID, projectID: project.id)
-            fileBrowserFiles = files.projectFiles ?? []
+            let workspace = try await client.projects.workspace(envID: environmentID, projectID: project.id)
+            fileBrowserFiles = workspace.files
         } catch {
             if refresh || fileBrowserFiles == nil {
                 fileBrowserErrorMessage = friendlyErrorMessage(error)

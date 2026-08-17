@@ -30,7 +30,8 @@ struct EnvironmentFleetListRow: View {
                 regularRow
             }
         }
-        .padding(.vertical, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
         .sheet(isPresented: $showPrune) { SystemPruneView(environmentID: environmentID) }
         .sheet(isPresented: $showUpgrade) {
             NavigationStack { SystemUpgradeView(environmentID: environmentID) }
