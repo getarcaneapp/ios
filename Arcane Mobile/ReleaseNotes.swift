@@ -74,6 +74,7 @@ enum ReleaseNotes {
                 .init("Activity notifications appear for remote environment updates."),
                 .init("Dashboard environments load independently with accurate update and vulnerability counts."),
                 .init("Detail content stays clear of the floating tab bar."),
+                .init("Tab bar Settings hides pinned pages and opens every available destination."),
                 .init("Page tab bars scroll without truncating labels."),
                 .init("Sidebar buttons and switches respond reliably."),
                 .init("Project compose and custom files open on current Arcane servers.")

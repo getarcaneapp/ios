@@ -111,7 +111,7 @@ struct MainTabView: View {
                 }
             }
             Tab("Settings", systemImage: "gearshape.fill", value: "settings") {
-                SettingsView()
+                SettingsView(excludedTabs: Set(visibleTabs))
                     .environment(\.currentTabID, "settings")
                     .toolbar(.hidden, for: .tabBar)
             }

@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var volumeSizeBytes: Int64? = nil
     @State private var loadingVolumeSize = false
     @State private var navPath = NavigationPath()
+    var excludedTabs: Set<AppTab> = []
     var showsSidebarButton = false
     var onOpenSidebar: () -> Void = {}
     var onNavigationRootChange: (Bool) -> Void = { _ in }
@@ -14,8 +15,6 @@ struct SettingsView: View {
         // Manager access-catalog reads happen exactly once per body evaluation.
         // They must stay inside body (not init or stored props) so @Observable
         // access tracking re-fires on currentUser / serverCapabilities changes.
-        // The sections below are Equatable value views, so
-        // SwiftUI skips their bodies whenever these inputs are unchanged.
         let availableTabs = Set(
             AppTab.allCases.filter(manager.canAccess)
         )
@@ -32,29 +31,50 @@ struct SettingsView: View {
 
                 SettingsTabSection(
                     title: "Management",
-                    tabs: Self.visibleTabs(.management, availableTabs: availableTabs),
-                    availableTabs: availableTabs
+                    tabs: Self.visibleTabs(
+                        .management,
+                        excludedTabs: excludedTabs,
+                        availableTabs: availableTabs
+                    ),
+                    availableTabs: availableTabs,
+                    navPath: $navPath
                 )
                 SettingsResourcesSection(
-                    tabs: Self.visibleTabs(.resources, availableTabs: availableTabs),
+                    tabs: Self.visibleTabs(
+                        .resources,
+                        excludedTabs: excludedTabs,
+                        availableTabs: availableTabs
+                    ),
                     availableTabs: availableTabs,
                     volumeSizeBytes: volumeSizeBytes,
-                    loadingVolumeSize: loadingVolumeSize
+                    loadingVolumeSize: loadingVolumeSize,
+                    navPath: $navPath
                 )
                 SettingsTabSection(
                     title: "Swarm",
-                    tabs: Self.visibleTabs(.swarm, availableTabs: availableTabs),
-                    availableTabs: availableTabs
+                    tabs: Self.visibleTabs(
+                        .swarm,
+                        excludedTabs: excludedTabs,
+                        availableTabs: availableTabs
+                    ),
+                    availableTabs: availableTabs,
+                    navPath: $navPath
                 )
                 SettingsTabSection(
                     title: "Administration",
-                    tabs: Self.visibleTabs(.administration, availableTabs: availableTabs),
-                    availableTabs: availableTabs
+                    tabs: Self.visibleTabs(
+                        .administration,
+                        excludedTabs: excludedTabs,
+                        availableTabs: availableTabs
+                    ),
+                    availableTabs: availableTabs,
+                    navPath: $navPath
                 )
                 SettingsTabSection(
                     title: "Settings",
                     tabs: AppTab.settings.children.filter(availableTabs.contains),
-                    availableTabs: availableTabs
+                    availableTabs: availableTabs,
+                    navPath: $navPath
                 )
             }
             .listStyle(.insetGrouped)
@@ -99,6 +119,7 @@ struct SettingsView: View {
 
     private static func visibleTabs(
         _ section: AppTab.Section,
+        excludedTabs: Set<AppTab>,
         availableTabs: Set<AppTab>
     ) -> [AppTab] {
         AppTab.allCases.filter { tab in
@@ -106,6 +127,11 @@ struct SettingsView: View {
                 && tab.showsInNavigationMenus
                 && tab != .settings
                 && availableTabs.contains(tab)
+        }.flatMap { tab in
+            if excludedTabs.contains(tab) {
+                return tab.children.filter(availableTabs.contains)
+            }
+            return [tab]
         }
     }
 
@@ -134,21 +160,22 @@ struct SettingsView: View {
 
 // MARK: - Sections
 
-// These section views must stay Equatable-only value types: plain stored
-// properties, no @Environment, no closures. That's what lets SwiftUI compare
-// them with == and skip their bodies when the inputs haven't changed.
-
 /// Plain settings section: title + tab rows.
-struct SettingsTabSection: View, Equatable {
+struct SettingsTabSection: View {
     let title: String
     let tabs: [AppTab]
     let availableTabs: Set<AppTab>
+    @Binding var navPath: NavigationPath
 
     var body: some View {
         if !tabs.isEmpty {
             Section(title) {
                 ForEach(tabs) { tab in
-                    SettingsCatalogRow(tab: tab, availableTabs: availableTabs)
+                    SettingsCatalogRow(
+                        tab: tab,
+                        availableTabs: availableTabs,
+                        navPath: $navPath
+                    )
                 }
             }
         }
@@ -156,11 +183,12 @@ struct SettingsTabSection: View, Equatable {
 }
 
 /// Resources section: tab rows plus the volumes size badge.
-struct SettingsResourcesSection: View, Equatable {
+struct SettingsResourcesSection: View {
     let tabs: [AppTab]
     let availableTabs: Set<AppTab>
     let volumeSizeBytes: Int64?
     let loadingVolumeSize: Bool
+    @Binding var navPath: NavigationPath
 
     var body: some View {
         if !tabs.isEmpty {
@@ -169,6 +197,7 @@ struct SettingsResourcesSection: View, Equatable {
                     SettingsCatalogRow(
                         tab: tab,
                         availableTabs: availableTabs,
+                        navPath: $navPath,
                         trailingValue: tab == .volumes ? volumeTrailingValue : nil,
                         showsProgress: tab == .volumes && loadingVolumeSize && volumeSizeBytes == nil
                     )
@@ -182,13 +211,15 @@ struct SettingsResourcesSection: View, Equatable {
     }
 }
 
-/// One shared-catalog row. Parents remain selectable while the system
-/// disclosure control reveals their authorized child destinations.
-private struct SettingsCatalogRow: View, Equatable {
+/// One shared-catalog row. Parent navigation and child disclosure use separate
+/// buttons so expanding a catalog never consumes the destination tap.
+private struct SettingsCatalogRow: View {
     let tab: AppTab
     let availableTabs: Set<AppTab>
+    @Binding var navPath: NavigationPath
     var trailingValue: String?
     var showsProgress = false
+    @State private var isExpanded = false
 
     private var children: [AppTab] {
         tab.children.filter(availableTabs.contains)
@@ -196,25 +227,47 @@ private struct SettingsCatalogRow: View, Equatable {
 
     var body: some View {
         if children.isEmpty {
-            destinationLink(tab, trailingValue: trailingValue, showsProgress: showsProgress)
+            destinationButton(tab, trailingValue: trailingValue, showsProgress: showsProgress)
         } else {
-            DisclosureGroup {
-                ForEach(children) { child in
-                    destinationLink(child)
-                        .padding(.leading, 8)
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    destinationButton(tab, trailingValue: trailingValue, showsProgress: showsProgress)
+
+                    Button {
+                        withAnimation(Motion.state) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .frame(width: 38)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isExpanded ? "Collapse \(tab.title)" : "Expand \(tab.title)")
                 }
-            } label: {
-                destinationLink(tab, trailingValue: trailingValue, showsProgress: showsProgress)
+
+                if isExpanded {
+                    ForEach(children) { child in
+                        destinationButton(child)
+                            .padding(.leading, 32)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                }
             }
         }
     }
 
-    private func destinationLink(
+    private func destinationButton(
         _ destination: AppTab,
         trailingValue: String? = nil,
         showsProgress: Bool = false
     ) -> some View {
-        NavigationLink(value: destination) {
+        Button {
+            navPath.append(destination)
+        } label: {
             HStack {
                 SettingsRow(
                     title: destination.title,
@@ -230,6 +283,10 @@ private struct SettingsCatalogRow: View, Equatable {
                     ProgressView().scaleEffect(0.7)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
         }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens \(destination.title)")
     }
 }
