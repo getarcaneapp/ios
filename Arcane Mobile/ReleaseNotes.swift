@@ -52,7 +52,7 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
-            version: "0.6.2",
+            version: "0.7.0",
             new: [
                 .init("Reliable passkey sign-in and multi-factor authentication."),
                 .init("Notification provider configuration with native controls and floating save actions."),
