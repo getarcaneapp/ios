@@ -67,97 +67,175 @@ struct ImageVulnerabilitiesView: View {
         // Filter once per body evaluation; the local shadows the computed
         // property so the three usages below don't re-filter independently.
         let filtered = self.filtered
-        return List {
-            if let summary {
-                Section("Summary") {
-                    SeveritySummaryRow(summary: summary.summary, scanTime: summary.scanTime, status: summary.status, error: summary.error)
-                }
-            }
-
-            Section {
-                ForEach(VulnerabilitySeverity.allCases) { sev in
-                    Toggle(isOn: bindingForSeverity(sev)) {
-                        HStack {
-                            SeverityBadge(severity: sev)
-                            Text(sev.displayLabel)
-                        }
+        return ScrollView {
+            LazyVStack(spacing: 16) {
+                if let summary {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SectionHeader("Summary", systemImage: "chart.bar.doc.horizontal")
+                        SeveritySummaryRow(summary: summary.summary, scanTime: summary.scanTime, status: summary.status, error: summary.error)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .dashboardCardBackground(cornerRadius: Radius.standard)
                     }
                 }
-                Toggle("Show Ignored", isOn: $showIgnored)
-            } header: {
-                Text("Filters")
-            }
 
-            Section {
+                severityFilterChips
+
                 Button {
                     Task { await runScan() }
                 } label: {
                     HStack {
                         Label(isScanning ? "Scanning…" : "Re-scan now", systemImage: "magnifyingglass")
-                        Spacer()
+                            .font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 8)
                         if isScanning { ProgressView().scaleEffect(0.8) }
                     }
+                    .padding(14)
+                    .contentShape(.rect)
                 }
+                .cardRowLinkStyle()
                 .disabled(isScanning)
-            } footer: {
-                Text("Re-runs Trivy against this image.")
-            }
+                .dashboardCardBackground(cornerRadius: Radius.standard)
 
-            if filtered.isEmpty && !isLoading {
-                ContentUnavailableView(
-                    "No vulnerabilities",
-                    systemImage: "checkmark.shield",
-                    description: Text(summary == nil ? "Run a scan to see results." : "Nothing matches the current filter.")
-                )
-                .listRowBackground(Color.clear)
-            } else {
-                Section("Findings (\(filtered.count))") {
+                if filtered.isEmpty && !isLoading {
+                    ContentUnavailableView(
+                        "No vulnerabilities",
+                        systemImage: "checkmark.shield",
+                        description: Text(summary == nil ? "Run a scan to see results." : "Nothing matches the current filter.")
+                    )
+                    .padding(.top, 24)
+                } else {
+                    ResourceCountSectionHeader(
+                        "Findings",
+                        loadedCount: filtered.count
+                    )
+
                     ForEach(filtered) { vuln in
-                        NavigationLink(destination: VulnerabilityDetailView(record: vuln, ignoreInfo: ignoredById[ignoreKey(vuln)])) {
-                            VulnerabilityRow(record: vuln, isIgnored: ignoredById[ignoreKey(vuln)] != nil)
-                        }
-                        .swipeActions(edge: .trailing) {
-                            if isAdmin {
-                                if let ignore = ignoredById[ignoreKey(vuln)] {
-                                    Button {
-                                        Task { await unignore(ignoreId: ignore.id, key: ignoreKey(vuln)) }
-                                    } label: {
-                                        Label("Unignore", systemImage: "eye")
-                                    }
-                                    .tint(Color.accentColor)
-                                } else {
-                                    Button {
-                                        ignoreTarget = vuln
-                                    } label: {
-                                        Label("Ignore", systemImage: "eye.slash")
-                                    }
-                                    .tint(.gray)
-                                }
-                            }
-                        }
+                        vulnerabilityLink(vuln)
                     }
 
                     if hasMore {
-                        Button("Load More") {
+                        Button {
                             Task { await loadMore() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if isLoading {
+                                    ProgressView()
+                                } else {
+                                    Label("Load More", systemImage: "arrow.down.circle")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                Spacer()
+                            }
+                            .padding(12)
+                            .contentShape(.rect)
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
+                        .cardRowLinkStyle()
+                        .dashboardCardBackground(cornerRadius: Radius.standard)
                     }
                 }
             }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
-        .listStyle(.insetGrouped)
+        .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 
-    private func bindingForSeverity(_ sev: VulnerabilitySeverity) -> Binding<Bool> {
-        Binding(
-            get: { selectedSeverities.contains(sev) },
-            set: { isOn in
-                if isOn { selectedSeverities.insert(sev) }
-                else { selectedSeverities.remove(sev) }
-                Task { await reload() }
+    /// Severity chips + ignored toggle. Every chip reflects the severity's own
+    /// color so active/inactive reads at a glance; with nothing selected all
+    /// severities display (all chips lit).
+    private var severityFilterChips: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SectionHeader("Filter", systemImage: "line.3.horizontal.decrease.circle")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(VulnerabilitySeverity.allCases) { sev in
+                        SeverityFilterChip(
+                            severity: sev,
+                            isActive: selectedSeverities.isEmpty || selectedSeverities.contains(sev)
+                        ) {
+                            toggleSeverity(sev)
+                        }
+                    }
+
+                    ignoredChip
+                }
+                .padding(.vertical, 2)
             }
-        )
+            if !selectedSeverities.isEmpty {
+                Text("Showing only selected severities.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    private var ignoredChip: some View {
+        Button {
+            showIgnored.toggle()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: showIgnored ? "eye" : "eye.slash")
+                    .font(.caption.bold())
+                Text("Ignored")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(showIgnored ? Color.accentColor : Color.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                (showIgnored ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1)),
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .strokeBorder((showIgnored ? Color.accentColor : Color.secondary).opacity(showIgnored ? 0.4 : 0.2), lineWidth: 0.75)
+            }
+        }
+        .cardRowLinkStyle()
+        .accessibilityLabel(showIgnored ? "Showing ignored vulnerabilities" : "Ignoring hidden vulnerabilities")
+        .accessibilityAddTraits(showIgnored ? .isSelected : [])
+    }
+
+    private func toggleSeverity(_ sev: VulnerabilitySeverity) {
+        if selectedSeverities.contains(sev) {
+            selectedSeverities.remove(sev)
+        } else {
+            selectedSeverities.insert(sev)
+        }
+        Task { await reload() }
+    }
+
+    private func vulnerabilityLink(_ vuln: VulnerabilityRecord) -> some View {
+        NavigationLink(destination: VulnerabilityDetailView(record: vuln, ignoreInfo: ignoredById[ignoreKey(vuln)])) {
+            VulnerabilityRow(record: vuln, isIgnored: ignoredById[ignoreKey(vuln)] != nil)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .contentShape(.rect)
+        }
+        .cardRowLinkStyle()
+        .dashboardCardBackground(cornerRadius: Radius.standard)
+        .contextMenu {
+            if isAdmin {
+                if let ignore = ignoredById[ignoreKey(vuln)] {
+                    Button {
+                        Task { await unignore(ignoreId: ignore.id, key: ignoreKey(vuln)) }
+                    } label: {
+                        Label("Unignore", systemImage: "eye")
+                    }
+                } else {
+                    Button(role: .destructive) {
+                        ignoreTarget = vuln
+                    } label: {
+                        Label("Ignore", systemImage: "eye.slash")
+                    }
+                    .tint(.red)
+                }
+            }
+        }
     }
 
     private func scannerUnavailableView(status: ScannerStatus) -> some View {
@@ -325,6 +403,52 @@ struct SeverityBadge: View {
             .foregroundStyle(.white)
             .frame(width: 22, height: 22)
             .background(color, in: Circle())
+    }
+}
+
+/// Tappable severity filter chip. Active chips carry the severity's own color;
+/// inactive chips fade to a neutral capsule. Matches the ScrollableTabBar pill
+/// vocabulary.
+struct SeverityFilterChip: View {
+    let severity: VulnerabilitySeverity
+    let isActive: Bool
+    let action: () -> Void
+
+    private var color: Color {
+        switch severity {
+        case .critical: return .red
+        case .high: return .orange
+        case .medium: return .yellow
+        case .low: return .blue
+        case .unknown: return .gray
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isActive ? color : Color.secondary.opacity(0.4))
+                    .frame(width: 8, height: 8)
+                Text(severity.displayLabel)
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(isActive ? color : Color.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                (isActive ? color : Color.secondary).opacity(isActive ? 0.15 : 0.1),
+                in: Capsule()
+            )
+            .overlay {
+                Capsule()
+                    .strokeBorder((isActive ? color : Color.secondary).opacity(isActive ? 0.4 : 0.2), lineWidth: 0.75)
+            }
+        }
+        .cardRowLinkStyle()
+        .accessibilityLabel(severity.displayLabel)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .accessibilityHint(isActive ? "Currently shown. Tap to hide." : "Currently hidden. Tap to show.")
     }
 }
 

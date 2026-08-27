@@ -169,32 +169,42 @@ struct ContainerDetailView: View {
     // MARK: - Overview tab
 
     private var overviewTab: some View {
-        List {
-            Section {
+        ScrollView {
+            LazyVStack(spacing: 16) {
                 statusHeader
-            }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .dashboardCardBackground()
 
-            if let details {
-                Section {
+                if let details {
                     AdaptiveMetadataGrid(items: containerMetadata(details))
-                }
-                configSection(details.config)
-                stateSection(details.state)
-                hostConfigSection(details.hostConfig)
-                if !details.ports.isEmpty {
-                    ContainerPortsSection(ports: details.ports)
-                }
-                if let health = details.state.health {
-                    ContainerHealthSection(health: health)
-                }
-                let networks = details.networkSettings.networks
-                if !networks.isEmpty {
-                    networkSection(networks)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .dashboardCardBackground(cornerRadius: Radius.standard)
+
+                    configSection(details.config)
+                    stateSection(details.state)
+                    hostConfigSection(details.hostConfig)
+
+                    if !details.ports.isEmpty {
+                        ContainerPortsSection(ports: details.ports)
+                    }
+                    if let health = details.state.health {
+                        ContainerHealthSection(health: health)
+                    }
+                    let networks = details.networkSettings.networks
+                    if !networks.isEmpty {
+                        networkSection(networks)
+                    }
                 }
             }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
-        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     private var statusHeader: some View {
@@ -226,7 +236,6 @@ struct ContainerDetailView: View {
                     .padding(.top, 2)
             }
         }
-        .padding(.vertical, 4)
     }
 
     private var statusIndicatorColor: Color {
@@ -338,80 +347,167 @@ struct ContainerDetailView: View {
         return items
     }
 
-    private func configSection(_ config: ContainerConfig) -> some View {
-        Section {
-            if let img = config.image {
-                LabeledContent("Image") { MonospacedValue(value: img) }
-            }
-            if let cmd = config.cmd, !cmd.isEmpty {
-                LabeledContent("Command") { MonospacedValue(value: cmd.joined(separator: " ")) }
-            }
-            if let wd = config.workingDir, !wd.isEmpty {
-                LabeledContent("Working Dir") { MonospacedValue(value: wd) }
-            }
-            if let user = config.user, !user.isEmpty {
-                LabeledContent("User", value: user)
-            }
-            if let env = config.env, !env.isEmpty {
-                NavigationLink("Environment (\(env.count))") {
-                    EnvVarsView(vars: env)
-                }
-            }
-            if let labels = config.labels, !labels.isEmpty {
-                NavigationLink("Labels (\(labels.count))") {
-                    LabelsView(labels: labels)
-                }
-            }
-        } header: {
-            ResourceSectionHeader(title: "Execution", systemImage: "terminal")
+    /// Grouped card of label/value rows, mirroring the dashboard's
+    /// `DashboardInfoGroup`/`DashboardInfoRow` pair.
+    private func card<Content: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title, systemImage: systemImage)
+            VStack(spacing: 0) { content() }
+                .dashboardCardBackground(cornerRadius: Radius.standard)
         }
+    }
+
+    private func row(_ label: String, @ViewBuilder value: () -> some View) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 16)
+            value()
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(12)
+    }
+
+    private func linkRow<Destination: View>(
+        _ title: String,
+        systemImage: String,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink(destination: destination()) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary.opacity(0.5))
+            }
+            .padding(12)
+            .contentShape(.rect)
+        }
+        .cardRowLinkStyle()
+    }
+
+    private func monoValue(_ value: String) -> some View {
+        MonospacedValue(value: value)
+    }
+
+    private enum ConfigRow {
+        case label(String, String)
+        case monospaced(String, String)
+        case link(String, String)
+    }
+
+    private func configSection(_ config: ContainerConfig) -> some View {
+        var rows: [ConfigRow] = []
+        if let img = config.image, !img.isEmpty {
+            rows.append(.monospaced("Image", img))
+        }
+        if let cmd = config.cmd, !cmd.isEmpty {
+            rows.append(.monospaced("Command", cmd.joined(separator: " ")))
+        }
+        if let wd = config.workingDir, !wd.isEmpty {
+            rows.append(.monospaced("Working Dir", wd))
+        }
+        if let user = config.user, !user.isEmpty {
+            rows.append(.label("User", user))
+        }
+        if let env = config.env, !env.isEmpty {
+            rows.append(.link("Environment (\(env.count))", "list.bullet.rectangle"))
+        }
+        if let labels = config.labels, !labels.isEmpty {
+            rows.append(.link("Labels (\(labels.count))", "tag"))
+        }
+
+        if rows.isEmpty {
+            return AnyView(EmptyView())
+        }
+        return AnyView(
+            card(title: "Execution", systemImage: "terminal") {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, rowItem in
+                    switch rowItem {
+                    case .label(let title, let value):
+                        row(title) { Text(value).font(.subheadline) }
+                    case .monospaced(let title, let value):
+                        row(title) { monoValue(value) }
+                    case .link(let title, let systemImage):
+                        if title.hasPrefix("Labels") {
+                            linkRow(title, systemImage: systemImage) {
+                                LabelsView(labels: config.labels ?? [:])
+                            }
+                        } else {
+                            linkRow(title, systemImage: systemImage) {
+                                EnvVarsView(vars: config.env ?? [])
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 
     private func stateSection(_ state: ContainerState) -> some View {
-        Section {
-            LabeledContent("Status", value: state.status.capitalized)
+        card(title: "Runtime", systemImage: "waveform.path.ecg") {
+            row("Status") { Text(state.status.capitalized).font(.subheadline) }
             if let startedAt = state.startedAt {
-                LabeledContent("Started", value: startedAt.formattedDate)
+                row("Started") { Text(startedAt.formattedDate).font(.subheadline) }
             }
             if !isRunning, let finishedAt = state.finishedAt {
-                LabeledContent("Finished", value: finishedAt.formattedDate)
+                row("Finished") { Text(finishedAt.formattedDate).font(.subheadline) }
             }
             if let exitCode = state.exitCode, !isRunning {
-                LabeledContent("Exit Code", value: "\(exitCode)")
+                row("Exit Code") {
+                    Text(verbatim: "\(exitCode)")
+                        .font(.subheadline.monospacedDigit())
+                        .multilineTextAlignment(.trailing)
+                }
             }
-        } header: {
-            ResourceSectionHeader(title: "Runtime", systemImage: "waveform.path.ecg")
         }
     }
 
+    @ViewBuilder
     private func hostConfigSection(_ hostConfig: ContainerHostConfig) -> some View {
-        Section("Host Config") {
-            if let mode = hostConfig.networkMode {
-                LabeledContent("Network Mode", value: mode)
-            }
-            if let policy = hostConfig.restartPolicy {
-                LabeledContent("Restart Policy", value: policy)
-            }
-            if let memory = hostConfig.memory, memory > 0 {
-                LabeledContent("Memory Limit", value: memory.byteString)
-            }
-            if let privileged = hostConfig.privileged, privileged {
-                LabeledContent("Privileged", value: "Yes")
-            }
-            if let binds = hostConfig.binds, !binds.isEmpty {
-                NavigationLink("Mounts (\(binds.count))") {
-                    BindsView(binds: binds)
+        let hasRows = hostConfig.networkMode != nil || hostConfig.restartPolicy != nil ||
+            (hostConfig.memory ?? 0) > 0 || hostConfig.privileged == true ||
+            !(hostConfig.binds ?? []).isEmpty
+        if hasRows {
+            card(title: "Host Config", systemImage: "server.rack") {
+                if let mode = hostConfig.networkMode {
+                    row("Network Mode") { Text(mode).font(.subheadline) }
+                }
+                if let policy = hostConfig.restartPolicy {
+                    row("Restart Policy") { Text(policy).font(.subheadline) }
+                }
+                if let memory = hostConfig.memory, memory > 0 {
+                    row("Memory Limit") { Text(memory.byteString).font(.subheadline.monospacedDigit()) }
+                }
+                if let privileged = hostConfig.privileged, privileged {
+                    row("Privileged") { Text("Yes").font(.subheadline) }
+                }
+                if let binds = hostConfig.binds, !binds.isEmpty {
+                    linkRow("Mounts (\(binds.count))", systemImage: "externaldrive") {
+                        BindsView(binds: binds)
+                    }
                 }
             }
         }
     }
 
     private func networkSection(_ networks: [String: ContainerNetworkEndpoint]) -> some View {
-        Section("Networks") {
+        card(title: "Networks", systemImage: "network") {
             ForEach(Array(networks.keys.sorted()), id: \.self) { netName in
                 if let endpoint = networks[netName] {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(netName).font(.headline)
+                        Text(netName).font(.subheadline.weight(.semibold))
                         if let ip = endpoint.ipAddress, !ip.isEmpty {
                             Text("IP: \(ip)").font(.caption).foregroundStyle(.secondary)
                         }
@@ -419,7 +515,8 @@ struct ContainerDetailView: View {
                             Text("MAC: \(mac)").font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    .padding(.vertical, 2)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -542,18 +639,30 @@ struct EnvVarsView: View {
     }
 
     var body: some View {
-        List(filtered, id: \.self) { v in
-            let parts = v.split(separator: "=", maxSplits: 1)
-            if parts.count == 2 {
-                VStack(alignment: .leading) {
-                    Text(String(parts[0])).font(.caption.bold()).foregroundStyle(.secondary)
-                    Text(String(parts[1])).font(.body).textSelection(.enabled)
+        ScrollView {
+            LazyVStack(spacing: 10) {
+                ForEach(filtered, id: \.self) { v in
+                    Group {
+                        let parts = v.split(separator: "=", maxSplits: 1)
+                        if parts.count == 2 {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(String(parts[0])).font(.caption.bold()).foregroundStyle(.secondary)
+                                Text(String(parts[1])).font(.body).textSelection(.enabled)
+                            }
+                        } else {
+                            Text(v).font(.caption).textSelection(.enabled)
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .dashboardCardBackground(cornerRadius: Radius.standard)
                 }
-            } else {
-                Text(v).font(.caption).textSelection(.enabled)
             }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
-        .listStyle(.insetGrouped)
+        .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
         .searchable(text: $searchText)
         .navigationTitle("Environment Variables")
     }
@@ -563,13 +672,23 @@ struct LabelsView: View {
     let labels: [String: String]
 
     var body: some View {
-        List(Array(labels.keys.sorted()), id: \.self) { key in
-            VStack(alignment: .leading) {
-                Text(key).font(.caption.bold()).foregroundStyle(.secondary)
-                Text(labels[key] ?? "").font(.body).textSelection(.enabled)
+        ScrollView {
+            LazyVStack(spacing: 10) {
+                ForEach(Array(labels.keys.sorted()), id: \.self) { key in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(key).font(.caption.bold()).foregroundStyle(.secondary)
+                        Text(labels[key] ?? "").font(.body).textSelection(.enabled)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .dashboardCardBackground(cornerRadius: Radius.standard)
+                }
             }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
-        .listStyle(.insetGrouped)
+        .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Labels")
     }
 }
@@ -578,10 +697,22 @@ struct BindsView: View {
     let binds: [String]
 
     var body: some View {
-        List(binds, id: \.self) { bind in
-            Text(bind).font(.caption.monospaced()).textSelection(.enabled)
+        ScrollView {
+            LazyVStack(spacing: 10) {
+                ForEach(binds, id: \.self) { bind in
+                    Text(bind)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .dashboardCardBackground(cornerRadius: Radius.standard)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
-        .listStyle(.insetGrouped)
+        .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Mounts")
     }
 }

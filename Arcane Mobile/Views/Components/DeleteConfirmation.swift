@@ -320,7 +320,7 @@ private struct DeleteConfirmationCard: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(.primary.opacity(0.06), lineWidth: 0.5)
         }
-        .shadow(color: .black.opacity(0.2), radius: 18, y: 6)
+        .floatingSurfaceShadow()
     }
 
     @ViewBuilder

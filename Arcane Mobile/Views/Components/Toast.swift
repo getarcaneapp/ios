@@ -408,7 +408,7 @@ private struct LegacyFloatChrome: ViewModifier {
                 .overlay {
                     Capsule().strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
                 }
-                .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+                .floatingSurfaceShadow()
         }
     }
 }

@@ -87,13 +87,13 @@ struct AppIconPickerView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: Radius.nested, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: Radius.nested, style: .continuous)
                         .stroke(Color(uiColor: .separator).opacity(0.4), lineWidth: 0.5)
                 }
         } else {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.nested, style: .continuous)
                 .fill(Color(uiColor: .tertiarySystemFill))
                 .frame(width: 56, height: 56)
                 .overlay {

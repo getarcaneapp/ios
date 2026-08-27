@@ -120,7 +120,7 @@ struct TabTile: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .padding(.horizontal, 8)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: Radius.standard))
         }
         .buttonStyle(.plain)
     }

@@ -29,33 +29,42 @@ struct ImageHistoryView: View {
                     description: Text("This image did not return any layer history.")
                 )
             } else {
-                List(items) { item in
-                    VStack(alignment: .leading, spacing: 7) {
-                        HStack {
-                            MonospacedValue(value: layerID(item.id), lineLimit: 1)
-                            Spacer(minLength: 8)
-                            Text(item.size.byteString)
-                                .font(.caption.monospacedDigit())
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(items) { item in
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack {
+                                    MonospacedValue(value: layerID(item.id), lineLimit: 1)
+                                    Spacer(minLength: 8)
+                                    Text(item.size.byteString)
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                                if !item.createdBy.isEmpty {
+                                    MonospacedValue(value: item.createdBy, lineLimit: 3)
+                                }
+                                HStack {
+                                    if item.created > 0 {
+                                        Text(Date(timeIntervalSince1970: TimeInterval(item.created)), format: .dateTime.year().month().day())
+                                    }
+                                    if !item.tags.isEmpty {
+                                        Text(item.tags.joined(separator: ", "))
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
-                        }
-                        if !item.createdBy.isEmpty {
-                            MonospacedValue(value: item.createdBy, lineLimit: 3)
-                        }
-                        HStack {
-                            if item.created > 0 {
-                                Text(Date(timeIntervalSince1970: TimeInterval(item.created)), format: .dateTime.year().month().day())
                             }
-                            if !item.tags.isEmpty {
-                                Text(item.tags.joined(separator: ", "))
-                                    .lineLimit(1)
-                            }
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .dashboardCardBackground(cornerRadius: Radius.standard)
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 3)
+                    .padding(.horizontal)
+                    .padding(.bottom, 16)
                 }
-                .listStyle(.insetGrouped)
+                .softTopScrollEdgeEffectCompat()
+                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .task { await load() }

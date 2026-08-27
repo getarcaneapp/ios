@@ -727,7 +727,7 @@ private struct ProjectTextFileEditorView: View {
             if isLoading {
                 ProgressView("Loading file...")
                     .padding()
-                    .background(.regularMaterial, in: .rect(cornerRadius: 8, style: .continuous))
+                    .background(.regularMaterial, in: .rect(cornerRadius: Radius.nested, style: .continuous))
             }
 
             if allowsResolveVariables && !readOnly && !text.isEmpty {

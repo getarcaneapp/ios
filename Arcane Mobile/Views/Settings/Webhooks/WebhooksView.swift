@@ -23,57 +23,44 @@ struct WebhooksView: View {
                     Button("Create Webhook") { showCreateSheet = true }
                 }
             } else {
-                List {
-                    Section {
-                        ForEach(webhooks) { webhook in
-                            WebhookRow(webhook: webhook)
-                            .contextMenu {
-                                Button {
-                                    Task { await toggleWebhook(webhook) }
-                                } label: {
-                                    Label(
-                                        webhook.enabled ? "Disable" : "Enable",
-                                        systemImage: webhook.enabled ? "pause.circle" : "play.circle"
-                                    )
-                                }
-                                Button(role: .destructive) {
-                                    pendingDeleteWebhook = webhook
-                                } label: {
-                                    DestructiveLabel(text: "Delete")
-                                }
-                                .tint(.red)
-                             } preview: {
-                                 webhookPreview(webhook)
-                                     .environment(manager)
-                             }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button {
-                                    pendingDeleteWebhook = webhook
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                .tint(.red)
-                            }
-                            .swipeActions(edge: .leading) {
-                                Button {
-                                    Task { await toggleWebhook(webhook) }
-                                } label: {
-                                    Label(
-                                        webhook.enabled ? "Disable" : "Enable",
-                                        systemImage: webhook.enabled ? "pause.circle" : "play.circle"
-                                    )
-                                }
-                                .tint(webhook.enabled ? .orange : .green)
-                            }
-                        }
-                    } header: {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
                         ResourceCountSectionHeader(
                             "Webhooks",
                             loadedCount: webhooks.count
                         )
+
+                        ForEach(webhooks) { webhook in
+                            WebhookRow(webhook: webhook)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .dashboardCardBackground(cornerRadius: Radius.standard)
+                                .contextMenu {
+                                    Button {
+                                        Task { await toggleWebhook(webhook) }
+                                    } label: {
+                                        Label(
+                                            webhook.enabled ? "Disable" : "Enable",
+                                            systemImage: webhook.enabled ? "pause.circle" : "play.circle"
+                                        )
+                                    }
+                                    Button(role: .destructive) {
+                                        pendingDeleteWebhook = webhook
+                                    } label: {
+                                        DestructiveLabel(text: "Delete")
+                                    }
+                                    .tint(.red)
+                                 } preview: {
+                                     webhookPreview(webhook)
+                                         .environment(manager)
+                                 }
+                        }
                     }
+                    .padding(.horizontal)
+                    .padding(.bottom, 16)
                 }
-                .listStyle(.insetGrouped)
+                .softTopScrollEdgeEffectCompat()
+                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle("Webhooks")
@@ -297,7 +284,7 @@ struct NewWebhookTokenView: View {
                         .textSelection(.enabled)
                 }
                 .padding(16)
-                .glassEffectCompat(in: .rect(cornerRadius: 12))
+                .glassEffectCompat(in: .rect(cornerRadius: Radius.nested))
                 .padding(.horizontal, 24)
 
                 Button {

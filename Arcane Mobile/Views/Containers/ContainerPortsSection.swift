@@ -5,16 +5,21 @@ struct ContainerPortsSection: View {
     let ports: [ContainerPort]
 
     var body: some View {
-        Section {
-            ForEach(Array(sortedPorts.enumerated()), id: \.offset) { _, port in
-                portRow(port)
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader("Ports", systemImage: "arrow.left.arrow.right")
+            VStack(spacing: 0) {
+                ForEach(Array(sortedPorts.enumerated()), id: \.offset) { index, port in
+                    if index > 0 { Divider().padding(.leading, 12) }
+                    portRow(port)
+                        .padding(12)
+                }
             }
-        } header: {
-            Text("Ports")
-        } footer: {
+            .dashboardCardBackground(cornerRadius: Radius.standard)
+
             Text("Active port mappings reported by the container.")
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
         }
     }
 
@@ -49,6 +54,7 @@ struct ContainerPortsSection: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func hostDisplay(_ ip: String?) -> String {

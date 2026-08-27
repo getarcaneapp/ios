@@ -482,135 +482,52 @@ struct NetworkDetailView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                HStack(spacing: 16) {
-                    Image(systemName: "network")
-                        .font(.title)
-                        .foregroundStyle(.teal)
-                        .frame(width: 56, height: 56)
-                        .glassEffectCompat(in: .circle)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(network.name).font(.title3.bold())
-                        Text(network.driver).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 4)
-            }
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                headerCard
+                detailsCard
 
-            Section("Details") {
-                AdaptiveMetadataGrid(items: networkMetadata)
-                LabeledContent("ID") { MonospacedValue(value: network.id, lineLimit: 1) }
                 if let inspect {
-                    if inspect.`internal` { LabeledContent("Internal", value: "Yes") }
-                    LabeledContent("Attachable", value: inspect.attachable ? "Yes" : "No")
-                    LabeledContent("IPv4", value: inspect.enableIPv4 ? "Enabled" : "Disabled")
-                    LabeledContent("IPv6", value: inspect.enableIPv6 ? "Enabled" : "Disabled")
+                    peersCard(inspect)
+                    servicesCard(inspect)
                 }
-                NavigationLink("Topology") {
-                    NetworkTopologyView(environmentID: environmentID)
+
+                if let ipam = inspect?.ipam {
+                    ipamCard(ipam)
                 }
-            }
 
-            if let inspect, !inspect.peerList.isEmpty {
-                Section {
-                    ForEach(inspect.peerList) { peer in
-                        LabeledContent(peer.name) { MonospacedValue(value: peer.address) }
-                    }
-                } header: {
-                    ResourceSectionHeader(title: "Peers", systemImage: "globe", count: inspect.peerList.count)
+                connectedContainersCard
+
+                if let inspect, !inspect.labels.isEmpty {
+                    keyValueCard("Labels", systemImage: "tag", pairs: inspect.labels)
                 }
-            }
 
-            if let inspect, !inspect.serviceList.isEmpty {
-                Section {
-                    ForEach(inspect.serviceList) { service in
-                        VStack(alignment: .leading, spacing: 5) {
-                            MonospacedValue(value: service.name)
-                            if let vip = service.vip {
-                                LabeledContent("VIP") { MonospacedValue(value: vip) }
-                            }
-                            if !service.ports.isEmpty {
-                                LabeledContent("Ports") {
-                                    MonospacedValue(value: service.ports.joined(separator: ", "))
-                                }
-                            }
-                        }
-                    }
-                } header: {
-                    ResourceSectionHeader(title: "Services", systemImage: "square.stack.3d.up", count: inspect.serviceList.count)
+                if let inspect, !inspect.options.isEmpty {
+                    keyValueCard("Options", systemImage: "slider.horizontal.3", pairs: inspect.options)
                 }
-            }
 
-            if let ipam = inspect?.ipam {
-                Section("IPAM") {
-                    if let driver = ipam.driver, !driver.isEmpty {
-                        LabeledContent("Driver", value: driver)
-                    }
-                    // Identity derived from content (offset only disambiguates duplicates)
-                    // so rows keep stable identity if the config list reorders.
-                    let ipamConfigs = (ipam.config ?? []).enumerated().map { offset, config in
-                        (id: "\(config.subnet ?? "")|\(config.gateway ?? "")|\(config.ipRange ?? "")#\(offset)", config: config)
-                    }
-                    ForEach(ipamConfigs, id: \.id) { item in
-                        let config = item.config
-                        if let subnet = config.subnet, !subnet.isEmpty {
-                            LabeledContent("Subnet") {
-                                MonospacedValue(value: subnet)
-                            }
-                        }
-                        if let gw = config.gateway, !gw.isEmpty {
-                            LabeledContent("Gateway") {
-                                MonospacedValue(value: gw)
-                            }
-                        }
-                        if let range = config.ipRange, !range.isEmpty {
-                            LabeledContent("IP Range") {
-                                MonospacedValue(value: range)
-                            }
-                        }
-                    }
-                }
-            }
-
-            connectedContainersSection
-
-            if let inspect, !inspect.labels.isEmpty {
-                Section("Labels") {
-                    ForEach(inspect.labels.keys.sorted(), id: \.self) { key in
-                        LabeledContent(key, value: inspect.labels[key] ?? "")
-                    }
-                }
-            }
-
-            if let inspect, !inspect.options.isEmpty {
-                Section("Options") {
-                    ForEach(inspect.options.keys.sorted(), id: \.self) { key in
-                        LabeledContent(key, value: inspect.options[key] ?? "")
-                    }
-                }
-            }
-
-            if isLoadingInspect && inspect == nil {
-                Section {
-                    HStack {
+                if isLoadingInspect && inspect == nil {
+                    HStack(spacing: 10) {
                         ProgressView().controlSize(.small)
                         Text("Loading network details…")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    .padding(.vertical, 8)
                 }
-            }
 
-            if let inspectError, inspect == nil {
-                Section {
+                if let inspectError, inspect == nil {
                     Label(inspectError, systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.orange)
+                        .padding(.horizontal, 4)
                 }
             }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
-        .listStyle(.insetGrouped)
+        .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(network.name.isEmpty ? network.id : network.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -649,6 +566,200 @@ struct NetworkDetailView: View {
         }
     }
 
+    private var headerCard: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "network")
+                .font(.title)
+                .foregroundStyle(.teal)
+                .frame(width: 56, height: 56)
+                .glassEffectCompat(in: .circle)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(network.name).font(.title3.bold())
+                Text(network.driver).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardCardBackground()
+    }
+
+    /// Grouped card of label/value rows, mirroring the dashboard's
+    /// `DashboardInfoGroup`/`DashboardInfoRow` pair.
+    private func infoCard<Content: View>(
+        title: String,
+        systemImage: String,
+        count: Int? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title, systemImage: systemImage, count: count)
+            VStack(spacing: 0) { content() }
+                .dashboardCardBackground(cornerRadius: Radius.standard)
+        }
+    }
+
+    private var detailsCard: some View {
+        infoCard(title: "Details", systemImage: "info.circle") {
+            AdaptiveMetadataGrid(items: networkMetadata)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            infoRow("ID") { MonospacedValue(value: network.id, lineLimit: 1) }
+            if let inspect {
+                if inspect.`internal` { infoRow("Internal") { rowText("Yes") } }
+                infoRow("Attachable") { rowText(inspect.attachable ? "Yes" : "No") }
+                infoRow("IPv4") { rowText(inspect.enableIPv4 ? "Enabled" : "Disabled") }
+                infoRow("IPv6") { rowText(inspect.enableIPv6 ? "Enabled" : "Disabled") }
+            }
+            cardLink("Topology", systemImage: "point.topleft.down.curvedto.point.bottomright.up") {
+                NetworkTopologyView(environmentID: environmentID)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func peersCard(_ inspect: NetworkInspect) -> some View {
+        if !inspect.peerList.isEmpty {
+            infoCard(title: "Peers", systemImage: "globe", count: inspect.peerList.count) {
+                ForEach(Array(inspect.peerList.enumerated()), id: \.element.name) { index, peer in
+                    if index > 0 { Divider().padding(.leading, 12) }
+                    infoRow(peer.name) { MonospacedValue(value: peer.address) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func servicesCard(_ inspect: NetworkInspect) -> some View {
+        if !inspect.serviceList.isEmpty {
+            infoCard(title: "Services", systemImage: "square.stack.3d.up", count: inspect.serviceList.count) {
+                ForEach(Array(inspect.serviceList.enumerated()), id: \.element.name) { index, service in
+                    if index > 0 { Divider().padding(.leading, 12) }
+                    VStack(alignment: .leading, spacing: 5) {
+                        MonospacedValue(value: service.name)
+                        if let vip = service.vip {
+                            LabeledContent("VIP") { MonospacedValue(value: vip) }
+                                .font(.subheadline)
+                        }
+                        if !service.ports.isEmpty {
+                            LabeledContent("Ports") {
+                                MonospacedValue(value: service.ports.joined(separator: ", "))
+                            }
+                            .font(.subheadline)
+                        }
+                    }
+                    .padding(12)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func ipamCard(_ ipam: IPAM) -> some View {
+        let hasDriver = ipam.driver.map { !$0.isEmpty } == true
+        let hasConfigs = !(ipam.config ?? []).isEmpty
+        if hasDriver || hasConfigs {
+            infoCard(title: "IPAM", systemImage: "tablecells") {
+                // Identity derived from content (offset only disambiguates duplicates)
+                // so rows keep stable identity if the config list reorders.
+                let ipamConfigs = (ipam.config ?? []).enumerated().map { offset, config in
+                    (id: "\(config.subnet ?? "")|\(config.gateway ?? "")|\(config.ipRange ?? "")#\(offset)", config: config)
+                }
+                ForEach(ipamConfigs, id: \.id) { item in
+                    let config = item.config
+                    if let subnet = config.subnet, !subnet.isEmpty {
+                        infoRow("Subnet") { MonospacedValue(value: subnet) }
+                    }
+                    if let gw = config.gateway, !gw.isEmpty {
+                        infoRow("Gateway") { MonospacedValue(value: gw) }
+                    }
+                    if let range = config.ipRange, !range.isEmpty {
+                        infoRow("IP Range") { MonospacedValue(value: range) }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var connectedContainersCard: some View {
+        let endpoints = inspect?.containersList ?? []
+        let rawContainers = inspect?.containers ?? [:]
+        if !endpoints.isEmpty {
+            infoCard(title: "Connected Containers", systemImage: "shippingbox.fill", count: endpoints.count) {
+                ForEach(endpoints, id: \.id) { endpoint in
+                    NetworkContainerRow(endpoint: endpoint)
+                        .padding(12)
+                }
+            }
+        } else if !rawContainers.isEmpty {
+            let sortedKeys = Array(rawContainers.keys.sorted())
+            infoCard(title: "Connected Containers", systemImage: "shippingbox.fill", count: sortedKeys.count) {
+                ForEach(sortedKeys, id: \.self) { key in
+                    if case let .object(obj) = rawContainers[key] {
+                        NetworkContainerRow(
+                            id: key,
+                            name: obj["Name"]?.stringValue ?? "",
+                            ipv4: obj["IPv4Address"]?.stringValue ?? "",
+                            ipv6: obj["IPv6Address"]?.stringValue ?? ""
+                        )
+                        .padding(12)
+                    }
+                }
+            }
+        }
+    }
+
+    private func keyValueCard(_ title: String, systemImage: String, pairs: [String: String]) -> some View {
+        infoCard(title: title, systemImage: systemImage) {
+            ForEach(pairs.keys.sorted(), id: \.self) { key in
+                infoRow(key) { rowText(pairs[key] ?? "") }
+            }
+        }
+    }
+
+    private func infoRow(_ label: String, @ViewBuilder value: () -> some View) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 16)
+            value()
+        }
+        .padding(12)
+    }
+
+    private func rowText(_ value: String) -> some View {
+        Text(value)
+            .font(.subheadline)
+            .multilineTextAlignment(.trailing)
+    }
+
+
+    private func cardLink<Destination: View>(
+        _ title: String,
+        systemImage: String,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink(destination: destination()) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary.opacity(0.5))
+            }
+            .padding(12)
+            .contentShape(.rect)
+        }
+        .cardRowLinkStyle()
+    }
+
     private var networkMetadata: [ResourceMetadataItem] {
         [
             ResourceMetadataItem(label: "Driver", value: network.driver, systemImage: "gearshape"),
@@ -656,34 +767,6 @@ struct NetworkDetailView: View {
             ResourceMetadataItem(label: "Created", value: network.created.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar"),
             ResourceMetadataItem(label: "Status", value: network.inUse ? "In use" : "Unused", systemImage: "circle.fill", tint: network.inUse ? .green : .secondary)
         ]
-    }
-
-    @ViewBuilder
-    private var connectedContainersSection: some View {
-        if let endpoints = inspect?.containersList, !endpoints.isEmpty {
-            Section("Connected Containers (\(endpoints.count))") {
-                ForEach(endpoints, id: \.id) { endpoint in
-                    NetworkContainerRow(endpoint: endpoint)
-                }
-            }
-        } else if let containers = inspect?.containers, !containers.isEmpty {
-            // Raw fallback: the SDK exposes the legacy `containers` map as
-            // `[String: JSONValue]`. Render each endpoint by decoding the
-            // fields we need from the underlying JSON object.
-            let sortedKeys = Array(containers.keys.sorted())
-            Section("Connected Containers (\(sortedKeys.count))") {
-                ForEach(sortedKeys, id: \.self) { key in
-                    if case let .object(obj) = containers[key] {
-                        NetworkContainerRow(
-                            id: key,
-                            name: obj["Name"]?.stringValue ?? "",
-                            ipv4: obj["IPv4Address"]?.stringValue ?? "",
-                            ipv6: obj["IPv6Address"]?.stringValue ?? ""
-                        )
-                    }
-                }
-            }
-        }
     }
 
     private func loadInspect() async {

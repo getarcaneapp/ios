@@ -148,7 +148,7 @@ struct ContainerTerminalView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color(.tertiarySystemBackground), in: .rect(cornerRadius: 12))
+            .background(Color(.tertiarySystemBackground), in: .rect(cornerRadius: Radius.nested))
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)

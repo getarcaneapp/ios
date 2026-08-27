@@ -221,7 +221,7 @@ struct EnvironmentDashboardCard: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity)
-        .background(chipBackground)
+        .raisedChipBackground(in: RoundedRectangle(cornerRadius: chipRadius, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(valueText), with usage history for the last minute")
     }
@@ -252,17 +252,14 @@ struct EnvironmentDashboardCard: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity)
-        .background(chipBackground)
+        .raisedChipBackground(in: RoundedRectangle(cornerRadius: chipRadius, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Disk: \(percentShort(diskPercent))")
     }
 
-    private var chipBackground: some View {
-        RoundedRectangle(cornerRadius: Radius.concentric(outer: Radius.card, inset: 10), style: .continuous)
-            .fill(
-                Color(uiColor: .tertiarySystemGroupedBackground)
-                    .shadow(.drop(color: .black.opacity(0.15), radius: 3, y: 1))
-            )
+    /// Radius shared by the card's raised chips, concentric to `Radius.card`.
+    private var chipRadius: CGFloat {
+        Radius.concentric(outer: Radius.card, inset: 10)
     }
 
     /// Latest stream snapshot, gated on the one-way loaded latch so an

@@ -124,55 +124,207 @@ struct ImageDetailView: View {
     }
 
     private var overview: some View {
-        List {
-            Section {
-                imageHeader
-            }
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                headerCard
 
-            if let details {
-                Section {
-                    AdaptiveMetadataGrid(items: metadataItems(details))
+                if let details {
+                    metadataCard(details)
+                    identityCard(details)
                 }
 
-                Section {
-                    LabeledContent("Image ID") { MonospacedValue(value: details.id, lineLimit: 1) }
-                    if !details.repoTags.isEmpty {
-                        LabeledContent("Tags") { MonospacedValue(value: details.repoTags.joined(separator: "\n")) }
+                if !usingContainers.isEmpty {
+                    usedByCard
+                }
+
+                if let details {
+                    if details.repoTags.count > 1 {
+                        tagsCard(details.repoTags)
                     }
-                } header: {
-                    ResourceSectionHeader(title: "Identity", systemImage: "number")
+
+                    configCard(details.config)
                 }
             }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
+        }
+        .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
 
-            if !usingContainers.isEmpty {
-                Section("Used By") {
-                    ForEach(usingContainers) { container in
-                        NavigationLink {
-                            ContainerDetailView(container: container, environmentID: environmentID)
-                        } label: {
-                            HStack(spacing: 10) {
-                                StatusIcon(status: container.status, isLive: container.isRunning)
-                                Text(container.displayName)
+    private var headerCard: some View {
+        imageHeader
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dashboardCardBackground()
+    }
+
+    private func metadataCard(_ details: ImageDetailSummary) -> some View {
+        AdaptiveMetadataGrid(items: metadataItems(details))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dashboardCardBackground(cornerRadius: Radius.standard)
+    }
+
+    private func identityCard(_ details: ImageDetailSummary) -> some View {
+        infoRowCard(title: "Identity", systemImage: "number") {
+            valueRow("Image ID", monospacedValue: details.id)
+            if !details.repoTags.isEmpty {
+                Divider().padding(.leading, 12)
+                valueRow("Tags", monospacedValue: details.repoTags.joined(separator: "\n"))
+            }
+        }
+    }
+
+    private var usedByCard: some View {
+        infoRowCard(title: "Used By", systemImage: "cube.box", count: usingContainers.count) {
+            ForEach(Array(usingContainers.enumerated()), id: \.element.id) { index, container in
+                if index > 0 { Divider().padding(.leading, 12) }
+                NavigationLink {
+                    ContainerDetailView(container: container, environmentID: environmentID)
+                } label: {
+                    HStack(spacing: 10) {
+                        StatusIcon(status: container.status, isLive: container.isRunning)
+                        Text(container.displayName)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.secondary.opacity(0.5))
+                    }
+                    .padding(12)
+                    .contentShape(.rect)
+                }
+                .cardRowLinkStyle()
+            }
+        }
+    }
+
+    private func tagsCard(_ tags: [String]) -> some View {
+        infoRowCard(title: "Tags", systemImage: "tag") {
+            ForEach(Array(tags.enumerated()), id: \.element) { index, tag in
+                if index > 0 { Divider().padding(.leading, 12) }
+                MonospacedValue(value: tag)
+                    .font(.caption.monospaced())
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func configCard(_ config: ImageDetailConfig) -> some View {
+        let rows = configRows(config)
+        guard !rows.isEmpty else {
+            return AnyView(EmptyView())
+        }
+        return AnyView(
+            infoRowCard(title: "Image Config", systemImage: "slider.horizontal.3") {
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    if index > 0 { Divider().padding(.leading, 12) }
+                    switch row {
+                    case .value(let label, let value):
+                        valueRow(label, monospacedValue: value)
+                    case .text(let label, let value):
+                        valueRow(label, textValue: value)
+                    case .link(let title):
+                        configNavLink(title) {
+                            if title.hasPrefix("Env") {
+                                EnvVarsView(vars: config.env ?? [])
+                            } else {
+                                LabelsView(labels: config.labels ?? [:])
                             }
                         }
                     }
                 }
             }
+        )
+    }
 
-            if let details {
-                if details.repoTags.count > 1 {
-                    let tags = details.repoTags
-                    Section("Tags") {
-                        ForEach(tags, id: \.self) { tag in
-                            Text(tag).font(.caption.monospaced())
-                        }
-                    }
-                }
+    private enum ConfigRow {
+        case value(String, String)
+        case text(String, String)
+        case link(String)
+    }
 
-                imageConfigSection(details.config)
-            }
+    private func configRows(_ config: ImageDetailConfig) -> [ConfigRow] {
+        var rows: [ConfigRow] = []
+        if let cmd = config.cmd, !cmd.isEmpty { rows.append(.value("CMD", cmd.joined(separator: " "))) }
+        if let ep = config.entrypoint, !ep.isEmpty { rows.append(.value("Entrypoint", ep.joined(separator: " "))) }
+        if let wd = config.workingDir, !wd.isEmpty { rows.append(.value("Working Dir", wd)) }
+        if let user = config.user, !user.isEmpty { rows.append(.text("User", user)) }
+        if let env = config.env, !env.isEmpty { rows.append(.link("Env Vars (\(env.count))")) }
+        if let labels = config.labels, !labels.isEmpty { rows.append(.link("Labels (\(labels.count))")) }
+        return rows
+    }
+
+    /// Grouped card of label/value rows, mirroring the dashboard's
+    /// `DashboardInfoGroup`/`DashboardInfoRow` pair.
+    private func infoRowCard<Content: View>(
+        title: String,
+        systemImage: String,
+        count: Int? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title, systemImage: systemImage, count: count)
+            VStack(spacing: 0) { content() }
+                .dashboardCardBackground(cornerRadius: Radius.standard)
         }
-        .listStyle(.insetGrouped)
+    }
+
+    /// Label stacked above the value so long monospace content (image IDs,
+    /// tag lists) wraps across the full card width instead of being squeezed
+    /// into the remaining space next to the label.
+    private func valueRow(
+        _ label: String,
+        monospacedValue: String,
+        lineLimit: Int? = nil
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(verbatim: monospacedValue)
+                .font(.subheadline.monospaced())
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(lineLimit)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func valueRow(_ label: String, textValue: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(textValue)
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func configNavLink<Destination: View>(_ title: String, @ViewBuilder destination: () -> Destination) -> some View {
+        NavigationLink(destination: destination()) {
+            HStack {
+                Text(title)
+                    .font(.subheadline)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary.opacity(0.5))
+            }
+            .padding(12)
+            .contentShape(.rect)
+        }
+        .cardRowLinkStyle()
     }
 
     private func metadataItems(_ details: ImageDetailSummary) -> [ResourceMetadataItem] {
@@ -236,33 +388,6 @@ struct ImageDetailView: View {
 
     private func headerDate(_ iso: String) -> String {
         ArcaneDateFormatting.formattedISO8601(iso, date: .abbreviated, time: .omitted)
-    }
-
-    private func imageConfigSection(_ config: ImageDetailConfig) -> some View {
-        Section("Image Config") {
-            if let cmd = config.cmd, !cmd.isEmpty {
-                LabeledContent("CMD") { MonospacedValue(value: cmd.joined(separator: " ")) }
-            }
-            if let ep = config.entrypoint, !ep.isEmpty {
-                LabeledContent("Entrypoint") { MonospacedValue(value: ep.joined(separator: " ")) }
-            }
-            if let wd = config.workingDir, !wd.isEmpty {
-                LabeledContent("Working Dir") { MonospacedValue(value: wd) }
-            }
-            if let user = config.user, !user.isEmpty {
-                LabeledContent("User", value: user)
-            }
-            if let env = config.env, !env.isEmpty {
-                NavigationLink("Env Vars (\(env.count))") {
-                    EnvVarsView(vars: env)
-                }
-            }
-            if let labels = config.labels, !labels.isEmpty {
-                NavigationLink("Labels (\(labels.count))") {
-                    LabelsView(labels: labels)
-                }
-            }
-        }
     }
 
     // List-style update state derived from the fetched update info, shown as a

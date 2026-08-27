@@ -41,22 +41,24 @@ struct ContainerRegistriesView: View {
                     Button("Add Registry") { showCreateRegistrySheet = true }
                 }
             } else {
-                List {
-                    Section {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ResourceCountSectionHeader(
+                            "Container Registries",
+                            loadedCount: registries.count,
+                            totalCount: pagination.totalItems,
+                            hasMore: pagination.hasMore
+                        )
+
                         ForEach(registries) { registry in
                             PressableRegistryRow(
                                 registry: registry,
                                 onEdit: { editingRegistry = registry },
                                 onDelete: { pendingDeleteRegistry = registry }
                             )
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button {
-                                    pendingDeleteRegistry = registry
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                .tint(.red)
-                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .dashboardCardBackground(cornerRadius: Radius.standard)
                         }
 
                         if pagination.hasMore {
@@ -73,16 +75,12 @@ struct ContainerRegistriesView: View {
                                     }
                             }
                         }
-                    } header: {
-                        ResourceCountSectionHeader(
-                            "Container Registries",
-                            loadedCount: registries.count,
-                            totalCount: pagination.totalItems,
-                            hasMore: pagination.hasMore
-                        )
                     }
+                    .padding(.horizontal)
+                    .padding(.bottom, 16)
                 }
-                .listStyle(.insetGrouped)
+                .softTopScrollEdgeEffectCompat()
+                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle("Container Registries")
@@ -300,7 +298,7 @@ private struct PressableRegistryRow: View {
                 // is dead, so users had to long-press. Make the whole row tappable.
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .cardRowLinkStyle()
         .contextMenu {
             Button(action: onEdit) {
                 Label("Edit", systemImage: "pencil")

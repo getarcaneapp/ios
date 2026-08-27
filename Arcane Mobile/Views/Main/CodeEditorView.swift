@@ -316,7 +316,7 @@ struct EditorQuickKeysBar: View {
                                 .font(.callout.weight(.medium).monospaced())
                                 .foregroundStyle(.primary)
                                 .frame(minWidth: 44, minHeight: 34)
-                                .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 8, style: .continuous))
+                                .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: Radius.nested, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }

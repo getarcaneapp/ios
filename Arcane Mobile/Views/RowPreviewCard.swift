@@ -51,21 +51,12 @@ struct RowPreviewCard: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 14) {
                 CachedAsyncImage(url: iconUrl, size: 52) {
-                    if #available(iOS 26, *) {
-                        Image(systemName: icon)
-                            .font(.title)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.white)
-                            .frame(width: 52, height: 52)
-                            .glassEffect(.regular.tint(iconColor), in: .circle)
-                    } else {
-                        Image(systemName: icon)
-                            .font(.title)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.white)
-                            .frame(width: 52, height: 52)
-                            .background(iconColor, in: .circle)
-                    }
+                    Image(systemName: icon)
+                        .font(.title)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.white)
+                        .frame(width: 52, height: 52)
+                        .glassChipCompat(tint: iconColor, in: .circle)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -84,21 +75,12 @@ struct RowPreviewCard: View {
                     if !badges.isEmpty {
                         HStack(spacing: 6) {
                             ForEach(badges, id: \.self) { badge in
-                                if #available(iOS 26, *) {
-                                    Text(badge.text)
-                                        .font(.caption2.weight(.semibold))
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .foregroundStyle(.white)
-                                        .glassEffect(.regular.tint(badge.color), in: .capsule)
-                                } else {
-                                    Text(badge.text)
-                                        .font(.caption2.weight(.semibold))
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .foregroundStyle(badge.color)
-                                        .background(badge.color.opacity(0.15), in: .capsule)
-                                }
+                                Text(badge.text)
+                                    .font(.caption2.weight(.semibold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .foregroundStyle(.white)
+                                    .glassChipCompat(tint: badge.color, in: .capsule)
                             }
                         }
                         .padding(.top, 2)
@@ -127,6 +109,6 @@ struct RowPreviewCard: View {
         }
         .padding(20)
         .frame(width: 320)
-        .background(Color(.secondarySystemGroupedBackground))
+        .dashboardCardBackground()
     }
 }

@@ -675,84 +675,23 @@ struct VolumeDetailView: View {
     private enum VolumeRoute: Hashable { case browse, backups }
 
     var body: some View {
-        List {
-            Section {
-                HStack(spacing: 16) {
-                    Image(systemName: "externaldrive.fill")
-                        .font(.title)
-                        .foregroundStyle(.orange)
-                        .frame(width: 56, height: 56)
-                        .glassEffectCompat(in: .circle)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(volume.name).font(.title3.bold()).lineLimit(2)
-                        Text("Driver: \(volume.driver)").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 4)
-            }
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                headerCard
+                detailsCard
 
-            Section("Details") {
-                AdaptiveMetadataGrid(items: volumeMetadata)
-                if !volume.mountpoint.isEmpty {
-                    LabeledContent("Mount Point") { MonospacedValue(value: volume.mountpoint) }
+                if !volume.containers.isEmpty {
+                    consumersCard
                 }
-                NavigationLink("Browse Files") {
-                    VolumeBrowserView(environmentID: environmentID, volumeName: volume.name)
-                }
-                NavigationLink("Backups") {
-                    VolumeBackupsView(environmentID: environmentID, volumeName: volume.name)
-                }
-            }
 
-            if !volume.containers.isEmpty {
-                Section {
-                    ForEach(volume.containers, id: \.self) { containerID in
-                        if let container = resolvedContainer(for: containerID) {
-                            NavigationLink {
-                                ContainerDetailView(container: container, environmentID: environmentID)
-                            } label: {
-                                HStack(spacing: 10) {
-                                    StatusIcon(status: container.status, isLive: container.isRunning)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(container.displayName)
-                                        Text(verbatim: containerID)
-                                            .font(.caption2.monospaced())
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-                            }
-                        } else {
-                            LabeledContent("Unavailable container") {
-                                MonospacedValue(value: containerID, lineLimit: 1)
-                            }
-                        }
-                    }
-                } header: {
-                    ResourceSectionHeader(title: "Consumers", systemImage: "cube.box", count: volume.containers.count)
-                }
+                labelsCard
+                optionsCard
             }
-
-            let labels = volume.labels
-            if !labels.isEmpty {
-                Section("Labels") {
-                    ForEach(Array(labels.keys.sorted()), id: \.self) { key in
-                        LabeledContent(key, value: labels[key] ?? "")
-                    }
-                }
-            }
-
-            let options = volume.options
-            if !options.isEmpty {
-                Section("Options") {
-                    ForEach(Array(options.keys.sorted()), id: \.self) { key in
-                        LabeledContent(key, value: options[key] ?? "")
-                    }
-                }
-            }
-
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
-        .listStyle(.insetGrouped)
+        .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
         .morphingActions(
             primary: ActionButtonItem(
                 id: "browse",
@@ -811,6 +750,169 @@ struct VolumeDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var headerCard: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "externaldrive.fill")
+                .font(.title)
+                .foregroundStyle(.orange)
+                .frame(width: 56, height: 56)
+                .glassEffectCompat(in: .circle)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(volume.name).font(.title3.bold()).lineLimit(2)
+                Text("Driver: \(volume.driver)").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardCardBackground()
+    }
+
+    private var detailsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader("Details", systemImage: "info.circle")
+            VStack(spacing: 0) {
+                AdaptiveMetadataGrid(items: volumeMetadata)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                if !volume.mountpoint.isEmpty {
+                    Divider().padding(.leading, 12)
+                    infoRow("Mount Point") {
+                        MonospacedValue(value: volume.mountpoint)
+                    }
+                }
+                cardLink("Browse Files", systemImage: "folder") {
+                    VolumeBrowserView(environmentID: environmentID, volumeName: volume.name)
+                }
+                cardLink("Backups", systemImage: "clock.arrow.circlepath") {
+                    VolumeBackupsView(environmentID: environmentID, volumeName: volume.name)
+                }
+            }
+            .dashboardCardBackground(cornerRadius: Radius.standard)
+        }
+    }
+
+    private var consumersCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader("Consumers", systemImage: "cube.box", count: volume.containers.count)
+            VStack(spacing: 0) {
+                ForEach(Array(volume.containers.enumerated()), id: \.element) { index, containerID in
+                    if index > 0 { Divider().padding(.leading, 12) }
+                    if let container = resolvedContainer(for: containerID) {
+                        NavigationLink {
+                            ContainerDetailView(container: container, environmentID: environmentID)
+                        } label: {
+                            HStack(spacing: 10) {
+                                StatusIcon(status: container.status, isLive: container.isRunning)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(container.displayName)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.primary)
+                                    Text(verbatim: containerID)
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 8)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.secondary.opacity(0.5))
+                            }
+                            .padding(12)
+                            .contentShape(.rect)
+                        }
+                        .cardRowLinkStyle()
+                    } else {
+                        HStack {
+                            Text("Unavailable container")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 8)
+                            MonospacedValue(value: containerID, lineLimit: 1)
+                        }
+                        .padding(12)
+                    }
+                }
+            }
+            .dashboardCardBackground(cornerRadius: Radius.standard)
+        }
+    }
+
+    @ViewBuilder
+    private var labelsCard: some View {
+        let labels = volume.labels
+        if !labels.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader("Labels", systemImage: "tag")
+                VStack(spacing: 0) {
+                    ForEach(Array(labels.keys.sorted()), id: \.self) { key in
+                        keyValuePair(key, value: labels[key] ?? "")
+                    }
+                }
+                .dashboardCardBackground(cornerRadius: Radius.standard)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var optionsCard: some View {
+        let options = volume.options
+        if !options.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader("Options", systemImage: "slider.horizontal.3")
+                VStack(spacing: 0) {
+                    ForEach(Array(options.keys.sorted()), id: \.self) { key in
+                        keyValuePair(key, value: options[key] ?? "")
+                    }
+                }
+                .dashboardCardBackground(cornerRadius: Radius.standard)
+            }
+        }
+    }
+
+    private func infoRow(_ label: String, @ViewBuilder value: () -> some View) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 16)
+            value()
+        }
+        .padding(12)
+    }
+
+    private func keyValuePair(_ key: String, value: String) -> some View {
+        infoRow(key) {
+            Text(value)
+                .font(.subheadline)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func cardLink<Destination: View>(
+        _ title: String,
+        systemImage: String,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink(destination: destination()) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.secondary.opacity(0.5))
+            }
+            .padding(12)
+            .contentShape(.rect)
+        }
+        .cardRowLinkStyle()
     }
 
     private var volumeMetadata: [ResourceMetadataItem] {

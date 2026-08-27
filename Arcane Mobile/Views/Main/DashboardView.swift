@@ -221,6 +221,33 @@ struct DashboardView: View {
                     }
                 }
 
+                // Tab-bar mode has no sidebar hosting the Activity Center, so
+                // the dashboard toolbar is its standing entry point. Sidebar
+                // mode already exposes it next to the sidebar wordmark.
+                if !showsSidebarButton, isNavigationRoot, manager.supportsActivities {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            quickActionRouter.openActivityCenter()
+                        } label: {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .overlay(alignment: .topTrailing) {
+                                    if !failedActivities.isEmpty {
+                                        Text(verbatim: "\(failedActivities.count)")
+                                            .font(.caption2.bold())
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 4)
+                                            .frame(minWidth: 16, minHeight: 16)
+                                            .background(.red, in: .capsule)
+                                            .offset(x: 9, y: -8)
+                                    }
+                                }
+                        }
+                        .accessibilityLabel(failedActivities.isEmpty
+                            ? "Activity Center"
+                            : "Activity Center, \(failedActivities.count) failures")
+                    }
+                }
+
                 if canPrune {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button { showPruneSheet = true } label: {
@@ -265,15 +292,12 @@ struct DashboardView: View {
                     environmentID: EnvironmentID(rawValue: route.id),
                     environmentName: route.name
                 )
-                .pageEntranceFromTop()
             }
             .navigationDestination(item: $containerRoute) { container in
                 ContainerDetailView(container: container, environmentID: manager.activeEnvironmentID)
-                    .pageEntranceFromTop()
             }
             .navigationDestination(item: $projectRoute) { project in
                 ProjectDetailView(project: project, environmentID: manager.activeEnvironmentID)
-                    .pageEntranceFromTop()
             }
             .navigationDestination(item: $vulnerabilityRoute) { route in
                 AllVulnerabilitiesView(environmentID: EnvironmentID(rawValue: route.id))
@@ -1297,16 +1321,7 @@ struct DashboardMiniMetric: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        // Raised chip: a lighter grouped tone lifts it off the card in dark mode,
-        // and a tight drop shadow on the fill does the lifting in light mode. The
-        // old 0.5-opacity same-tone fill read as flat. Restrained — no glow.
-        .background(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(
-                    Color(uiColor: .tertiarySystemGroupedBackground)
-                        .shadow(.drop(color: .black.opacity(0.15), radius: 3, y: 1))
-                )
-        )
+        .raisedChipBackground(in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(value)")
     }
@@ -1375,68 +1390,6 @@ struct StatusBadge: View {
 
     var body: some View {
         ResourceStatusBadge(status: status, isLive: isLive)
-    }
-}
-
-struct SectionHeader: View {
-    let title: String
-    var body: some View {
-        Text(title).font(.title2.bold()).padding(.top, 10).padding(.bottom, 2)
-    }
-}
-
-// MARK: - View Modifiers
-
-extension View {
-    func dashboardCardBackground(cornerRadius: CGFloat = Radius.card) -> some View {
-        self.modifier(DashboardCardBackgroundModifier(cornerRadius: cornerRadius))
-    }
-}
-
-struct DashboardCardBackgroundModifier: ViewModifier {
-    let cornerRadius: CGFloat
-    // Arcane ships its own `Environment` model, which shadows SwiftUI's property
-    // wrapper — reach for the fully-qualified one.
-    @SwiftUI.Environment(\.colorScheme) private var colorScheme
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            // Liquid Glass already supplies depth; this path is a plain fill and
-            // only inherits the larger radius.
-            content
-                .background(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                )
-        } else {
-            // iOS 18 fallback — the "soft depth" pillow cue. The drop shadow
-            // rides on the fill (via `ShapeStyle.shadow`) so it hugs the shape
-            // rather than the whole subtree, and a 1pt top-edge highlight fakes
-            // "light from above" convexity. Restrained — no glow.
-            content
-                .background(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(
-                            Color(uiColor: .secondarySystemGroupedBackground)
-                                .shadow(.drop(color: .black.opacity(0.06), radius: 8, y: 3))
-                        )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    .white.opacity(colorScheme == .dark ? 0.07 : 0.35),
-                                    .clear
-                                ],
-                                startPoint: .top,
-                                endPoint: .center
-                            ),
-                            lineWidth: 1
-                        )
-                        .allowsHitTesting(false)
-                )
-        }
     }
 }
 

@@ -8,89 +8,23 @@ struct JobDetailView: View {
     let onRun: () async -> Void
 
     var body: some View {
-        List {
-            Section {
-                HStack(spacing: 14) {
-                    Image(systemName: icon)
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(tint)
-                        .frame(width: 44, height: 44)
-                        .background(tint.opacity(0.15), in: .circle)
-                        .symbolEffect(.rotate, options: .repeating, isActive: isRunning)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(job.name)
-                            .font(.headline)
-                        if !job.category.isEmpty {
-                            Text(job.category.capitalized)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(tint)
-                        }
-                    }
-                }
-                .padding(.vertical, 4)
-                if !job.description.isEmpty {
-                    Text(job.description)
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-                }
-            }
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                headerCard
+                scheduleCard
+                flagsCard
 
-            Section("Schedule") {
-                LabeledContent("Cron") {
-                    Text(job.schedule)
-                        .font(.subheadline.monospaced())
-                        .textSelection(.enabled)
+                if !job.prerequisites.isEmpty {
+                    prerequisitesCard(job.prerequisites)
                 }
-                if let readable = CronExpression.readable(job.schedule) {
-                    LabeledContent("Runs", value: readable)
-                }
-                if let next = job.nextRun {
-                    LabeledContent("Next Run", value: next.formatted(date: .abbreviated, time: .standard))
-                }
-            }
 
-            Section("Flags") {
-                LabeledContent("Enabled", value: job.enabled ? "Yes" : "No")
-                LabeledContent("Continuous", value: job.isContinuous ? "Yes" : "No")
-                LabeledContent("Manager Only", value: job.managerOnly ? "Yes" : "No")
-                LabeledContent("Runnable Manually", value: job.canRunManually ? "Yes" : "No")
+                identifierCard
             }
-
-            if !job.prerequisites.isEmpty {
-                let prerequisites = job.prerequisites
-                Section("Prerequisites") {
-                    ForEach(Array(prerequisites.enumerated()), id: \.offset) { _, prerequisite in
-                        HStack(spacing: 10) {
-                            Image(systemName: prerequisite.isMet ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .foregroundStyle(prerequisite.isMet ? .green : .red)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(prerequisite.label)
-                                    .font(.subheadline)
-                                Text(prerequisite.settingKey)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Section("Identifier") {
-                LabeledContent("Job ID") {
-                    Text(job.id)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                }
-                if let key = job.settingsKey, !key.isEmpty {
-                    LabeledContent("Settings Key") {
-                        Text(key)
-                            .font(.caption.monospaced())
-                            .textSelection(.enabled)
-                    }
-                }
-            }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
+        .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(job.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -110,6 +44,135 @@ struct JobDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Cards
+
+    /// Grouped card of rows, mirroring the dashboard's info-group vocabulary.
+    private func card<Content: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title, systemImage: systemImage)
+            VStack(spacing: 0) { content() }
+                .dashboardCardBackground(cornerRadius: Radius.standard)
+        }
+    }
+
+    private var headerCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 44, height: 44)
+                    .background(tint.opacity(0.15), in: .circle)
+                    .symbolEffect(.rotate, options: .repeating, isActive: isRunning)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(job.name)
+                        .font(.headline)
+                    if !job.category.isEmpty {
+                        Text(job.category.capitalized)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(tint)
+                    }
+                }
+            }
+            if !job.description.isEmpty {
+                Text(job.description)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardCardBackground()
+    }
+
+    private var scheduleCard: some View {
+        card(title: "Schedule", systemImage: "clock") {
+            row("Cron") {
+                Text(job.schedule)
+                    .font(.subheadline.monospaced())
+                    .textSelection(.enabled)
+                    .multilineTextAlignment(.trailing)
+            }
+            if let readable = CronExpression.readable(job.schedule) {
+                row("Runs") { valueText(readable) }
+            }
+            if let next = job.nextRun {
+                row("Next Run") { valueText(next.formatted(date: .abbreviated, time: .standard)) }
+            }
+        }
+    }
+
+    private var flagsCard: some View {
+        card(title: "Flags", systemImage: "flag") {
+            row("Enabled") { valueText(job.enabled ? "Yes" : "No") }
+            row("Continuous") { valueText(job.isContinuous ? "Yes" : "No") }
+            row("Manager Only") { valueText(job.managerOnly ? "Yes" : "No") }
+            row("Runnable Manually") { valueText(job.canRunManually ? "Yes" : "No") }
+        }
+    }
+
+    private func prerequisitesCard(_ prerequisites: [JobPrerequisite]) -> some View {
+        card(title: "Prerequisites", systemImage: "checklist") {
+            ForEach(Array(prerequisites.enumerated()), id: \.offset) { index, prerequisite in
+                if index > 0 { Divider().padding(.leading, 12) }
+                HStack(spacing: 10) {
+                    Image(systemName: prerequisite.isMet ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundStyle(prerequisite.isMet ? .green : .red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(prerequisite.label)
+                            .font(.subheadline)
+                        Text(prerequisite.settingKey)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(12)
+            }
+        }
+    }
+
+    private var identifierCard: some View {
+        card(title: "Identifier", systemImage: "number") {
+            row("Job ID") {
+                Text(job.id)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                    .multilineTextAlignment(.trailing)
+            }
+            if let key = job.settingsKey, !key.isEmpty {
+                row("Settings Key") {
+                    Text(key)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+        }
+    }
+
+    private func row(_ label: String, @ViewBuilder value: () -> some View) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 16)
+            value()
+        }
+        .padding(12)
+    }
+
+    private func valueText(_ value: String) -> some View {
+        Text(value)
+            .font(.subheadline)
+            .multilineTextAlignment(.trailing)
     }
 
     private var icon: String {

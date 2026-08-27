@@ -53,6 +53,8 @@ struct ResourceCountLabel: View {
     }
 }
 
+/// Pagination-aware sugar over the canonical `SectionHeader`: the shared
+/// headline-secondary title plus a trailing pagination-count capsule.
 struct ResourceCountSectionHeader: View {
     let title: String
     let loadedCount: Int
@@ -72,16 +74,12 @@ struct ResourceCountSectionHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.footnote.weight(.semibold))
-            Spacer(minLength: 8)
+        SectionHeader(title) {
             ResourceCountLabel(
                 loadedCount: loadedCount,
                 totalCount: totalCount,
                 hasMore: hasMore
             )
         }
-        .textCase(nil)
     }
 }

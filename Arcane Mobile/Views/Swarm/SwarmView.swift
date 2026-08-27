@@ -174,69 +174,129 @@ struct SwarmView: View {
                 }
             }
         } else {
-            List {
-                Section("Cluster") {
-                    LabeledContent("Environment", value: environmentName)
-                    if let info = store.info {
-                        LabeledContent("Cluster ID") {
-                            Text(verbatim: info.id)
-                                .font(.caption.monospaced())
-                                .multilineTextAlignment(.trailing)
-                                .textSelection(.enabled)
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SectionHeader("Cluster", systemImage: "square.stack.3d.up")
+                        VStack(spacing: 0) {
+                            infoRow("Environment") { valueText(environmentName) }
+                            if let info = store.info {
+                                Divider().padding(.leading, 12)
+                                infoRow("Cluster ID") {
+                                    Text(verbatim: info.id)
+                                        .font(.caption.monospaced())
+                                        .multilineTextAlignment(.trailing)
+                                        .textSelection(.enabled)
+                                }
+                                infoRow("Created") {
+                                    valueText(info.createdAt.formatted(date: .abbreviated, time: .omitted))
+                                }
+                                infoRow("Root Rotation") {
+                                    Text(info.rootRotationInProgress ? "In Progress" : "Idle")
+                                        .font(.subheadline)
+                                        .foregroundStyle(info.rootRotationInProgress ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                                        .multilineTextAlignment(.trailing)
+                                }
+                            }
+                            if store.info != nil { Divider().padding(.leading, 12) }
+                            infoRow("Nodes") {
+                                valueText(String(store.nodes.count), monospaced: true)
+                            }
                         }
-                        LabeledContent("Created") {
-                            Text(info.createdAt, style: .date)
-                        }
-                        LabeledContent("Root Rotation") {
-                            Text(info.rootRotationInProgress ? "In Progress" : "Idle")
-                                .foregroundStyle(info.rootRotationInProgress ? .orange : .secondary)
-                        }
+                        .dashboardCardBackground(cornerRadius: Radius.standard)
                     }
-                    LabeledContent("Nodes", value: String(store.nodes.count))
-                }
 
-                if let errorMessage = store.errorMessage {
-                    Section {
+                    if let errorMessage = store.errorMessage {
                         Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline)
                             .foregroundStyle(.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                            .dashboardCardBackground(cornerRadius: Radius.standard)
                     }
-                }
 
-                if canJoin {
-                    Section {
-                        Button {
-                            showsEasyJoin = true
-                        } label: {
-                            Label("Easy Join", systemImage: "plus.rectangle.on.rectangle")
-                        }
-                        .disabled(!store.easyJoinSupported)
-                        .accessibilityHint("Select Arcane environments to join to this cluster")
+                    if canJoin {
+                        VStack(alignment: .leading, spacing: 6) {
+                            SectionHeader("Join Environments", systemImage: "plus.rectangle.on.rectangle")
+                            Button {
+                                showsEasyJoin = true
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "plus.rectangle.on.rectangle")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                    Text("Easy Join")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.primary)
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.secondary.opacity(0.5))
+                                }
+                                .padding(12)
+                                .contentShape(.rect)
+                            }
+                            .cardRowLinkStyle()
+                            .disabled(!store.easyJoinSupported)
+                            .accessibilityHint("Select Arcane environments to join to this cluster")
+                            .dashboardCardBackground(cornerRadius: Radius.standard)
 
-                        if !store.easyJoinSupported {
-                            Label("Easy Join requires a newer Arcane backend.", systemImage: "info.circle")
-                                .font(.caption)
+                            Text(store.easyJoinSupported
+                                 ? "Easy Join uses each environment's existing Arcane connection and does not reveal Swarm join tokens."
+                                 : "Easy Join requires a newer Arcane backend.")
+                                .font(.caption2)
                                 .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
                         }
-                    } header: {
-                        Text("Join Environments")
-                    } footer: {
-                        Text("Easy Join uses each environment's existing Arcane connection and does not reveal Swarm join tokens.")
                     }
-                }
 
-                if canLeave {
-                    Section {
-                        Button(role: .destructive) { showsLeave = true } label: {
-                            Label("Leave Swarm", systemImage: "rectangle.portrait.and.arrow.right")
+                    if canLeave {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Button(role: .destructive) { showsLeave = true } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("Leave Swarm")
+                                        .font(.subheadline)
+                                    Spacer(minLength: 8)
+                                }
+                                .padding(12)
+                                .contentShape(.rect)
+                            }
+                            .cardRowLinkStyle()
+                            .dashboardCardBackground(cornerRadius: Radius.standard)
+
+                            Text("Leaving removes this Docker engine from the cluster. Force is available for unreachable managers.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
                         }
-                    } footer: {
-                        Text("Leaving removes this Docker engine from the cluster. Force is available for unreachable managers.")
                     }
                 }
+                .padding(.horizontal)
+                .padding(.bottom, 16)
             }
-            .listStyle(.insetGrouped)
+            .softTopScrollEdgeEffectCompat()
+            .background(Color(uiColor: .systemGroupedBackground))
             .refreshable { await load() }
         }
+    }
+
+    private func infoRow(_ label: String, @ViewBuilder value: () -> some View) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 16)
+            value()
+        }
+        .padding(12)
+    }
+
+    private func valueText(_ value: String, monospaced: Bool = false) -> some View {
+        Text(value)
+            .font(monospaced ? .subheadline.monospacedDigit() : .subheadline)
+            .multilineTextAlignment(.trailing)
     }
 
     @ViewBuilder
@@ -279,86 +339,34 @@ struct SwarmView: View {
                 Text("No nodes are currently visible in this cluster.")
             }
         } else {
-            List {
-                if canManageNodes, !store.agentLifecycleSupported {
-                    Section {
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    if canManageNodes, !store.agentLifecycleSupported {
                         Label("Node-agent lifecycle actions require a newer Arcane backend.", systemImage: "info.circle")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
                     }
-                }
 
-                Section {
-                    if filteredNodes.isEmpty {
-                        ContentUnavailableView.search(text: searchText)
-                    } else {
-                        ForEach(filteredNodes) { node in
-                            Button {
-                                selectedNode = node
-                            } label: {
-                                SwarmNodeRow(node: node)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Opens node and agent details")
-                            .contextMenu {
-                                Button {
-                                    selectedNode = node
-                                } label: {
-                                    Label("Inspect Details", systemImage: "info.circle")
-                                }
-
-                                Button {
-                                    UIPasteboard.general.string = node.hostname
-                                    showToast(.copied("Hostname copied"))
-                                } label: {
-                                    Label("Copy Hostname", systemImage: "doc.on.doc")
-                                }
-
-                                Button {
-                                    UIPasteboard.general.string = node.id
-                                    showToast(.copied("Node ID copied"))
-                                } label: {
-                                    Label("Copy Node ID", systemImage: "number")
-                                }
-
-                                if canManageNodes {
-                                    Divider()
-                                    Button {
-                                        Task { await reconcileNodeAgents() }
-                                    } label: {
-                                        Label("Reconcile Node Agents", systemImage: "arrow.triangle.2.circlepath")
-                                    }
-                                    .disabled(store.isReconciling || !store.agentLifecycleSupported)
-                                }
-                            }
-                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                Button {
-                                    selectedNode = node
-                                } label: {
-                                    Label("Details", systemImage: "info.circle")
-                                }
-                                .tint(.blue)
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                if canManageNodes {
-                                    Button {
-                                        Task { await reconcileNodeAgents() }
-                                    } label: {
-                                        Label("Reconcile", systemImage: "arrow.triangle.2.circlepath")
-                                    }
-                                    .tint(.indigo)
-                                    .disabled(store.isReconciling || !store.agentLifecycleSupported)
-                                }
-                            }
-                        }
-                    }
-                } header: {
                     ResourceCountSectionHeader(
                         "Nodes",
                         loadedCount: filteredNodes.count
                     )
+
+                    if filteredNodes.isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                    } else {
+                        ForEach(filteredNodes) { node in
+                            nodeRow(node)
+                        }
+                    }
                 }
+                .padding(.horizontal)
+                .padding(.bottom, 16)
             }
-            .listStyle(.insetGrouped)
+            .softTopScrollEdgeEffectCompat()
+            .background(Color(uiColor: .systemGroupedBackground))
             .searchable(text: $searchText, prompt: "Search nodes")
             .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
             .refreshable { await load() }
@@ -374,6 +382,51 @@ struct SwarmView: View {
                         .accessibilityLabel("Reconcile node agents")
                     }
                 }
+            }
+        }
+    }
+
+    private func nodeRow(_ node: SwarmNode) -> some View {
+        Button {
+            selectedNode = node
+        } label: {
+            SwarmNodeRow(node: node)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .contentShape(.rect)
+        }
+        .cardRowLinkStyle()
+        .accessibilityHint("Opens node and agent details")
+        .dashboardCardBackground(cornerRadius: Radius.standard)
+        .contextMenu {
+            Button {
+                selectedNode = node
+            } label: {
+                Label("Inspect Details", systemImage: "info.circle")
+            }
+
+            Button {
+                UIPasteboard.general.string = node.hostname
+                showToast(.copied("Hostname copied"))
+            } label: {
+                Label("Copy Hostname", systemImage: "doc.on.doc")
+            }
+
+            Button {
+                UIPasteboard.general.string = node.id
+                showToast(.copied("Node ID copied"))
+            } label: {
+                Label("Copy Node ID", systemImage: "number")
+            }
+
+            if canManageNodes {
+                Divider()
+                Button {
+                    Task { await reconcileNodeAgents() }
+                } label: {
+                    Label("Reconcile Node Agents", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(store.isReconciling || !store.agentLifecycleSupported)
             }
         }
     }

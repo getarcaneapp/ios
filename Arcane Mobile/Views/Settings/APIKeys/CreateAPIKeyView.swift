@@ -26,7 +26,7 @@ struct NewAPIKeyView: View {
                     .font(.system(.caption, design: .monospaced))
                     .textSelection(.enabled)
                     .padding(16)
-                    .glassEffectCompat(in: .rect(cornerRadius: 12))
+                    .glassEffectCompat(in: .rect(cornerRadius: Radius.nested))
                     .padding(.horizontal, 24)
 
                 Button {

@@ -28,9 +28,9 @@ struct ResourceStatusBadge: View {
         if live { return .green }
 
         switch normalizedStatus {
-        case "running", "online", "success", "completed", "done":
+        case "running", "online", "success", "completed", "done", "healthy":
             return .green
-        case "partial", "partially running":
+        case "partial", "partially running", "starting":
             return .orange
         case "stopped", "exited", "offline":
             return .red
@@ -47,9 +47,9 @@ struct ResourceStatusBadge: View {
         if live { return "checkmark.circle.fill" }
 
         switch normalizedStatus {
-        case "running", "online", "success", "completed", "done":
+        case "running", "online", "success", "completed", "done", "healthy":
             return "checkmark.circle.fill"
-        case "partial", "partially running":
+        case "partial", "partially running", "starting":
             return "circle.lefthalf.filled"
         case "stopped", "exited", "offline":
             return "stop.circle.fill"
@@ -112,6 +112,10 @@ struct StatusIcon: View {
         switch normalized {
         case "running", "online", "success", "completed", "done":
             return ("play.circle.fill", .green, "Running")
+        case "healthy":
+            return ("checkmark.circle.fill", .green, "Healthy")
+        case "starting":
+            return ("circle.lefthalf.filled", .orange, "Starting")
         case "partial", "partially running":
             return ("pause.circle.fill", .yellow, "Partially running")
         case "paused":

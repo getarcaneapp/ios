@@ -52,6 +52,27 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.7.1",
+            new: [
+                .init("Activity Center button on the Dashboard in tab-bar navigation mode.")
+            ],
+            changed: [
+                .init("Consistent dashboard-style cards, chips, and section headers across screens."),
+                .init("Image updates and layer history use dashboard card layout."),
+                .init("Image detail overview and attestations use dashboard card layout."),
+                .init("Volume, network, job, container detail, Swarm, and template screens use dashboard card layout."),
+                .init("User, registry, webhook, and template lists render as cards.")
+            ],
+            fixed: [
+                .init("Settings menu rows show navigation chevrons."),
+                .init("Healthy service status badge shows green instead of grey."),
+                .init("Swipe-back gesture animates correctly on pushed pages."),
+                .init("Card rows no longer stay highlighted after returning from a detail page."),
+                .init("Image identity values wrap instead of truncating on the detail page."),
+                .init("Severity filters on image vulnerabilities are color-coded tappable chips.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.7.0",
             new: [
                 .init("Reliable passkey sign-in and multi-factor authentication."),

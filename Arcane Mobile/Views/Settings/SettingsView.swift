@@ -231,7 +231,12 @@ private struct SettingsCatalogRow: View {
         } else {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    destinationButton(tab, trailingValue: trailingValue, showsProgress: showsProgress)
+                    destinationButton(
+                        tab,
+                        trailingValue: trailingValue,
+                        showsProgress: showsProgress,
+                        showsChevron: false
+                    )
 
                     Button {
                         withAnimation(Motion.state) {
@@ -263,7 +268,8 @@ private struct SettingsCatalogRow: View {
     private func destinationButton(
         _ destination: AppTab,
         trailingValue: String? = nil,
-        showsProgress: Bool = false
+        showsProgress: Bool = false,
+        showsChevron: Bool = true
     ) -> some View {
         Button {
             navPath.append(destination)
@@ -281,6 +287,12 @@ private struct SettingsCatalogRow: View {
                         .foregroundStyle(.secondary)
                 } else if showsProgress {
                     ProgressView().scaleEffect(0.7)
+                }
+                if showsChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

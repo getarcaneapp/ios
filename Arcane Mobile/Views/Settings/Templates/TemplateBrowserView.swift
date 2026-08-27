@@ -46,89 +46,74 @@ struct TemplateBrowserView: View {
                     Button("Try Again") { Task { await store.reload() } }
                 }
             } else {
-                List {
-                    Section {
-                        ScrollableTabBar(
-                            selection: source,
-                            options: TemplateSourceSelection.allCases.map {
-                                ScrollableTabOption(
-                                    $0,
-                                    title: $0.title,
-                                    systemImage: $0.icon,
-                                    tint: templateSourceTint($0)
-                                )
-                            },
-                            accessibilityLabel: "Template source",
-                            addsHorizontalContentInset: false
-                        )
-                    }
-
-                    if store.templates.isEmpty {
-                        ContentUnavailableView {
-                            Label(
-                                store.queryKey == "|all" ? "No Templates" : "No Matching Templates",
-                                systemImage: "doc.text.magnifyingglass"
+                VStack(spacing: 0) {
+                    ScrollableTabBar(
+                        selection: source,
+                        options: TemplateSourceSelection.allCases.map {
+                            ScrollableTabOption(
+                                $0,
+                                title: $0.title,
+                                systemImage: $0.icon,
+                                tint: templateSourceTint($0)
                             )
-                        }
-                        .listRowBackground(Color.clear)
-                    } else {
-                        let groups = groupedTemplates
-                        ForEach(groups, id: \.name) { group in
-                            Section {
-                                ForEach(group.templates) { template in
-                                    if canReadTemplates {
-                                        NavigationLink {
-                                            TemplatePreviewView(template: template)
-                                        } label: {
-                                            TemplateRow(template: template)
-                                        }
-                                    } else {
-                                        TemplateRow(template: template)
-                                    }
-                                }
-                            } header: {
-                                if group.name == groups.first?.name {
-                                    ResourceCountSectionHeader(
-                                        group.name,
-                                        loadedCount: store.templates.count,
-                                        totalCount: store.totalItemCount,
-                                        hasMore: store.hasMore
+                        },
+                        accessibilityLabel: "Template source"
+                    )
+
+                    ScrollView {
+                        LazyVStack(spacing: 10) {
+                            if store.templates.isEmpty {
+                                ContentUnavailableView {
+                                    Label(
+                                        store.queryKey == "|all" ? "No Templates" : "No Matching Templates",
+                                        systemImage: "doc.text.magnifyingglass"
                                     )
-                                } else {
-                                    Text(group.name)
+                                }
+                                .padding(.top, 24)
+                            } else {
+                                let groups = groupedTemplates
+                                ForEach(groups, id: \.name) { group in
+                                    templateGroup(group)
                                 }
                             }
-                        }
-                    }
 
-                    if let errorMessage = store.errorMessage, !store.templates.isEmpty {
-                        Section {
-                            Label(errorMessage, systemImage: "exclamationmark.triangle")
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        }
-                    }
-
-                    if store.hasMore {
-                        Button {
-                            Task { await store.loadMore() }
-                        } label: {
-                            HStack {
-                                Spacer()
-                                if store.isLoadingMore {
-                                    ProgressView()
-                                } else {
-                                    Label("Show More", systemImage: "arrow.down.circle")
-                                        .font(.subheadline.weight(.semibold))
-                                }
-                                Spacer()
+                            if let errorMessage = store.errorMessage, !store.templates.isEmpty {
+                                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                                    .font(.footnote)
+                                    .foregroundStyle(.red)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(14)
+                                    .dashboardCardBackground(cornerRadius: Radius.standard)
                             }
-                            .padding(.vertical, 4)
+
+                            if store.hasMore {
+                                Button {
+                                    Task { await store.loadMore() }
+                                } label: {
+                                    HStack {
+                                        Spacer()
+                                        if store.isLoadingMore {
+                                            ProgressView()
+                                        } else {
+                                            Label("Show More", systemImage: "arrow.down.circle")
+                                                .font(.subheadline.weight(.semibold))
+                                        }
+                                        Spacer()
+                                    }
+                                    .padding(12)
+                                    .contentShape(.rect)
+                                }
+                                .cardRowLinkStyle()
+                                .disabled(store.isLoadingMore)
+                                .dashboardCardBackground(cornerRadius: Radius.standard)
+                            }
                         }
-                        .disabled(store.isLoadingMore)
+                        .padding(.horizontal)
+                        .padding(.bottom, 16)
                     }
+                    .softTopScrollEdgeEffectCompat()
+                    .background(Color(uiColor: .systemGroupedBackground))
                 }
-                .listStyle(.insetGrouped)
             }
         }
         .navigationTitle("Templates")
@@ -168,6 +153,47 @@ struct TemplateBrowserView: View {
         .refreshable {
             guard canListTemplates else { return }
             await store.reload()
+        }
+    }
+
+    @ViewBuilder
+    private func templateGroup(_ group: (name: String, templates: [Template])) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if group.name == groupedTemplates.first?.name {
+                ResourceCountSectionHeader(
+                    group.name,
+                    loadedCount: store.templates.count,
+                    totalCount: store.totalItemCount,
+                    hasMore: store.hasMore
+                )
+            } else {
+                SectionHeader(group.name, systemImage: "folder")
+            }
+
+            VStack(spacing: 0) {
+                ForEach(Array(group.templates.enumerated()), id: \.element.id) { index, template in
+                    if index > 0 { Divider().padding(.leading, 12) }
+                    templateRow(template)
+                }
+            }
+            .dashboardCardBackground(cornerRadius: Radius.standard)
+        }
+    }
+
+    @ViewBuilder
+    private func templateRow(_ template: Template) -> some View {
+        if canReadTemplates {
+            NavigationLink(destination: TemplatePreviewView(template: template)) {
+                TemplateRow(template: template)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .contentShape(.rect)
+            }
+            .cardRowLinkStyle()
+        } else {
+            TemplateRow(template: template)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
         }
     }
 

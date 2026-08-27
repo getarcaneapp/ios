@@ -192,7 +192,7 @@ struct LogsView: View {
         .buttonStyle(.plain)
         .background(Color.accentColor, in: .capsule)
         .glassEffectOverlayCompat(interactive: true, in: .capsule)
-        .shadow(color: .black.opacity(0.2), radius: 8, y: 2)
+        .floatingSurfaceShadow()
         .accessibilityLabel("\(newLinesWhilePaused) new log lines. Tap to jump to latest.")
     }
 

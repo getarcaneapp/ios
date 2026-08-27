@@ -74,27 +74,6 @@ struct AdaptiveMetadataGrid: View {
     }
 }
 
-struct ResourceSectionHeader: View {
-    let title: String
-    let systemImage: String
-    var count: Int?
-
-    var body: some View {
-        Label {
-            HStack(spacing: 5) {
-                Text(title)
-                if let count {
-                    Text(verbatim: String(count))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        } icon: {
-            Image(systemName: systemImage)
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
 struct MonospacedValue: View {
     let value: String
     var lineLimit: Int? = nil

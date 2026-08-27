@@ -36,20 +36,17 @@ struct UsersView: View {
                     Button("Add User") { showCreateSheet = true }
                 }
             } else {
-                List {
-                    Section {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ResourceCountSectionHeader(
+                            "Users",
+                            loadedCount: users.count,
+                            totalCount: pagination.totalItems,
+                            hasMore: pagination.hasMore
+                        )
+
                         ForEach(users) { user in
-                            NavigationLink(destination: UserDetailView(user: user, onUpdate: { await loadUsers() })) {
-                                UserRow(user: user)
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button {
-                                    pendingDeleteUser = user
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                .tint(.red)
-                            }
+                            userLink(user)
                         }
 
                         if pagination.hasMore {
@@ -66,16 +63,12 @@ struct UsersView: View {
                                     }
                             }
                         }
-                    } header: {
-                        ResourceCountSectionHeader(
-                            "Users",
-                            loadedCount: users.count,
-                            totalCount: pagination.totalItems,
-                            hasMore: pagination.hasMore
-                        )
                     }
+                    .padding(.horizontal)
+                    .padding(.bottom, 16)
                 }
-                .listStyle(.insetGrouped)
+                .softTopScrollEdgeEffectCompat()
+                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle("Users")
@@ -122,6 +115,25 @@ struct UsersView: View {
             confirmTitle: "Delete"
         ) { user in
             Task { await deleteUser(user) }
+        }
+    }
+
+    private func userLink(_ user: User) -> some View {
+        NavigationLink(destination: UserDetailView(user: user, onUpdate: { await loadUsers() })) {
+            UserRow(user: user)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .contentShape(.rect)
+        }
+        .cardRowLinkStyle()
+        .dashboardCardBackground(cornerRadius: Radius.standard)
+        .contextMenu {
+            Button(role: .destructive) {
+                pendingDeleteUser = user
+            } label: {
+                DestructiveLabel(text: "Delete")
+            }
+            .tint(.red)
         }
     }
 

@@ -154,7 +154,7 @@ private struct TabReplaceCallout: View {
         // Keep content clear of the pointer protruding from the bottom edge.
         .padding(.bottom, pointerHeight)
         .frame(width: panelWidth > 0 ? panelWidth : nil)
-        .glassEffect(.regular, in: shape)
+        .glassEffectCompat(in: shape)
         // Hairline edge so the panel — and especially the teardrop pointer — stays
         // legible over dark content (plain glass has no defined edge there).
         .overlay { shape.stroke(.white.opacity(0.18), lineWidth: 0.5) }

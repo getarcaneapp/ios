@@ -234,7 +234,7 @@ struct ProjectDetailView: View {
                     }
                 }
             } header: {
-                ResourceSectionHeader(title: "Services", systemImage: "cube.box", count: runtimeServices.count)
+                SectionHeader("Services", systemImage: "cube.box", count: runtimeServices.count)
             }
         }
         .listStyle(.insetGrouped)

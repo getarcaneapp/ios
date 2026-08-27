@@ -26,54 +26,47 @@ struct ImageUpdatesView: View {
     }
 
     var body: some View {
-        List {
-            Section {
-                ImageUpdateSummaryStrip(summary: summary, isLoading: loadingSummary)
-            } header: {
-                Text("Summary")
-            }
+        ScrollView {
+            LazyVStack(spacing: 16) {
+                summaryCard
+                scanCard
 
-            Section {
-                Button {
-                    Task { await scanAll() }
-                } label: {
-                    HStack {
-                        Label("Scan all images", systemImage: "magnifyingglass")
-                        Spacer()
-                        if isScanning { ProgressView().scaleEffect(0.8) }
-                    }
-                }
-                .disabled(isScanning)
-            } footer: {
-                Text("Contacts each image's registry. Can take a while for large environments.")
-            }
-
-            if !taggedRefs.isEmpty {
-                Section {
-                    ForEach(taggedRefs, id: \.self) { ref in
-                        UpdateRow(
-                            ref: ref,
-                            info: byRef[ref],
-                            isChecking: checkingRef == ref,
-                            recheck: { Task { await recheck(ref: ref) } }
-                        )
-                    }
-                } header: {
+                if !taggedRefs.isEmpty {
                     ResourceCountSectionHeader(
                         "Images",
                         loadedCount: taggedRefs.count
                     )
-                }
-            }
 
-            if let error = errorMessage {
-                Section {
+                    VStack(spacing: 0) {
+                        ForEach(Array(taggedRefs.enumerated()), id: \.element) { index, ref in
+                            UpdateRow(
+                                ref: ref,
+                                info: byRef[ref],
+                                isChecking: checkingRef == ref,
+                                recheck: { Task { await recheck(ref: ref) } }
+                            )
+                            if index < taggedRefs.count - 1 {
+                                Divider().padding(.leading, 16)
+                            }
+                        }
+                    }
+                    .dashboardCardBackground(cornerRadius: Radius.standard)
+                }
+
+                if let error = errorMessage {
                     Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.subheadline)
                         .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .dashboardCardBackground(cornerRadius: Radius.standard)
                 }
             }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
-        .listStyle(.insetGrouped)
+        .softTopScrollEdgeEffectCompat()
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Updates")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -83,6 +76,70 @@ struct ImageUpdatesView: View {
         .refreshable {
             await loadSummary()
             await loadByRefs()
+        }
+    }
+
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("Summary", systemImage: "chart.bar.doc.horizontal")
+
+            if let summary {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    DashboardMiniMetric(title: "Total", value: "\(summary.totalImages)", color: .secondary)
+                    DashboardMiniMetric(
+                        title: "With updates",
+                        value: "\(summary.imagesWithUpdates)",
+                        color: summary.imagesWithUpdates > 0 ? .orange : .secondary
+                    )
+                    DashboardMiniMetric(title: "Digest", value: "\(summary.digestUpdates)", color: Color.accentColor)
+                    DashboardMiniMetric(
+                        title: "Errors",
+                        value: "\(summary.errorsCount)",
+                        color: summary.errorsCount > 0 ? .red : .secondary
+                    )
+                }
+            } else if loadingSummary {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading summary…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 8)
+            } else {
+                Text("No summary available")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardCardBackground()
+    }
+
+    private var scanCard: some View {
+        VStack(spacing: 6) {
+            Button {
+                Task { await scanAll() }
+            } label: {
+                HStack {
+                    Label("Scan all images", systemImage: "magnifyingglass")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 8)
+                    if isScanning { ProgressView().scaleEffect(0.8) }
+                }
+                .padding(16)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .disabled(isScanning)
+            .dashboardCardBackground(cornerRadius: Radius.standard)
+
+            Text("Contacts each image's registry. Can take a while for large environments.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
         }
     }
 
@@ -143,50 +200,6 @@ struct ImageUpdatesView: View {
     }
 }
 
-struct ImageUpdateSummaryStrip: View {
-    let summary: ImageUpdateSummary?
-    let isLoading: Bool
-
-    var body: some View {
-        if let summary {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    metric("Total", value: "\(summary.totalImages)", color: .secondary)
-                    Spacer()
-                    metric(
-                        "With updates",
-                        value: "\(summary.imagesWithUpdates)",
-                        color: summary.imagesWithUpdates > 0 ? .orange : .secondary
-                    )
-                    Spacer()
-                    metric("Digest", value: "\(summary.digestUpdates)", color: Color.accentColor)
-                    Spacer()
-                    metric(
-                        "Errors",
-                        value: "\(summary.errorsCount)",
-                        color: summary.errorsCount > 0 ? .red : .secondary
-                    )
-                }
-            }
-            .padding(.vertical, 4)
-        } else if isLoading {
-            HStack {
-                ProgressView().scaleEffect(0.8)
-                Text("Loading summary…").foregroundStyle(.secondary)
-            }
-        } else {
-            Text("No summary available").foregroundStyle(.secondary)
-        }
-    }
-
-    private func metric(_ label: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.title3.bold()).foregroundStyle(color)
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-        }
-    }
-}
-
 struct UpdateRow: View {
     let ref: String
     let info: ImageUpdateResponse?
@@ -234,7 +247,8 @@ struct UpdateRow: View {
                 .buttonStyle(.borderless)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
     }
 
     private func versionLine(_ info: ImageUpdateResponse) -> String {

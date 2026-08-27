@@ -111,7 +111,7 @@ private struct ActionToolbarModifier: ViewModifier {
             }
             .buttonStyle(.plain)
             .glassEffectCompat(tint: item.tint, interactive: true, in: .circle)
-            .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
+            .floatingSurfaceShadow()
             .disabled(buttonDisabled || isRunning)
             .opacity(buttonDisabled && !isRunning ? 0.45 : 1.0)
             .motionAwareAnimation(Motion.state, value: buttonDisabled)

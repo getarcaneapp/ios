@@ -46,24 +46,33 @@ struct ImageAttestationsView: View {
                     Text("This image has no in-toto attestations attached (provenance, SBOM, …).")
                 }
             } else {
-                List {
-                    Section {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
                         ForEach(attestations) { attestation in
                             Button {
                                 detailAttestation = attestation
                             } label: {
                                 row(attestation)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
                             }
                             .buttonStyle(.plain)
+                            .dashboardCardBackground(cornerRadius: Radius.standard)
                         }
-                    } footer: {
+
                         if let digest = result?.subjectDigest, !digest.isEmpty {
                             Text("Subject digest: \(digest)")
                                 .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 4)
                         }
                     }
+                    .padding(.horizontal)
+                    .padding(.bottom, 16)
                 }
-                .listStyle(.insetGrouped)
+                .softTopScrollEdgeEffectCompat()
+                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle(embedded ? "" : "Attestations")
