@@ -54,7 +54,8 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.8.1",
             new: [
-                .init("Potential secrets are blurred in container and image environment-variable views.")
+                .init("Potential secrets are blurred in container and image environment-variable views."),
+                .init("Detailed API key management with assigned users, partial keys, editing, rotation, and deletion.")
             ],
             changed: [
                 .init("Environment-wide updates show unfinished environments on the progress ring and move completed bubbles into the results list.")
@@ -63,7 +64,8 @@ enum ReleaseNotes {
                 .init("Dashboard update and volume counts remain visible during pull-to-refresh."),
                 .init("Login keyboard and What's New wait for the launch animation to finish."),
                 .init("Masked environment-variable rows match other row heights."),
-                .init("Environment update backgrounds no longer show a gradient edge.")
+                .init("Environment update backgrounds no longer show a gradient edge."),
+                .init("API key details use native grouped sections with readable metadata and one copy action.")
             ]
         ),
         ReleaseNote(
