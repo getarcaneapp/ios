@@ -249,6 +249,7 @@ struct EditAPIKeyView: View {
     let apiKey: APIKey
     let metadata: APIKeyServerMetadata?
     let onSaved: (APIKey) async -> Void
+    private let initialExpiresAt: Date
 
     @State private var name: String
     @State private var description: String
@@ -269,14 +270,14 @@ struct EditAPIKeyView: View {
         self.apiKey = apiKey
         self.metadata = metadata
         self.onSaved = onSaved
+        let initialExpiresAt = apiKey.expiresAt
+            ?? Calendar.current.date(byAdding: .day, value: 90, to: Date())
+            ?? Date()
+        self.initialExpiresAt = initialExpiresAt
         _name = State(initialValue: apiKey.name)
         _description = State(initialValue: apiKey.description ?? "")
         _hasExpiration = State(initialValue: apiKey.expiresAt != nil)
-        _expiresAt = State(
-            initialValue: apiKey.expiresAt
-                ?? Calendar.current.date(byAdding: .day, value: 90, to: Date())
-                ?? Date()
-        )
+        _expiresAt = State(initialValue: initialExpiresAt)
         _selectedPermissions = State(
             initialValue: Set(metadata?.permissions?.map(\.permission) ?? [])
         )
@@ -328,14 +329,17 @@ struct EditAPIKeyView: View {
             }
             .navigationTitle("Edit API Key")
             .navigationBarTitleDisplayMode(.inline)
+            .settingsSaveBar(
+                hasChanges: hasChanges,
+                isSaving: isSaving,
+                canSave: canSave,
+                onSave: { Task { await save() } },
+                onRevert: revertChanges
+            )
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .disabled(isSaving)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { Task { await save() } }
-                        .disabled(!canSave)
                 }
             }
             .task { await loadManifestIfNeeded() }
@@ -412,6 +416,15 @@ struct EditAPIKeyView: View {
             }
         }
         .disabled(isSaving)
+    }
+
+    private func revertChanges() {
+        name = apiKey.name
+        description = apiKey.description ?? ""
+        hasExpiration = apiKey.expiresAt != nil
+        expiresAt = initialExpiresAt
+        selectedPermissions = Set(metadata?.permissions?.map(\.permission) ?? [])
+        errorMessage = nil
     }
 
     private func save() async {

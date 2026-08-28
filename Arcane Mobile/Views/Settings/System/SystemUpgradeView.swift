@@ -5,6 +5,12 @@ struct SystemUpgradeView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
     let environmentID: EnvironmentID
+    let environmentName: String?
+
+    init(environmentID: EnvironmentID, environmentName: String? = nil) {
+        self.environmentID = environmentID
+        self.environmentName = environmentName
+    }
 
     private enum Phase: Equatable {
         case checking
@@ -81,7 +87,7 @@ struct SystemUpgradeView: View {
         .deleteConfirmation(
             isPresented: $showConfirm,
             title: "Upgrade Arcane?",
-            message: "Arcane will restart. The mobile app may briefly lose connection.",
+            message: upgradeConfirmationMessage,
             icon: "arrow.up.circle",
             confirmTitle: "Upgrade"
         ) {
@@ -90,6 +96,13 @@ struct SystemUpgradeView: View {
     }
 
     // MARK: - States
+
+    private var upgradeConfirmationMessage: String {
+        if let environmentName {
+            return "Arcane on \(environmentName) will restart. The mobile app may briefly lose connection."
+        }
+        return "Arcane will restart. The mobile app may briefly lose connection."
+    }
 
     private var loadingCard: some View {
         VStack(spacing: 16) {

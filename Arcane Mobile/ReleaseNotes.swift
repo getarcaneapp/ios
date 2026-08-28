@@ -55,17 +55,27 @@ enum ReleaseNotes {
             version: "0.8.1",
             new: [
                 .init("Potential secrets are blurred in container and image environment-variable views."),
-                .init("Detailed API key management with assigned users, partial keys, editing, rotation, and deletion.")
+                .init("Detailed API key management with assigned users, partial keys, editing, rotation, and deletion."),
+                .init("Environment Settings includes an independent environment dropdown.")
             ],
             changed: [
-                .init("Environment-wide updates show unfinished environments on the progress ring and move completed bubbles into the results list.")
+                .init("Environment-wide updates show unfinished environments on the progress ring and move completed bubbles into the results list."),
+                .init("Environment settings identify the selected environment and follow Arcane web configuration groups."),
+                .init("Trivy network settings list available Docker networks in a menu."),
+                .init("Environment Settings detail pages omit repeated environment banners."),
+                .init("User avatar settings live under Users and apply to the manager."),
+                .init("Editable settings use a shared floating save control with a contextual tinted revert action.")
             ],
             fixed: [
                 .init("Dashboard update and volume counts remain visible during pull-to-refresh."),
                 .init("Login keyboard and What's New wait for the launch animation to finish."),
                 .init("Masked environment-variable rows match other row heights."),
                 .init("Environment update backgrounds no longer show a gradient edge."),
-                .init("API key details use native grouped sections with readable metadata and one copy action.")
+                .init("API key details use native grouped sections with readable metadata and one copy action."),
+                .init("Prune age filters appear only for Older Than modes."),
+                .init("Settings action controls morph smoothly without vertical movement."),
+                .init("Settings revert actions use white symbols on subtly tinted glass."),
+                .init("Revert controls fade before merging into the save action.")
             ]
         ),
         ReleaseNote(

@@ -250,6 +250,21 @@ private struct OIDCMappingFormSheet: View {
             && !isSaving
     }
 
+    private var hasChanges: Bool {
+        let persistedEnvironmentId = scope == .global ? "" : environmentId
+        guard let editing else {
+            return !claimValue.isEmpty
+                || !roleId.isEmpty
+                || scope != .global
+                || !persistedEnvironmentId.isEmpty
+        }
+        let originalScope: Scope = editing.environmentId == nil ? .global : .environment
+        return claimValue != editing.claimValue
+            || roleId != editing.roleId
+            || scope != originalScope
+            || persistedEnvironmentId != (editing.environmentId ?? "")
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -304,14 +319,25 @@ private struct OIDCMappingFormSheet: View {
             }
             .navigationTitle(editing == nil ? "New Mapping" : "Edit Mapping")
             .navigationBarTitleDisplayMode(.inline)
+            .settingsSaveBar(
+                hasChanges: hasChanges,
+                isSaving: isSaving,
+                canSave: canSave,
+                onSave: { Task { await save() } },
+                onRevert: revertChanges
+            )
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { Task { await save() } }
-                        .disabled(!canSave)
-                }
             }
         }
+    }
+
+    private func revertChanges() {
+        claimValue = editing?.claimValue ?? ""
+        roleId = editing?.roleId ?? ""
+        scope = editing?.environmentId == nil ? .global : .environment
+        environmentId = editing?.environmentId ?? ""
+        errorMessage = nil
     }
 
     private func save() async {

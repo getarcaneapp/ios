@@ -16,6 +16,9 @@ enum Motion {
     /// Default content / state / tint swap.
     static let state: Animation = .smooth(duration: 0.25)
 
+    /// Brief fade for visuals that must clear before a longer surface morph finishes.
+    static let earlyFade: Animation = .easeOut(duration: 0.1)
+
     /// List section reflow (filter, sort, pin, insert/remove).
     static let reflow: Animation = .smooth(duration: 0.3)
 

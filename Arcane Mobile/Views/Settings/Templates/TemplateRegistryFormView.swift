@@ -17,7 +17,9 @@ struct TemplateRegistryFormView: View {
     private var isEditing: Bool { registry != nil }
 
     private var hasChanges: Bool {
-        guard let registry else { return !name.isEmpty || !url.isEmpty }
+        guard let registry else {
+            return !name.isEmpty || !url.isEmpty || !description.isEmpty || !enabled
+        }
         return name != registry.name
             || url != registry.url
             || description != registry.description
@@ -58,23 +60,38 @@ struct TemplateRegistryFormView: View {
             }
             .navigationTitle(isEditing ? "Edit Template Registry" : "Add Template Registry")
             .navigationBarTitleDisplayMode(.inline)
+            .settingsSaveBar(
+                hasChanges: hasChanges,
+                isSaving: isLoading,
+                canSave: !name.isEmpty && !url.isEmpty,
+                saveAccessibilityLabel: isEditing ? "Save" : "Add",
+                onSave: { Task { await saveRegistry() } },
+                onRevert: revertChanges
+            )
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isEditing ? "Save" : "Add") { Task { await saveRegistry() } }
-                        .disabled(name.isEmpty || url.isEmpty || isLoading || !hasChanges)
-                }
             }
             .onAppear { populateFields() }
         }
     }
 
     private func populateFields() {
-        guard let registry else { return }
+        guard let registry else {
+            name = ""
+            url = ""
+            description = ""
+            enabled = true
+            return
+        }
         name = registry.name
         url = registry.url
         description = registry.description
         enabled = registry.enabled
+    }
+
+    private func revertChanges() {
+        populateFields()
+        errorMessage = nil
     }
 
     private func saveRegistry() async {

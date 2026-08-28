@@ -338,10 +338,16 @@ struct RoleDetailView: View {
     private var isReadOnly: Bool { mode == .readOnly }
 
     private var hasChanges: Bool {
-        guard let role else { return !name.isEmpty && !selectedPermissions.isEmpty }
+        guard let role else {
+            return !name.isEmpty || !description.isEmpty || !selectedPermissions.isEmpty
+        }
         return name != role.name
             || description != (role.description ?? "")
             || selectedPermissions != Set(role.permissions)
+    }
+
+    private var canSave: Bool {
+        !name.isEmpty && !selectedPermissions.isEmpty
     }
 
     var body: some View {
@@ -404,21 +410,29 @@ struct RoleDetailView: View {
         )
         .navigationTitle(mode == .create ? "New Role" : (role?.displayName ?? "Role"))
         .navigationBarTitleDisplayMode(.inline)
+        .settingsSaveBar(
+            isPresented: !isReadOnly,
+            hasChanges: hasChanges,
+            isSaving: isSaving,
+            canSave: canSave,
+            saveAccessibilityLabel: mode == .create ? "Create" : "Save",
+            onSave: { Task { await save() } },
+            onRevert: revertChanges
+        )
         .toolbar {
             if mode == .create {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
             }
-            if !isReadOnly {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(mode == .create ? "Create" : "Save") {
-                        Task { await save() }
-                    }
-                    .disabled(isSaving || !hasChanges || name.isEmpty || selectedPermissions.isEmpty)
-                }
-            }
         }
+    }
+
+    private func revertChanges() {
+        name = role?.name ?? ""
+        description = role?.description ?? ""
+        selectedPermissions = Set(role?.permissions ?? [])
+        errorMessage = nil
     }
 
     private func save() async {

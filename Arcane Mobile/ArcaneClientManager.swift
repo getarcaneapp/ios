@@ -718,14 +718,14 @@ final class ArcaneClientManager {
     /// otherwise Gravatar by email when the server's `enableGravatar`
     /// setting is on (the only picture SSO users have unless they upload
     /// one, since the server doesn't import the OIDC picture claim).
-    func refreshCurrentUserAvatar() async {
+    func refreshCurrentUserAvatar(force: Bool = false) async {
         guard let client, let user = currentUser else {
             currentUserAvatarData = nil
             avatarFetchKey = nil
             return
         }
         let key = "\(user.id)|\(user.updatedAt ?? "")"
-        guard key != avatarFetchKey else { return }
+        guard force || key != avatarFetchKey else { return }
         avatarFetchKey = key
         let avatarPath = "users/\(ArcaneAPIHelpers.escapedPathComponent(user.id))/avatar"
         do {
@@ -749,7 +749,7 @@ final class ArcaneClientManager {
               !email.isEmpty else { return nil }
         // Only reach out to Gravatar when the server has it enabled, like
         // the web UI — don't leak email hashes to a third party otherwise.
-        guard let settings = try? await client.settings.getSettings(),
+        guard let settings = try? await client.settings.getSettings(envID: .localDocker),
               settings.first(where: { $0.key == "enableGravatar" })?.value.lowercased() == "true"
         else { return nil }
         let hash = SHA256.hash(data: Data(email.utf8))

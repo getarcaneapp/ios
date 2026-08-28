@@ -4,7 +4,7 @@ import Arcane
 /// Account/profile page mirroring the web's Account view: identity header,
 /// editable display name + email, password change, and a disabled language
 /// row until localization ships. Follows the app's form conventions —
-/// toolbar Save with an in-flight spinner, `FormTextField`/`FormSecureField`
+/// floating Save with an in-flight spinner, `FormTextField`/`FormSecureField`
 /// rows, toast feedback.
 struct ProfileView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -48,6 +48,10 @@ struct ProfileView: View {
 
     private var canSave: Bool {
         profileChanged || (wantsPasswordChange && passwordValid)
+    }
+
+    private var hasChanges: Bool {
+        profileChanged || wantsPasswordChange
     }
 
     var body: some View {
@@ -123,20 +127,14 @@ struct ProfileView: View {
         }
         .navigationTitle("Account")
         .navigationBarTitleDisplayMode(.inline)
+        .settingsSaveBar(
+            hasChanges: hasChanges,
+            isSaving: isSaving,
+            canSave: canSave,
+            onSave: { Task { await save() } },
+            onRevert: revertChanges
+        )
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if isSaving {
-                    ProgressView().scaleEffect(0.8)
-                } else {
-                    Button("Save") { Task { await save() } }
-                        .disabled(!canSave)
-                }
-            }
-            // Separate glass group so sign-out floats as its own circular
-            // button on the far right instead of merging with Save.
-            if #available(iOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button(role: .destructive) {
@@ -263,6 +261,15 @@ struct ProfileView: View {
         hasSeededFields = true
         displayName = user.displayName ?? ""
         email = user.email ?? ""
+    }
+
+    private func revertChanges() {
+        displayName = user?.displayName ?? ""
+        email = user?.email ?? ""
+        currentPassword = ""
+        newPassword = ""
+        confirmPassword = ""
+        errorMessage = nil
     }
 
     /// One Save applies whatever changed: profile fields, password, or both.

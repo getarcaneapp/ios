@@ -83,6 +83,17 @@ struct UsersView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
+                NavigationLink {
+                    UserSettingsView()
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel("User Settings")
+            }
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add User")
             }
         }

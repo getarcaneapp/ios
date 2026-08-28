@@ -25,10 +25,35 @@ struct AuthenticationSettingsView: View {
     @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var originalState: [String: String]?
 
     // Env-var override status
     @State private var oidcEnvForced = false
     @State private var oidcEnvConfigured = false
+
+    private var formState: [String: String] {
+        [
+            "authLocalEnabled": String(authLocalEnabled),
+            "authSessionTimeout": authSessionTimeout,
+            "authPasswordPolicy": authPasswordPolicy,
+            "oidcEnabled": String(oidcEnabled),
+            "oidcProviderName": oidcProviderName,
+            "oidcIssuerUrl": oidcIssuerUrl,
+            "oidcClientId": oidcClientId,
+            "oidcClientSecret": oidcClientSecret,
+            "oidcScopes": oidcScopes,
+            "oidcGroupsClaim": oidcGroupsClaim,
+            "oidcSkipTlsVerify": String(oidcSkipTlsVerify),
+            "oidcAutoRedirectToProvider": String(oidcAutoRedirectToProvider),
+            "oidcMergeAccounts": String(oidcMergeAccounts),
+            "oidcProviderLogoUrl": oidcProviderLogoUrl,
+        ]
+    }
+
+    private var hasChanges: Bool {
+        guard !isLoading, let originalState else { return false }
+        return formState != originalState
+    }
 
     var body: some View {
         Form {
@@ -131,25 +156,16 @@ struct AuthenticationSettingsView: View {
                 }
             }
 
-            Section {
-                Button {
-                    Task { await save() }
-                } label: {
-                    HStack {
-                        Spacer()
-                        if isSaving {
-                            ProgressView().scaleEffect(0.8)
-                        } else {
-                            Text("Save")
-                        }
-                        Spacer()
-                    }
-                }
-                .disabled(isSaving)
-            }
         }
         .navigationTitle("Authentication")
         .navigationBarTitleDisplayMode(.inline)
+        .settingsSaveBar(
+            hasChanges: hasChanges,
+            isSaving: isSaving,
+            isInteractionDisabled: isLoading,
+            onSave: { Task { await save() } },
+            onRevert: revertChanges
+        )
         .task { await loadSettings() }
     }
 
@@ -158,6 +174,8 @@ struct AuthenticationSettingsView: View {
     private func loadSettings() async {
         guard let client = manager.client else { return }
         isLoading = true
+        errorMessage = nil
+        originalState = nil
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "settings")
@@ -180,9 +198,29 @@ struct AuthenticationSettingsView: View {
             oidcProviderLogoUrl = dict["oidcProviderLogoUrl"] ?? ""
 
             await loadOidcStatus()
+            originalState = formState
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+
+    private func revertChanges() {
+        guard let originalState else { return }
+        authLocalEnabled = originalState["authLocalEnabled"] == "true"
+        authSessionTimeout = originalState["authSessionTimeout"] ?? "1440"
+        authPasswordPolicy = originalState["authPasswordPolicy"] ?? "strong"
+        oidcEnabled = originalState["oidcEnabled"] == "true"
+        oidcProviderName = originalState["oidcProviderName"] ?? ""
+        oidcIssuerUrl = originalState["oidcIssuerUrl"] ?? ""
+        oidcClientId = originalState["oidcClientId"] ?? ""
+        oidcClientSecret = originalState["oidcClientSecret"] ?? ""
+        oidcScopes = originalState["oidcScopes"] ?? "openid email profile"
+        oidcGroupsClaim = originalState["oidcGroupsClaim"] ?? ""
+        oidcSkipTlsVerify = originalState["oidcSkipTlsVerify"] == "true"
+        oidcAutoRedirectToProvider = originalState["oidcAutoRedirectToProvider"] == "true"
+        oidcMergeAccounts = originalState["oidcMergeAccounts"] == "true"
+        oidcProviderLogoUrl = originalState["oidcProviderLogoUrl"] ?? ""
+        errorMessage = nil
     }
 
     private func loadOidcStatus() async {
@@ -238,6 +276,7 @@ struct AuthenticationSettingsView: View {
             if let cached = manager.cached {
                 await cached.invalidate(envID: manager.activeEnvironmentID, paths: [path, path + "*"])
             }
+            originalState = formState
             showToast(.success("Authentication settings saved"))
         } catch {
             errorMessage = friendlyErrorMessage(error)

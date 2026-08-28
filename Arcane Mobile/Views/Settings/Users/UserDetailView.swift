@@ -57,12 +57,12 @@ struct UserDetailView: View {
         }
         .navigationTitle(user.displayUsername)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { Task { await saveUser() } }
-                    .disabled(isSaving || !hasChanges)
-            }
-        }
+        .settingsSaveBar(
+            hasChanges: hasChanges,
+            isSaving: isSaving,
+            onSave: { Task { await saveUser() } },
+            onRevert: revertChanges
+        )
     }
 
     @ViewBuilder
@@ -89,6 +89,13 @@ struct UserDetailView: View {
         }
     }
 
+    private func revertChanges() {
+        email = user.email ?? ""
+        displayName = user.displayName ?? ""
+        isAdmin = user.isAdmin
+        errorMessage = nil
+    }
+
     private func saveUser() async {
         guard let client = manager.client else { return }
         isSaving = true; errorMessage = nil
@@ -106,4 +113,3 @@ struct UserDetailView: View {
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }
-

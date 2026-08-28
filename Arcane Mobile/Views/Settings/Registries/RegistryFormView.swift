@@ -36,7 +36,19 @@ struct RegistryFormView: View {
     // For edits, Save only enables when something actually differs from the loaded
     // record (token/awsSecretAccessKey count as changed if any value was typed).
     private var hasChanges: Bool {
-        guard let registry else { return !url.isEmpty }
+        guard let registry else {
+            return !url.isEmpty
+                || !username.isEmpty
+                || !token.isEmpty
+                || !description.isEmpty
+                || !enabled
+                || insecure
+                || typeBinding.wrappedValue != "generic"
+                || !awsAccessKeyId.isEmpty
+                || !awsSecretAccessKey.isEmpty
+                || !awsRegion.isEmpty
+                || !repositoryNameRows.isEmpty
+        }
         let typeMatch = registryType == registry.registryType
             || (typeBinding.wrappedValue == "generic"
                 && (registry.registryType == "generic" || registry.registryType == "custom"))
@@ -167,28 +179,52 @@ struct RegistryFormView: View {
             .animation(Motion.entrance, value: isAWS)
             .navigationTitle(isEditing ? "Edit Registry" : "Add Registry")
             .navigationBarTitleDisplayMode(.inline)
+            .settingsSaveBar(
+                hasChanges: hasChanges,
+                isSaving: isLoading,
+                canSave: !url.isEmpty,
+                saveAccessibilityLabel: isEditing ? "Save" : "Add",
+                onSave: { Task { await saveRegistry() } },
+                onRevert: revertChanges
+            )
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isEditing ? "Save" : "Add") { Task { await saveRegistry() } }
-                        .disabled(url.isEmpty || isLoading || !hasChanges)
-                }
             }
             .onAppear { populateFields() }
         }
     }
 
     private func populateFields() {
-        guard let registry else { return }
+        guard let registry else {
+            url = ""
+            username = ""
+            token = ""
+            description = ""
+            enabled = true
+            insecure = false
+            registryType = "generic"
+            awsAccessKeyId = ""
+            awsSecretAccessKey = ""
+            awsRegion = ""
+            repositoryNameRows = []
+            return
+        }
         url = registry.url
         username = registry.username
+        token = ""
         description = registry.description ?? ""
         enabled = registry.enabled
         insecure = registry.insecure
         registryType = registry.registryType
         awsAccessKeyId = registry.awsAccessKeyId ?? ""
+        awsSecretAccessKey = ""
         awsRegion = registry.awsRegion ?? ""
         repositoryNameRows = registry.repositoryNames.map { StableStringRow(value: $0) }
+    }
+
+    private func revertChanges() {
+        populateFields()
+        errorMessage = nil
     }
 
     private func saveRegistry() async {

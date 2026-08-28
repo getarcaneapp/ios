@@ -79,13 +79,15 @@ struct NotificationProviderFormView: View {
         }
         .navigationTitle(provider.displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            saveButton
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.horizontal, 18)
-                .padding(.top, 10)
-                .padding(.bottom, 18)
-        }
+        .settingsSaveBar(
+            hasChanges: hasChanges,
+            isSaving: isSaving,
+            canSave: isValid,
+            isInteractionDisabled: isTesting,
+            saveAccessibilityLabel: existing == nil ? "Save" : "Update",
+            onSave: { Task { _ = await save(dismissAfterSave: true) } },
+            onRevert: revertChanges
+        )
         .confirmationDialog(
             "Save Changes Before Testing?",
             isPresented: $showsSaveBeforeTestConfirmation,
@@ -100,28 +102,9 @@ struct NotificationProviderFormView: View {
         }
     }
 
-    private var saveButton: some View {
-        Button {
-            Task { _ = await save(dismissAfterSave: true) }
-        } label: {
-            ZStack {
-                if isSaving {
-                    ProgressView()
-                        .tint(.white)
-                } else {
-                    Image(systemName: "checkmark")
-                        .font(.title.weight(.semibold))
-                        .foregroundStyle(.white)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .frame(width: 52, height: 52)
-        .contentShape(.circle)
-        .glassChipCompat(tint: Color.accentColor, interactive: true, in: .circle)
-        .accessibilityLabel(existing == nil ? "Save" : "Update")
-        .disabled(isSaving || isTesting || !isValid || !hasChanges)
-        .opacity(!isSaving && (isTesting || !isValid || !hasChanges) ? 0.6 : 1)
+    private func revertChanges() {
+        state = originalState
+        errorMessage = nil
     }
 
     @ViewBuilder

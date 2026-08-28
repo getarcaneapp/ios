@@ -93,6 +93,21 @@ extension View {
         }
     }
 
+    /// Gives a glass effect a stable transition identity on iOS 26+. Pair this
+    /// with `GlassContainerCompat` so nearby effects can morph into one another
+    /// as views enter or leave the hierarchy.
+    @ViewBuilder
+    func glassEffectIDCompat<ID: Hashable & Sendable>(
+        _ id: ID,
+        in namespace: Namespace.ID
+    ) -> some View {
+        if #available(iOS 26, *) {
+            self.glassEffectID(id, in: namespace)
+        } else {
+            self
+        }
+    }
+
     /// Additive glass on iOS 26+, **nothing** on iOS 18. For views that already
     /// supply their own opaque background (so no fallback fill is wanted) and
     /// only layer Liquid Glass on top when it's available.

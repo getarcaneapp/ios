@@ -55,7 +55,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .jobs: return "Jobs"
         case .users: return "Users"
         case .roles: return "Roles"
-        case .systemSettings: return "System Settings"
+        case .systemSettings: return "Environment Settings"
         case .activities: return "Activities"
         case .oidcRoleMappings: return "OIDC Role Mappings"
         }
@@ -65,7 +65,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .containerRegistries: return "Registries"
         case .gitRepositories: return "Git Repos"
-        case .systemSettings: return "System"
+        case .systemSettings: return "Environment"
         case .authentication: return "Auth"
         case .oidcRoleMappings: return "OIDC Roles"
         case .activities: return "Activity"
