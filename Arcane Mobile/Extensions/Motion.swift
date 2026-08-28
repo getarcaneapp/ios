@@ -61,20 +61,28 @@ enum Motion {
 
 // MARK: - Card entrance
 
-/// A one-shot scale + fade entrance for cards and tiles. Plays once when the
-/// view first appears and never again — the latch persists for the view's
-/// lifetime, so data refreshes (pull-to-refresh) don't replay it. Restrained:
-/// 2% scale, no slide, no glow. Reduce Motion drops the scale (fade only).
+/// A one-shot scale + fade entrance for cards and tiles. Plays once per
+/// identity and never again — the latch outlives the view, so LazyVStack
+/// teardown (e.g. the Dashboard grid covered by a pushed page) doesn't replay
+/// the entrance when the user swipes back. Restrained: 2% scale, no slide, no
+/// glow. Reduce Motion drops the scale (fade only).
 private struct CardEntranceModifier: ViewModifier {
+    let identity: String
     @State private var hasAppeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Process-lifetime latch. Survives view teardown; intentionally resets on
+    /// relaunch so the entrance still plays once per session.
+    private static var seenIdentities = Set<String>()
+
     func body(content: Content) -> some View {
+        let hasPlayed = hasAppeared || Self.seenIdentities.contains(identity)
         content
-            .scaleEffect(reduceMotion ? 1 : (hasAppeared ? 1 : 0.98))
-            .opacity(hasAppeared ? 1 : 0)
+            .scaleEffect(reduceMotion || hasPlayed ? 1 : 0.98)
+            .opacity(hasPlayed ? 1 : 0)
             .onAppear {
-                guard !hasAppeared else { return }
+                guard !hasAppeared, !Self.seenIdentities.contains(identity) else { return }
+                Self.seenIdentities.insert(identity)
                 withAnimation(reduceMotion ? Motion.reducedFallback : Motion.entrance) {
                     hasAppeared = true
                 }
@@ -83,10 +91,11 @@ private struct CardEntranceModifier: ViewModifier {
 }
 
 extension View {
-    /// One-shot scale + fade entrance for a card / tile. Plays once; never
-    /// replays on data refresh. See `CardEntranceModifier`.
-    func cardEntrance() -> some View {
-        modifier(CardEntranceModifier())
+    /// One-shot scale + fade entrance for a card / tile. Pass a stable
+    /// `identity` — the latch is keyed on it and survives scroll-lazy teardown,
+    /// so returning to the page never replays the animation.
+    func cardEntrance(id: String) -> some View {
+        modifier(CardEntranceModifier(identity: id))
     }
 }
 

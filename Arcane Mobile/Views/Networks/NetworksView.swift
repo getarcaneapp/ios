@@ -10,7 +10,6 @@ struct NetworksView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
-    @Namespace private var heroTransition
 
     @State private var networks: [NetworkSummary] = []
     @State private var isLoading = false
@@ -30,6 +29,7 @@ struct NetworksView: View {
     @State private var loadGeneration = 0
     @State private var systemNetworks: [NetworkSummary] = []
     @State private var userNetworks: [NetworkSummary] = []
+    @State private var hasCompletedInitialReflow = false
 
     private enum NetworkTypeFilter: String, CaseIterable {
         case all = "All", standard = "Standard", internalOnly = "Internal"
@@ -120,7 +120,6 @@ struct NetworksView: View {
                                 NavigationLink(value: network) {
                                     NetworkRow(network: network)
                                 }
-                                .matchedTransitionSource(id: network.id, in: heroTransition)
                                 .contextMenu {
                                     // No actions — built-in Docker networks cannot be deleted.
                                 } preview: {
@@ -145,7 +144,6 @@ struct NetworksView: View {
                                 NavigationLink(value: network) {
                                     NetworkRow(network: network)
                                 }
-                                .matchedTransitionSource(id: network.id, in: heroTransition)
                                 .contextMenu {
                                     Button(role: .destructive) {
                                         pendingDestructive = .delete(network)
@@ -188,7 +186,10 @@ struct NetworksView: View {
                     }
                 }
                 .listStyle(.insetGrouped)
-                .motionAwareAnimation(Motion.reflow, value: networkCounts)
+                .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: networkCounts)
+                .onChange(of: networkCounts) { _, counts in
+                    if !counts.isEmpty { hasCompletedInitialReflow = true }
+                }
             }
         }
         .navigationTitle("Networks")
@@ -237,7 +238,6 @@ struct NetworksView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: NetworkSummary.self) { network in
             NetworkDetailView(network: network, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: network.id, in: heroTransition))
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateNetworkView(environmentID: environmentID) {}
@@ -523,6 +523,7 @@ struct NetworkDetailView: View {
                         .padding(.horizontal, 4)
                 }
             }
+            .padding(.top, 8)
             .padding(.horizontal)
             .padding(.bottom, 16)
         }

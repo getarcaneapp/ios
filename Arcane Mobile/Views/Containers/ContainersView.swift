@@ -9,7 +9,6 @@ struct ContainersView: View {
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
-    @Namespace private var heroTransition
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -24,6 +23,7 @@ struct ContainersView: View {
     @State private var updateFilter = ResourceUpdateFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ContainerSummary>] = []
+    @State private var hasCompletedInitialReflow = false
     @State private var logsTarget: ContainerSummary?
     @State private var terminalTarget: ContainerSummary?
     @State private var isSelecting = false
@@ -263,7 +263,10 @@ struct ContainersView: View {
                 }
                 .listStyle(.insetGrouped)
                 .environment(\.editMode, .constant(isSelecting ? EditMode.active : EditMode.inactive))
-                .motionAwareAnimation(Motion.reflow, value: sectionCounts)
+                .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: sectionCounts)
+                .onChange(of: sectionCounts) { _, counts in
+                    if !counts.isEmpty { hasCompletedInitialReflow = true }
+                }
             }
         }
         .navigationTitle("Containers")
@@ -408,7 +411,6 @@ struct ContainersView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ContainerSummary.self) { container in
             ContainerDetailView(container: container, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: container.id, in: heroTransition))
         }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadContainers(refresh: true) }
@@ -436,7 +438,6 @@ struct ContainersView: View {
         return NavigationLink(value: container) {
             ContainerRow(container: container, isPinned: isPinned)
         }
-        .matchedTransitionSource(id: container.id, in: heroTransition)
         .contextMenu {
             if !isSelecting {
                 Button {

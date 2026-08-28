@@ -12,7 +12,6 @@ struct ProjectsView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
-    @Namespace private var heroTransition
 
     @State private var projects: [ProjectDetails] = []
     @State private var isLoading = false
@@ -32,6 +31,7 @@ struct ProjectsView: View {
     @State private var updateFilter = ResourceUpdateFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ProjectDetails>] = []
+    @State private var hasCompletedInitialReflow = false
 
     private enum ProjectStatusFilter: String, CaseIterable {
         case all = "All", running = "Running", stopped = "Stopped", partial = "Partial"
@@ -167,7 +167,10 @@ struct ProjectsView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .motionAwareAnimation(Motion.reflow, value: sectionCounts)
+        .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: sectionCounts)
+        .onChange(of: sectionCounts) { _, counts in
+            if !counts.isEmpty { hasCompletedInitialReflow = true }
+        }
     }
 
     @ToolbarContentBuilder
@@ -268,7 +271,6 @@ struct ProjectsView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ProjectDetails.self) { project in
             ProjectDetailView(project: project, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: project.id, in: heroTransition))
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateProjectView(environmentID: environmentID) {}
@@ -364,7 +366,6 @@ struct ProjectsView: View {
         return NavigationLink(value: project) {
             ProjectRow(project: project, isPinned: isPinned)
         }
-        .matchedTransitionSource(id: project.id, in: heroTransition)
         .contextMenu {
             Button {
                 togglePin(project)

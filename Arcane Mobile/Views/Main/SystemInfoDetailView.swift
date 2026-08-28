@@ -46,8 +46,7 @@ struct SystemInfoDetailView: View {
                             tint: $0.tint
                         )
                     },
-                    accessibilityLabel: "System information sections",
-                    addsHorizontalContentInset: false
+                    accessibilityLabel: "System information sections"
                 )
 
                 if let info = dockerInfo {

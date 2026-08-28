@@ -10,7 +10,6 @@ struct ImagesView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
-    @Namespace private var heroTransition
 
     @State private var images: [ImageSummary] = []
     @State private var isLoading = false
@@ -32,6 +31,7 @@ struct ImagesView: View {
     @State private var tagsFilter = ImageTagsFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ImageRowModel>] = []
+    @State private var hasCompletedInitialReflow = false
     @State private var isSelecting = false
     @State private var selection = Set<String>()
     @State private var isBulkRunning = false
@@ -176,7 +176,10 @@ struct ImagesView: View {
                 }
                 .listStyle(.insetGrouped)
                 .environment(\.editMode, .constant(isSelecting ? EditMode.active : EditMode.inactive))
-                .motionAwareAnimation(Motion.reflow, value: sectionCounts)
+                .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: sectionCounts)
+                .onChange(of: sectionCounts) { _, counts in
+                    if !counts.isEmpty { hasCompletedInitialReflow = true }
+                }
             }
         }
         .navigationTitle("Images")
@@ -353,7 +356,6 @@ struct ImagesView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ImageSummary.self) { image in
             ImageDetailView(image: image, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: image.id, in: heroTransition))
         }
         .sheet(isPresented: $showPullSheet) {
             PullImageView(environmentID: environmentID)
@@ -385,7 +387,6 @@ struct ImagesView: View {
         return NavigationLink(value: image) {
             ImageRow(row: row)
         }
-        .matchedTransitionSource(id: image.id, in: heroTransition)
         .contextMenu {
             if !isSelecting {
                 Button(role: .destructive) {

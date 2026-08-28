@@ -68,6 +68,9 @@ enum ReleaseNotes {
                 .init("Healthy service status badge shows green instead of grey."),
                 .init("Swipe-back gesture animates correctly on pushed pages."),
                 .init("Card rows no longer stay highlighted after returning from a detail page."),
+                .init("Detail pages add breathing room below the navigation bar."),
+                .init("Detail page tabs are centered and float in a glass container."),
+                .init("Lists no longer cascade in from the top-left on first load."),
                 .init("Image identity values wrap instead of truncating on the detail page."),
                 .init("Severity filters on image vulnerabilities are color-coded tappable chips.")
             ]

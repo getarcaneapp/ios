@@ -11,7 +11,6 @@ struct VolumesView: View {
     let environmentID: EnvironmentID
     let environmentName: String
 
-    @Namespace private var heroTransition
 
     @State private var volumes: [Volume] = []
     @State private var sizes: [String: Int64] = [:]
@@ -31,6 +30,7 @@ struct VolumesView: View {
     @State private var isLoadingMore = false
     @State private var loadGeneration = 0
     @State private var sections: [StableListSection<String, Volume>] = []
+    @State private var hasCompletedInitialReflow = false
     @State private var isSelecting = false
     @State private var selection = Set<String>()
     @State private var isBulkRunning = false
@@ -172,7 +172,10 @@ struct VolumesView: View {
                 }
                 .listStyle(.insetGrouped)
                 .environment(\.editMode, .constant(isSelecting ? EditMode.active : EditMode.inactive))
-                .motionAwareAnimation(Motion.reflow, value: sectionCounts)
+                .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: sectionCounts)
+                .onChange(of: sectionCounts) { _, counts in
+                    if !counts.isEmpty { hasCompletedInitialReflow = true }
+                }
             }
         }
         .navigationTitle("Volumes")
@@ -241,7 +244,6 @@ struct VolumesView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: Volume.self) { volume in
             VolumeDetailView(volume: volume, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: volume.id, in: heroTransition))
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateVolumeView(environmentID: environmentID) {}
@@ -336,7 +338,6 @@ struct VolumesView: View {
         return NavigationLink(value: volume) {
             VolumeRow(volume: volume, size: sizes[volume.name], isPinned: isPinned)
         }
-        .matchedTransitionSource(id: volume.id, in: heroTransition)
         .contextMenu {
             if !isSelecting {
                 Button {
@@ -687,6 +688,7 @@ struct VolumeDetailView: View {
                 labelsCard
                 optionsCard
             }
+            .padding(.top, 8)
             .padding(.horizontal)
             .padding(.bottom, 16)
         }

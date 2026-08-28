@@ -60,6 +60,7 @@ struct ImageHistoryView: View {
                             .dashboardCardBackground(cornerRadius: Radius.standard)
                         }
                     }
+                    .padding(.top, 8)
                     .padding(.horizontal)
                     .padding(.bottom, 16)
                 }

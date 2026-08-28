@@ -68,6 +68,7 @@ struct ImageAttestationsView: View {
                                 .padding(.horizontal, 4)
                         }
                     }
+                    .padding(.top, 8)
                     .padding(.horizontal)
                     .padding(.bottom, 16)
                 }

@@ -181,7 +181,7 @@ struct DashboardView: View {
                             overviewGrid
                             fleetCountAvailabilityNote
                         }
-                            .cardEntrance()
+                            .cardEntrance(id: "dashboard.overview")
 
                         let attention = needsAttentionItems
                         if !attention.isEmpty {

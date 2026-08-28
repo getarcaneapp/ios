@@ -200,6 +200,7 @@ struct ContainerDetailView: View {
                     }
                 }
             }
+            .padding(.top, 8)
             .padding(.horizontal)
             .padding(.bottom, 16)
         }
@@ -658,6 +659,7 @@ struct EnvVarsView: View {
                     .dashboardCardBackground(cornerRadius: Radius.standard)
                 }
             }
+            .padding(.top, 8)
             .padding(.horizontal)
             .padding(.bottom, 16)
         }
@@ -684,6 +686,7 @@ struct LabelsView: View {
                     .dashboardCardBackground(cornerRadius: Radius.standard)
                 }
             }
+            .padding(.top, 8)
             .padding(.horizontal)
             .padding(.bottom, 16)
         }
@@ -708,6 +711,7 @@ struct BindsView: View {
                         .dashboardCardBackground(cornerRadius: Radius.standard)
                 }
             }
+            .padding(.top, 8)
             .padding(.horizontal)
             .padding(.bottom, 16)
         }

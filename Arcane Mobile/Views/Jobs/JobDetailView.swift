@@ -20,6 +20,7 @@ struct JobDetailView: View {
 
                 identifierCard
             }
+            .padding(.top, 8)
             .padding(.horizontal)
             .padding(.bottom, 16)
         }

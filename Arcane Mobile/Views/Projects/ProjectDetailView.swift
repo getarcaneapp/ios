@@ -7,7 +7,6 @@ struct ProjectDetailView: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     @SwiftUI.Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Namespace private var heroTransition
     let project: ProjectDetails
     let environmentID: EnvironmentID
 
@@ -94,7 +93,6 @@ struct ProjectDetailView: View {
         }
         .navigationDestination(for: ContainerSummary.self) { container in
             ContainerDetailView(container: container, environmentID: environmentID)
-                .navigationTransition(.zoom(sourceID: container.id, in: heroTransition))
         }
         .sheet(item: $filesSheet) { request in
             NavigationStack {
@@ -226,7 +224,6 @@ struct ProjectDetailView: View {
                             service: row.service,
                             container: row.container,
                             environmentID: environmentID,
-                            transitionNamespace: heroTransition,
                             onAction: { action in
                                 Task { await performServiceAction(action, row: row) }
                             }
@@ -655,7 +652,6 @@ struct ProjectDetailView: View {
         let service: RuntimeService
         let container: ContainerSummary?
         let environmentID: EnvironmentID
-        let transitionNamespace: Namespace.ID
         let onAction: (ServiceAction) -> Void
         @State private var showRemoveConfirmation = false
 
@@ -675,7 +671,6 @@ struct ProjectDetailView: View {
                     NavigationLink(value: container) {
                         rowContent
                     }
-                    .matchedTransitionSource(id: container.id, in: transitionNamespace)
                 } else {
                     rowContent
                 }

@@ -145,6 +145,7 @@ struct ImageDetailView: View {
                     configCard(details.config)
                 }
             }
+            .padding(.top, 8)
             .padding(.horizontal)
             .padding(.bottom, 16)
         }
