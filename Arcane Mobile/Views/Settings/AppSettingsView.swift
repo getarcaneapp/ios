@@ -1,5 +1,6 @@
 import SwiftUI
 import Arcane
+import WhatsNewKit
 
 struct AppSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -8,7 +9,7 @@ struct AppSettingsView: View {
     private var activityToastScopeRawValue = ActivityToastScope.userInitiated.rawValue
     @State private var pendingDestructive: PendingDestructive?
     @State private var cacheSizeBytes: Int = 0
-    @State private var showWhatsNew = false
+    @State private var presentedWhatsNew: WhatsNewKit.WhatsNew?
 
     /// Both of this screen's destructive confirmations route through a single
     /// `.deleteConfirmation` cover (only one full-screen cover can be active per
@@ -47,8 +48,8 @@ struct AppSettingsView: View {
         .navigationTitle("App Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { await refreshCacheSize() }
-        .sheet(isPresented: $showWhatsNew) {
-            WhatsNewView()
+        .sheet(item: $presentedWhatsNew) { whatsNew in
+            WhatsNewPresentationView(whatsNew: whatsNew)
         }
         .deleteConfirmation(item: $pendingDestructive) { action in
             switch action {
@@ -169,7 +170,7 @@ struct AppSettingsView: View {
     private var aboutSection: some View {
         Section("About") {
             Button {
-                showWhatsNew = true
+                presentedWhatsNew = ReleaseNotes.latestWhatsNew
             } label: {
                 HStack {
                     SettingsRow(title: "What's New", systemImage: "sparkles", color: .yellow, titleColor: .primary)

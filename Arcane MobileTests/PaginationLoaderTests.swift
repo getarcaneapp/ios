@@ -1,32 +1,33 @@
 import Arcane
-import XCTest
+import Testing
 
 @testable import Arcane_Mobile
 
-nonisolated final class PaginationLoaderTests: XCTestCase {
-    func testCollectHandlesPaginationBoundariesWithoutTruncation() async throws {
-        for total in [0, 20, 21, 50, 51, 101, 501] {
-            let resources = try await PaginationLoader.collect(pageSize: 50) { start, limit in
-                let end = min(start + limit, total)
-                let items = start < end
-                    ? (start..<end).map(TestResource.init(id:))
-                    : []
-                return ResourcePage(
-                    items: items,
-                    pagination: .init(
-                        totalPages: total == 0 ? 0 : Int64((total + limit - 1) / limit),
-                        totalItems: Int64(total),
-                        currentPage: (start / limit) + 1,
-                        itemsPerPage: limit
-                    )
+@Suite
+struct PaginationLoaderTests {
+    @Test(arguments: [0, 20, 21, 50, 51, 101, 501])
+    func collectHandlesPaginationBoundariesWithoutTruncation(total: Int) async throws {
+        let resources = try await PaginationLoader.collect(pageSize: 50) { start, limit in
+            let end = min(start + limit, total)
+            let items = start < end
+                ? (start..<end).map(TestResource.init(id:))
+                : []
+            return ResourcePage(
+                items: items,
+                pagination: .init(
+                    totalPages: total == 0 ? 0 : Int64((total + limit - 1) / limit),
+                    totalItems: Int64(total),
+                    currentPage: (start / limit) + 1,
+                    itemsPerPage: limit
                 )
-            }
-
-            XCTAssertEqual(resources.map(\.id), Array(0..<total))
+            )
         }
+
+        #expect(resources.map(\.id) == Array(0..<total))
     }
 
-    func testCollectLoadsEveryPageAndDeduplicatesStableIDs() async throws {
+    @Test
+    func collectLoadsEveryPageAndDeduplicatesStableIDs() async throws {
         let items = try await PaginationLoader.collect(pageSize: 50) { start, _ in
             switch start {
             case 0:
@@ -38,10 +39,11 @@ nonisolated final class PaginationLoaderTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(items.map(\.id), Array(0..<121))
+        #expect(items.map(\.id) == Array(0..<121))
     }
 
-    func testCollectAdvancesUsingServerPageSize() async throws {
+    @Test
+    func collectAdvancesUsingServerPageSize() async throws {
         let starts = PageStartRecorder()
         _ = try await PaginationLoader.collect(pageSize: 50) { start, _ in
             await starts.record(start)
@@ -52,10 +54,11 @@ nonisolated final class PaginationLoaderTests: XCTestCase {
         }
 
         let recordedStarts = await starts.values()
-        XCTAssertEqual(recordedStarts, [0, 50])
+        #expect(recordedStarts == [0, 50])
     }
 
-    func testCollectUnknownTotalsStopsAfterShortPage() async throws {
+    @Test
+    func collectUnknownTotalsStopsAfterShortPage() async throws {
         let starts = PageStartRecorder()
         let items = try await PaginationLoader.collect(pageSize: 2) { start, _ in
             await starts.record(start)
@@ -73,108 +76,120 @@ nonisolated final class PaginationLoaderTests: XCTestCase {
         }
 
         let recordedStarts = await starts.values()
-        XCTAssertEqual(items.map(\.id), [1, 2, 3])
-        XCTAssertEqual(recordedStarts, [0, 2])
+        #expect(items.map(\.id) == [1, 2, 3])
+        #expect(recordedStarts == [0, 2])
     }
 
-    func testAllPagesCacheKeyCannotCollideWithFirstPageAndStillInvalidates() {
+    @Test
+    func allPagesCacheKeyCannotCollideWithFirstPageAndStillInvalidates() {
         let path = PaginationLoader.cachePath(for: "environments")
 
-        XCTAssertNotEqual(path, "environments")
-        XCTAssertTrue(CachedClient.matches(pattern: "environments", path: path))
+        #expect(path != "environments")
+        #expect(CachedClient.matches(pattern: "environments", path: path))
     }
 
-    func testMergeDeduplicatesAppendedPagesAndResetReplacesExistingRows() {
+    @Test
+    func mergeDeduplicatesAppendedPagesAndResetReplacesExistingRows() {
         let current = [TestResource(id: 1), TestResource(id: 2)]
         let incoming = [TestResource(id: 2), TestResource(id: 3)]
 
-        XCTAssertEqual(
-            PaginationLoader.merge(current: current, incoming: incoming, reset: false).map(\.id),
-            [1, 2, 3]
+        #expect(
+            PaginationLoader.merge(current: current, incoming: incoming, reset: false).map(\.id)
+                == [1, 2, 3]
         )
-        XCTAssertEqual(
-            PaginationLoader.merge(current: current, incoming: incoming, reset: true).map(\.id),
-            [2, 3]
+        #expect(
+            PaginationLoader.merge(current: current, incoming: incoming, reset: true).map(\.id)
+                == [2, 3]
         )
     }
 
-    func testProgressiveStateUsesServerStrideAndRejectsStaleRefreshes() {
+    @Test
+    func progressiveStateUsesServerStrideAndRejectsStaleRefreshes() {
         var state = ProgressivePaginationState()
         let firstGeneration = state.reset()
-        XCTAssertTrue(state.receive(
+        let acceptedFirstPage = state.receive(
             pagination: pagination(totalPages: 6, totalItems: 101, currentPage: 1, itemsPerPage: 20),
             itemCount: 20,
             requestedStart: 0,
             requestedLimit: 50,
             generation: firstGeneration
-        ))
-        XCTAssertEqual(state.nextStart, 20)
-        XCTAssertTrue(state.hasMore)
-        XCTAssertEqual(state.totalItems, 101)
+        )
+        #expect(acceptedFirstPage)
+        #expect(state.nextStart == 20)
+        #expect(state.hasMore)
+        #expect(state.totalItems == 101)
 
         let refreshedGeneration = state.reset()
-        XCTAssertFalse(state.receive(
+        let acceptedStalePage = state.receive(
             pagination: pagination(totalPages: 6, totalItems: 101, currentPage: 2, itemsPerPage: 20),
             itemCount: 20,
             requestedStart: 20,
             requestedLimit: 50,
             generation: firstGeneration
-        ))
-        XCTAssertEqual(state.nextStart, 0)
-        XCTAssertFalse(state.hasMore)
-        XCTAssertNil(state.totalItems)
-        XCTAssertTrue(state.accepts(refreshedGeneration))
+        )
+        #expect(!acceptedStalePage)
+        #expect(state.nextStart == 0)
+        #expect(!state.hasMore)
+        #expect(state.totalItems == nil)
+        #expect(state.accepts(refreshedGeneration))
     }
 
-    func testProgressiveStateRetainsKnownTotalWhenLaterPageOmitsIt() {
+    @Test
+    func progressiveStateRetainsKnownTotalWhenLaterPageOmitsIt() {
         var state = ProgressivePaginationState()
         let generation = state.reset()
-        XCTAssertTrue(state.receive(
+        let acceptedFirstPage = state.receive(
             pagination: pagination(totalPages: 3, totalItems: 101, currentPage: 1, itemsPerPage: 50),
             itemCount: 50,
             requestedStart: 0,
             requestedLimit: 50,
             generation: generation
-        ))
-        XCTAssertTrue(state.receive(
+        )
+        #expect(acceptedFirstPage)
+        let acceptedSecondPage = state.receive(
             pagination: pagination(totalPages: -1, totalItems: -1, currentPage: 2, itemsPerPage: 50),
             itemCount: 50,
             requestedStart: 50,
             requestedLimit: 50,
             generation: generation
-        ))
+        )
+        #expect(acceptedSecondPage)
 
-        XCTAssertEqual(state.totalItems, 101)
+        #expect(state.totalItems == 101)
     }
 
-    func testProgressiveStateKeepsFailedPageCursorForRetry() {
+    @Test
+    func progressiveStateKeepsFailedPageCursorForRetry() {
         var state = ProgressivePaginationState()
         let generation = state.reset()
-        XCTAssertTrue(state.receive(
+        let acceptedFirstPage = state.receive(
             pagination: pagination(totalPages: 2, totalItems: 75, currentPage: 1, itemsPerPage: 50),
             itemCount: 50,
             requestedStart: 0,
             requestedLimit: 50,
             generation: generation
-        ))
+        )
+        #expect(acceptedFirstPage)
 
         let retryStart = state.nextStart
-        XCTAssertEqual(retryStart, 50)
-        XCTAssertTrue(state.hasMore)
+        #expect(retryStart == 50)
+        #expect(state.hasMore)
 
-        XCTAssertTrue(state.receive(
+        let acceptedRetry = state.receive(
             pagination: pagination(totalPages: 2, totalItems: 75, currentPage: 2, itemsPerPage: 50),
             itemCount: 25,
             requestedStart: retryStart,
             requestedLimit: 50,
             generation: generation
-        ))
-        XCTAssertEqual(state.nextStart, 100)
-        XCTAssertFalse(state.hasMore)
+        )
+        #expect(acceptedRetry)
+        #expect(state.nextStart == 100)
+        #expect(!state.hasMore)
     }
 
-    func testCollectPropagatesLaterPageFailureInsteadOfCachingPartialResults() async {
-        do {
+    @Test
+    func collectPropagatesLaterPageFailureInsteadOfCachingPartialResults() async {
+        await #expect(throws: TestPaginationError.failedPage) {
             _ = try await PaginationLoader.collect(pageSize: 2) { start, _ in
                 if start == 0 {
                     return ResourcePage(
@@ -189,32 +204,24 @@ nonisolated final class PaginationLoaderTests: XCTestCase {
                 }
                 throw TestPaginationError.failedPage
             }
-            XCTFail("Expected the later page error to be propagated")
-        } catch TestPaginationError.failedPage {
-            // Expected.
-        } catch {
-            XCTFail("Unexpected error: \(error)")
         }
     }
 
-    func testCollectRejectsServerTotalAboveSafetyLimit() async {
-        do {
+    @Test
+    func collectRejectsServerTotalAboveSafetyLimit() async {
+        await #expect(throws: RemoteDataLimitError.collectionTooLarge(maximumItems: 2)) {
             _ = try await PaginationLoader.collect(pageSize: 2, maximumItems: 2) { _, _ in
                 ResourcePage(
                     items: [TestResource(id: 1), TestResource(id: 2)],
                     pagination: .init(totalPages: 2, totalItems: 3, currentPage: 1, itemsPerPage: 2)
                 )
             }
-            XCTFail("Expected the collection limit to be enforced")
-        } catch RemoteDataLimitError.collectionTooLarge(let maximumItems) {
-            XCTAssertEqual(maximumItems, 2)
-        } catch {
-            XCTFail("Unexpected error: \(error)")
         }
     }
 
-    func testCollectRejectsUnknownTotalWhenUniqueItemsExceedLimit() async {
-        do {
+    @Test
+    func collectRejectsUnknownTotalWhenUniqueItemsExceedLimit() async {
+        await #expect(throws: RemoteDataLimitError.collectionTooLarge(maximumItems: 2)) {
             _ = try await PaginationLoader.collect(pageSize: 2, maximumItems: 2) { start, _ in
                 ResourcePage(
                     items: start == 0
@@ -228,11 +235,6 @@ nonisolated final class PaginationLoaderTests: XCTestCase {
                     )
                 )
             }
-            XCTFail("Expected the collection limit to be enforced")
-        } catch RemoteDataLimitError.collectionTooLarge(let maximumItems) {
-            XCTAssertEqual(maximumItems, 2)
-        } catch {
-            XCTFail("Unexpected error: \(error)")
         }
     }
 
@@ -279,11 +281,11 @@ nonisolated final class PaginationLoaderTests: XCTestCase {
     }
 }
 
-nonisolated private struct TestResource: Identifiable, Sendable {
+private struct TestResource: Identifiable, Sendable {
     let id: Int
 }
 
-nonisolated private enum TestPaginationError: Error {
+private enum TestPaginationError: Error, Equatable {
     case failedPage
 }
 

@@ -1,4 +1,6 @@
+import Foundation
 import SwiftUI
+import WhatsNewKit
 
 struct ReleaseNote: Identifiable, Hashable {
     let version: String
@@ -47,6 +49,94 @@ struct ReleaseNote: Identifiable, Hashable {
     }
 }
 
+extension ReleaseNote {
+    enum Category: String, Hashable {
+        case new = "New"
+        case changed = "Changed"
+        case fixed = "Fixed"
+
+        var systemImage: String {
+            switch self {
+            case .new: return "sparkles"
+            case .changed: return "paintbrush.fill"
+            case .fixed: return "ladybug.fill"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .new: return .mint
+            case .changed: return .blue
+            case .fixed: return .red
+            }
+        }
+    }
+
+    struct PresentationSection: Hashable {
+        let category: Category
+        let bullets: [Bullet]
+
+        var title: String { category.rawValue }
+
+        var subtitle: String {
+            bullets.map { bullet in
+                let badge = bullet.badge.map { " · \($0.label)" } ?? ""
+                return "• \(bullet.text)\(badge)"
+            }
+            .joined(separator: "\n")
+        }
+
+        var feature: WhatsNew.Feature {
+            WhatsNew.Feature(
+                image: .init {
+                    Image(systemName: category.systemImage)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(category.tint)
+                        .frame(width: 32, height: 32)
+                        .background(category.tint.opacity(0.12), in: Circle())
+                },
+                title: .init(title),
+                subtitle: .init(subtitle)
+            )
+        }
+    }
+
+    var presentationSections: [PresentationSection] {
+        [
+            PresentationSection(category: .new, bullets: new),
+            PresentationSection(category: .changed, bullets: changed),
+            PresentationSection(category: .fixed, bullets: fixed),
+        ]
+        .filter { !$0.bullets.isEmpty }
+    }
+
+    func whatsNew(includesPreviousReleases: Bool = false) -> WhatsNew {
+        let secondaryAction: WhatsNew.SecondaryAction? = if includesPreviousReleases {
+            WhatsNew.SecondaryAction(
+                title: "Previous Releases",
+                foregroundColor: .secondary,
+                action: .present {
+                    WhatsNewArchiveView()
+                }
+            )
+        } else {
+            nil
+        }
+
+        return WhatsNew(
+            version: .init(stringLiteral: version),
+            title: .init(text: .init("What's New in \(version)")),
+            features: presentationSections.map(\.feature),
+            primaryAction: .init(
+                title: "Continue",
+                backgroundColor: .accentColor,
+                foregroundColor: .white
+            ),
+            secondaryAction: secondaryAction
+        )
+    }
+}
+
 /// Hardcoded changelog. When bumping `MARKETING_VERSION` in BuildNumber.xcconfig, prepend
 /// a new entry whose `version` matches — auto-show keys off that string.
 enum ReleaseNotes {
@@ -64,7 +154,9 @@ enum ReleaseNotes {
                 .init("Trivy network settings list available Docker networks in a menu."),
                 .init("Environment Settings detail pages omit repeated environment banners."),
                 .init("User avatar settings live under Users and apply to the manager."),
-                .init("Editable settings use a shared floating save control with a contextual tinted revert action.")
+                .init("Editable settings use a shared floating save control with a contextual tinted revert action."),
+                .init("Feature-focused What's New presentation with access to previous releases."),
+                .init("What's New uses compact category sections and toolbar actions.")
             ],
             fixed: [
                 .init("Dashboard update and volume counts remain visible during pull-to-refresh."),
@@ -75,7 +167,8 @@ enum ReleaseNotes {
                 .init("Prune age filters appear only for Older Than modes."),
                 .init("Settings action controls morph smoothly without vertical movement."),
                 .init("Settings revert actions use white symbols on subtly tinted glass."),
-                .init("Revert controls fade before merging into the save action.")
+                .init("Revert controls fade before merging into the save action."),
+                .init("Unit test suite compatibility with Swift 6 actor isolation.")
             ]
         ),
         ReleaseNote(
@@ -544,5 +637,55 @@ enum ReleaseNotes {
         ),
     ]
 
+    static let legacyLastSeenVersionKey = "arcane.lastSeenReleaseVersion"
+
+    static let whatsNewLayout = WhatsNew.Layout(
+        footerPrimaryActionButtonCornerRadius: Radius.standard
+    )
+
     static var latest: ReleaseNote? { all.first }
+
+    static var previous: [ReleaseNote] {
+        Array(all.dropFirst())
+    }
+
+    static var whatsNewCollection: WhatsNewCollection {
+        all.enumerated().map { index, note in
+            note.whatsNew(includesPreviousReleases: index == 0 && !previous.isEmpty)
+        }
+    }
+
+    static var latestWhatsNew: WhatsNew? {
+        latest?.whatsNew(includesPreviousReleases: !previous.isEmpty)
+    }
+
+    static func makeWhatsNewEnvironment(
+        userDefaults: UserDefaults = .standard,
+        currentVersion: WhatsNew.Version = .current()
+    ) -> WhatsNewEnvironment {
+        migrateLegacyPresentation(in: userDefaults)
+        return WhatsNewEnvironment(
+            currentVersion: currentVersion,
+            versionStore: UserDefaultsWhatsNewVersionStore(userDefaults: userDefaults),
+            defaultLayout: whatsNewLayout,
+            whatsNewCollection: whatsNewCollection
+        )
+    }
+
+    @discardableResult
+    static func migrateLegacyPresentation(in userDefaults: UserDefaults) -> WhatsNew.Version? {
+        guard let legacyVersion = userDefaults.string(forKey: legacyLastSeenVersionKey) else {
+            return nil
+        }
+
+        defer { userDefaults.removeObject(forKey: legacyLastSeenVersionKey) }
+        guard all.contains(where: { $0.version == legacyVersion }) else {
+            return nil
+        }
+
+        let version = WhatsNew.Version(stringLiteral: legacyVersion)
+        UserDefaultsWhatsNewVersionStore(userDefaults: userDefaults)
+            .save(presentedVersion: version)
+        return version
+    }
 }

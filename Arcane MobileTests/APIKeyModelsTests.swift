@@ -1,11 +1,13 @@
 import Arcane
 import Foundation
-import XCTest
+import Testing
 
 @testable import Arcane_Mobile
 
-nonisolated final class APIKeyModelsTests: XCTestCase {
-    func testLegacyMutationOmitsV2Permissions() throws {
+@Suite
+struct APIKeyModelsTests {
+    @Test
+    func legacyMutationOmitsV2Permissions() throws {
         let request = APIKeyMutationRequest(
             name: "deploy",
             description: nil,
@@ -14,14 +16,15 @@ nonisolated final class APIKeyModelsTests: XCTestCase {
         )
 
         let data = try JSONEncoder().encode(request)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 
-        XCTAssertEqual(object["name"] as? String, "deploy")
-        XCTAssertNil(object["permissions"])
-        XCTAssertNil(object["expiresAt"])
+        #expect(object["name"] as? String == "deploy")
+        #expect(object["permissions"] == nil)
+        #expect(object["expiresAt"] == nil)
     }
 
-    func testV2MutationEncodesPermissionGrants() throws {
+    @Test
+    func v2MutationEncodesPermissionGrants() throws {
         let request = APIKeyMutationRequest(
             name: "deploy",
             description: "Deployment automation",
@@ -30,31 +33,33 @@ nonisolated final class APIKeyModelsTests: XCTestCase {
         )
 
         let data = try JSONEncoder().encode(request)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        let permissions = try XCTUnwrap(object["permissions"] as? [[String: Any]])
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let permissions = try #require(object["permissions"] as? [[String: Any]])
 
-        XCTAssertEqual(permissions.count, 1)
-        XCTAssertEqual(permissions[0]["permission"] as? String, "projects:update")
-        XCTAssertNil(permissions[0]["environmentId"])
+        #expect(permissions.count == 1)
+        #expect(permissions[0]["permission"] as? String == "projects:update")
+        #expect(permissions[0]["environmentId"] == nil)
     }
 
-    func testServerMetadataDecodesV2Fields() throws {
+    @Test
+    func serverMetadataDecodesV2Fields() throws {
         let data = Data(
             #"{"kind":"scoped","isBootstrap":true,"permissions":[{"permission":"containers:list"}]}"#.utf8
         )
 
         let metadata = try JSONDecoder().decode(APIKeyServerMetadata.self, from: data)
 
-        XCTAssertEqual(metadata.kind, "scoped")
-        XCTAssertEqual(metadata.isBootstrap, true)
-        XCTAssertEqual(metadata.permissions?.map(\.permission), ["containers:list"])
+        #expect(metadata.kind == "scoped")
+        #expect(metadata.isBootstrap == true)
+        #expect(metadata.permissions?.map(\.permission) == ["containers:list"])
     }
 
-    func testServerMetadataAcceptsLegacyPayload() throws {
+    @Test
+    func serverMetadataAcceptsLegacyPayload() throws {
         let metadata = try JSONDecoder().decode(APIKeyServerMetadata.self, from: Data("{}".utf8))
 
-        XCTAssertNil(metadata.kind)
-        XCTAssertNil(metadata.isBootstrap)
-        XCTAssertNil(metadata.permissions)
+        #expect(metadata.kind == nil)
+        #expect(metadata.isBootstrap == nil)
+        #expect(metadata.permissions == nil)
     }
 }

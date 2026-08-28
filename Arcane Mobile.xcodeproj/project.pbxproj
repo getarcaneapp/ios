@@ -12,6 +12,8 @@
 		BFD5111F2FF73F4100EF7E76 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BFD5111E2FF73F4100EF7E76 /* WidgetKit.framework */; };
 		BFD511212FF73F4100EF7E76 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BFD511202FF73F4100EF7E76 /* SwiftUI.framework */; };
 		BFD5112C2FF73F4200EF7E76 /* ArcaneWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BFD5111C2FF73F4100EF7E76 /* ArcaneWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C0DE00012FFF000000000001 /* WhatsNewKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00042FFF000000000004 /* WhatsNewKit */; };
+		C0DE00022FFF000000000002 /* WhatsNewKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00052FFF000000000005 /* WhatsNewKit */; };
 		FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EA2FAC44530016681B /* Arcane */; };
 		FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EE2FAC44530016681B /* ArcaneOIDC */; };
 		FD6FF5F02FAC44530016681B /* ArcanePasskeys in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5F12FAC44530016681B /* ArcanePasskeys */; };
@@ -108,6 +110,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A100000D0000000000000000 /* Arcane in Frameworks */,
+				C0DE00022FFF000000000002 /* WhatsNewKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -128,6 +131,7 @@
 				FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */,
 				FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */,
 				FD6FF5F02FAC44530016681B /* ArcanePasskeys in Frameworks */,
+				C0DE00012FFF000000000001 /* WhatsNewKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -187,6 +191,7 @@
 			name = "Arcane MobileTests";
 			packageProductDependencies = (
 				A100000E0000000000000000 /* Arcane */,
+				C0DE00052FFF000000000005 /* WhatsNewKit */,
 			);
 			productName = "Arcane MobileTests";
 			productReference = A10000010000000000000000 /* Arcane MobileTests.xctest */;
@@ -239,6 +244,7 @@
 				FD6FF5EA2FAC44530016681B /* Arcane */,
 				FD6FF5EE2FAC44530016681B /* ArcaneOIDC */,
 				FD6FF5F12FAC44530016681B /* ArcanePasskeys */,
+				C0DE00042FFF000000000004 /* WhatsNewKit */,
 			);
 			productName = "Arcane Mobile";
 			productReference = FD6FF5D92FAC434D0016681B /* Arcane Mobile.app */;
@@ -276,6 +282,7 @@
 			mainGroup = FD6FF5D02FAC434D0016681B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				C0DE00032FFF000000000003 /* XCRemoteSwiftPackageReference "WhatsNewKit" */,
 				FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -369,7 +376,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Arcane Mobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Arcane Mobile";
@@ -393,7 +400,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Arcane Mobile.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Arcane Mobile";
@@ -741,6 +748,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		C0DE00032FFF000000000003 /* XCRemoteSwiftPackageReference "WhatsNewKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SvenTiigi/WhatsNewKit.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.2.1;
+			};
+		};
 		FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/getarcaneapp/libarcane-swift.git";
@@ -761,6 +776,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
 			productName = Arcane;
+		};
+		C0DE00042FFF000000000004 /* WhatsNewKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0DE00032FFF000000000003 /* XCRemoteSwiftPackageReference "WhatsNewKit" */;
+			productName = WhatsNewKit;
+		};
+		C0DE00052FFF000000000005 /* WhatsNewKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0DE00032FFF000000000003 /* XCRemoteSwiftPackageReference "WhatsNewKit" */;
+			productName = WhatsNewKit;
 		};
 		FD6FF5EA2FAC44530016681B /* Arcane */ = {
 			isa = XCSwiftPackageProductDependency;

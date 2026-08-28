@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 import TipKit
 import Arcane
+import WhatsNewKit
 
 @main
 struct Arcane_MobileApp: App {
@@ -13,6 +14,7 @@ struct Arcane_MobileApp: App {
     private var pinnedStore = PinnedItemsStore.shared
     private var resourceMutationStore = ResourceMutationStore.shared
     private var imageUpdateCountStore = ImageUpdateCountStore.shared
+    private let whatsNewEnvironment = ReleaseNotes.makeWhatsNewEnvironment()
     @AppStorage("accentColorHex") private var accentColorHex = ""
 
     private var accentColor: Color {
@@ -30,6 +32,7 @@ struct Arcane_MobileApp: App {
                 .environment(resourceMutationStore)
                 .environment(imageUpdateCountStore)
                 .environment(\.isLaunchSplashPresented, showsLaunchSplash)
+                .environment(\.whatsNew, whatsNewEnvironment)
                 .tint(accentColorHex.isEmpty ? nil : accentColor)
                 .overlay {
                     if showsLaunchSplash {

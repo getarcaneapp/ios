@@ -1,10 +1,13 @@
 import Arcane
-import XCTest
+import Testing
 
 @testable import Arcane_Mobile
 
-final class Post26ParityTests: XCTestCase {
-    func testDeployDraftResetsRecreateVolumesAfterEveryAttempt() {
+@MainActor
+@Suite
+struct Post26ParityTests {
+    @Test
+    func deployDraftResetsRecreateVolumesAfterEveryAttempt() {
         var draft = ProjectDeployOptionsDraft(
             pullPolicy: "always",
             forceRecreate: true,
@@ -14,14 +17,15 @@ final class Post26ParityTests: XCTestCase {
         let first = draft.consume()
         let second = draft.consume()
 
-        XCTAssertEqual(first.pullPolicy, "always")
-        XCTAssertEqual(first.forceRecreate, true)
-        XCTAssertEqual(first.recreateVolumes, true)
-        XCTAssertEqual(second.recreateVolumes, false)
-        XCTAssertFalse(draft.recreateVolumes)
+        #expect(first.pullPolicy == "always")
+        #expect(first.forceRecreate == true)
+        #expect(first.recreateVolumes == true)
+        #expect(second.recreateVolumes == false)
+        #expect(!draft.recreateVolumes)
     }
 
-    func testGenericNotificationStateBuildsStructuredHeadersAndEvents() {
+    @Test
+    func genericNotificationStateBuildsStructuredHeadersAndEvents() {
         var state = NotificationProviderFormState(provider: .generic, existing: nil)
         state.enabled = true
         state.webhookURL = "https://hooks.example.test/notify"
@@ -35,17 +39,19 @@ final class Post26ParityTests: XCTestCase {
         state.events.autoHeal = false
 
         guard case .generic(let config) = state.configuration(for: .generic) else {
-            return XCTFail("Expected generic configuration")
+            Issue.record("Expected generic configuration")
+            return
         }
-        XCTAssertEqual(config.method, "PATCH")
-        XCTAssertEqual(config.customHeaders?["X-Environment"], "production")
-        XCTAssertEqual(config.customHeaders?["X-Empty"], "")
-        XCTAssertEqual(config.payloadTemplate, #"{"title":"{{ title }}"}"#)
-        XCTAssertEqual(config.successBodyContains, "accepted")
-        XCTAssertEqual(config.events?.autoHeal, false)
+        #expect(config.method == "PATCH")
+        #expect(config.customHeaders?["X-Environment"] == "production")
+        #expect(config.customHeaders?["X-Empty"] == "")
+        #expect(config.payloadTemplate == #"{"title":"{{ title }}"}"#)
+        #expect(config.successBodyContains == "accepted")
+        #expect(config.events?.autoHeal == false)
     }
 
-    func testStructuredRowsKeepIdentityWhileValuesChange() {
+    @Test
+    func structuredRowsKeepIdentityWhileValuesChange() {
         var row = StableStringRow(value: "first")
         let id = row.id
         row.value = "second"
@@ -55,19 +61,20 @@ final class Post26ParityTests: XCTestCase {
         header.name = "X-Second"
         header.value = "two"
 
-        XCTAssertEqual(row.id, id)
-        XCTAssertEqual(header.id, headerID)
+        #expect(row.id == id)
+        #expect(header.id == headerID)
     }
 
-    func testOlderServersHideGoogleChatAndOmitRepositoryNames() {
-        XCTAssertFalse(notificationProviders(supportsPost26Features: false).contains(.googlechat))
-        XCTAssertTrue(notificationProviders(supportsPost26Features: true).contains(.googlechat))
+    @Test
+    func olderServersHideGoogleChatAndOmitRepositoryNames() {
+        #expect(!notificationProviders(supportsPost26Features: false).contains(.googlechat))
+        #expect(notificationProviders(supportsPost26Features: true).contains(.googlechat))
 
         let rows = [StableStringRow(value: " getarcaneapp/arcane ")]
-        XCTAssertNil(registryRepositoryNames(rows: rows, supported: false))
-        XCTAssertEqual(
-            registryRepositoryNames(rows: rows, supported: true),
-            ["getarcaneapp/arcane"]
+        #expect(registryRepositoryNames(rows: rows, supported: false) == nil)
+        #expect(
+            registryRepositoryNames(rows: rows, supported: true)
+                == ["getarcaneapp/arcane"]
         )
 
         var generic = NotificationProviderFormState(provider: .generic, existing: nil)
@@ -83,13 +90,14 @@ final class Post26ParityTests: XCTestCase {
             for: .generic,
             supportsPost26Features: false
         ) else {
-            return XCTFail("Expected generic configuration")
+            Issue.record("Expected generic configuration")
+            return
         }
-        XCTAssertNil(legacyConfig.contentType)
-        XCTAssertNil(legacyConfig.titleKey)
-        XCTAssertNil(legacyConfig.messageKey)
-        XCTAssertNil(legacyConfig.successBodyContains)
-        XCTAssertNil(legacyConfig.payloadTemplate)
-        XCTAssertEqual(legacyConfig.customHeaders?["X-Environment"], "production")
+        #expect(legacyConfig.contentType == nil)
+        #expect(legacyConfig.titleKey == nil)
+        #expect(legacyConfig.messageKey == nil)
+        #expect(legacyConfig.successBodyContains == nil)
+        #expect(legacyConfig.payloadTemplate == nil)
+        #expect(legacyConfig.customHeaders?["X-Environment"] == "production")
     }
 }

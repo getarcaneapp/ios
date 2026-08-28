@@ -1,11 +1,13 @@
 import Arcane
 import Foundation
-import XCTest
+import Testing
 
 @testable import Arcane_Mobile
 
-final class EventHistoryTests: XCTestCase {
-    func testMergeDeduplicatesSortsAndTrimsToLoadedLimit() {
+@Suite
+struct EventHistoryTests {
+    @Test
+    func mergeDeduplicatesSortsAndTrimsToLoadedLimit() {
         let now = Date()
         let current = [event(id: "a", title: "old", date: now.addingTimeInterval(-10))]
         let incoming = [
@@ -16,8 +18,8 @@ final class EventHistoryTests: XCTestCase {
 
         let merged = EventHistory.merged(current: current, incoming: incoming, limit: 2)
 
-        XCTAssertEqual(merged.map(\.id), ["a", "b"])
-        XCTAssertEqual(merged.first?.title, "updated")
+        #expect(merged.map(\.id) == ["a", "b"])
+        #expect(merged.first?.title == "updated")
     }
 
     private func event(id: String, title: String, date: Date) -> Event {

@@ -60,6 +60,11 @@ ios/
 ### Concurrency
 - The app target builds with **main-actor-by-default isolation** (Xcode 26). Types are implicitly `@MainActor`; use SDK-native/`nonisolated` types for off-actor work.
 
+### Testing
+- Use Swift Testing (`import Testing`, `@Suite`, `@Test`, `#expect`, and `#require`) for unit and integration tests.
+- Reserve XCTest for UI automation and performance tests in their appropriate targets.
+- Unit and integration test targets default to nonisolated execution; mark only suites or tests that exercise main-actor code with `@MainActor`.
+
 ### UI / design system
 - Use central design tokens, never raw literals:
   - Corner radii: `Radius.*` (always `.continuous`).

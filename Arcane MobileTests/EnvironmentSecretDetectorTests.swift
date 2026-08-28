@@ -1,76 +1,70 @@
-import XCTest
+import Testing
 
 @testable import Arcane_Mobile
 
-final class EnvironmentSecretDetectorTests: XCTestCase {
-    func testParsesOnlyTheFirstAssignmentSeparator() {
+@Suite
+struct EnvironmentSecretDetectorTests {
+    @Test
+    func parsesOnlyTheFirstAssignmentSeparator() {
         let variable = ParsedEnvironmentVariable(rawValue: "ACCESS_TOKEN=header.payload=signature")
 
-        XCTAssertEqual(variable.name, "ACCESS_TOKEN")
-        XCTAssertEqual(variable.value, "header.payload=signature")
-        XCTAssertTrue(variable.isPotentialSecret)
+        #expect(variable.name == "ACCESS_TOKEN")
+        #expect(variable.value == "header.payload=signature")
+        #expect(variable.isPotentialSecret)
     }
 
-    func testSensitiveNamesAreDetected() {
-        let names = [
-            "PASSWORD",
-            "POSTGRES_PASSWORD",
-            "client-secret",
-            "GITHUB_TOKEN",
-            "API_KEY",
-            "APPKEY",
-            "DOCKER_AUTH_CONFIG",
-            "WEBHOOK_URL",
-        ]
-
-        for name in names {
-            XCTAssertTrue(
-                EnvironmentSecretDetector.isPotentialSecret(name: name, value: "example-value"),
-                name
-            )
-        }
+    @Test(arguments: [
+        "PASSWORD",
+        "POSTGRES_PASSWORD",
+        "client-secret",
+        "GITHUB_TOKEN",
+        "API_KEY",
+        "APPKEY",
+        "DOCKER_AUTH_CONFIG",
+        "WEBHOOK_URL",
+    ])
+    func sensitiveNamesAreDetected(name: String) {
+        #expect(
+            EnvironmentSecretDetector.isPotentialSecret(name: name, value: "example-value"),
+            "name: \(name)"
+        )
     }
 
-    func testSecretMetadataNamesStayVisible() {
-        let names = [
-            "PATH",
-            "PWD",
-            "PUBLIC_KEY",
-            "PASSWORD_FILE",
-            "TOKEN_ENDPOINT",
-            "AUTH_METHOD",
-            "AWS_ACCESS_KEY_ID",
-            "DATABASE_URL",
-        ]
-
-        for name in names {
-            XCTAssertFalse(
-                EnvironmentSecretDetector.isPotentialSecret(name: name, value: "example-value"),
-                name
-            )
-        }
+    @Test(arguments: [
+        "PATH",
+        "PWD",
+        "PUBLIC_KEY",
+        "PASSWORD_FILE",
+        "TOKEN_ENDPOINT",
+        "AUTH_METHOD",
+        "AWS_ACCESS_KEY_ID",
+        "DATABASE_URL",
+    ])
+    func secretMetadataNamesStayVisible(name: String) {
+        #expect(
+            !EnvironmentSecretDetector.isPotentialSecret(name: name, value: "example-value"),
+            "name: \(name)"
+        )
     }
 
-    func testStructuredSecretValuesAreDetectedWithNeutralNames() {
-        let values = [
-            "postgres://user:password@example.test/database",
-            "Server=example.test;Password=example-value",
-            "https://example.test/hook?sig=example-value",
-            "-----BEGIN PRIVATE KEY-----\nexample\n-----END PRIVATE KEY-----",
-            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJleGFtcGxlIn0.c2lnbmF0dXJl",
-            "github_pat_examplevalue",
-        ]
-
-        for value in values {
-            XCTAssertTrue(
-                EnvironmentSecretDetector.isPotentialSecret(name: "CONFIG", value: value),
-                value
-            )
-        }
+    @Test(arguments: [
+        "postgres://user:password@example.test/database",
+        "Server=example.test;Password=example-value",
+        "https://example.test/hook?sig=example-value",
+        "-----BEGIN PRIVATE KEY-----\nexample\n-----END PRIVATE KEY-----",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJleGFtcGxlIn0.c2lnbmF0dXJl",
+        "github_pat_examplevalue",
+    ])
+    func structuredSecretValuesAreDetectedWithNeutralNames(value: String) {
+        #expect(
+            EnvironmentSecretDetector.isPotentialSecret(name: "CONFIG", value: value),
+            "value: \(value)"
+        )
     }
 
-    func testEmptyValuesAreNotMasked() {
-        XCTAssertFalse(EnvironmentSecretDetector.isPotentialSecret(name: "TOKEN", value: ""))
-        XCTAssertFalse(EnvironmentSecretDetector.isPotentialSecret(name: "PASSWORD", value: "  "))
+    @Test
+    func emptyValuesAreNotMasked() {
+        #expect(!EnvironmentSecretDetector.isPotentialSecret(name: "TOKEN", value: ""))
+        #expect(!EnvironmentSecretDetector.isPotentialSecret(name: "PASSWORD", value: "  "))
     }
 }

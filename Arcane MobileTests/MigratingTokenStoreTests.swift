@@ -1,11 +1,13 @@
 import Arcane
 import Foundation
-import XCTest
+import Testing
 
 @testable import Arcane_Mobile
 
-final class MigratingTokenStoreTests: XCTestCase {
-    func testBoundOriginStoreWinsWithoutConsultingLegacyCopies() async throws {
+@Suite
+struct MigratingTokenStoreTests {
+    @Test
+    func boundOriginStoreWinsWithoutConsultingLegacyCopies() async throws {
         let older = TokenPair(
             accessToken: "older",
             refreshToken: "older-refresh",
@@ -30,12 +32,13 @@ final class MigratingTokenStoreTests: XCTestCase {
         let selected = try await store.loadTokens()
         let legacyTokens = try await legacy.loadTokens()
         let appGroupTokens = try await appGroup.loadTokens()
-        XCTAssertEqual(selected, older)
-        XCTAssertEqual(legacyTokens, newest)
-        XCTAssertNil(appGroupTokens)
+        #expect(selected == older)
+        #expect(legacyTokens == newest)
+        #expect(appGroupTokens == nil)
     }
 
-    func testLegacyMigrationMovesNewestCredentialIntoBoundOriginStore() async throws {
+    @Test
+    func legacyMigrationMovesNewestCredentialIntoBoundOriginStore() async throws {
         let older = TokenPair(
             accessToken: "older",
             refreshToken: "older-refresh",
@@ -62,13 +65,14 @@ final class MigratingTokenStoreTests: XCTestCase {
         let migrated = try await originStore.loadTokens()
         let legacyTokens = try await legacy.loadTokens()
         let appGroupTokens = try await appGroup.loadTokens()
-        XCTAssertEqual(selected, newest)
-        XCTAssertEqual(migrated, newest)
-        XCTAssertNil(legacyTokens)
-        XCTAssertNil(appGroupTokens)
+        #expect(selected == newest)
+        #expect(migrated == newest)
+        #expect(legacyTokens == nil)
+        #expect(appGroupTokens == nil)
     }
 
-    func testMismatchedOriginCannotLoadCredentials() async throws {
+    @Test
+    func mismatchedOriginCannotLoadCredentials() async throws {
         let tokens = TokenPair(
             accessToken: "token",
             refreshToken: "refresh",
@@ -84,10 +88,11 @@ final class MigratingTokenStoreTests: XCTestCase {
         )
 
         let selected = try await store.loadTokens()
-        XCTAssertNil(selected)
+        #expect(selected == nil)
     }
 
-    func testClearAttemptsEveryStoreAndReportsFailure() async throws {
+    @Test
+    func clearAttemptsEveryStoreAndReportsFailure() async {
         let tokens = TokenPair(
             accessToken: "token",
             refreshToken: "refresh",
@@ -104,22 +109,21 @@ final class MigratingTokenStoreTests: XCTestCase {
             credentialOrigin: { "https://arcane.example:443" }
         )
 
-        do {
+        await #expect(throws: TestTokenStore.TestError.clearFailed) {
             try await store.clearTokens()
-            XCTFail("Expected clear failure")
-        } catch TestTokenStore.TestError.clearFailed {}
+        }
 
         let sharedClears = await originStore.clearCount()
         let legacyClears = await legacy.clearCount()
         let appGroupClears = await appGroup.clearCount()
-        XCTAssertEqual(sharedClears, 1)
-        XCTAssertEqual(legacyClears, 1)
-        XCTAssertEqual(appGroupClears, 1)
+        #expect(sharedClears == 1)
+        #expect(legacyClears == 1)
+        #expect(appGroupClears == 1)
     }
 }
 
 private actor TestTokenStore: TokenStore {
-    enum TestError: Error {
+    enum TestError: Error, Equatable {
         case clearFailed
     }
 

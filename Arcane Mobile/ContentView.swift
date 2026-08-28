@@ -4,8 +4,6 @@ struct ContentView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
-    @AppStorage("arcane.lastSeenReleaseVersion") private var lastSeenVersion: String = ""
-    @State private var showWhatsNew = false
     @State private var showActivityCenter = false
     @State private var quickActionRouter = QuickActionRouter.shared
 
@@ -20,21 +18,11 @@ struct ContentView: View {
             case .login:
                 LoginView(mode: .login)
             case .authenticated:
-                VStack(spacing: 0) {
-                    DemoBanner()
-                    MainTabView()
-                }
-                .onAppear {
-                    guard !isLaunchSplashPresented else { return }
-                    evaluateWhatsNew()
-                }
-                .sheet(isPresented: $showWhatsNew) {
-                    WhatsNewView()
-                        .onDisappear {
-                            if let latest = ReleaseNotes.latest {
-                                lastSeenVersion = latest.version
-                            }
-                        }
+                if isLaunchSplashPresented {
+                    authenticatedContent
+                } else {
+                    authenticatedContent
+                        .arcaneWhatsNewSheet()
                 }
             }
         }
@@ -44,11 +32,6 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await manager.retryConnectionBootstrapIfNeeded() }
-        }
-        .onChange(of: isLaunchSplashPresented) { _, isPresented in
-            guard !isPresented else { return }
-            guard case .authenticated = manager.authState else { return }
-            evaluateWhatsNew()
         }
         .onChange(of: quickActionRouter.pendingActivityCenter, initial: true) { _, pending in
             guard pending, manager.supportsActivities else { return }
@@ -84,16 +67,10 @@ struct ContentView: View {
         .toastHost()
     }
 
-    private func evaluateWhatsNew() {
-        guard let latest = ReleaseNotes.latest else { return }
-        if lastSeenVersion.isEmpty {
-            // First launch — silently mark current version as seen; users get
-            // release notes only on upgrade, not on initial install.
-            lastSeenVersion = latest.version
-            return
-        }
-        if lastSeenVersion != latest.version {
-            showWhatsNew = true
+    private var authenticatedContent: some View {
+        VStack(spacing: 0) {
+            DemoBanner()
+            MainTabView()
         }
     }
 }
