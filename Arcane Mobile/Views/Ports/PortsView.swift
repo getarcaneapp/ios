@@ -77,7 +77,7 @@ struct PortsView: View {
                                     .foregroundStyle(.blue)
                                 Text(group.container)
                                     .font(.caption.weight(.semibold))
-                                Text("(\(group.ports.count))")
+                                Text(verbatim: "(\(group.ports.count))")
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
                                 Spacer(minLength: 8)

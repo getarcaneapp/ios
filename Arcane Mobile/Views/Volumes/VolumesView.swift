@@ -133,7 +133,10 @@ struct VolumesView: View {
     }
 
     var body: some View {
-        LoadingCrossfade(showSkeleton: isLoading && volumes.isEmpty) {
+        LoadingCrossfade(
+            showSkeleton: isLoading && volumes.isEmpty,
+            animatesTransition: false
+        ) {
             SkeletonListLoadingView()
         } content: {
             if let error = errorMessage, volumes.isEmpty {

@@ -253,7 +253,7 @@ struct ProjectDetailView: View {
                     Text(currentProject.displayName)
                         .font(.headline)
                     let count = currentProject.serviceCount
-                    Text("\(count) service\(count == 1 ? "" : "s") · \(currentProject.runningCount) running")
+                    Text(verbatim: "\(count) service\(count == 1 ? "" : "s") · \(currentProject.runningCount) running")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     Text(headerDate(currentProject.createdAt))

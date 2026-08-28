@@ -120,7 +120,9 @@ struct AppIconPickerView: View {
     }
 
     private func prettify(_ raw: String) -> String {
-        raw
+        if raw == "AppIcon-Techy-Arcane" { return "Techy" }
+
+        return raw
             .replacingOccurrences(of: "AppIcon-", with: "")
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")

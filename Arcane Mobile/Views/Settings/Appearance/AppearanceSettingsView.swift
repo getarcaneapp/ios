@@ -44,6 +44,7 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
 struct AppearanceSettingsView: View {
     @AppStorage("accentColorHex") private var accentColorHex = ""
     @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
+    @AppStorage("arcane.launchAnimationEnabled") private var launchAnimationEnabled = true
     @State private var showTabBarResetConfirm = false
     @State private var navTabsStore = NavTabsStore.shared
 
@@ -104,6 +105,20 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
+                Toggle(isOn: $launchAnimationEnabled) {
+                    SettingsRow(
+                        title: "Launch Animation",
+                        systemImage: "sparkles",
+                        color: .purple
+                    )
+                }
+            } header: {
+                Text("Motion")
+            } footer: {
+                Text("Shows the animated Arcane logo when the app launches.")
+            }
+
+            Section {
                 Toggle(isOn: $sidebarNavigationEnabled) {
                     SettingsRow(
                         title: "Sidebar Navigation",
@@ -126,7 +141,7 @@ struct AppearanceSettingsView: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 32, height: 32)
-                                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                    .clipShape(RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
                             } else {
                                 Image(systemName: "app.fill")
                                     .foregroundStyle(.blue)

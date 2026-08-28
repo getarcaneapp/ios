@@ -8,6 +8,8 @@ struct Arcane_MobileApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @State private var clientManager = ArcaneClientManager()
+    @State private var showsLaunchSplash =
+        UserDefaults.standard.object(forKey: "arcane.launchAnimationEnabled") as? Bool ?? true
     private var pinnedStore = PinnedItemsStore.shared
     private var resourceMutationStore = ResourceMutationStore.shared
     private var imageUpdateCountStore = ImageUpdateCountStore.shared
@@ -28,6 +30,14 @@ struct Arcane_MobileApp: App {
                 .environment(resourceMutationStore)
                 .environment(imageUpdateCountStore)
                 .tint(accentColorHex.isEmpty ? nil : accentColor)
+                .overlay {
+                    if showsLaunchSplash {
+                        ArcaneLaunchSplash(
+                            accentColorHex: accentColorHex,
+                            isPresented: $showsLaunchSplash
+                        )
+                    }
+                }
                 .task {
                     Task.detached(priority: .background) { ImageCache.shared.trimDiskCache() }
                     try? Tips.configure([.displayFrequency(.immediate), .datastoreLocation(.applicationDefault)])

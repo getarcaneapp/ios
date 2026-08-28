@@ -181,19 +181,23 @@ struct AppSettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Link(destination: URL(string: "https://getarcane.app")!) {
-                SettingsExternalRow(title: "Documentation", systemImage: "globe", color: .blue)
+            if let docsURL = URL(string: "https://getarcane.app") {
+                Link(destination: docsURL) {
+                    SettingsExternalRow(title: "Documentation", systemImage: "globe", color: .blue)
+                }
+                ShareLink(item: docsURL) {
+                    SettingsRow(
+                        title: "Share Arcane",
+                        systemImage: "square.and.arrow.up",
+                        color: .blue,
+                        titleColor: .primary
+                    )
+                }
             }
-            ShareLink(item: URL(string: "https://getarcane.app")!) {
-                SettingsRow(
-                    title: "Share Arcane",
-                    systemImage: "square.and.arrow.up",
-                    color: .blue,
-                    titleColor: .primary
-                )
-            }
-            Link(destination: URL(string: "https://getarcane.app/privacy")!) {
-                SettingsExternalRow(title: "Privacy Policy", systemImage: "hand.raised.fill", color: .gray)
+            if let privacyURL = URL(string: "https://getarcane.app/privacy") {
+                Link(destination: privacyURL) {
+                    SettingsExternalRow(title: "Privacy Policy", systemImage: "hand.raised.fill", color: .gray)
+                }
             }
         }
     }
@@ -230,18 +234,24 @@ struct AppSettingsView: View {
 
     @ViewBuilder
     private var supportRows: some View {
-        Link(destination: URL(string: "https://buymeacoffee.com/kmendell")!) {
-            SettingsExternalRow(title: "Buy Me a Coffee", systemImage: "cup.and.saucer.fill", color: .orange)
+        if let coffeeURL = URL(string: "https://buymeacoffee.com/kmendell") {
+            Link(destination: coffeeURL) {
+                SettingsExternalRow(title: "Buy Me a Coffee", systemImage: "cup.and.saucer.fill", color: .orange)
+            }
         }
-        Link(destination: URL(string: "https://discord.gg/WyXYpdyV3Z")!) {
-            SettingsExternalRow(
-                title: "Join the Discord",
-                systemImage: "bubble.left.and.bubble.right.fill",
-                color: .indigo
-            )
+        if let discordURL = URL(string: "https://discord.gg/WyXYpdyV3Z") {
+            Link(destination: discordURL) {
+                SettingsExternalRow(
+                    title: "Join the Discord",
+                    systemImage: "bubble.left.and.bubble.right.fill",
+                    color: .indigo
+                )
+            }
         }
-        Link(destination: URL(string: "https://github.com/getarcaneapp/ios/issues")!) {
-            SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
+        if let issuesURL = URL(string: "https://github.com/getarcaneapp/ios/issues") {
+            Link(destination: issuesURL) {
+                SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
+            }
         }
     }
 

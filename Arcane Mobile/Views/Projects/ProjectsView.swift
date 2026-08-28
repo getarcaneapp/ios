@@ -119,7 +119,10 @@ struct ProjectsView: View {
 
     @ViewBuilder
     private var content: some View {
-        LoadingCrossfade(showSkeleton: isLoading && projects.isEmpty) {
+        LoadingCrossfade(
+            showSkeleton: isLoading && projects.isEmpty,
+            animatesTransition: false
+        ) {
             SkeletonListLoadingView()
         } content: {
             if let error = errorMessage, projects.isEmpty {

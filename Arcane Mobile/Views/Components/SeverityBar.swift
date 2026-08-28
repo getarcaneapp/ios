@@ -47,7 +47,7 @@ struct SeverityBar: View {
             HStack(spacing: 12) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                     VStack(spacing: 1) {
-                        Text("\(segment.count)")
+                        Text(verbatim: "\(segment.count)")
                             .font(.caption.bold())
                             .foregroundStyle(segment.count > 0 ? segment.color : .secondary)
                             .contentTransition(.numericText())

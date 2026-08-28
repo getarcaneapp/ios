@@ -215,7 +215,10 @@ struct ContainersView: View {
     }
 
     var body: some View {
-        LoadingCrossfade(showSkeleton: isLoading && containers.isEmpty) {
+        LoadingCrossfade(
+            showSkeleton: isLoading && containers.isEmpty,
+            animatesTransition: false
+        ) {
             SkeletonListLoadingView()
         } content: {
             if let error = errorMessage, containers.isEmpty {

@@ -278,14 +278,14 @@ struct RoleRow: View {
                         .lineLimit(2)
                 }
                 HStack(spacing: 6) {
-                    Text("\(role.permissions.count) permissions")
+                    Text(verbatim: "\(role.permissions.count) permissions")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                     if role.assignedUserCount > 0 {
                         Text("·")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-                        Text("\(role.assignedUserCount) assigned")
+                        Text(verbatim: "\(role.assignedUserCount) assigned")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }

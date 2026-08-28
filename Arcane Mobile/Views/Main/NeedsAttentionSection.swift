@@ -61,7 +61,7 @@ struct NeedsAttentionSection: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                Text("\(item.count)")
+                Text(verbatim: "\(item.count)")
                     .font(.subheadline.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(item.severity.tint)

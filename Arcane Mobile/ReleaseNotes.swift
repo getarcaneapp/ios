@@ -52,16 +52,20 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
-            version: "0.7.1",
+            version: "0.8.0",
             new: [
-                .init("Activity Center button on the Dashboard in tab-bar navigation mode.")
+                .init("Activity Center button on the Dashboard in tab-bar navigation mode."),
+                .init("Optional accent-colored Arcane logo animation with a zoom transition on app launch."),
+                .init("Techy alternate app icon.")
             ],
             changed: [
                 .init("Consistent dashboard-style cards, chips, and section headers across screens."),
                 .init("Image updates and layer history use dashboard card layout."),
                 .init("Image detail overview and attestations use dashboard card layout."),
                 .init("Volume, network, job, container detail, Swarm, and template screens use dashboard card layout."),
-                .init("User, registry, webhook, and template lists render as cards.")
+                .init("User, registry, webhook, and template lists render as cards."),
+                .init("Shared card and list surfaces extracted to reusable vocabulary for future screens."),
+                .init("Deployment and client lifecycle helpers factored for maintainability.")
             ],
             fixed: [
                 .init("Settings menu rows show navigation chevrons."),
@@ -69,10 +73,12 @@ enum ReleaseNotes {
                 .init("Swipe-back gesture animates correctly on pushed pages."),
                 .init("Card rows no longer stay highlighted after returning from a detail page."),
                 .init("Detail pages add breathing room below the navigation bar."),
-                .init("Detail page tabs are centered and float in a glass container."),
-                .init("Lists no longer cascade in from the top-left on first load."),
+                .init("Loading lists no longer animate rows from the top-left."),
                 .init("Image identity values wrap instead of truncating on the detail page."),
-                .init("Severity filters on image vulnerabilities are color-coded tappable chips.")
+                .init("Severity filters on image vulnerabilities are color-coded tappable chips."),
+                .init("External links safely unwrap URLs."),
+                .init("App-icon preview uses design token radius."),
+                .init("Counts and IDs render without locale formatting."),
             ]
         ),
         ReleaseNote(

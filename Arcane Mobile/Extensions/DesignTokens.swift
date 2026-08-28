@@ -19,6 +19,8 @@ import CoreGraphics
 //   • Radii stay compile-time constants — never animated or state-driven. Glass
 //     caches its shape and won't shrink, so a tier change mid-animation snaps.
 enum Radius {
+    /// Small icon wells (e.g. 32pt app-icon preview).
+    static let small: CGFloat = 8
     /// Nested elements inside a card: mini metrics, inline banners, icon wells.
     static let nested: CGFloat = 12
     /// Grouped-list-style surfaces: info groups, small panels.

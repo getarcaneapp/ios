@@ -41,6 +41,10 @@ enum Motion {
     /// for the single hero moment on the sign-in screen.
     static let logoEntrance: Animation = .spring(response: 0.55, dampingFraction: 0.62)
 
+    /// Splash handoff from the centered logo into the app content.
+    static let splashExitDuration: TimeInterval = 0.65
+    static let splashExit: Animation = .easeInOut(duration: splashExitDuration)
+
     /// Autoscroll tracking that must stay glued to live-appended output
     /// (terminal). Deliberately linear and short — a smooth/spring token would
     /// lag behind streaming text and read as rubber-banding.
@@ -49,7 +53,8 @@ enum Motion {
     /// A quick fade used as the Reduce-Motion fallback where *some* motion is
     /// still wanted (transient overlays — toast, delete card) instead of an
     /// instant cut.
-    static let reducedFallback: Animation = .easeOut(duration: 0.2)
+    static let reducedFallbackDuration: TimeInterval = 0.2
+    static let reducedFallback: Animation = .easeOut(duration: reducedFallbackDuration)
 
     /// Returns `animation` normally, or `nil` when Reduce Motion is on — so
     /// `withAnimation(Motion.reduced(.reflow, reduceMotion: reduceMotion)) { … }`
@@ -101,26 +106,45 @@ extension View {
 
 // MARK: - Loading cross-fade
 
-/// Cross-fades between a loading skeleton and loaded content. Both branches are
-/// typically `List`s, so this is a reliable container-level opacity cross-fade
-/// rather than a flaky per-row `List` transition. Collapses to an instant swap
-/// under Reduce Motion.
+/// Cross-fades between a loading skeleton and loaded content. Set
+/// `animatesTransition` to false when either branch is a `List`; an inherited
+/// animation transaction can otherwise animate internal row geometry.
 ///
 /// Replaces the abrupt `Group { if isLoading { Skeleton } else { … } }` swap.
 /// Pass the full non-loading branch (error / empty / list) as `content`.
 struct LoadingCrossfade<Skeleton: View, Content: View>: View {
     let showSkeleton: Bool
+    let animatesTransition: Bool
     @ViewBuilder var skeleton: Skeleton
     @ViewBuilder var content: Content
 
+    init(
+        showSkeleton: Bool,
+        animatesTransition: Bool = true,
+        @ViewBuilder skeleton: () -> Skeleton,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.showSkeleton = showSkeleton
+        self.animatesTransition = animatesTransition
+        self.skeleton = skeleton()
+        self.content = content()
+    }
+
+    @ViewBuilder
     var body: some View {
-        ZStack {
-            if showSkeleton {
-                skeleton.transition(.opacity)
-            } else {
-                content.transition(.opacity)
+        if animatesTransition {
+            ZStack {
+                if showSkeleton {
+                    skeleton.transition(.opacity)
+                } else {
+                    content.transition(.opacity)
+                }
             }
+            .motionAwareAnimation(Motion.state, value: showSkeleton)
+        } else if showSkeleton {
+            skeleton
+        } else {
+            content
         }
-        .motionAwareAnimation(Motion.state, value: showSkeleton)
     }
 }

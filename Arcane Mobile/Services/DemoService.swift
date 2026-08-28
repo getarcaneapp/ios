@@ -31,7 +31,12 @@ enum DemoError: Error, LocalizedError {
 final class DemoService {
     static let shared = DemoService()
 
-    static let demoBaseURL = URL(string: "https://demo.getarcane.app")!
+    static let demoBaseURL: URL = {
+        guard let url = URL(string: "https://demo.getarcane.app") else {
+            fatalError("Invalid demoBaseURL literal")
+        }
+        return url
+    }()
 
     private var heartbeatTask: Task<Void, Never>?
     private var lifecycleObservers: [NSObjectProtocol] = []

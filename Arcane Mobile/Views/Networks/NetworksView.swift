@@ -99,7 +99,10 @@ struct NetworksView: View {
     private var networkCounts: [Int] { [systemNetworks.count, userNetworks.count] }
 
     var body: some View {
-        LoadingCrossfade(showSkeleton: isLoading && networks.isEmpty) {
+        LoadingCrossfade(
+            showSkeleton: isLoading && networks.isEmpty,
+            animatesTransition: false
+        ) {
             SkeletonListLoadingView()
         } content: {
             if let error = errorMessage, networks.isEmpty {

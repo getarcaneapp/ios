@@ -300,7 +300,7 @@ private struct ActivityBatchRow: View {
                     ResourceStatusBadge(status: batch.status.rawValue)
                 }
 
-                Text("\(batch.completedCount) of \(batch.activities.count) completed")
+                Text(verbatim: "\(batch.completedCount) of \(batch.activities.count) completed")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 

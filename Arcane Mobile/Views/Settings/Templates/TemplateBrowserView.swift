@@ -269,7 +269,7 @@ struct TemplateRow: View {
                             .foregroundStyle(.secondary)
                     }
                     if let tags = template.metadata?.tags, !tags.isEmpty {
-                        Text("\(tags.count) tag\(tags.count == 1 ? "" : "s")")
+                        Text(verbatim: "\(tags.count) tag\(tags.count == 1 ? "" : "s")")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

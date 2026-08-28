@@ -33,7 +33,7 @@ struct ContainerHealthSection: View {
                             Image(systemName: "clock.arrow.circlepath")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Color.accentColor)
-                            Text("History (\(log.count))")
+                            Text(verbatim: "History (\(log.count))")
                                 .font(.subheadline)
                                 .foregroundStyle(.primary)
                             Spacer(minLength: 8)

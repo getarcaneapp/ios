@@ -131,7 +131,10 @@ struct ImagesView: View {
     }
 
     var body: some View {
-        LoadingCrossfade(showSkeleton: isLoading && images.isEmpty) {
+        LoadingCrossfade(
+            showSkeleton: isLoading && images.isEmpty,
+            animatesTransition: false
+        ) {
             SkeletonListLoadingView()
         } content: {
             if let error = errorMessage, images.isEmpty {
