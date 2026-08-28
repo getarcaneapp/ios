@@ -9,6 +9,7 @@ enum LoginMode {
 
 struct LoginView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
     @AppStorage("accentColorHex") private var accentColorHex: String = ""
     var mode: LoginMode
 
@@ -114,17 +115,6 @@ struct LoginView: View {
         .animation(Motion.entrance, value: manager.isOIDCAvailable)
         .onAppear {
             serverURL = manager.serverURL
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                if !manager.isStartingDemo {
-                    if isSetupMode {
-                        focusedField = .serverURL
-                    } else if manager.pendingMFAChallenge != nil {
-                        focusedField = .recoveryCode
-                    } else if shouldShowPasswordFields {
-                        focusedField = .username
-                    }
-                }
-            }
         }
         .onChange(of: manager.isStartingDemo) { _, isStarting in
             if isStarting { focusedField = nil }
@@ -137,6 +127,25 @@ struct LoginView: View {
         .task(id: oidcRefreshTaskID) {
             guard !isSetupMode, !manager.serverURL.isEmpty else { return }
             await manager.refreshLoginCapabilities()
+        }
+        .task(id: isLaunchSplashPresented) {
+            guard !isLaunchSplashPresented else {
+                focusedField = nil
+                return
+            }
+            do {
+                try await Task.sleep(for: .milliseconds(350))
+            } catch {
+                return
+            }
+            guard !manager.isStartingDemo else { return }
+            if isSetupMode {
+                focusedField = .serverURL
+            } else if manager.pendingMFAChallenge != nil {
+                focusedField = .recoveryCode
+            } else if shouldShowPasswordFields {
+                focusedField = .username
+            }
         }
     }
 

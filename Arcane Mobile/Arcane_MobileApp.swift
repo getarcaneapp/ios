@@ -29,6 +29,7 @@ struct Arcane_MobileApp: App {
                 .environment(pinnedStore)
                 .environment(resourceMutationStore)
                 .environment(imageUpdateCountStore)
+                .environment(\.isLaunchSplashPresented, showsLaunchSplash)
                 .tint(accentColorHex.isEmpty ? nil : accentColor)
                 .overlay {
                     if showsLaunchSplash {

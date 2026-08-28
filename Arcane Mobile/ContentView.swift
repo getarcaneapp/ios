@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
+    @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
     @AppStorage("arcane.lastSeenReleaseVersion") private var lastSeenVersion: String = ""
     @State private var showWhatsNew = false
     @State private var showActivityCenter = false
@@ -23,7 +24,10 @@ struct ContentView: View {
                     DemoBanner()
                     MainTabView()
                 }
-                .onAppear(perform: evaluateWhatsNew)
+                .onAppear {
+                    guard !isLaunchSplashPresented else { return }
+                    evaluateWhatsNew()
+                }
                 .sheet(isPresented: $showWhatsNew) {
                     WhatsNewView()
                         .onDisappear {
@@ -40,6 +44,11 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await manager.retryConnectionBootstrapIfNeeded() }
+        }
+        .onChange(of: isLaunchSplashPresented) { _, isPresented in
+            guard !isPresented else { return }
+            guard case .authenticated = manager.authState else { return }
+            evaluateWhatsNew()
         }
         .onChange(of: quickActionRouter.pendingActivityCenter, initial: true) { _, pending in
             guard pending, manager.supportsActivities else { return }

@@ -36,6 +36,15 @@ enum Motion {
     /// Progress bars and the dashboard stat ring.
     static let gauge: Animation = .spring(response: 0.55, dampingFraction: 0.85)
 
+    /// Continuous state changes in the environment-wide update scene.
+    static let updateStage: Animation = .spring(response: 0.68, dampingFraction: 0.88)
+
+    /// Slow simulated parallax drift for the active fleet-update bubble.
+    static let updateBubbleDrift: Animation = .easeInOut(duration: 1.8)
+
+    /// Heavily damped handoff between completed and newly active update bubbles.
+    static let updateBubbleHandoff: Animation = .spring(response: 0.68, dampingFraction: 0.94)
+
     /// Login logo one-shot "pop" on first appear. Softer, springier entrance
     /// than `entrance` — a lower damping fraction gives it a little more bounce
     /// for the single hero moment on the sign-in screen.

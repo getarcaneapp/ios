@@ -632,31 +632,49 @@ struct ContainerDetailView: View {
 // MARK: - Sub-views
 
 struct EnvVarsView: View {
-    let vars: [String]
-    @State private var searchText = ""
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
 
-    private var filtered: [String] {
-        searchText.isEmpty ? vars : vars.filter { $0.localizedCaseInsensitiveContains(searchText) }
+    private let entries: [EnvironmentVariableDisplayEntry]
+
+    @State private var searchText = ""
+    @State private var revealReset = 0
+
+    init(vars: [String]) {
+        entries = vars.enumerated().map { offset, rawValue in
+            EnvironmentVariableDisplayEntry(
+                id: offset,
+                variable: ParsedEnvironmentVariable(rawValue: rawValue)
+            )
+        }
+    }
+
+    private var filteredEntries: [EnvironmentVariableDisplayEntry] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return entries }
+
+        return entries.filter { entry in
+            let variable = entry.variable
+            if variable.name.localizedCaseInsensitiveContains(query) {
+                return true
+            }
+            if !variable.isPotentialSecret,
+               let value = variable.value,
+               value.localizedCaseInsensitiveContains(query) {
+                return true
+            }
+            return variable.value == nil
+                && variable.rawValue.localizedCaseInsensitiveContains(query)
+        }
     }
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 10) {
-                ForEach(filtered, id: \.self) { v in
-                    Group {
-                        let parts = v.split(separator: "=", maxSplits: 1)
-                        if parts.count == 2 {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(String(parts[0])).font(.caption.bold()).foregroundStyle(.secondary)
-                                Text(String(parts[1])).font(.body).textSelection(.enabled)
-                            }
-                        } else {
-                            Text(v).font(.caption).textSelection(.enabled)
-                        }
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .dashboardCardBackground(cornerRadius: Radius.standard)
+                ForEach(filteredEntries) { entry in
+                    EnvironmentVariableValueRow(
+                        variable: entry.variable,
+                        revealReset: revealReset
+                    )
                 }
             }
             .padding(.top, 8)
@@ -667,6 +685,95 @@ struct EnvVarsView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .searchable(text: $searchText)
         .navigationTitle("Environment Variables")
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase != .active {
+                revealReset &+= 1
+            }
+        }
+    }
+}
+
+private struct EnvironmentVariableDisplayEntry: Identifiable {
+    let id: Int
+    let variable: ParsedEnvironmentVariable
+}
+
+private struct EnvironmentVariableValueRow: View {
+    let variable: ParsedEnvironmentVariable
+    let revealReset: Int
+
+    @State private var isRevealed = false
+
+    private var hidesPotentialSecret: Bool {
+        variable.isPotentialSecret && !isRevealed
+    }
+
+    private var displayedValue: String {
+        guard let value = variable.value else { return variable.rawValue }
+        return hidesPotentialSecret ? "••••••••••••" : value
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if let value = variable.value,
+               !variable.name.isEmpty,
+               !value.isEmpty {
+                HStack(spacing: 8) {
+                    Text(variable.name)
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    if variable.isPotentialSecret {
+                        Label("Potential secret", systemImage: "lock.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .accessibilityHidden(true)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                Text(verbatim: displayedValue)
+                    .font(.body)
+                    .blur(radius: hidesPotentialSecret ? 2.5 : 0)
+                    .textSelection(.enabled)
+                    .privacySensitive(variable.isPotentialSecret)
+                    .accessibilityLabel(
+                        hidesPotentialSecret ? "Potential secret hidden" : displayedValue
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, variable.isPotentialSecret ? 44 : 0)
+                    .overlay(alignment: .trailing) {
+                        if variable.isPotentialSecret {
+                            Button {
+                                isRevealed.toggle()
+                            } label: {
+                                Image(systemName: isRevealed ? "eye.slash" : "eye")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                isRevealed
+                                    ? "Hide value for \(variable.name)"
+                                    : "Reveal value for \(variable.name)"
+                            )
+                        }
+                    }
+            } else {
+                Text(verbatim: variable.rawValue)
+                    .font(.caption)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardCardBackground(cornerRadius: Radius.standard)
+        .onChange(of: revealReset) {
+            isRevealed = false
+        }
     }
 }
 

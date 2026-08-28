@@ -52,6 +52,20 @@ struct ReleaseNote: Identifiable, Hashable {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.8.1",
+            new: [
+                .init("Potential secrets are blurred in container and image environment-variable views.")
+            ],
+            changed: [
+                .init("Environment-wide updates show unfinished environments on the progress ring and move completed bubbles into the results list.")
+            ],
+            fixed: [
+                .init("Login keyboard and What's New wait for the launch animation to finish."),
+                .init("Masked environment-variable rows match other row heights."),
+                .init("Environment update backgrounds no longer show a gradient edge.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.8.0",
             new: [
                 .init("Activity Center button on the Dashboard in tab-bar navigation mode."),

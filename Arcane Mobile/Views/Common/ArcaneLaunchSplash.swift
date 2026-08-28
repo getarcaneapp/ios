@@ -1,6 +1,10 @@
 import SwiftUI
 import WebKit
 
+extension EnvironmentValues {
+    @Entry var isLaunchSplashPresented = false
+}
+
 struct ArcaneLaunchSplash: View {
     let accentColorHex: String
     @Binding var isPresented: Bool

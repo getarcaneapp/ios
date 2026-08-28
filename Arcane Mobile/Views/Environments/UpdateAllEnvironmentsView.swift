@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import Arcane
 
@@ -10,7 +11,6 @@ struct UpdateAllEnvironmentsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let environmentCount: Int
 
@@ -27,7 +27,7 @@ struct UpdateAllEnvironmentsView: View {
 
     @State private var phase: Phase = .loading
     @State private var pollTask: Task<Void, Never>?
-    @State private var finishPulse = false
+    @Namespace private var resultIconNamespace
 
     /// The manager environment. The server ignores the path segment for these
     /// endpoints — the manager always orchestrates the whole fleet.
@@ -35,8 +35,8 @@ struct UpdateAllEnvironmentsView: View {
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
 
-    /// Collapses the phase to a coarse step so the blur-replace transition only
-    /// fires on real phase changes, not on every 3s poll payload refresh.
+    /// Collapses polling payloads into meaningful presentation changes so the
+    /// supporting content does not reanimate on every three-second refresh.
     private var phaseKey: Int {
         switch phase {
         case .loading: 0
@@ -53,7 +53,7 @@ struct UpdateAllEnvironmentsView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 32) {
                     if !isAdmin {
                         ContentUnavailableView(
                             "Admins Only",
@@ -63,13 +63,14 @@ struct UpdateAllEnvironmentsView: View {
                         .frame(maxWidth: .infinity, minHeight: 240)
                     } else {
                         phaseContent
-                            .motionAwareAnimation(Motion.state, value: phaseKey)
                     }
                 }
-                .padding(.horizontal, 16)
+                .frame(maxWidth: 680)
+                .padding(.horizontal, 20)
                 .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
             }
-            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .navigationTitle("Update All")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -88,34 +89,26 @@ struct UpdateAllEnvironmentsView: View {
 
     @ViewBuilder
     private var phaseContent: some View {
-        switch phase {
-        case .loading:
-            loadingCard
-                .transition(.blurReplace)
-        case .ready(let lastJob):
-            readyContent(lastJob: lastJob)
-                .transition(.blurReplace)
-        case .triggering:
-            progressHero(title: "Starting…", subtitle: "Contacting the manager")
-                .transition(.blurReplace)
-        case .polling(let job):
-            runningContent(job: job, reconnecting: false)
-                .transition(.blurReplace)
-        case .reconnecting(let job):
-            runningContent(job: job, reconnecting: true)
-                .transition(.blurReplace)
-        case .finished(let job, let note):
-            finishedContent(job: job, note: note)
-                .transition(.blurReplace)
-        case .unsupported(let message):
+        if let sceneModel {
+            VStack(spacing: 24) {
+                FleetUpdateScene(model: sceneModel, iconNamespace: resultIconNamespace)
+
+                Group {
+                    phaseDetails
+                }
+                .transition(.opacity)
+                .motionAwareAnimation(Motion.state, value: phaseKey)
+            }
+            .motionAwareAnimation(Motion.reflow, value: sceneModel.ringEnvironments.map(\.id))
+            .motionAwareAnimation(Motion.updateBubbleHandoff, value: sceneModel.activeEnvironment?.id)
+        } else if case .unsupported(let message) = phase {
             ContentUnavailableView(
                 "Not Available",
                 systemImage: "lock.shield",
                 description: Text(message)
             )
             .frame(maxWidth: .infinity, minHeight: 240)
-            .transition(.blurReplace)
-        case .failed(let message):
+        } else if case .failed(let message) = phase {
             VStack(spacing: 20) {
                 ContentUnavailableView(
                     "Update All Failed",
@@ -125,7 +118,124 @@ struct UpdateAllEnvironmentsView: View {
                 .frame(maxWidth: .infinity, minHeight: 240)
                 retryButton
             }
-            .transition(.blurReplace)
+        }
+    }
+
+    @ViewBuilder
+    private var phaseDetails: some View {
+        switch phase {
+        case .ready(let lastJob):
+            readyDetails(lastJob: lastJob)
+        case .polling(let job), .reconnecting(let job):
+            runningDetails(job: job)
+        case .finished(let job, _):
+            finishedDetails(job: job)
+        case .loading, .triggering, .unsupported, .failed:
+            EmptyView()
+        }
+    }
+
+    private var sceneModel: FleetUpdateSceneModel? {
+        switch phase {
+        case .loading:
+            return FleetUpdateSceneModel(
+                kind: .loading,
+                title: "Checking readiness",
+                subtitle: "Reading the manager's update status"
+            )
+        case .ready:
+            return FleetUpdateSceneModel(
+                kind: .ready,
+                title: "Update every environment",
+                subtitle: environmentCount == 1
+                    ? "1 environment · latest release"
+                    : "\(environmentCount) environments · latest release"
+            )
+        case .triggering:
+            return FleetUpdateSceneModel(
+                kind: .starting,
+                title: "Starting the update",
+                subtitle: "Contacting the manager"
+            )
+        case .polling(let job):
+            let results = resultsInProcessingOrder(job.results ?? [])
+            let done = completedResultCount(results)
+            let progress: Double? = results.isEmpty
+                ? nil
+                : Double(done) / Double(results.count)
+            let activeEnvironment = results.first { $0.status == .updating }
+
+            if job.status == .pendingRestart {
+                return FleetUpdateSceneModel(
+                    kind: .restarting,
+                    title: "Restarting the manager",
+                    subtitle: "The environment updates are complete",
+                    progress: progress,
+                    completedCount: done,
+                    totalCount: results.count,
+                    activeEnvironment: activeEnvironment,
+                    ringEnvironments: ringModels(for: results)
+                )
+            }
+
+            let subtitle = results.isEmpty
+                ? "Preparing environments"
+                : "\(done) of \(results.count) complete"
+            return FleetUpdateSceneModel(
+                kind: .updating,
+                title: "Updating environments",
+                subtitle: subtitle,
+                progress: progress,
+                completedCount: done,
+                totalCount: results.count,
+                activeEnvironment: activeEnvironment,
+                ringEnvironments: ringModels(for: results)
+            )
+        case .reconnecting(let job):
+            let results = resultsInProcessingOrder(job.results ?? [])
+            let done = completedResultCount(results)
+            return FleetUpdateSceneModel(
+                kind: .reconnecting,
+                title: "Reconnecting",
+                subtitle: "Waiting for the manager to return",
+                progress: results.isEmpty ? nil : Double(done) / Double(results.count),
+                completedCount: done,
+                totalCount: results.count,
+                activeEnvironment: results.first { $0.status == .updating },
+                ringEnvironments: ringModels(for: results)
+            )
+        case .finished(let job, let note):
+            let results = resultsInProcessingOrder(job.results ?? [])
+            let counts = resultCounts(results)
+            let done = completedResultCount(results)
+            let kind: FleetUpdateSceneKind
+            let title: String
+            if job.status == .failed {
+                kind = .failed
+                title = "Update failed"
+            } else if note != nil || counts.failed > 0 || counts.skipped > 0 {
+                kind = .warning
+                title = note == nil ? "Finished with issues" : "Manager restarting"
+            } else {
+                kind = .completed
+                title = "All updated"
+            }
+            return FleetUpdateSceneModel(
+                kind: kind,
+                title: title,
+                subtitle: note ?? (job.status == .failed
+                    ? (job.error ?? "The environment update failed.")
+                    : lastRunSummary(job: job)),
+                progress: results.isEmpty ? nil : Double(done) / Double(results.count),
+                completedCount: done,
+                totalCount: results.count,
+                activeEnvironment: job.isTerminal
+                    ? nil
+                    : results.first { $0.status == .updating },
+                ringEnvironments: job.isTerminal ? [] : ringModels(for: results)
+            )
+        case .unsupported, .failed:
+            return nil
         }
     }
 
@@ -136,22 +246,18 @@ struct UpdateAllEnvironmentsView: View {
 
     // MARK: - Ready (confirmation step)
 
-    private func readyContent(lastJob: EnvironmentUpdateJob?) -> some View {
-        VStack(spacing: 16) {
-            heroCard(
-                tint: .blue,
-                icon: "arrow.up.circle.fill",
-                title: "Update All Environments",
-                subtitle: environmentCount == 1
-                    ? "1 environment · latest release"
-                    : "\(environmentCount) environments · latest release"
-            )
-
-            stepsCard
-
+    private func readyDetails(lastJob: EnvironmentUpdateJob?) -> some View {
+        VStack(spacing: 18) {
             if let lastJob {
                 lastRunRow(job: lastJob)
             }
+
+            Text("Remote agents update first. The manager restarts last and can briefly interrupt the connection.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
 
             Button(role: .destructive) {
                 Task { await trigger() }
@@ -161,76 +267,46 @@ struct UpdateAllEnvironmentsView: View {
                     .padding(.vertical, 8)
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .tint(.red)
         }
     }
 
-    /// The old paragraph card, compressed into three glanceable steps.
-    private var stepsCard: some View {
-        VStack(spacing: 0) {
-            stepRow(icon: "server.rack", tint: .blue, text: "Agents update first")
-            Divider().padding(.leading, 44)
-            stepRow(icon: "crown.fill", tint: .indigo, text: "Manager restarts last")
-            Divider().padding(.leading, 44)
-            stepRow(icon: "wifi.slash", tint: .orange, text: "Brief disconnect at the end")
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 6)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
-    }
-
-    private func stepRow(icon: String, tint: Color, text: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 32, height: 32)
-                .background(tint.opacity(0.12), in: .circle)
-            Text(text)
-                .font(.subheadline)
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 10)
-    }
-
     private func lastRunRow(job: EnvironmentUpdateJob) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: job.status == .completed ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(job.status == .completed ? Color.green : .orange)
-                .frame(width: 32, height: 32)
-                .background((job.status == .completed ? Color.green : .orange).opacity(0.12), in: .circle)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Last run")
-                    .font(.subheadline)
-                Text(lastRunSummary(job: job))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 12) {
+                Image(systemName: job.status == .completed ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.title3)
+                    .foregroundStyle(job.status == .completed ? Color.green : .orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Last run")
+                        .font(.subheadline.weight(.semibold))
+                    Text(lastRunSummary(job: job))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if let completedAt = job.completedAt {
+                    Text(completedAt.formatted(.relative(presentation: .named)))
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
-            Spacer(minLength: 8)
-            if let completedAt = job.completedAt {
-                Text(completedAt.formatted(.relative(presentation: .named)))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
+            .padding(.vertical, 16)
+            Divider()
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
     private func lastRunSummary(job: EnvironmentUpdateJob) -> String {
         if job.status == .failed {
             return job.error ?? "Failed"
         }
-        let results = job.results ?? []
-        let updated = results.filter { $0.status == .updated || $0.status == .triggered }.count
-        let failed = results.filter { $0.status == .failed }.count
-        let skipped = results.filter { $0.status == .skippedOffline }.count
-        var parts = ["\(updated) updated"]
-        if failed > 0 { parts.append("\(failed) failed") }
-        if skipped > 0 { parts.append("\(skipped) skipped") }
+        let counts = resultCounts(job.results ?? [])
+        var parts = ["\(counts.updated) updated"]
+        if counts.failed > 0 { parts.append("\(counts.failed) failed") }
+        if counts.skipped > 0 { parts.append("\(counts.skipped) skipped") }
         if let version = displayVersion(job.managerTargetVersion) {
             parts.append(version)
         }
@@ -246,289 +322,132 @@ struct UpdateAllEnvironmentsView: View {
     // MARK: - Running
 
     @ViewBuilder
-    private func runningContent(job: EnvironmentUpdateJob, reconnecting: Bool) -> some View {
-        VStack(spacing: 20) {
-            if reconnecting {
-                reconnectingHero
-            } else if job.status == .pendingRestart {
-                restartingHero
-            } else {
-                updatingHero(job: job)
-            }
-            if let results = job.results, !results.isEmpty {
-                resultsCard(results: results)
-                    .motionAwareAnimation(Motion.reflow, value: results.map(\.status))
-            }
+    private func runningDetails(job: EnvironmentUpdateJob) -> some View {
+        let orderedResults = resultsInProcessingOrder(job.results ?? [])
+        let results = orderedResults.filter { isCompletedResult($0) }
+        if !results.isEmpty {
+            resultsTimeline(results: results)
+                .motionAwareAnimation(Motion.reflow, value: results.map(\.status))
         }
-    }
-
-    /// Rotating symbol wrapped in a live progress ring that fills as
-    /// environments complete.
-    private func updatingHero(job: EnvironmentUpdateJob) -> some View {
-        let results = job.results ?? []
-        let done = results.filter {
-            $0.status == .updated || $0.status == .triggered
-                || $0.status == .skippedOffline || $0.status == .failed
-        }.count
-        let fraction = results.isEmpty ? 0 : Double(done) / Double(results.count)
-        let subtitle = results.isEmpty
-            ? "Working on it"
-            : "\(done) of \(results.count) done"
-
-        return VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.blue.opacity(0.14))
-                Circle()
-                    .stroke(Color.blue.opacity(0.15), lineWidth: 4)
-                Circle()
-                    .trim(from: 0, to: fraction)
-                    .stroke(Color.blue, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .motionAwareAnimation(Motion.gauge, value: fraction)
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(Color.blue)
-                    .symbolEffect(.rotate, options: .repeating, isActive: !reduceMotion)
-            }
-            .frame(width: 96, height: 96)
-            .glassEffectCompat(tint: Color.blue.opacity(0.25), in: .circle)
-            VStack(spacing: 6) {
-                Text("Updating")
-                    .font(.title2.bold())
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
-                    .motionAwareAnimation(Motion.state, value: subtitle)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
-    }
-
-    private var restartingHero: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.blue.opacity(0.14))
-                    .frame(width: 96, height: 96)
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(Color.blue)
-                    .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
-            }
-            .glassEffectCompat(tint: Color.blue.opacity(0.25), in: .circle)
-            VStack(spacing: 6) {
-                Text("Restarting Manager")
-                    .font(.title2.bold())
-                Text("Agents are done · connection may drop")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
-    }
-
-    private var reconnectingHero: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.14))
-                    .frame(width: 96, height: 96)
-                Image(systemName: "wifi")
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(Color.orange)
-                    .symbolEffect(.variableColor.iterative.reversing, options: .repeating, isActive: !reduceMotion)
-            }
-            .glassEffectCompat(tint: Color.orange.opacity(0.25), in: .circle)
-            VStack(spacing: 6) {
-                Text("Reconnecting")
-                    .font(.title2.bold())
-                Text("Waiting for the manager")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
     // MARK: - Finished
 
     @ViewBuilder
-    private func finishedContent(job: EnvironmentUpdateJob, note: String?) -> some View {
-        let results = job.results ?? []
-        let updated = results.filter { $0.status == .updated || $0.status == .triggered }.count
-        let failed = results.filter { $0.status == .failed }.count
-        let skipped = results.filter { $0.status == .skippedOffline }.count
+    private func finishedDetails(job: EnvironmentUpdateJob) -> some View {
+        let results = resultsInProcessingOrder(job.results ?? [])
+        let displayedResults = job.isTerminal
+            ? results
+            : results.filter { isCompletedResult($0) }
+        let counts = resultCounts(results)
 
-        let tint: Color = {
-            if job.status == .failed { return .red }
-            if note != nil || failed > 0 || skipped > 0 { return .orange }
-            return .green
-        }()
-        let icon = tint == .green ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-        let title: String = {
-            if job.status == .failed { return "Update Failed" }
-            if note != nil { return "Manager Restarting" }
-            return failed > 0 || skipped > 0 ? "Done, with Issues" : "All Updated"
-        }()
-        let subtitle = note ?? (job.status == .failed
-            ? (job.error ?? "The fleet update failed.")
-            : lastRunSummary(job: job))
+        VStack(spacing: 24) {
+            metricsStrip(updated: counts.updated, failed: counts.failed, skipped: counts.skipped)
 
-        VStack(spacing: 20) {
-            VStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(tint.opacity(0.16))
-                        .frame(width: 96, height: 96)
-                    Image(systemName: icon)
-                        .font(.system(size: 40, weight: .semibold))
-                        .foregroundStyle(tint)
-                        .symbolEffect(.bounce, options: .nonRepeating, value: finishPulse)
-                }
-                .glassEffectCompat(tint: tint.opacity(0.25), in: .circle)
-                VStack(spacing: 6) {
-                    Text(title)
-                        .font(.title2.bold())
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 24)
-            .padding(.horizontal, 20)
-            .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
-            .onAppear {
-                if !reduceMotion { finishPulse.toggle() }
-            }
-
-            HStack(spacing: 12) {
-                counterTile(label: "Updated", value: updated, icon: "checkmark.circle.fill", tint: .green)
-                counterTile(label: "Failed", value: failed, icon: "xmark.circle.fill", tint: .red)
-                counterTile(label: "Skipped", value: skipped, icon: "minus.circle.fill", tint: .gray)
-            }
-
-            if !results.isEmpty {
-                resultsCard(results: results)
+            if !displayedResults.isEmpty {
+                resultsTimeline(results: displayedResults)
             }
         }
     }
 
-    private func counterTile(label: String, value: Int, icon: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(tint)
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Text("\(value)")
-                .font(.system(.title, design: .rounded).bold())
-                .foregroundStyle(.primary)
-                .contentTransition(.numericText())
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(tint.opacity(0.10), in: .rect(cornerRadius: Radius.standard))
-    }
-
-    // MARK: - Results list
-
-    private func resultsCard(results: [EnvironmentUpdateResult]) -> some View {
+    private func metricsStrip(updated: Int, failed: Int, skipped: Int) -> some View {
         VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 0) {
+                counterMetric(label: "Updated", value: updated, tint: .green)
+                Divider().frame(height: 56)
+                counterMetric(label: "Failed", value: failed, tint: .red)
+                Divider().frame(height: 56)
+                counterMetric(label: "Skipped", value: skipped, tint: .gray)
+            }
+            .padding(.vertical, 16)
+            Divider()
+        }
+    }
+
+    private func counterMetric(label: String, value: Int, tint: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(verbatim: String(value))
+                .font(.system(.title, design: .rounded).weight(.semibold))
+                .foregroundStyle(tint)
+                .contentTransition(.numericText())
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Results timeline
+
+    private func resultsTimeline(results: [EnvironmentUpdateResult]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Results")
+                    .font(.headline)
+                Spacer(minLength: 12)
+                Text(verbatim: String(results.count))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.bottom, 10)
+            Divider()
             ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
-                FleetUpdateResultRow(result: result)
-                    .padding(.vertical, 10)
+                FleetUpdateResultRow(result: result, iconNamespace: resultIconNamespace)
+                    .padding(.vertical, 14)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 if index < results.count - 1 {
                     Divider().padding(.leading, 44)
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
 
-    // MARK: - Shared cards
-
-    private var loadingCard: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-                .controlSize(.large)
-            Text("Checking status…")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, minHeight: 200)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
+    private func completedResultCount(_ results: [EnvironmentUpdateResult]) -> Int {
+        results.filter { isCompletedResult($0) }.count
     }
 
-    private func progressHero(title: String, subtitle: String) -> some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.blue.opacity(0.14))
-                    .frame(width: 96, height: 96)
-                ProgressView()
-                    .controlSize(.large)
-            }
-            .glassEffectCompat(tint: Color.blue.opacity(0.25), in: .circle)
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.title2.bold())
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
+    private func resultsInProcessingOrder(
+        _ results: [EnvironmentUpdateResult]
+    ) -> [EnvironmentUpdateResult] {
+        let remoteResults = results.filter { $0.environmentId != managerEnvID.rawValue }
+        let managerResults = results.filter { $0.environmentId == managerEnvID.rawValue }
+        return remoteResults + managerResults
     }
 
-    private func heroCard(tint: Color, icon: String, title: String, subtitle: String) -> some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(0.16))
-                    .frame(width: 96, height: 96)
-                Image(systemName: icon)
-                    .font(.system(size: 40, weight: .semibold))
-                    .foregroundStyle(tint)
-            }
-            .glassEffectCompat(tint: tint.opacity(0.25), in: .circle)
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.title2.bold())
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+    private func isCompletedResult(_ result: EnvironmentUpdateResult) -> Bool {
+        return switch result.status {
+        case .pending, .updating:
+            false
+        case .updated, .upToDate, .triggered, .skippedOffline, .failed, .unknown:
+            true
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
+    }
+
+    private func ringModels(
+        for results: [EnvironmentUpdateResult]
+    ) -> [FleetUpdateRingEnvironment] {
+        results.enumerated().compactMap { index, result in
+            guard !isCompletedResult(result) else { return nil }
+            return FleetUpdateRingEnvironment(
+                result: result,
+                slotIndex: index,
+                totalCount: results.count
+            )
+        }
+    }
+
+    private func resultCounts(
+        _ results: [EnvironmentUpdateResult]
+    ) -> (updated: Int, failed: Int, skipped: Int) {
+        (
+            results.filter {
+                $0.status == .updated || $0.status == .upToDate || $0.status == .triggered
+            }.count,
+            results.filter { $0.status == .failed }.count,
+            results.filter { $0.status == .skippedOffline }.count
+        )
     }
 
     private var retryButton: some View {
@@ -540,6 +459,7 @@ struct UpdateAllEnvironmentsView: View {
                 .padding(.vertical, 6)
         }
         .buttonStyle(.bordered)
+        .controlSize(.large)
     }
 
     // MARK: - Networking
@@ -662,22 +582,463 @@ struct UpdateAllEnvironmentsView: View {
     }
 }
 
+// MARK: - Update scene
+
+private enum FleetUpdateSceneKind: Equatable {
+    case loading
+    case ready
+    case starting
+    case updating
+    case restarting
+    case reconnecting
+    case completed
+    case warning
+    case failed
+
+    var tint: Color {
+        switch self {
+        case .reconnecting, .warning: .orange
+        case .completed: .green
+        case .failed: .red
+        case .loading, .ready, .starting, .updating, .restarting: .accentColor
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .loading: "ellipsis"
+        case .ready: "arrow.up.circle.fill"
+        case .starting, .updating: "arrow.triangle.2.circlepath"
+        case .restarting: "antenna.radiowaves.left.and.right"
+        case .reconnecting: "wifi"
+        case .completed: "checkmark"
+        case .warning: "exclamationmark"
+        case .failed: "xmark"
+        }
+    }
+
+    var isTerminal: Bool {
+        switch self {
+        case .completed, .warning, .failed: true
+        case .loading, .ready, .starting, .updating, .restarting, .reconnecting: false
+        }
+    }
+}
+
+private struct FleetUpdateRingEnvironment: Identifiable, Equatable {
+    let result: EnvironmentUpdateResult
+    let slotIndex: Int
+    let totalCount: Int
+
+    var id: String { result.id }
+}
+
+private struct FleetUpdateSceneModel: Equatable {
+    let kind: FleetUpdateSceneKind
+    let title: String
+    let subtitle: String
+    let progress: Double?
+    let completedCount: Int
+    let totalCount: Int
+    let activeEnvironment: EnvironmentUpdateResult?
+    let ringEnvironments: [FleetUpdateRingEnvironment]
+
+    init(
+        kind: FleetUpdateSceneKind,
+        title: String,
+        subtitle: String,
+        progress: Double? = nil,
+        completedCount: Int = 0,
+        totalCount: Int = 0,
+        activeEnvironment: EnvironmentUpdateResult? = nil,
+        ringEnvironments: [FleetUpdateRingEnvironment] = []
+    ) {
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.progress = progress
+        self.completedCount = completedCount
+        self.totalCount = totalCount
+        self.activeEnvironment = activeEnvironment
+        self.ringEnvironments = ringEnvironments
+    }
+
+    var showsPercentage: Bool {
+        kind == .updating && activeEnvironment == nil && progress != nil && totalCount > 0
+    }
+
+    var showsActiveEnvironment: Bool {
+        activeEnvironment != nil
+    }
+
+    var ringFraction: Double {
+        if !kind.isTerminal, totalCount > 0, let progress {
+            return min(max(progress, 0), 1)
+        }
+
+        return switch kind {
+        case .ready: 0
+        case .loading, .starting, .updating: 0.14
+        case .restarting, .reconnecting, .completed, .warning, .failed: 1
+        }
+    }
+
+    var percentage: Int {
+        Int((ringFraction * 100).rounded())
+    }
+
+    var accessibilityValue: String {
+        let progressDescription = totalCount > 0
+            ? "\(completedCount) of \(totalCount) environments complete"
+            : subtitle
+        guard let activeEnvironment else { return progressDescription }
+
+        if kind == .reconnecting {
+            return "\(activeEnvironment.environmentName) updating. \(progressDescription). \(subtitle)"
+        }
+
+        return "\(activeEnvironment.environmentName) updating. \(progressDescription)"
+    }
+}
+
+private struct FleetUpdateScene: View {
+    let model: FleetUpdateSceneModel
+    let iconNamespace: Namespace.ID
+
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var focusSize: CGFloat = 152
+    @State private var hasAppeared = false
+    @State private var completionPulse = 0
+
+    var body: some View {
+        VStack(spacing: 28) {
+            focus
+
+            VStack(spacing: 6) {
+                Text(model.title)
+                    .font(.largeTitle.weight(.bold))
+                    .multilineTextAlignment(.center)
+                    .contentTransition(.interpolate)
+
+                Text(model.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .contentTransition(.interpolate)
+                    .motionAwareAnimation(Motion.state, value: model.subtitle)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 248)
+        .padding(.vertical, 4)
+        .background {
+            RadialGradient(
+                colors: [model.kind.tint.opacity(0.13), model.kind.tint.opacity(0.035), .clear],
+                center: .center,
+                startRadius: 0,
+                endRadius: 108
+            )
+            .frame(width: 320, height: 240)
+            .blur(radius: 8)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+        .opacity(hasAppeared ? 1 : 0)
+        .scaleEffect(reduceMotion || hasAppeared ? 1 : 0.94)
+        .motionAwareAnimation(Motion.updateStage, value: model.kind)
+        .motionAwareAnimation(Motion.updateStage, value: model.title)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(model.title)
+        .accessibilityValue(model.accessibilityValue)
+        .onAppear {
+            withAnimation(reduceMotion ? Motion.reducedFallback : Motion.updateStage) {
+                hasAppeared = true
+            }
+            if model.kind.isTerminal {
+                completionPulse += 1
+            }
+        }
+        .onChange(of: model.kind) { _, kind in
+            if kind.isTerminal {
+                completionPulse += 1
+            }
+        }
+    }
+
+    private var focus: some View {
+        ZStack {
+            Circle()
+                .fill(model.kind.tint.opacity(0.055))
+                .scaleEffect(model.kind.isTerminal ? 1.07 : 1)
+
+            Circle()
+                .stroke(model.kind.tint.opacity(0.14), lineWidth: 1)
+                .scaleEffect(model.kind.isTerminal ? 1.07 : 1)
+
+            Circle()
+                .stroke(Color.secondary.opacity(0.12), lineWidth: 5)
+
+            Circle()
+                .trim(from: 0, to: model.ringFraction)
+                .stroke(
+                    model.kind.tint,
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .opacity(model.ringFraction == 0 ? 0 : 1)
+                .animation(Motion.gauge, value: model.ringFraction)
+
+            animatedSymbol
+                .opacity(model.showsPercentage || model.showsActiveEnvironment ? 0 : 1)
+                .scaleEffect(model.showsPercentage || model.showsActiveEnvironment ? 0.82 : 1)
+
+            Text(verbatim: "\(model.percentage)%")
+                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                .contentTransition(.numericText())
+                .opacity(model.showsPercentage ? 1 : 0)
+                .scaleEffect(model.showsPercentage ? 1 : 0.82)
+                .motionAwareAnimation(Motion.updateStage, value: model.percentage)
+
+            if !model.ringEnvironments.isEmpty {
+                FleetUpdateRingEnvironments(
+                    environments: model.ringEnvironments,
+                    activeEnvironmentID: model.activeEnvironment?.id,
+                    tint: model.kind.tint,
+                    iconNamespace: iconNamespace,
+                    ringDiameter: min(focusSize, 172)
+                )
+                .transition(.opacity)
+            }
+        }
+        .frame(width: min(focusSize, 172), height: min(focusSize, 172))
+        .motionAwareAnimation(Motion.updateStage, value: model.showsPercentage)
+    }
+
+    private var baseSymbol: some View {
+        Image(systemName: model.kind.symbol)
+            .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+            .foregroundStyle(model.kind.tint)
+            .contentTransition(.symbolEffect(.replace))
+    }
+
+    @ViewBuilder
+    private var animatedSymbol: some View {
+        switch model.kind {
+        case .loading:
+            baseSymbol
+                .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
+        case .starting:
+            baseSymbol
+                .symbolEffect(.rotate, options: .repeating, isActive: !reduceMotion)
+        case .updating:
+            if model.showsPercentage {
+                baseSymbol
+            } else {
+                baseSymbol
+                    .symbolEffect(.rotate, options: .repeating, isActive: !reduceMotion)
+            }
+        case .restarting:
+            baseSymbol
+                .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
+        case .reconnecting:
+            baseSymbol
+                .symbolEffect(
+                    .variableColor.iterative.reversing,
+                    options: .repeating,
+                    isActive: !reduceMotion
+                )
+        case .completed, .warning, .failed:
+            if reduceMotion {
+                baseSymbol
+            } else {
+                baseSymbol
+                    .symbolEffect(.bounce, options: .nonRepeating, value: completionPulse)
+            }
+        case .ready:
+            baseSymbol
+        }
+    }
+}
+
+private enum FleetUpdateBubblePhase: CaseIterable {
+    case resting
+    case upperTrailing
+    case lowerTrailing
+    case lowerLeading
+    case upperLeading
+
+    var horizontalOffset: CGFloat {
+        switch self {
+        case .resting: 0
+        case .upperTrailing: 2.8
+        case .lowerTrailing: 2.1
+        case .lowerLeading: -2.7
+        case .upperLeading: -2.2
+        }
+    }
+
+    var verticalOffset: CGFloat {
+        switch self {
+        case .resting: 0
+        case .upperTrailing: -2.2
+        case .lowerTrailing: 2.5
+        case .lowerLeading: 1.8
+        case .upperLeading: -2.6
+        }
+    }
+
+    var scale: CGFloat {
+        switch self {
+        case .resting: 1
+        case .upperTrailing: 1.006
+        case .lowerTrailing: 1.003
+        case .lowerLeading: 0.996
+        case .upperLeading: 0.999
+        }
+    }
+}
+
+private struct FleetUpdateRingEnvironments: View {
+    let environments: [FleetUpdateRingEnvironment]
+    let activeEnvironmentID: String?
+    let tint: Color
+    let iconNamespace: Namespace.ID
+    let ringDiameter: CGFloat
+
+    private var activeEnvironment: EnvironmentUpdateResult? {
+        environments.first { $0.id == activeEnvironmentID }?.result
+    }
+
+    var body: some View {
+        ZStack {
+            if let activeEnvironment {
+                VStack(spacing: 3) {
+                    Text(activeEnvironment.environmentName)
+                        .font(.caption.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+
+                    Text("Updating")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: ringDiameter * 0.56)
+                .id(activeEnvironment.id)
+                .transition(.opacity)
+            }
+
+            ForEach(environments) { environment in
+                FleetUpdateRingBubble(
+                    environment: environment,
+                    isActive: environment.id == activeEnvironmentID,
+                    tint: tint,
+                    iconNamespace: iconNamespace,
+                    ringDiameter: ringDiameter
+                )
+            }
+        }
+        .frame(width: ringDiameter, height: ringDiameter)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct FleetUpdateRingBubble: View {
+    let environment: FleetUpdateRingEnvironment
+    let isActive: Bool
+    let tint: Color
+    let iconNamespace: Namespace.ID
+    let ringDiameter: CGFloat
+
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .headline) private var activeIconSize: CGFloat = 48
+
+    private var isManager: Bool { environment.result.environmentId == "0" }
+
+    private var animationPhases: [FleetUpdateBubblePhase] {
+        reduceMotion || !isActive ? [.resting] : FleetUpdateBubblePhase.allCases
+    }
+
+    private var angle: Double {
+        let slotCount = max(environment.totalCount, 1)
+        return -.pi / 2
+            + Double(environment.slotIndex) / Double(slotCount) * 2 * .pi
+    }
+
+    private var ringOffset: CGSize {
+        let radius = ringDiameter / 2
+        return CGSize(
+            width: CGFloat(cos(angle)) * radius,
+            height: CGFloat(sin(angle)) * radius
+        )
+    }
+
+    private var inactiveIconSize: CGFloat {
+        let circumference = ringDiameter * .pi
+        let slotCount = CGFloat(max(environment.totalCount, 1))
+        return min(28, max(10, circumference * 0.76 / slotCount))
+    }
+
+    private var bubbleSize: CGFloat {
+        isActive ? min(activeIconSize, 56) : inactiveIconSize
+    }
+
+    private var cutoutSize: CGFloat {
+        bubbleSize + (isActive ? 8 : 6)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color(uiColor: .systemBackground))
+                .frame(width: cutoutSize, height: cutoutSize)
+
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(isActive ? 0.18 : 0.10))
+                Circle()
+                    .stroke(tint.opacity(isActive ? 0.42 : 0.22), lineWidth: 1)
+                Image(systemName: isManager ? "crown.fill" : "server.rack")
+                    .font(.system(size: max(7, bubbleSize * 0.38), weight: .semibold))
+                    .foregroundStyle(tint)
+                    .opacity(isActive || bubbleSize >= 16 ? 1 : 0)
+                    .accessibilityHidden(true)
+            }
+            .frame(width: bubbleSize, height: bubbleSize)
+        }
+        .frame(width: cutoutSize, height: cutoutSize)
+        .phaseAnimator(animationPhases) { content, phase in
+            content
+                .offset(x: phase.horizontalOffset, y: phase.verticalOffset)
+                .scaleEffect(phase.scale)
+        } animation: { _ in
+            Motion.updateBubbleDrift
+        }
+        .motionAwareAnimation(Motion.updateBubbleHandoff, value: isActive)
+        .offset(x: ringOffset.width, y: ringOffset.height)
+        .matchedGeometryEffect(id: environment.id, in: iconNamespace)
+        .zIndex(isActive ? 2 : 1)
+    }
+}
+
 // MARK: - Row
 
 private struct FleetUpdateResultRow: View {
     let result: EnvironmentUpdateResult
+    let iconNamespace: Namespace.ID
 
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isManager: Bool { result.environmentId == "0" }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: isManager ? "crown.fill" : "server.rack")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(isManager ? Color.indigo : .blue)
                 .frame(width: 32, height: 32)
                 .background((isManager ? Color.indigo : .blue).opacity(0.12), in: .circle)
+                .matchedGeometryEffect(id: result.id, in: iconNamespace)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -687,11 +1048,8 @@ private struct FleetUpdateResultRow: View {
                         .truncationMode(.middle)
                     if isManager {
                         Text("Manager")
-                            .font(.caption2.bold())
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.secondary.opacity(0.15), in: .capsule)
                     }
                 }
                 if let versionChange {
@@ -722,11 +1080,9 @@ private struct FleetUpdateResultRow: View {
                     .contentTransition(.interpolate)
             }
             .foregroundStyle(statusTint)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(statusTint.opacity(0.15), in: .capsule)
             .motionAwareAnimation(Motion.state, value: result.status)
         }
+        .accessibilityElement(children: .combine)
     }
 
     /// Hide digest-style versions — they read as noise at row size.
@@ -755,6 +1111,7 @@ private struct FleetUpdateResultRow: View {
         case .pending: return "Pending"
         case .updating: return "Updating"
         case .updated: return "Updated"
+        case .upToDate: return "Up to Date"
         case .triggered: return "Triggered"
         case .skippedOffline: return "Offline"
         case .failed: return "Failed"
@@ -766,7 +1123,7 @@ private struct FleetUpdateResultRow: View {
         switch result.status {
         case .pending: return .gray
         case .updating: return .blue
-        case .updated, .triggered: return .green
+        case .updated, .upToDate, .triggered: return .green
         case .skippedOffline: return .gray
         case .failed: return .red
         case .unknown: return .blue
