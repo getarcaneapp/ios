@@ -727,7 +727,7 @@ struct DashboardView: View {
             ))
         }
 
-        if volumesTotal == nil, !volumeCountUnavailableEnvironmentIDs.isEmpty {
+        if !volumeCountUnavailableEnvironmentIDs.isEmpty {
             issues.append(DashboardCountIssue(
                 id: "volumes",
                 title: "Volume count",
@@ -735,7 +735,7 @@ struct DashboardView: View {
             ))
         }
 
-        if imageUpdatesTotal == nil, !updateCountUnavailableEnvironmentIDs.isEmpty {
+        if streamStore.aggregate == nil, !updateCountUnavailableEnvironmentIDs.isEmpty {
             issues.append(DashboardCountIssue(
                 id: "updates",
                 title: "Update count",
@@ -760,6 +760,9 @@ struct DashboardView: View {
     // MARK: - Data loading
 
     private func refreshDashboard() async {
+        // Reconnecting invalidates the live aggregate immediately. Preserve
+        // its last successful update total until the replacement arrives.
+        supplementalImageUpdatesTotal = imageUpdatesTotal
         streamStore.reconnect()
         statsHistory.reconnect()
         await loadData(refresh: true)
@@ -771,11 +774,13 @@ struct DashboardView: View {
         if refresh || allEnvironments.isEmpty {
             visibleEnvironmentCount = Self.environmentBatchSize
         }
-        // These values describe the current fleet. Clear them before each pass
-        // so a failed or incomplete refresh cannot leave an older number on
-        // screen looking live.
-        volumesTotal = nil
-        supplementalImageUpdatesTotal = nil
+        // Match the container and image tiles: keep the last successful totals
+        // visible while a refresh fetches their replacements. Initial loads
+        // still begin without a value.
+        if !refresh {
+            volumesTotal = nil
+            supplementalImageUpdatesTotal = nil
+        }
         liveCounts = nil
         environmentLiveStates = [:]
         volumeCountUnavailableEnvironmentIDs = []
@@ -810,30 +815,36 @@ struct DashboardView: View {
         hasLoadedOnce = true
         isLoading = false
 
+        // Overview totals represent every environment, independent of how many
+        // cards have been revealed so far.
+        let enabledEnvironments = envs.filter(\.enabled)
+        async let volumesResult = loadVolumesTotal(envs: enabledEnvironments)
+        async let updatesResult = loadImageUpdatesTotal(envs: enabledEnvironments)
+        let volumes = await volumesResult
+        let updates = await updatesResult
+        if !Task.isCancelled {
+            if let total = volumes.total {
+                volumesTotal = total
+            }
+            volumeCountUnavailableEnvironmentIDs = volumes.unavailableEnvironmentIDs
+            if let total = updates.total {
+                supplementalImageUpdatesTotal = total
+            }
+            updateCountUnavailableEnvironmentIDs = updates.unavailableEnvironmentIDs
+            updateFleetLiveStateFromStore()
+            hasLoadedFleetCounts = true
+        }
+
+        // Supplemental count requests must publish before the legacy overview
+        // and dashboard snapshot refreshes, which can be slower or unsupported.
         let reqData = try? await rawReq
         if Task.isCancelled { return }
         if let reqData {
             overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
                 ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
         }
-
-        // Overview totals represent every environment, independent of how many
-        // cards have been revealed so far.
-        let enabledEnvironments = envs.filter(\.enabled)
-        async let volumesResult = loadVolumesTotal(envs: enabledEnvironments)
-        async let updatesResult = loadImageUpdatesTotal(envs: enabledEnvironments)
         if refresh, streamStore.isStreaming {
             await streamStore.refresh()
-        }
-        let volumes = await volumesResult
-        let updates = await updatesResult
-        if !Task.isCancelled {
-            volumesTotal = volumes.total
-            volumeCountUnavailableEnvironmentIDs = volumes.unavailableEnvironmentIDs
-            supplementalImageUpdatesTotal = updates.total
-            updateCountUnavailableEnvironmentIDs = updates.unavailableEnvironmentIDs
-            updateFleetLiveStateFromStore()
-            hasLoadedFleetCounts = true
         }
 
         let activities = await loadFailedWork()

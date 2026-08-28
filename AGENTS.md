@@ -6,7 +6,7 @@ Guidance for AI agents (and new contributors) working on the Arcane Mobile iOS a
 
 1. **Every user-facing change MUST be added to `Arcane Mobile/ReleaseNotes.swift`.** Bug fixes, new features, and behavior changes all get a bullet under the current `MARKETING_VERSION`'s entry — `new:` for features, `changed:` for behavior changes, `fixed:` for bug fixes. If no entry exists for the current version yet, prepend one (newest first, `version` must match `MARKETING_VERSION` exactly — the What's New auto-show keys off that string). Bullets are terse one-liners that just state the change — no explanations, no "now"/"same as X" comparisons, no em-dash elaborations (e.g. "Terminal-style redesign for the operation log.", not "The operation log got a terminal-style redesign — one dark console with live output for…").
 2. **Never `git commit` or `git push`.** The user always commits and pushes themselves.
-3. **Don't build via `xcodebuild` or run simulators (`simctl`) to verify changes.** The user builds and runs in Xcode.
+3. **Xcode builds are allowed, but Sqim delivery MUST always be a real-device build.** Agents may use Xcode or `xcodebuild` to verify changes. After every completed change, run `sqim status` and then `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer sqim upload --device --build` from the repository root, and give the user the final HTTPS install URL printed by a successful upload. Never use Sqim simulator uploads or `sqim remote-build`. If Xcode reports missing profiles, retry with `--allow-provisioning-updates`, but never revoke or create signing certificates without explicit user approval. If the build or upload fails, report the relevant failure and never provide a partial or older link.
 
 ## Project layout
 
@@ -76,5 +76,5 @@ ios/
 
 1. Make the code change following the conventions above.
 2. Add a bullet to `ReleaseNotes.swift` under the current version (create the entry if missing).
-3. Do **not** build/run to verify — the user does that in Xcode.
+3. Verify with Xcode or `xcodebuild` as appropriate, then run `sqim status` and `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer sqim upload --device --build` and provide the final HTTPS install link. Never use a Sqim simulator upload or `sqim remote-build`. Retry with `--allow-provisioning-updates` only for missing profiles; do not revoke or create signing certificates without explicit user approval.
 4. Do **not** commit — the user handles git.

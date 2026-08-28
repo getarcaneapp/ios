@@ -60,6 +60,7 @@ enum ReleaseNotes {
                 .init("Environment-wide updates show unfinished environments on the progress ring and move completed bubbles into the results list.")
             ],
             fixed: [
+                .init("Dashboard update and volume counts remain visible during pull-to-refresh."),
                 .init("Login keyboard and What's New wait for the launch animation to finish."),
                 .init("Masked environment-variable rows match other row heights."),
                 .init("Environment update backgrounds no longer show a gradient edge.")
