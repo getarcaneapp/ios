@@ -17,6 +17,7 @@ struct MainTabView: View {
     @State private var fleetStore = FleetStore()
     @AppStorage("accentColorHex") private var accentColorHex = ""
     @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
+    @AppStorage(TabIndicatorMotion.storageKey) private var tabIndicatorMotion: TabIndicatorMotion = .straight
 
     init() {
         // Restore the last selected tab (opt-out via App Settings). Seeding the
@@ -73,8 +74,21 @@ struct MainTabView: View {
 
     /// Tabs for the morphing bar: the visible set plus the locked Settings slot.
     private var morphTabs: [MorphingTabBar.TabEntry] {
-        visibleTabs.map { MorphingTabBar.TabEntry(id: $0.id, symbol: $0.systemImage) }
-            + [MorphingTabBar.TabEntry(id: "settings", symbol: "gearshape.fill")]
+        visibleTabs.map {
+            MorphingTabBar.TabEntry(
+                id: $0.id,
+                title: $0.tabBarTitle,
+                symbol: $0.systemImage,
+                isReplaceable: true
+            )
+        } + [
+            MorphingTabBar.TabEntry(
+                id: AppTab.settings.id,
+                title: AppTab.settings.tabBarTitle,
+                symbol: AppTab.settings.systemImage,
+                isReplaceable: false
+            )
+        ]
     }
 
     private var sidebarDestinationIdentity: String {
@@ -147,6 +161,7 @@ struct MainTabView: View {
                     selectedID: $selectedTab,
                     store: morphStore,
                     accentColor: accentColor,
+                    indicatorMotion: tabIndicatorMotion,
                     pinnedTabs: store.pinnedTabs,
                     swapTarget: $swapTarget,
                     availableTabs: availableTabSet,
@@ -163,7 +178,8 @@ struct MainTabView: View {
                 selectedID: $selectedTab,
                 store: morphStore,
                 onLongPressTab: handleLongPressTab,
-                accentColor: accentColor
+                accentColor: accentColor,
+                indicatorMotion: tabIndicatorMotion
             )
             .padding(.bottom, 18)
             .frame(maxHeight: .infinity, alignment: .bottom)

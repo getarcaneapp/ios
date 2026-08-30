@@ -33,7 +33,7 @@ struct Arcane_MobileApp: App {
                 .environment(imageUpdateCountStore)
                 .environment(\.isLaunchSplashPresented, showsLaunchSplash)
                 .environment(\.whatsNew, whatsNewEnvironment)
-                .tint(accentColorHex.isEmpty ? nil : accentColor)
+                .appAccentColor(accentColorHex.isEmpty ? nil : accentColor)
                 .overlay {
                     if showsLaunchSplash {
                         ArcaneLaunchSplash(

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A100000D0000000000000000 /* Arcane in Frameworks */ = {isa = PBXBuildFile; productRef = A100000E0000000000000000 /* Arcane */; };
+		A71B00012FFF000000000001 /* AnimatedTabBar in Frameworks */ = {isa = PBXBuildFile; productRef = A71B00032FFF000000000003 /* AnimatedTabBar */; };
 		BFAB10022FF7410000EF7E76 /* Arcane in Frameworks */ = {isa = PBXBuildFile; productRef = BFAB10032FF7410000EF7E76 /* Arcane */; };
 		BFD5111F2FF73F4100EF7E76 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BFD5111E2FF73F4100EF7E76 /* WidgetKit.framework */; };
 		BFD511212FF73F4100EF7E76 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BFD511202FF73F4100EF7E76 /* SwiftUI.framework */; };
@@ -128,6 +129,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A71B00012FFF000000000001 /* AnimatedTabBar in Frameworks */,
 				FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */,
 				FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */,
 				FD6FF5F02FAC44530016681B /* ArcanePasskeys in Frameworks */,
@@ -241,6 +243,7 @@
 			);
 			name = "Arcane Mobile";
 			packageProductDependencies = (
+				A71B00032FFF000000000003 /* AnimatedTabBar */,
 				FD6FF5EA2FAC44530016681B /* Arcane */,
 				FD6FF5EE2FAC44530016681B /* ArcaneOIDC */,
 				FD6FF5F12FAC44530016681B /* ArcanePasskeys */,
@@ -282,6 +285,7 @@
 			mainGroup = FD6FF5D02FAC434D0016681B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				A71B00022FFF000000000002 /* XCRemoteSwiftPackageReference "AnimatedTabBar" */,
 				C0DE00032FFF000000000003 /* XCRemoteSwiftPackageReference "WhatsNewKit" */,
 				FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */,
 			);
@@ -748,6 +752,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A71B00022FFF000000000002 /* XCRemoteSwiftPackageReference "AnimatedTabBar" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/exyte/AnimatedTabBar.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.0.1;
+			};
+		};
 		C0DE00032FFF000000000003 /* XCRemoteSwiftPackageReference "WhatsNewKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/SvenTiigi/WhatsNewKit.git";
@@ -771,6 +783,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
 			productName = Arcane;
+		};
+		A71B00032FFF000000000003 /* AnimatedTabBar */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A71B00022FFF000000000002 /* XCRemoteSwiftPackageReference "AnimatedTabBar" */;
+			productName = AnimatedTabBar;
 		};
 		BFAB10032FF7410000EF7E76 /* Arcane */ = {
 			isa = XCSwiftPackageProductDependency;

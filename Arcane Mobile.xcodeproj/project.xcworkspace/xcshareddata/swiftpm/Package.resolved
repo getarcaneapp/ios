@@ -1,6 +1,15 @@
 {
-  "originHash" : "296543f5b555321dd6b29e02cd4513839e26d9b2575c942f454b3fb85a85607e",
+  "originHash" : "a30a86eb1e90f2c2f2e0d1af27e52116e9e6e325c7da36f35c1fa9044f32b14e",
   "pins" : [
+    {
+      "identity" : "animatedtabbar",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/exyte/AnimatedTabBar.git",
+      "state" : {
+        "revision" : "f38b37064fafe098118e24c8c7d582d8622cca95",
+        "version" : "1.0.1"
+      }
+    },
     {
       "identity" : "libarcane-swift",
       "kind" : "remoteSourceControl",

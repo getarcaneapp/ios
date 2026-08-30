@@ -213,6 +213,7 @@ struct NetworksView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
+                        .appAccentToolbarSymbol()
                 }
                 .accessibilityLabel("More options")
             }
@@ -222,6 +223,7 @@ struct NetworksView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: {
                     Image(systemName: "plus")
+                        .appAccentToolbarSymbol()
                 }
                 .accessibilityLabel("Create network")
             }

@@ -156,7 +156,10 @@ enum ReleaseNotes {
                 .init("User avatar settings live under Users and apply to the manager."),
                 .init("Editable settings use a shared floating save control with a contextual tinted revert action."),
                 .init("Feature-focused What's New presentation with access to previous releases."),
-                .init("What's New uses compact category sections and toolbar actions.")
+                .init("What's New uses compact category sections and toolbar actions."),
+                .init("Animated bottom-tab selection with a sliding accent indicator."),
+                .init("Selectable straight, parabolic, and teleport dock indicator motion."),
+                .init("Adaptive log viewer with full-screen reading and configurable line wrapping.")
             ],
             fixed: [
                 .init("Dashboard update and volume counts remain visible during pull-to-refresh."),
@@ -168,6 +171,10 @@ enum ReleaseNotes {
                 .init("Settings action controls morph smoothly without vertical movement."),
                 .init("Settings revert actions use white symbols on subtly tinted glass."),
                 .init("Revert controls fade before merging into the save action."),
+                .init("Bottom-tab icons and selection indicators stay centered in the floating bar."),
+                .init("Resource rows clear their selection highlight after returning from details."),
+                .init("Custom accent colors apply consistently across app surfaces."),
+                .init("Consistent accent and destructive colors for navigation toolbar actions."),
                 .init("Unit test suite compatibility with Swift 6 actor isolation.")
             ]
         ),

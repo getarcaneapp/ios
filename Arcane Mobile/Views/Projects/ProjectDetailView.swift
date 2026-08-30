@@ -166,11 +166,11 @@ struct ProjectDetailView: View {
     private var projectLogs: some View {
         LogsView(
             title: currentProject.displayName,
-            logStream: { timestamps in
+            logStream: {
                 manager.client?.boundedProjectLogs(
                     envID: environmentID,
                     projectID: project.id,
-                    timestamps: timestamps
+                    timestamps: true
                 )
             },
             embedded: true

@@ -1,5 +1,14 @@
 import SwiftUI
 
+enum BulkListSelection {
+    static func binding<Value: Hashable>(
+        _ selection: Binding<Set<Value>>,
+        isSelecting: Bool
+    ) -> Binding<Set<Value>>? {
+        isSelecting ? selection : nil
+    }
+}
+
 struct StableListSection<SectionID: Hashable, Item: Identifiable> {
     let id: SectionID
     let title: String?

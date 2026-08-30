@@ -45,6 +45,7 @@ struct AppearanceSettingsView: View {
     @AppStorage("accentColorHex") private var accentColorHex = ""
     @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
     @AppStorage("arcane.launchAnimationEnabled") private var launchAnimationEnabled = true
+    @AppStorage(TabIndicatorMotion.storageKey) private var tabIndicatorMotion: TabIndicatorMotion = .straight
     @State private var showTabBarResetConfirm = false
     @State private var navTabsStore = NavTabsStore.shared
 
@@ -112,10 +113,22 @@ struct AppearanceSettingsView: View {
                         color: .purple
                     )
                 }
+
+                Picker(selection: $tabIndicatorMotion) {
+                    ForEach(TabIndicatorMotion.allCases) { option in
+                        Text(option.title).tag(option)
+                    }
+                } label: {
+                    SettingsRow(
+                        title: "Tab Indicator Path",
+                        systemImage: "arrow.left.and.right.circle.fill",
+                        color: .orange
+                    )
+                }
             } header: {
                 Text("Motion")
             } footer: {
-                Text("Shows the animated Arcane logo when the app launches.")
+                Text("Controls the launch animation and how the dock indicator moves between tabs.")
             }
 
             Section {

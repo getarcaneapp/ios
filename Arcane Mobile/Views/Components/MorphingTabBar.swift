@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AnimatedTabBar
 
 /// A floating bottom bar that shows the app's tabs and **morphs** into a detail
 /// page's action controls when one is pushed.
@@ -13,9 +14,11 @@ import UIKit
 /// State comes from `TabBarMorphStore`: list pages show the tabs, a registered
 /// detail page shows its `Payload`.
 struct MorphingTabBar: View {
-    struct TabEntry: Identifiable, Equatable {
+    nonisolated struct TabEntry: Identifiable, Equatable, Sendable {
         let id: String
+        let title: String
         let symbol: String
+        let isReplaceable: Bool
     }
 
     let tabs: [TabEntry]
@@ -25,6 +28,8 @@ struct MorphingTabBar: View {
     var onLongPressTab: (Int) -> Void
     /// Tints the selected-tab indicator (follows the app's configured accent).
     var accentColor: Color = .accentColor
+    /// Controls the path used by the selected-tab indicator.
+    var indicatorMotion: TabIndicatorMotion = .straight
     /// Sidebar mode hides navigation tabs but reuses the exact same root/detail
     /// action rendering. Dock mode keeps the default `true` behavior.
     var showsNavigationTabs: Bool = true
@@ -38,10 +43,6 @@ struct MorphingTabBar: View {
 
     private var isMorphed: Bool { store.isMorphed }
     private var payload: TabBarMorphStore.Payload? { store.activePayload }
-
-    private var activeIndex: Int {
-        tabs.firstIndex { $0.id == selectedID } ?? 0
-    }
 
     private var rootActions: [ActionButtonItem] { store.activeRootActions }
 
@@ -101,25 +102,20 @@ struct MorphingTabBar: View {
 
         return ZStack {
             if showsNavigationTabs {
-                CustomTabBar(
+                AnimatedTabStrip(
                     tabs: tabs,
-                    activeIndex: Binding(
-                        get: { activeIndex },
-                        set: { idx in
-                            guard idx >= 0, idx < tabs.count else { return }
-                            selectedID = tabs[idx].id
-                        }
-                    ),
-                    selectedTint: accentColor,
+                    selectedID: $selectedID,
+                    accentColor: accentColor,
+                    indicatorMotion: indicatorMotion,
                     longPressEnabled: !isMorphed,
                     onLongPress: onLongPressTab,
-                    onReselect: { idx in
-                        guard idx >= 0, idx < tabs.count else { return }
-                        store.requestPopToRoot(tabID: tabs[idx].id)
+                    onReselect: { tabID in
+                        store.requestPopToRoot(tabID: tabID)
                     }
                 )
                 .opacity(isMorphed ? 0 : 1)
                 .allowsHitTesting(!isMorphed)
+                .accessibilityHidden(isMorphed)
             }
 
             if let primary {
@@ -301,166 +297,459 @@ private struct PrimaryCapsuleGlass: ViewModifier {
     }
 }
 
-// MARK: - Tabs capsule (UISegmentedControl)
+// MARK: - Animated navigation tabs
 
-/// The tabs state of the bar. A `UISegmentedControl` in a glass capsule (FX's
-/// approach, for the iOS 26 liquid-glass segmented look + its native sliding
-/// selection), extended to take string tab ids, rebuild its segments when the
-/// visible tab set changes, and expose a long-press → swap callback gated to the
-/// non-morphed state.
-private struct CustomTabBar: UIViewRepresentable {
-    var tabs: [MorphingTabBar.TabEntry]
-    @Binding var activeIndex: Int
-    var selectedTint: Color
-    var longPressEnabled: Bool
-    var onLongPress: (Int) -> Void
-    /// Fires when the already-selected tab is tapped again (`valueChanged`
-    /// never fires for that) — used for the native pop-to-root behavior.
-    var onReselect: (Int) -> Void = { _ in }
-
-    func makeUIView(context: Context) -> UISegmentedControl {
-        let control = UISegmentedControl()
-        context.coordinator.rebuild(control, tabs: tabs)
-        if activeIndex < control.numberOfSegments {
-            control.selectedSegmentIndex = activeIndex
-        }
-        // Selected-tab indicator follows the accent (translucent so the glyph on
-        // top stays legible against any accent or appearance).
-        control.selectedSegmentTintColor = UIColor(selectedTint.opacity(0.4))
-        control.backgroundColor = .clear
-
-        control.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.didChange(_:)),
-            for: .valueChanged
-        )
-
-        let lp = UILongPressGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handleLongPress(_:))
-        )
-        lp.minimumPressDuration = 0.4
-        // Once the long-press fires, cancel the touch in the segmented control so
-        // releasing doesn't also commit a tap (which would switch tabs).
-        lp.cancelsTouchesInView = true
-        lp.delegate = context.coordinator
-        control.addGestureRecognizer(lp)
-        context.coordinator.longPress = lp
-
-        // Re-tap of the selected segment: the segmented control emits no
-        // valueChanged for it, so a passive tap recognizer detects it.
-        let tap = UITapGestureRecognizer(
-            target: context.coordinator,
-            action: #selector(Coordinator.handleTap(_:))
-        )
-        tap.cancelsTouchesInView = false
-        tap.delegate = context.coordinator
-        control.addGestureRecognizer(tap)
-
-        return control
+/// Pure selection logic shared by the animated renderer, the UIKit interaction
+/// layer, and unit tests. The selected tab id remains the source of truth.
+nonisolated enum TabStripSelection {
+    enum Action: Equatable, Sendable {
+        case select(String)
+        case reselect(String)
+        case ignore
     }
 
-    func updateUIView(_ uiView: UISegmentedControl, context: Context) {
+    static func index(selectedID: String, in tabs: [MorphingTabBar.TabEntry]) -> Int {
+        tabs.firstIndex { $0.id == selectedID } ?? 0
+    }
+
+    static func action(
+        for index: Int,
+        selectedID: String,
+        in tabs: [MorphingTabBar.TabEntry]
+    ) -> Action {
+        guard tabs.indices.contains(index) else { return .ignore }
+        let tabID = tabs[index].id
+        return tabID == selectedID ? .reselect(tabID) : .select(tabID)
+    }
+
+    static func canReplace(index: Int, in tabs: [MorphingTabBar.TabEntry]) -> Bool {
+        tabs.indices.contains(index) && tabs[index].isReplaceable
+    }
+}
+
+/// Geometry for Arcane's compact selection marker. AnimatedTabBar lays out
+/// every button in equal-width slots; keeping the marker calculation separate
+/// makes that contract explicit and testable for both layout directions.
+nonisolated enum TabStripLayout {
+    static func indicatorCenterX(
+        index: Int,
+        count: Int,
+        width: CGFloat,
+        isRightToLeft: Bool
+    ) -> CGFloat? {
+        guard count > 0, (0..<count).contains(index), width > 0 else { return nil }
+        let visualIndex = isRightToLeft ? count - index - 1 : index
+        let slotWidth = width / CGFloat(count)
+        return (CGFloat(visualIndex) + 0.5) * slotWidth
+    }
+}
+
+/// Uses Exyte's component for the visual selection animation while a transparent
+/// native control layer owns interaction and accessibility. This avoids the
+/// package's tap gesture firing after a successful long press.
+private struct AnimatedTabStrip: View {
+    let tabs: [MorphingTabBar.TabEntry]
+    @Binding var selectedID: String
+    let accentColor: Color
+    let indicatorMotion: TabIndicatorMotion
+    let longPressEnabled: Bool
+    let onLongPress: (Int) -> Void
+    let onReselect: (String) -> Void
+
+    private var activeIndex: Int {
+        TabStripSelection.index(selectedID: selectedID, in: tabs)
+    }
+
+    private var selectedIndex: Binding<Int> {
+        Binding(
+            get: { activeIndex },
+            set: { handleSelection($0) }
+        )
+    }
+
+    var body: some View {
+        ZStack {
+            AnimatedTabStripVisuals(
+                tabs: tabs,
+                selectedIndex: selectedIndex,
+                activeIndex: activeIndex,
+                accentColor: accentColor,
+                indicatorMotion: indicatorMotion
+            )
+
+            TabInteractionOverlay(
+                tabs: tabs,
+                activeIndex: activeIndex,
+                longPressEnabled: longPressEnabled,
+                onTap: handleSelection,
+                onLongPress: onLongPress
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func handleSelection(_ index: Int) {
+        switch TabStripSelection.action(for: index, selectedID: selectedID, in: tabs) {
+        case .select(let tabID):
+            selectedID = tabID
+        case .reselect(let tabID):
+            onReselect(tabID)
+        case .ignore:
+            break
+        }
+    }
+}
+
+/// The pure-SwiftUI visual layer is separate from the UIKit interaction layer
+/// so it can be rendered directly in regression-test attachments.
+struct AnimatedTabStripVisuals: View {
+    let tabs: [MorphingTabBar.TabEntry]
+    @Binding var selectedIndex: Int
+    let activeIndex: Int
+    let accentColor: Color
+    var indicatorMotion: TabIndicatorMotion = .straight
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    private var selectionAnimation: Animation {
+        Motion.reducedRequired(Motion.state, reduceMotion: reduceMotion)
+    }
+
+    var body: some View {
+        ZStack {
+            // The existing capsule supplies the glass. A single restrained wash
+            // across its full bounds gives the icons contrast without drawing
+            // AnimatedTabBar's rectangular lower bar inside it.
+            Color.primary.opacity(0.06)
+
+            TabSelectionIndicator(
+                activeIndex: activeIndex,
+                tabCount: tabs.count,
+                color: accentColor,
+                motion: indicatorMotion,
+                isRightToLeft: layoutDirection == .rightToLeft,
+                reduceMotion: reduceMotion
+            )
+
+            AnimatedTabBar(
+                selectedIndex: $selectedIndex,
+                views: tabs.map { AnimatedTabIcon(symbol: $0.symbol) }
+            )
+            // AnimatedTabBar reserves an 18-point row for its ball above the
+            // buttons. Its fixed ball/notch treatment does not fit Arcane's
+            // compact glass capsule, so keep the package's button layout and
+            // tint animation while replacing that chrome with the slider above.
+            .barColor(.clear)
+            .selectedColor(accentColor)
+            .unselectedColor(Color.secondary)
+            .ballColor(.clear)
+            .verticalPadding(0)
+            .ballAnimation(selectionAnimation)
+            .indentAnimation(selectionAnimation)
+            .buttonsAnimation(selectionAnimation)
+            .ballTrajectory(indicatorMotion.packageTrajectory)
+            .offset(y: -9)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private extension TabIndicatorMotion {
+    var packageTrajectory: AnimatedTabBar.BallTrajectory {
+        switch self {
+        case .straight: .straight
+        case .parabolic: .parabolic
+        case .teleport: .teleport
+        }
+    }
+}
+
+private struct TabSelectionIndicator: View {
+    let activeIndex: Int
+    let tabCount: Int
+    let color: Color
+    let motion: TabIndicatorMotion
+    let isRightToLeft: Bool
+    let reduceMotion: Bool
+
+    @State private var sourceIndex: Int?
+    @State private var destinationIndex: Int?
+    @State private var progress: CGFloat = 1
+
+    private let width: CGFloat = 24
+    private let height: CGFloat = 3
+    private let bottomInset: CGFloat = 8
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let sourceX = TabStripLayout.indicatorCenterX(
+                index: sourceIndex ?? activeIndex,
+                count: tabCount,
+                width: proxy.size.width,
+                isRightToLeft: isRightToLeft
+            ), let destinationX = TabStripLayout.indicatorCenterX(
+                index: destinationIndex ?? activeIndex,
+                count: tabCount,
+                width: proxy.size.width,
+                isRightToLeft: isRightToLeft
+            ) {
+                Capsule()
+                    .fill(color)
+                    .frame(width: width, height: height)
+                    .modifier(
+                        TabIndicatorMotionModifier(
+                            progress: progress,
+                            source: CGPoint(
+                                x: sourceX,
+                                y: proxy.size.height - bottomInset - height / 2
+                            ),
+                            destination: CGPoint(
+                                x: destinationX,
+                                y: proxy.size.height - bottomInset - height / 2
+                            ),
+                            motion: motion,
+                            indicatorSize: CGSize(width: width, height: height)
+                        )
+                    )
+            }
+        }
+        .onAppear {
+            sourceIndex = activeIndex
+            destinationIndex = activeIndex
+            progress = 1
+        }
+        .onChange(of: activeIndex) { oldValue, newValue in
+            sourceIndex = oldValue
+            destinationIndex = newValue
+            progress = 0
+
+            guard !reduceMotion else {
+                progress = 1
+                return
+            }
+
+            Task { @MainActor in
+                await Task.yield()
+                withAnimation(Motion.state) {
+                    progress = 1
+                }
+            }
+        }
+        .onChange(of: motion) {
+            sourceIndex = activeIndex
+            destinationIndex = activeIndex
+            progress = 1
+        }
+        .onChange(of: isRightToLeft) {
+            sourceIndex = activeIndex
+            destinationIndex = activeIndex
+            progress = 1
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct TabIndicatorMotionModifier: AnimatableModifier {
+    var progress: CGFloat
+    let source: CGPoint
+    let destination: CGPoint
+    let motion: TabIndicatorMotion
+    let indicatorSize: CGSize
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let value = min(max(progress, 0), 1)
+        let presentation = presentation(at: value)
+
+        content
+            .scaleEffect(presentation.scale)
+            .opacity(presentation.opacity)
+            .offset(
+                x: presentation.point.x - indicatorSize.width / 2,
+                y: presentation.point.y - indicatorSize.height / 2
+            )
+    }
+
+    private func presentation(at value: CGFloat) -> (point: CGPoint, scale: CGFloat, opacity: Double) {
+        switch motion {
+        case .straight:
+            return (interpolatedPoint(at: value), 1, 1)
+        case .parabolic:
+            var point = interpolatedPoint(at: value)
+            point.y -= 16 * 4 * value * (1 - value)
+            return (point, 1, 1)
+        case .teleport:
+            let point = value < 0.5 ? source : destination
+            let visibility = value < 0.2
+                ? 1 - value / 0.2
+                : value > 0.8 ? (value - 0.8) / 0.2 : 0
+            return (point, max(visibility, 0.001), Double(visibility))
+        }
+    }
+
+    private func interpolatedPoint(at value: CGFloat) -> CGPoint {
+        CGPoint(
+            x: source.x + (destination.x - source.x) * value,
+            y: source.y + (destination.y - source.y) * value
+        )
+    }
+}
+
+private struct AnimatedTabIcon: View {
+    let symbol: String
+
+    var body: some View {
+        Image(systemName: symbol)
+            .symbolRenderingMode(.monochrome)
+            .font(.system(size: 23, weight: .regular))
+            .frame(width: 44, height: 24)
+    }
+}
+
+/// Equal-width transparent buttons layered over AnimatedTabBar. Native buttons
+/// retain keyboard and assistive-technology activation, while their long-press
+/// recognizers cancel touch-up so replacing a tab never also selects it.
+private struct TabInteractionOverlay: UIViewRepresentable {
+    let tabs: [MorphingTabBar.TabEntry]
+    let activeIndex: Int
+    let longPressEnabled: Bool
+    let onTap: (Int) -> Void
+    let onLongPress: (Int) -> Void
+
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    func makeUIView(context: Context) -> UIStackView {
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.alignment = .fill
+        stack.distribution = .fillEqually
+        stack.spacing = 0
+        context.coordinator.rebuild(stack, tabs: tabs)
+        update(stack, coordinator: context.coordinator)
+        return stack
+    }
+
+    func updateUIView(_ uiView: UIStackView, context: Context) {
         context.coordinator.parent = self
-        if context.coordinator.symbols != tabs.map(\.symbol) {
+        if context.coordinator.tabs != tabs {
             context.coordinator.rebuild(uiView, tabs: tabs)
         }
-        if uiView.selectedSegmentIndex != activeIndex, activeIndex < uiView.numberOfSegments {
-            uiView.selectedSegmentIndex = activeIndex
-        }
-        uiView.selectedSegmentTintColor = UIColor(selectedTint.opacity(0.4))
-        context.coordinator.longPress?.isEnabled = longPressEnabled
+        update(uiView, coordinator: context.coordinator)
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UISegmentedControl, context: Context) -> CGSize? {
-        .init(width: proposal.width ?? 0, height: proposal.height ?? 0)
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: UIStackView,
+        context: Context
+    ) -> CGSize? {
+        CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var parent: CustomTabBar
-        var symbols: [String] = []
-        weak var longPress: UILongPressGestureRecognizer?
+    private func update(_ stack: UIStackView, coordinator: Coordinator) {
+        stack.semanticContentAttribute = layoutDirection == .rightToLeft
+            ? .forceRightToLeft
+            : .forceLeftToRight
+        coordinator.updateButtons(activeIndex: activeIndex)
+    }
 
-        init(parent: CustomTabBar) { self.parent = parent }
+    final class Coordinator: NSObject {
+        var parent: TabInteractionOverlay
+        var tabs: [MorphingTabBar.TabEntry] = []
 
-        func rebuild(_ control: UISegmentedControl, tabs: [MorphingTabBar.TabEntry]) {
-            control.removeAllSegments()
-            let config = UIImage.SymbolConfiguration(pointSize: 23, weight: .regular)
+        init(parent: TabInteractionOverlay) {
+            self.parent = parent
+        }
+
+        func rebuild(_ stack: UIStackView, tabs: [MorphingTabBar.TabEntry]) {
+            tabsStackView = stack
+            for view in stack.arrangedSubviews {
+                stack.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+
             for (index, tab) in tabs.enumerated() {
-                let image = UIImage(
-                    systemName: tab.symbol,
-                    withConfiguration: config
+                let button = UIButton(type: .custom)
+                button.tag = index
+                button.backgroundColor = .clear
+                button.accessibilityIdentifier = "bottom-tab-\(tab.id)"
+                button.addTarget(
+                    self,
+                    action: #selector(handleTap(_:)),
+                    for: .primaryActionTriggered
                 )
-                control.insertSegment(with: image, at: index, animated: false)
-            }
-            symbols = tabs.map(\.symbol)
-            if #available(iOS 26, *) {
-                // iOS 26: hide the control's own divider/background image views so
-                // the liquid glass shows through. These are NOT the segment icons
-                // on iOS 26 — but they ARE on iOS 18, so this would blank the
-                // icons there; iOS 18 clears its chrome via appearance APIs instead.
-                DispatchQueue.main.async {
-                    for subview in control.subviews.dropLast() where subview is UIImageView {
-                        subview.alpha = 0
-                    }
+
+                if tab.isReplaceable {
+                    let longPress = UILongPressGestureRecognizer(
+                        target: self,
+                        action: #selector(handleLongPress(_:))
+                    )
+                    longPress.minimumPressDuration = 0.4
+                    longPress.cancelsTouchesInView = true
+                    button.addGestureRecognizer(longPress)
                 }
-            } else {
-                // iOS 18: only drop the dividers. (Clearing the *background* image
-                // here disables the native selected-segment indicator — so leave
-                // the background, which is what `selectedSegmentTintColor` draws
-                // the selection highlight onto.)
-                control.setDividerImage(
-                    UIImage(),
-                    forLeftSegmentState: .normal,
-                    rightSegmentState: .normal,
-                    barMetrics: .default
-                )
+
+                stack.addArrangedSubview(button)
+            }
+            self.tabs = tabs
+        }
+
+        func updateButtons(activeIndex: Int) {
+            guard let buttons = buttonViews else { return }
+            for (index, button) in buttons.enumerated() where tabs.indices.contains(index) {
+                let tab = tabs[index]
+                var traits: UIAccessibilityTraits = .button
+                if index == activeIndex { traits.insert(.selected) }
+                button.accessibilityLabel = tab.title
+                button.accessibilityTraits = traits
+                button.accessibilityHint = tab.isReplaceable
+                    ? "Double-tap to open. Use Replace Tab to customize."
+                    : "Double-tap to open."
+
+                for recognizer in button.gestureRecognizers ?? [] where recognizer is UILongPressGestureRecognizer {
+                    recognizer.isEnabled = parent.longPressEnabled && tab.isReplaceable
+                }
+
+                if parent.longPressEnabled, tab.isReplaceable {
+                    button.accessibilityCustomActions = [
+                        UIAccessibilityCustomAction(name: "Replace Tab") { [weak self] _ in
+                            guard let self else { return false }
+                            self.parent.onLongPress(index)
+                            return true
+                        }
+                    ]
+                } else {
+                    button.accessibilityCustomActions = nil
+                }
             }
         }
 
-        @objc func didChange(_ control: UISegmentedControl) {
-            let idx = control.selectedSegmentIndex
-            guard idx >= 0, idx < parent.tabs.count else { return }
-            parent.activeIndex = idx
+        private var buttonViews: [UIButton]? {
+            guard let stack = tabsStackView else { return nil }
+            return stack.arrangedSubviews.compactMap { $0 as? UIButton }
         }
 
-        @objc func handleTap(_ gr: UITapGestureRecognizer) {
-            guard gr.state == .ended,
-                  let control = gr.view as? UISegmentedControl,
-                  control.bounds.width > 0,
-                  control.numberOfSegments > 0 else { return }
-            let slotWidth = control.bounds.width / CGFloat(control.numberOfSegments)
-            let x = gr.location(in: control).x
-            let idx = min(max(Int(x / slotWidth), 0), control.numberOfSegments - 1)
-            // Only a tap on the segment that was ALREADY selected counts as a
-            // re-select; ordinary tab switches go through valueChanged.
-            guard idx == control.selectedSegmentIndex, idx == parent.activeIndex else { return }
-            parent.onReselect(idx)
+        private weak var tabsStackView: UIStackView?
+
+        @objc private func handleTap(_ button: UIButton) {
+            parent.onTap(button.tag)
         }
 
-        @objc func handleLongPress(_ gr: UILongPressGestureRecognizer) {
-            guard gr.state == .began,
-                  let control = gr.view as? UISegmentedControl,
-                  control.bounds.width > 0,
-                  control.numberOfSegments > 0 else { return }
-            let slotWidth = control.bounds.width / CGFloat(control.numberOfSegments)
-            let x = gr.location(in: control).x
-            let idx = min(max(Int(x / slotWidth), 0), control.numberOfSegments - 1)
-            // Open the replace picker for the pressed tab WITHOUT changing the
-            // selection: a long-press must not navigate to that tab first (the
-            // picker's pointer already anchors it, and we don't want to wait on a
-            // tab switch). `cancelsTouchesInView` stops the segmented control from
-            // committing the tap on release, which would navigate too.
-            parent.onLongPress(idx)
-        }
-
-        func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
-        ) -> Bool {
-            true
+        @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began,
+                  parent.longPressEnabled,
+                  let button = recognizer.view as? UIButton,
+                  TabStripSelection.canReplace(index: button.tag, in: parent.tabs) else { return }
+            parent.onLongPress(button.tag)
         }
     }
 }

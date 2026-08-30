@@ -216,6 +216,7 @@ struct DashboardView: View {
                     ToolbarItem(placement: .topBarLeading) {
                         Button(action: onOpenSidebar) {
                             Image(systemName: "line.3.horizontal")
+                                .appAccentToolbarSymbol()
                         }
                         .accessibilityLabel("Open navigation")
                     }
@@ -230,6 +231,7 @@ struct DashboardView: View {
                             quickActionRouter.openActivityCenter()
                         } label: {
                             Image(systemName: "clock.arrow.circlepath")
+                                .appAccentToolbarSymbol()
                                 .overlay(alignment: .topTrailing) {
                                     if !failedActivities.isEmpty {
                                         Text(verbatim: "\(failedActivities.count)")
@@ -252,6 +254,7 @@ struct DashboardView: View {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button { showPruneSheet = true } label: {
                             Image(systemName: "trash")
+                                .foregroundStyle(.red)
                         }
                         .accessibilityLabel("System Prune")
                     }

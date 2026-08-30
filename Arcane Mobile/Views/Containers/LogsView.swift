@@ -1,147 +1,200 @@
+import Arcane
 import SwiftUI
 import UIKit
-import Arcane
+
+private enum LogViewerLayout {
+    static let wideMinimumWidth: CGFloat = 640
+}
+
+enum LogMetadataLayout: Equatable {
+    case compact
+    case wide
+}
 
 struct LogsView: View {
     let title: String
-    let logStream: (Bool) -> BoundedLogStream?
-    var embedded: Bool = false
+    let embedded: Bool
 
-    @State private var lines: [IdentifiedLogLine] = []
-    /// Incrementally-maintained filter result. Recomputing `lines.filter` in a
-    /// computed property was O(n) per access, and body read it three times per
-    /// streamed line — the hottest path in the app. New lines are appended here
-    /// when they match; only a search-text change triggers a full refilter.
-    @State private var filteredLines: [IdentifiedLogLine] = []
-    @State private var nextLineID: UInt64 = 0
-    @State private var isStreaming = false
-    @State private var autoScroll = true
-    @State private var newLinesWhilePaused = 0
-    @State private var searchText = ""
-    @State private var shareFile: LogShareFile?
-    @AppStorage("arcane.logs.showTimestamps") private var showTimestamps = false
-    @SwiftUI.Environment(\.dismiss) private var dismiss
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var store: LogViewerStore
+    @State private var isExpanded = false
+    @AppStorage(LogViewerPreferences.showTimestampsKey)
+    private var showTimestamps = LogViewerPreferences.showsTimestampsByDefault
+    @AppStorage(LogViewerPreferences.wrapLinesKey)
+    private var wrapLines = LogViewerPreferences.wrapsLinesByDefault
 
-    private var exportLines: [IdentifiedLogLine] {
-        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? lines : filteredLines
-    }
-
-    private var exportText: String {
-        exportLines.map { $0.line.exportText }.joined(separator: "\n")
-    }
-
-    private var hasExportText: Bool {
-        !exportLines.isEmpty
-    }
-
-    private func matchesFilter(_ entry: IdentifiedLogLine) -> Bool {
-        searchText.isEmpty || entry.line.text.localizedCaseInsensitiveContains(searchText)
-    }
-
-    private func refilter() {
-        filteredLines = searchText.isEmpty ? lines : lines.filter(matchesFilter)
+    init(
+        title: String,
+        logStream: @escaping () -> BoundedLogStream?,
+        embedded: Bool = false
+    ) {
+        self.title = title
+        self.embedded = embedded
+        _store = State(initialValue: LogViewerStore(logStream: logStream))
     }
 
     var body: some View {
-        if embedded {
-            content
-                .task(id: showTimestamps) { await startStreaming() }
-                .sheet(item: $shareFile) { file in
-                    LogActivityShareSheet(url: file.url)
+        Group {
+            if embedded {
+                LogViewerSurface(
+                    title: title,
+                    store: store,
+                    embedded: true,
+                    showTimestamps: $showTimestamps,
+                    wrapLines: $wrapLines,
+                    isExpanded: $isExpanded
+                )
+                .fullScreenCover(isPresented: $isExpanded) {
+                    LogViewerDedicatedView(
+                        title: title,
+                        store: store,
+                        showTimestamps: $showTimestamps,
+                        wrapLines: $wrapLines
+                    )
+                    .onAppear { store.start() }
                 }
-        } else {
-            NavigationStack {
-                content
-                    .navigationTitle(title)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .searchable(text: $searchText, prompt: "Filter logs")
-                    .onChange(of: searchText) { _, _ in refilter() }
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button("Done") { dismiss() }
-                        }
-                        // Plain toolbar items — the nav bar supplies its own
-                        // glass; a nested GlassContainerCompat here rendered
-                        // the spinner and trash button overlapping.
-                        if isStreaming {
-                            ToolbarItem(placement: .navigationBarTrailing) {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            }
-                            if #available(iOS 26, *) {
-                                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                            }
-                        }
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            optionsMenu
-                        }
+                .onAppear { store.start() }
+                .onDisappear {
+                    if !isExpanded {
+                        store.stop()
                     }
-                    .task(id: showTimestamps) { await startStreaming() }
-                    .sheet(item: $shareFile) { file in
-                        LogActivityShareSheet(url: file.url)
-                    }
+                }
+            } else {
+                LogViewerDedicatedView(
+                    title: title,
+                    store: store,
+                    showTimestamps: $showTimestamps,
+                    wrapLines: $wrapLines
+                )
+                .onAppear { store.start() }
+                .onDisappear { store.stop() }
+            }
+        }
+        .onChange(of: showTimestamps, initial: true) { _, isVisible in
+            store.setTimestampVisibility(isVisible)
+        }
+    }
+}
+
+private struct LogViewerDedicatedView: View {
+    let title: String
+    let store: LogViewerStore
+    @Binding var showTimestamps: Bool
+    @Binding var wrapLines: Bool
+
+    @SwiftUI.Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            LogViewerSurface(
+                title: title,
+                store: store,
+                embedded: false,
+                showTimestamps: $showTimestamps,
+                wrapLines: $wrapLines,
+                isExpanded: .constant(false)
+            )
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
             }
         }
     }
+}
 
-    private var content: some View {
-        ZStack(alignment: .bottom) {
-            ScrollViewReader { proxy in
-                List {
-                    ForEach(filteredLines) { entry in
-                        LogLineView(line: entry.line)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(.init(top: 1, leading: 12, bottom: 1, trailing: 12))
-                            .transition(.opacity)
-                    }
-                }
-                .listStyle(.plain)
-                .motionAwareAnimation(isStreaming ? nil : .linear(duration: 0.12), value: filteredLines.count)
-                .onChange(of: filteredLines.last?.id) { _, lastID in
-                    if autoScroll, let lastID {
-                        withAnimation(.none) {
-                            proxy.scrollTo(lastID, anchor: .bottom)
-                        }
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    if !autoScroll && newLinesWhilePaused > 0 {
-                        newLinesPill {
-                            resumeAndJumpToBottom(proxy: proxy)
-                        }
-                        .padding(.bottom, 64)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                }
-                .motionAwareAnimation(Motion.state, value: newLinesWhilePaused > 0)
-            }
+private struct LogViewerSurface: View {
+    let title: String
+    @Bindable var store: LogViewerStore
+    let embedded: Bool
+    @Binding var showTimestamps: Bool
+    @Binding var wrapLines: Bool
+    @Binding var isExpanded: Bool
 
-            HStack {
-                Spacer()
-                if embedded {
-                    optionsMenu
-                        .frame(width: 42, height: 42)
-                        .glassEffectCompat(interactive: true, in: .circle)
-                }
-                Button {
-                    withAnimation {
-                        autoScroll.toggle()
-                        if autoScroll { newLinesWhilePaused = 0 }
-                    }
-                } label: {
-                    Label(
-                        autoScroll ? "Live" : "Paused",
-                        systemImage: autoScroll ? "arrow.down.circle.fill" : "pause.circle.fill"
-                    )
-                        .font(.caption.bold())
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .glassButtonStyleCompat()
-                .padding(16)
-            }
+    @State private var isWide = false
+    @State private var shareFile: LogShareFile?
+    @SwiftUI.Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var metadataLayout: LogMetadataLayout {
+        isWide && !dynamicTypeSize.isAccessibilitySize ? .wide : .compact
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            statusBar
+            Divider()
+            LogConsole(
+                store: store,
+                showTimestamps: showTimestamps,
+                wrapLines: wrapLines,
+                metadataLayout: metadataLayout
+            )
         }
         .background(Color(.systemBackground))
+        .searchable(text: $store.searchText, prompt: "Filter logs")
+        .onGeometryChange(for: Bool.self) { [wideMinimumWidth = LogViewerLayout.wideMinimumWidth] proxy in
+            proxy.size.width >= wideMinimumWidth
+        } action: { newValue in
+            if isWide != newValue {
+                isWide = newValue
+            }
+        }
+        .toolbar {
+            if !embedded {
+                ToolbarItem(placement: .topBarTrailing) {
+                    optionsMenu
+                }
+            }
+        }
+        .sheet(item: $shareFile) { file in
+            LogActivityShareSheet(url: file.url)
+        }
+    }
+
+    private var statusBar: some View {
+        HStack(spacing: 10) {
+            LogConnectionIndicator(state: store.connectionState)
+
+            Text(statusLabel)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+
+            Text(countLabel)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if case .failed = store.connectionState {
+                Button("Retry", systemImage: "arrow.clockwise") {
+                    store.retry()
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .controlSize(.small)
+                .accessibilityHint("Reconnects without clearing received logs")
+            }
+
+            if embedded {
+                Button("Expand logs", systemImage: "arrow.up.left.and.arrow.down.right") {
+                    isExpanded = true
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .controlSize(.small)
+
+                optionsMenu
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemBackground))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Log stream controls")
     }
 
     private var optionsMenu: some View {
@@ -149,24 +202,34 @@ struct LogsView: View {
             Toggle(isOn: $showTimestamps) {
                 Label("Timestamps", systemImage: "clock")
             }
-            Button {
-                copyAllLogs()
-            } label: {
-                Label("Copy All", systemImage: "doc.on.doc")
+            Toggle(isOn: $wrapLines) {
+                Label("Wrap Lines", systemImage: "text.justify.left")
             }
-            .disabled(!hasExportText)
+
+            Divider()
+
+            Button {
+                copyLogs()
+            } label: {
+                Label(copyLabel, systemImage: "doc.on.doc")
+            }
+            .disabled(store.exportLines.isEmpty)
+
             Button {
                 shareLogs()
             } label: {
-                Label("Share…", systemImage: "square.and.arrow.up")
+                Label(shareLabel, systemImage: "square.and.arrow.up")
             }
-            .disabled(!hasExportText)
+            .disabled(store.exportLines.isEmpty)
+
             Divider()
+
             Button(role: .destructive) {
-                clearLogs()
+                store.clear()
             } label: {
                 Label("Clear", systemImage: "trash")
             }
+            .disabled(store.lines.isEmpty)
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.title3)
@@ -175,174 +238,446 @@ struct LogsView: View {
         .accessibilityLabel("Log options")
     }
 
-    private func newLinesPill(action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.down")
-                    .font(.caption.bold())
-                Text("\(newLinesWhilePaused) new")
-                    .font(.caption.bold())
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-        }
-        .buttonStyle(.plain)
-        .background(Color.accentColor, in: .capsule)
-        .glassEffectOverlayCompat(interactive: true, in: .capsule)
-        .floatingSurfaceShadow()
-        .accessibilityLabel("\(newLinesWhilePaused) new log lines. Tap to jump to latest.")
-    }
-
-    private func resumeAndJumpToBottom(proxy: ScrollViewProxy) {
-        withAnimation {
-            autoScroll = true
-            newLinesWhilePaused = 0
-        }
-        if let lastID = filteredLines.last?.id {
-            proxy.scrollTo(lastID, anchor: .bottom)
+    private var statusLabel: String {
+        switch store.connectionState {
+        case .idle: "Disconnected"
+        case .connecting: "Connecting"
+        case .live: store.lines.isEmpty ? "Waiting for output" : "Live"
+        case .ended: "Stream ended"
+        case .failed: "Connection failed"
         }
     }
 
-}
-
-private extension LogsView {
-    func startStreaming() async {
-        guard let stream = logStream(showTimestamps) else { return }
-        await MainActor.run {
-            clearLogs()
-            isStreaming = true
+    private var countLabel: String {
+        if store.hasActiveSearch {
+            return "\(store.filteredLines.count) of \(store.lines.count) lines"
         }
-        do {
-            let clock = ContinuousClock()
-            var lastFlush = clock.now
-            var batch: [LogLine] = []
-
-            for try await line in stream {
-                guard !Task.isCancelled else { break }
-                batch.append(line)
-                let now = clock.now
-                if lastFlush.duration(to: now) >= .milliseconds(50) || batch.count >= 50 {
-                    let linesToAppend = batch
-                    batch.removeAll(keepingCapacity: true)
-                    lastFlush = now
-                    await MainActor.run {
-                        guard !Task.isCancelled else { return }
-                        appendStreamedLines(linesToAppend)
-                    }
-                }
-            }
-            if !batch.isEmpty && !Task.isCancelled {
-                let linesToAppend = batch
-                await MainActor.run {
-                    appendStreamedLines(linesToAppend)
-                }
-            }
-        } catch {
-            // Stream ended or error
-        }
-        await MainActor.run {
-            if !Task.isCancelled {
-                isStreaming = false
-            }
-        }
+        return "\(store.lines.count) lines"
     }
 
-    func appendStreamedLines(_ newLines: [LogLine]) {
-        guard !newLines.isEmpty else { return }
-        var newEntries: [IdentifiedLogLine] = []
-        newEntries.reserveCapacity(newLines.count)
-        var newFiltered: [IdentifiedLogLine] = []
-
-        for var line in newLines.prefix(50) {
-            line.text = RemoteDataLimits.boundedText(
-                line.text,
-                maximumBytes: RemoteDataLimits.maximumStreamLineBytes
-            )
-            line.timestamp = line.timestamp.map { RemoteDataLimits.boundedText($0, maximumBytes: 256) }
-            line.level = line.level.map { RemoteDataLimits.boundedText($0, maximumBytes: 64) }
-            line.service = line.service.map { RemoteDataLimits.boundedText($0, maximumBytes: 256) }
-            let entry = IdentifiedLogLine(id: nextLineID, line: line)
-            nextLineID &+= 1
-            newEntries.append(entry)
-            if matchesFilter(entry) {
-                newFiltered.append(entry)
-            }
-        }
-
-        lines.append(contentsOf: newEntries)
-        if !newFiltered.isEmpty {
-            filteredLines.append(contentsOf: newFiltered)
-        }
-
-        trimRetainedWindowIfNeeded()
-        if !autoScroll {
-            newLinesWhilePaused = RemoteDataLimits.saturatingAdd(
-                newLinesWhilePaused,
-                newEntries.count,
-                maximum: 5000
-            )
-        }
+    private var copyLabel: String {
+        store.hasActiveSearch ? "Copy Results" : "Copy All"
     }
 
-    func trimRetainedWindowIfNeeded() {
-        guard lines.count > 5000 else { return }
-        let overflow = lines.count - 5000
-        lines.removeSubrange(0..<overflow)
-        if let minID = lines.first?.id {
-            let dropCount = filteredLines.prefix(while: { $0.id < minID }).count
-            if dropCount > 0 {
-                filteredLines.removeSubrange(0..<dropCount)
-            }
-        }
+    private var shareLabel: String {
+        store.hasActiveSearch ? "Share Results…" : "Share All…"
     }
 
-    func clearLogs() {
-        lines.removeAll()
-        filteredLines.removeAll()
-        nextLineID = 0
-        newLinesWhilePaused = 0
-    }
-
-    func copyAllLogs() {
-        let text = exportText
+    private func copyLogs() {
+        let text = store.exportText(showTimestamps: showTimestamps)
         guard !text.isEmpty else { return }
         UIPasteboard.general.string = text
         showToast(.copied())
     }
 
-    func shareLogs() {
-        let text = exportText
+    private func shareLogs() {
+        let text = store.exportText(showTimestamps: showTimestamps)
         guard !text.isEmpty else { return }
+
         do {
-            let url = try writeExportFile(text: text)
+            let filename = "\(LogViewerFormatting.sanitizedFilename(title))-\(Self.exportDateFormatter.string(from: Date())).log"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            try text.write(to: url, atomically: true, encoding: .utf8)
             shareFile = LogShareFile(url: url)
         } catch {
             showToast(.error("Couldn't export logs"))
         }
     }
 
-    func writeExportFile(text: String) throws -> URL {
-        let filename = "\(sanitizedFilename(title))-\(Self.exportDateFormatter.string(from: Date())).log"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        try text.write(to: url, atomically: true, encoding: .utf8)
-        return url
-    }
-
-    func sanitizedFilename(_ value: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        let scalars = value.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
-        let collapsed = String(scalars).split(separator: "-").joined(separator: "-")
-        return collapsed.isEmpty ? "logs" : collapsed
-    }
-
-    static let exportDateFormatter: DateFormatter = {
+    private static let exportDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter
     }()
+}
+
+private struct LogConnectionIndicator: View {
+    let state: LogViewerConnectionState
+
+    var body: some View {
+        switch state {
+        case .connecting:
+            ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Connecting")
+        case .live:
+            Circle()
+                .fill(.green)
+                .frame(width: 8, height: 8)
+                .accessibilityLabel("Live")
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .accessibilityLabel("Connection failed")
+        case .ended:
+            Image(systemName: "stop.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Stream ended")
+        case .idle:
+            Circle()
+                .fill(.secondary)
+                .frame(width: 8, height: 8)
+                .accessibilityLabel("Disconnected")
+        }
+    }
+}
+
+private struct LogConsole: View {
+    let store: LogViewerStore
+    let showTimestamps: Bool
+    let wrapLines: Bool
+    let metadataLayout: LogMetadataLayout
+
+    @State private var anchoredLineID: UInt64?
+    @State private var userIsScrolling = false
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var scrollAxes: Axis.Set {
+        wrapLines ? .vertical : [.horizontal, .vertical]
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(scrollAxes) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if store.filteredLines.isEmpty {
+                        LogViewerEmptyState(
+                            connectionState: store.connectionState,
+                            hasActiveSearch: store.hasActiveSearch,
+                            searchText: store.searchText,
+                            retry: store.retry
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 72)
+                    } else {
+                        ForEach(store.filteredLines) { entry in
+                            LogLineView(
+                                line: entry.line,
+                                showTimestamps: showTimestamps,
+                                wrapLines: wrapLines,
+                                metadataLayout: metadataLayout
+                            )
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .frame(maxWidth: wrapLines ? .infinity : nil, alignment: .leading)
+                            .background(
+                                entry.id.isMultiple(of: 2)
+                                    ? Color(.secondarySystemBackground).opacity(0.45)
+                                    : Color.clear
+                            )
+                            .overlay(alignment: .bottom) {
+                                Divider()
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: wrapLines ? .infinity : nil, alignment: .leading)
+                .scrollTargetLayout()
+            }
+            .scrollPosition(id: $anchoredLineID, anchor: .top)
+            .onScrollPhaseChange { _, newPhase in
+                switch newPhase {
+                case .tracking, .interacting, .decelerating:
+                    userIsScrolling = true
+                case .idle, .animating:
+                    userIsScrolling = false
+                @unknown default:
+                    userIsScrolling = false
+                }
+            }
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.visibleRect.maxY >= geometry.contentSize.height - 28
+            } action: { _, newValue in
+                if newValue {
+                    store.resumeFollowing()
+                } else if userIsScrolling {
+                    store.pauseFollowing()
+                }
+            }
+            .onChange(of: store.filteredLines.last?.id) { _, lastID in
+                guard store.isFollowing, let lastID else { return }
+                var transaction = Transaction()
+                transaction.animation = nil
+                withTransaction(transaction) {
+                    proxy.scrollTo(lastID, anchor: .bottom)
+                }
+            }
+            .onAppear {
+                guard store.isFollowing, let lastID = store.filteredLines.last?.id else { return }
+                proxy.scrollTo(lastID, anchor: .bottom)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                followControls(proxy: proxy)
+            }
+        }
+        .background(Color(.systemBackground))
+    }
+
+    private func followControls(proxy: ScrollViewProxy) -> some View {
+        HStack(spacing: 10) {
+            if !store.isFollowing, store.newLinesWhilePaused > 0 {
+                Button {
+                    resumeAndJumpToBottom(proxy: proxy)
+                } label: {
+                    Label {
+                        Text(verbatim: "\(store.newLinesWhilePaused) new")
+                    } icon: {
+                        Image(systemName: "arrow.down")
+                    }
+                    .font(.caption.bold())
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.small)
+                .accessibilityLabel(
+                    Text(verbatim: "\(store.newLinesWhilePaused) new matching log lines")
+                )
+                .accessibilityHint("Jumps to the latest result")
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                resumeAndJumpToBottom(proxy: proxy)
+            } label: {
+                Label(
+                    store.isFollowing ? "Live" : "Paused",
+                    systemImage: store.isFollowing
+                        ? "arrow.down.circle.fill"
+                        : "pause.circle.fill"
+                )
+                .font(.caption.bold())
+                .contentTransition(.symbolEffect(.replace))
+            }
+            .glassButtonStyleCompat()
+            .controlSize(.small)
+            .accessibilityHint(
+                store.isFollowing
+                    ? "Jumps to the latest log line"
+                    : "Resumes following new log lines"
+            )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Divider()
+        }
+        .motionAwareAnimation(Motion.state, value: store.isFollowing)
+        .motionAwareAnimation(Motion.state, value: store.newLinesWhilePaused > 0)
+    }
+
+    private func resumeAndJumpToBottom(proxy: ScrollViewProxy) {
+        store.resumeFollowing()
+        guard let lastID = store.filteredLines.last?.id else { return }
+        withAnimation(Motion.reduced(Motion.state, reduceMotion: reduceMotion)) {
+            proxy.scrollTo(lastID, anchor: .bottom)
+        }
+    }
+}
+
+private struct LogViewerEmptyState: View {
+    let connectionState: LogViewerConnectionState
+    let hasActiveSearch: Bool
+    let searchText: String
+    let retry: () -> Void
+
+    var body: some View {
+        if hasActiveSearch {
+            ContentUnavailableView {
+                Label("No Matches", systemImage: "line.3.horizontal.decrease.circle")
+            } description: {
+                Text("No log lines match “\(searchText)”.")
+            }
+        } else {
+            switch connectionState {
+            case .connecting:
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Connecting to log stream…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            case .live:
+                ContentUnavailableView(
+                    "Waiting for Output",
+                    systemImage: "text.alignleft",
+                    description: Text("The stream is connected and waiting for new log lines.")
+                )
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't Load Logs", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Retry", systemImage: "arrow.clockwise", action: retry)
+                        .buttonStyle(.borderedProminent)
+                }
+            case .ended:
+                ContentUnavailableView(
+                    "No Log Output",
+                    systemImage: "text.alignleft",
+                    description: Text("The stream ended without returning any log lines.")
+                )
+            case .idle:
+                ContentUnavailableView(
+                    "Logs Disconnected",
+                    systemImage: "wifi.slash",
+                    description: Text("Reopen the viewer or retry the connection.")
+                )
+            }
+        }
+    }
+}
+
+struct LogLineView: View {
+    let line: LogLine
+    let showTimestamps: Bool
+    let wrapLines: Bool
+    let metadataLayout: LogMetadataLayout
+
+    @SwiftUI.Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var severity: LogViewerSeverity {
+        LogViewerFormatting.severity(for: line.level)
+    }
+
+    private var messageColor: Color {
+        switch severity {
+        case .error: .red
+        case .warning: .orange
+        case .debug: .secondary
+        case .standard: .primary
+        }
+    }
+
+    private var hasVisibleMetadata: Bool {
+        (showTimestamps && line.timestamp?.isEmpty == false)
+            || line.service?.isEmpty == false
+            || LogViewerFormatting.levelLabel(line.level) != nil
+    }
+
+    var body: some View {
+        Group {
+            switch metadataLayout {
+            case .compact:
+                compactLayout
+            case .wide:
+                wideLayout
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            LogViewerFormatting.accessibilityText(
+                for: line,
+                showTimestamps: showTimestamps
+            )
+        )
+    }
+
+    private var compactLayout: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if hasVisibleMetadata {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 3) {
+                        metadataViews
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        metadataViews
+                    }
+                }
+            }
+            messageView
+        }
+        .frame(maxWidth: wrapLines ? .infinity : nil, alignment: .leading)
+    }
+
+    private var wideLayout: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            if showTimestamps {
+                metadataText(
+                    line.timestamp.map(LogViewerFormatting.displayTimestamp) ?? "",
+                    color: .secondary
+                )
+                .frame(width: 82, alignment: .leading)
+            }
+
+            metadataText(line.service ?? "", color: .secondary)
+                .lineLimit(1)
+                .frame(width: 110, alignment: .leading)
+
+            metadataText(
+                LogViewerFormatting.levelLabel(line.level) ?? "",
+                color: metadataColor
+            )
+            .frame(width: 58, alignment: .leading)
+
+            messageView
+                .frame(maxWidth: wrapLines ? .infinity : nil, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var metadataViews: some View {
+        if showTimestamps,
+           let timestamp = line.timestamp,
+           !timestamp.isEmpty {
+            metadataText(
+                LogViewerFormatting.displayTimestamp(timestamp),
+                color: .secondary
+            )
+        }
+        if let service = line.service, !service.isEmpty {
+            Label {
+                Text(service)
+            } icon: {
+                Image(systemName: "shippingbox")
+            }
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        if let level = LogViewerFormatting.levelLabel(line.level) {
+            metadataText(level, color: metadataColor)
+                .fontWeight(.semibold)
+        }
+    }
+
+    @ViewBuilder
+    private var messageView: some View {
+        if wrapLines {
+            Text(line.text)
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundStyle(messageColor)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text(line.text)
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundStyle(messageColor)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: true, vertical: true)
+        }
+    }
+
+    private var metadataColor: Color {
+        switch severity {
+        case .error: .red
+        case .warning: .orange
+        case .debug, .standard: .secondary
+        }
+    }
+
+    private func metadataText(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(color)
+    }
 }
 
 private struct LogShareFile: Identifiable {
@@ -358,52 +693,4 @@ private struct LogActivityShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-private extension LogLine {
-    var exportText: String {
-        if let timestamp, !timestamp.isEmpty {
-            return "[\(timestamp)] \(text)"
-        }
-        return text
-    }
-}
-
-struct LogLineView: View {
-    let line: LogLine
-
-    private var color: Color {
-        switch line.level?.lowercased() {
-        case "error", "err": return .red
-        case "warn", "warning": return .orange
-        case "debug": return .secondary
-        default: return .primary
-        }
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            if let timestamp = line.timestamp {
-                Text(timestamp.logTimestamp)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 70, alignment: .leading)
-            }
-            Text(line.text)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(color)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
-private extension String {
-    var logTimestamp: String {
-        if let formatted = ArcaneDateFormatting.formattedClockTime(fromISO8601: self) {
-            return formatted
-        }
-        // Fallback: just show last 8 chars
-        return count > 8 ? String(suffix(8)) : self
-    }
 }

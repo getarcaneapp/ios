@@ -234,7 +234,7 @@ struct ContainersView: View {
                     }
                 }
             } else {
-                List(selection: $selection) {
+                List(selection: BulkListSelection.binding($selection, isSelecting: isSelecting)) {
                     StableSectionedList(
                         sections,
                         preferredHeaderAccessorySectionID: "running",
@@ -305,6 +305,7 @@ struct ContainersView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
+                        .appAccentToolbarSymbol()
                 }
                 .accessibilityLabel("More options")
             }
@@ -393,18 +394,17 @@ struct ContainersView: View {
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
-        .sheet(item: $logsTarget) { container in
+        .fullScreenCover(item: $logsTarget) { container in
             LogsView(
                 title: container.displayName,
-                logStream: { timestamps in
+                logStream: {
                     manager.client?.boundedContainerLogs(
                         envID: environmentID,
                         id: container.id,
-                        timestamps: timestamps
+                        timestamps: true
                     )
                 }
             )
-            .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $terminalTarget) { container in
             ContainerTerminalView(container: container, environmentID: environmentID)

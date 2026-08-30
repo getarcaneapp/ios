@@ -1,5 +1,23 @@
 import SwiftUI
 
+enum TabIndicatorMotion: String, CaseIterable, Identifiable {
+    case straight
+    case parabolic
+    case teleport
+
+    static let storageKey = "arcane.tabIndicatorMotion"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .straight: "Straight"
+        case .parabolic: "Parabolic"
+        case .teleport: "Teleport"
+        }
+    }
+}
+
 // MARK: - Motion tokens
 //
 // A single, restrained motion vocabulary for the app. Animation timings used to
@@ -73,6 +91,12 @@ enum Motion {
     /// collapses to an instant change for users who opt out of motion.
     static func reduced(_ animation: Animation, reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : animation
+    }
+
+    /// Reduce-Motion adapter for third-party APIs that require a non-optional
+    /// `Animation` and therefore cannot accept the `nil` returned above.
+    static func reducedRequired(_ animation: Animation, reduceMotion: Bool) -> Animation {
+        reduceMotion ? .linear(duration: 0) : animation
     }
 }
 

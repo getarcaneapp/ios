@@ -16,6 +16,7 @@ struct TabReplaceMorphBar: View {
     @Binding var selectedID: String
     let store: TabBarMorphStore
     var accentColor: Color = .accentColor
+    var indicatorMotion: TabIndicatorMotion = .straight
     let pinnedTabs: [AppTab]
     /// The tab the user long-pressed to replace; nil collapses the callout.
     @Binding var swapTarget: AppTab?
@@ -24,6 +25,7 @@ struct TabReplaceMorphBar: View {
     var onPick: (AppTab) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
 
     /// Live footprint of the bar, measured so the callout can match the tab
     /// capsule's width and aim its pointer at the right tab.
@@ -45,7 +47,8 @@ struct TabReplaceMorphBar: View {
             selectedID: $selectedID,
             store: store,
             onLongPressTab: onLongPressTab,
-            accentColor: accentColor
+            accentColor: accentColor,
+            indicatorMotion: indicatorMotion
         )
         .onGeometryChange(for: CGSize.self) { $0.size } action: { newValue in
             guard newValue.width > 0, newValue.height > 0 else { return }
@@ -82,7 +85,11 @@ struct TabReplaceMorphBar: View {
               let index = tabs.firstIndex(where: { $0.id == target.id }) else {
             return panelWidth / 2
         }
-        return (CGFloat(index) + 0.5) / CGFloat(tabs.count) * panelWidth
+        let logicalFraction = (CGFloat(index) + 0.5) / CGFloat(tabs.count)
+        let visualFraction = layoutDirection == .rightToLeft
+            ? 1 - logicalFraction
+            : logicalFraction
+        return visualFraction * panelWidth
     }
 
     /// Grow/shrink anchored on the pointer — i.e. out of, and back into, the tab

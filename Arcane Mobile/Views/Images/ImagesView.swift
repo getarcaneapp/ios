@@ -154,7 +154,7 @@ struct ImagesView: View {
                     Button("Pull Image") { showPullSheet = true }
                 }
             } else {
-                List(selection: $selection) {
+                List(selection: BulkListSelection.binding($selection, isSelecting: isSelecting)) {
                     StableSectionedList(
                         sections,
                         preferredHeaderAccessorySectionID: "used",
@@ -194,11 +194,14 @@ struct ImagesView: View {
                     NavigationLink(destination: ContainerRegistriesView()) {
                         // `key.shield` is an SF Symbols 7 (iOS 26) glyph; fall back
                         // to `lock.shield` (iOS 13+) so iOS 18 doesn't render blank.
-                        if #available(iOS 26, *) {
-                            Image(systemName: "key.shield")
-                        } else {
-                            Image(systemName: "lock.shield")
+                        Group {
+                            if #available(iOS 26, *) {
+                                Image(systemName: "key.shield")
+                            } else {
+                                Image(systemName: "lock.shield")
+                            }
                         }
+                        .appAccentToolbarSymbol()
                     }
                 }
             }
@@ -241,6 +244,7 @@ struct ImagesView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
+                        .appAccentToolbarSymbol()
                 }
                 .accessibilityLabel("More options")
             }
@@ -258,6 +262,7 @@ struct ImagesView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showPullSheet = true } label: {
                         Image(systemName: "arrow.down.circle")
+                            .appAccentToolbarSymbol()
                     }
                     .accessibilityLabel("Pull image")
                 }

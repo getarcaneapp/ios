@@ -150,7 +150,7 @@ struct VolumesView: View {
                     Button("Create Volume") { showCreateSheet = true }
                 }
             } else {
-                List(selection: $selection) {
+                List(selection: BulkListSelection.binding($selection, isSelecting: isSelecting)) {
                     StableSectionedList(
                         sections,
                         preferredHeaderAccessorySectionID: "used",
@@ -210,6 +210,7 @@ struct VolumesView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
+                        .appAccentToolbarSymbol()
                 }
                 .accessibilityLabel("More options")
             }
@@ -227,6 +228,7 @@ struct VolumesView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: {
                         Image(systemName: "plus")
+                            .appAccentToolbarSymbol()
                     }
                     .accessibilityLabel("Create volume")
                 }

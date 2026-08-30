@@ -11,6 +11,7 @@ extension View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: action) {
                         Image(systemName: "line.3.horizontal")
+                            .appAccentToolbarSymbol()
                     }
                     .accessibilityLabel("Open navigation")
                 }

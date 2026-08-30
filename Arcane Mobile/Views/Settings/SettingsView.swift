@@ -104,6 +104,7 @@ struct SettingsView: View {
                         AppSettingsView()
                     } label: {
                         Image(systemName: "gearshape")
+                            .appAccentToolbarSymbol()
                     }
                     .accessibilityLabel("App Settings")
                 }

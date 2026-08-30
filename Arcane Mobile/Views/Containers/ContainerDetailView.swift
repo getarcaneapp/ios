@@ -103,11 +103,11 @@ struct ContainerDetailView: View {
                 case .logs:
                     LogsView(
                         title: displayedName,
-                        logStream: { timestamps in
+                        logStream: {
                             manager.client?.boundedContainerLogs(
                                 envID: environmentID,
                                 id: container.id,
-                                timestamps: timestamps
+                                timestamps: true
                             )
                         },
                         embedded: true

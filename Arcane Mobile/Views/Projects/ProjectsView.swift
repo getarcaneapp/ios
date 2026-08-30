@@ -32,6 +32,7 @@ struct ProjectsView: View {
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ProjectDetails>] = []
     @State private var hasCompletedInitialReflow = false
+    @State private var selectedProjectID: String?
 
     private enum ProjectStatusFilter: String, CaseIterable {
         case all = "All", running = "Running", stopped = "Stopped", partial = "Partial"
@@ -146,7 +147,7 @@ struct ProjectsView: View {
     }
 
     private var projectsList: some View {
-        List {
+        List(selection: $selectedProjectID) {
             StableSectionedList(
                 sections,
                 preferredHeaderAccessorySectionID: "active",
@@ -184,6 +185,7 @@ struct ProjectsView: View {
                 // behind its Settings (gear) button.
                 NavigationLink(destination: TemplateBrowserView(embedded: true)) {
                     Image(systemName: "doc.text.magnifyingglass")
+                        .appAccentToolbarSymbol()
                 }
                 .accessibilityLabel("Browse Templates")
             }
@@ -197,6 +199,7 @@ struct ProjectsView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             Button { showCreateSheet = true } label: {
                 Image(systemName: "plus")
+                    .appAccentToolbarSymbol()
             }
             .accessibilityLabel("Create project")
         }
@@ -223,6 +226,7 @@ struct ProjectsView: View {
             }
         } label: {
             Image(systemName: "ellipsis.circle")
+                .appAccentToolbarSymbol()
         }
         .accessibilityLabel("More options")
     }
@@ -274,6 +278,12 @@ struct ProjectsView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ProjectDetails.self) { project in
             ProjectDetailView(project: project, environmentID: environmentID)
+                .onDisappear {
+                    selectedProjectID = Self.selectionAfterReturning(
+                        selectedProjectID,
+                        from: project.id
+                    )
+                }
         }
         .sheet(isPresented: $showCreateSheet) {
             CreateProjectView(environmentID: environmentID) {}
@@ -479,6 +489,13 @@ struct ProjectsView: View {
     private func isStopped(_ project: ProjectDetails) -> Bool {
         let status = project.status.lowercased()
         return status == "stopped" || status == "exited"
+    }
+
+    nonisolated static func selectionAfterReturning(
+        _ selection: String?,
+        from projectID: String
+    ) -> String? {
+        selection == projectID ? nil : selection
     }
 }
 
