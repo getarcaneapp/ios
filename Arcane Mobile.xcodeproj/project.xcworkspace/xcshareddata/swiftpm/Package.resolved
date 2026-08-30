@@ -1,42 +1,42 @@
 {
-  "originHash" : "a30a86eb1e90f2c2f2e0d1af27e52116e9e6e325c7da36f35c1fa9044f32b14e",
-  "pins" : [
+  "originHash": "a30a86eb1e90f2c2f2e0d1af27e52116e9e6e325c7da36f35c1fa9044f32b14e",
+  "pins": [
     {
-      "identity" : "animatedtabbar",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/exyte/AnimatedTabBar.git",
-      "state" : {
-        "revision" : "f38b37064fafe098118e24c8c7d582d8622cca95",
-        "version" : "1.0.1"
+      "identity": "animatedtabbar",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/exyte/AnimatedTabBar.git",
+      "state": {
+        "revision": "f38b37064fafe098118e24c8c7d582d8622cca95",
+        "version": "1.0.1"
       }
     },
     {
-      "identity" : "libarcane-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/getarcaneapp/libarcane-swift.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "ecd237ef058881c7efa1e7ba0c3c38f2a084ae57"
+      "identity": "libarcane-swift",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/getarcaneapp/libarcane-swift.git",
+      "state": {
+        "branch": "main",
+        "revision": "c7614fcdcef185fca4209d77bf6ab431ed07027e"
       }
     },
     {
-      "identity" : "swift-http-types",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-http-types",
-      "state" : {
-        "revision" : "db774a277f60063a32d854f2980299caf06da041",
-        "version" : "1.6.0"
+      "identity": "swift-http-types",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/apple/swift-http-types",
+      "state": {
+        "revision": "db774a277f60063a32d854f2980299caf06da041",
+        "version": "1.6.0"
       }
     },
     {
-      "identity" : "whatsnewkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/SvenTiigi/WhatsNewKit.git",
-      "state" : {
-        "revision" : "6157c77e8be9b3d2310bc680681b61a8d9e290ac",
-        "version" : "2.2.1"
+      "identity": "whatsnewkit",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/SvenTiigi/WhatsNewKit.git",
+      "state": {
+        "revision": "6157c77e8be9b3d2310bc680681b61a8d9e290ac",
+        "version": "2.2.1"
       }
     }
   ],
-  "version" : 3
+  "version": 3
 }

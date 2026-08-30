@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import Observation
+import Arcane
 
 /// Bridges UIApplicationShortcutItem deliveries from the AppDelegate into the
 /// SwiftUI world. `MainTabView` observes `pendingTabID` and routes selection.
@@ -41,6 +42,48 @@ final class QuickActionRouter {
 
     /// Set by `onOpenURL`. Consumed alongside `pendingTabID`.
     var pendingDeepLink: DeepLink? = nil
+
+    /// Typed destination from a push notification tap. `ContentView` switches
+    /// the environment and holds it until the session has bootstrapped;
+    /// resource views consume the detail payload.
+    enum PendingRoute: Equatable {
+        case tab(String)
+        case container(environmentID: String, id: String)
+        case image(environmentID: String, id: String)
+        case activities
+        case events
+        case environment(id: String)
+
+        var environmentID: String? {
+            switch self {
+            case .container(let env, _), .image(let env, _): return env
+            case .environment(let id): return id
+            case .tab, .activities, .events: return nil
+            }
+        }
+    }
+
+    var pendingRoute: PendingRoute? = nil
+
+    func handle(route: MobilePushRoute) {
+        switch route.kind {
+        case .tab:
+            pendingRoute = .tab(route.tab.flatMap { AppTab(rawValue: $0)?.id } ?? AppTab.dashboard.id)
+        case .container:
+            guard let env = route.environmentId, let id = route.id else { return }
+            pendingRoute = .container(environmentID: env, id: id)
+        case .image:
+            guard let env = route.environmentId, let id = route.id else { return }
+            pendingRoute = .image(environmentID: env, id: id)
+        case .activities:
+            pendingRoute = .activities
+        case .events:
+            pendingRoute = .events
+        case .environment:
+            guard let env = route.environmentId else { return }
+            pendingRoute = .environment(id: env)
+        }
+    }
 
     private init() {}
 

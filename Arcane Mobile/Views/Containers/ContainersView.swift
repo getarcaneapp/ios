@@ -13,6 +13,8 @@ struct ContainersView: View {
     let environmentName: String
 
     @State private var containers: [ContainerSummary] = []
+    @State private var routedContainer: ContainerSummary?
+    @State private var router = QuickActionRouter.shared
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var searchText = ""
@@ -414,6 +416,12 @@ struct ContainersView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ContainerSummary.self) { container in
             ContainerDetailView(container: container, environmentID: environmentID)
+        }
+        .navigationDestination(item: $routedContainer) { container in
+            ContainerDetailView(container: container, environmentID: environmentID)
+        }
+        .onChange(of: router.pendingRoute, initial: true) { _, _ in
+            Task { await consumeContainerRoute() }
         }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadContainers(refresh: true) }
@@ -929,5 +937,23 @@ struct ContainerRow: View {
         parts.append(container.image)
         parts.append(container.status)
         return parts.joined(separator: ", ")
+    }
+}
+
+private extension ContainersView {
+    /// Opens the container named by a push-notification route once the list
+    /// for its environment is loaded; unknown ids land on the list with a toast.
+    func consumeContainerRoute() async {
+        guard case .container(let envID, let id)? = router.pendingRoute, envID == environmentID.rawValue else { return }
+        router.pendingRoute = nil
+        router.pendingDeepLink = nil
+        if containers.isEmpty {
+            await loadContainers(refresh: true)
+        }
+        guard let match = containers.first(where: { $0.id == id || $0.id.hasPrefix(id) }) else {
+            showToast(.info("That container is no longer available"))
+            return
+        }
+        routedContainer = match
     }
 }

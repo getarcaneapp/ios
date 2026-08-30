@@ -89,6 +89,11 @@ final class ArcaneClientManager {
     var isPasskeySigningIn = false
     var pendingMFAChallenge: MFAChallenge?
     private(set) var supportsPost26MobileFeatures = false
+    private(set) var supportsMobilePush = false
+
+    var serverOrigin: String? {
+        parsedServerURL.flatMap(AppGroup.canonicalServerOrigin(for:))
+    }
     private var passkeyAuthenticator: ArcanePasskeyAuthenticator?
 
     // MARK: - Demo mode
@@ -174,6 +179,8 @@ final class ArcaneClientManager {
         let previousOrigin = parsedServerURL.flatMap(AppGroup.canonicalServerOrigin(for:))
         let nextOrigin = AppGroup.canonicalServerOrigin(for: parsed)
         if previousOrigin != nil, previousOrigin != nextOrigin {
+            let endingClient = client
+            Task { await PushNotificationCoordinator.shared.tearDown(client: endingClient, origin: previousOrigin) }
             SharedKeychain.unbindCredentials(matching: previousOrigin)
             signOutLocally()
         }
@@ -186,6 +193,7 @@ final class ArcaneClientManager {
         permissionsManifest = nil
         clearPendingAuthentication()
         supportsPost26MobileFeatures = false
+        supportsMobilePush = false
         currentUserAvatarData = nil
         avatarFetchKey = nil
         lastBootstrapDNSAddresses = []
@@ -449,6 +457,8 @@ final class ArcaneClientManager {
         isLoading = true
         defer { isLoading = false }
 
+        await PushNotificationCoordinator.shared.tearDown(client: client, origin: serverOrigin)
+
         var logoutError: Error?
         do {
             try await client.auth.logout()
@@ -544,6 +554,7 @@ final class ArcaneClientManager {
         // cleanup of the demo session and client logout.
         let endingClient = client
         let endingOrigin = parsedServerURL.flatMap(AppGroup.canonicalServerOrigin(for:))
+        Task { await PushNotificationCoordinator.shared.tearDown(client: endingClient, origin: endingOrigin) }
         cacheSessionIdentity = UUID().uuidString
         currentUser = nil
         currentUserAvatarData = nil
@@ -552,6 +563,7 @@ final class ArcaneClientManager {
         permissionsManifest = nil
         clearPendingAuthentication()
         supportsPost26MobileFeatures = false
+        supportsMobilePush = false
         isDemoActive = false
         demoEndsAt = nil
         needsConnectionBootstrapRetry = false
@@ -655,6 +667,7 @@ final class ArcaneClientManager {
         permissionsManifest = nil
         clearPendingAuthentication()
         supportsPost26MobileFeatures = false
+        supportsMobilePush = false
         cacheSessionIdentity = UUID().uuidString
         authState = .login
         errorMessage = connectionAwareErrorMessage(error)
@@ -672,6 +685,7 @@ final class ArcaneClientManager {
         permissionsManifest = nil
         clearPendingAuthentication()
         supportsPost26MobileFeatures = false
+        supportsMobilePush = false
         needsConnectionBootstrapRetry = false
         let origin = parsedServerURL.flatMap(AppGroup.canonicalServerOrigin(for:))
         SharedKeychain.unbindCredentials(matching: origin)
@@ -698,8 +712,12 @@ final class ArcaneClientManager {
         }
         let versionInfo = try? await client.version.appVersion()
         supportsPost26MobileFeatures = versionInfo?.supportsPost26MobileFeatures == true
+        supportsMobilePush = versionInfo?.supportsMobilePush == true
         pendingMFAChallenge = nil
         authState = .authenticated
+        if supportsMobilePush {
+            await PushNotificationCoordinator.shared.registerIfAuthorized()
+        }
     }
 
     // MARK: - Current user avatar

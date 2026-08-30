@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import TipKit
+import UserNotifications
 import Arcane
 import WhatsNewKit
 
@@ -48,6 +49,15 @@ struct Arcane_MobileApp: App {
                     // Live Activities left behind by an app kill can never
                     // update again — clear them on launch.
                     await DeployLiveActivityController.endOrphans()
+                    if let userInfo = appDelegate.pendingNotificationUserInfo {
+                        appDelegate.pendingNotificationUserInfo = nil
+                        PushNotificationCoordinator.shared.handleTap(userInfo: userInfo, manager: clientManager)
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .arcanePushTapped)) { _ in
+                    guard let userInfo = appDelegate.pendingNotificationUserInfo else { return }
+                    appDelegate.pendingNotificationUserInfo = nil
+                    PushNotificationCoordinator.shared.handleTap(userInfo: userInfo, manager: clientManager)
                 }
                 .onOpenURL { url in
                     if url.scheme == "arcane-mobile", url.host == "end-demo" {
@@ -88,13 +98,24 @@ struct Arcane_MobileApp: App {
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    var pendingNotificationUserInfo: [AnyHashable: Any]?
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         configureLegacyBarAppearance()
         publishVersionToSettingsBundle()
+        UNUserNotificationCenter.current().delegate = self
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        PushNotificationCoordinator.shared.didRegister(deviceToken: deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        PushNotificationCoordinator.shared.didFailToRegister(error: error)
     }
 
     /// The Settings.bundle "Version"/"Build" rows are PSTitleValueSpecifiers that
@@ -140,6 +161,30 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         config.delegateClass = SceneDelegate.self
         return config
     }
+}
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        let content = notification.request.content
+        PushNotificationCoordinator.shared.handleForeground(userInfo: content.userInfo, title: content.title)
+        return []
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        pendingNotificationUserInfo = response.notification.request.content.userInfo
+        NotificationCenter.default.post(name: .arcanePushTapped, object: nil)
+    }
+}
+
+extension Notification.Name {
+    static let arcanePushTapped = Notification.Name("arcane.push.tapped")
 }
 
 final class SceneDelegate: NSObject, UIWindowSceneDelegate {

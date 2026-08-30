@@ -1,4 +1,5 @@
 import SwiftUI
+import Arcane
 
 struct ContentView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -38,6 +39,13 @@ struct ContentView: View {
             quickActionRouter.pendingActivityCenter = false
             showActivityCenter = true
         }
+        .onChange(of: manager.supportsActivities) { _, supported in
+            guard supported, quickActionRouter.pendingActivityCenter else { return }
+            quickActionRouter.pendingActivityCenter = false
+            showActivityCenter = true
+        }
+        .onChange(of: quickActionRouter.pendingRoute, initial: true) { _, _ in consumePendingRoute() }
+        .onChange(of: manager.authState) { _, _ in consumePendingRoute() }
         .sheet(isPresented: $showActivityCenter) {
             NavigationStack {
                 ActivitiesView()
@@ -71,6 +79,39 @@ struct ContentView: View {
         VStack(spacing: 0) {
             DemoBanner()
             MainTabView()
+        }
+    }
+}
+
+private extension ContentView {
+    /// Push-notification routes wait for an authenticated session so the tab
+    /// and environment switch land on a bootstrapped client.
+    func consumePendingRoute() {
+        guard let route = QuickActionRouter.shared.pendingRoute else { return }
+        guard case .authenticated = manager.authState else { return }
+        let router = QuickActionRouter.shared
+        if let envID = route.environmentID, envID != manager.activeEnvironmentID.rawValue {
+            manager.setActiveEnvironment(id: EnvironmentID(rawValue: envID), name: envID)
+        }
+        switch route {
+        case .tab(let id):
+            router.pendingTabID = id
+            router.pendingRoute = nil
+        case .container(let env, let id):
+            router.pendingDeepLink = QuickActionRouter.DeepLink(tabID: AppTab.containers.id, environmentID: env, containerID: id)
+            router.pendingTabID = AppTab.containers.id
+        case .image:
+            router.pendingTabID = AppTab.images.id
+            router.pendingRoute = nil
+        case .activities:
+            router.pendingRoute = nil
+            router.openActivityCenter()
+        case .events:
+            router.pendingTabID = AppTab.events.id
+            router.pendingRoute = nil
+        case .environment:
+            router.pendingTabID = AppTab.dashboard.id
+            router.pendingRoute = nil
         }
     }
 }

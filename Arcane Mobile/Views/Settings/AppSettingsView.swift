@@ -10,6 +10,7 @@ struct AppSettingsView: View {
     @State private var pendingDestructive: PendingDestructive?
     @State private var cacheSizeBytes: Int = 0
     @State private var presentedWhatsNew: WhatsNewKit.WhatsNew?
+    @State private var push = PushNotificationCoordinator.shared
 
     /// Both of this screen's destructive confirmations route through a single
     /// `.deleteConfirmation` cover (only one full-screen cover can be active per
@@ -48,6 +49,10 @@ struct AppSettingsView: View {
         .navigationTitle("App Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { await refreshCacheSize() }
+        .task(id: manager.clientGeneration) {
+            await push.refreshAuthorizationStatus()
+            await push.refreshServerStatus(manager: manager)
+        }
         .sheet(item: $presentedWhatsNew) { whatsNew in
             WhatsNewPresentationView(whatsNew: whatsNew)
         }
@@ -108,11 +113,47 @@ struct AppSettingsView: View {
                 .accessibilityLabel("Activity Toasts")
                 .accessibilityValue(activityToastScope.title)
             }
+            if manager.supportsMobilePush {
+                Toggle(isOn: pushEnabledBinding) {
+                    SettingsRow(
+                        title: "Push Notifications",
+                        subtitle: push.isEnabled(for: manager.serverOrigin) ? "Enabled on this device" : nil,
+                        systemImage: "iphone.radiowaves.left.and.right",
+                        color: .blue
+                    )
+                }
+                .disabled(push.isBusy || !pushAvailable)
+            }
         } header: {
             Text("Activity Notifications")
         } footer: {
-            Text("\(activityToastScope.subtitle). User Initiated excludes automated and server maintenance activities.")
+            Text(notificationsFooter)
         }
+    }
+
+    private var pushAvailable: Bool {
+        push.serverStatus?.enabled == true && !push.isAuthorizationDenied
+    }
+
+    private var pushEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { push.isEnabled(for: manager.serverOrigin) },
+            set: { enabled in
+                Task { enabled ? await push.enable(manager: manager) : await push.disable(manager: manager) }
+            }
+        )
+    }
+
+    private var notificationsFooter: String {
+        let toasts = "\(activityToastScope.subtitle). User Initiated excludes automated and server maintenance activities."
+        guard manager.supportsMobilePush else { return toasts }
+        if push.serverStatus?.enabled != true {
+            return toasts + " Push notifications are turned off by your Arcane admin."
+        }
+        if push.isAuthorizationDenied {
+            return toasts + " Notifications for Arcane are turned off in iOS Settings."
+        }
+        return toasts + " Push notifications are delivered through Arcane's push relay; only the notification text is sent, never your server address or credentials."
     }
 
     private var activityToastScope: ActivityToastScope {
