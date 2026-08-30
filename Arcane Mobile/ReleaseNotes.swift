@@ -149,7 +149,8 @@ enum ReleaseNotes {
                 .init("Environment Settings includes an independent environment dropdown.")
             ],
             changed: [
-                .init("Environment-wide updates show unfinished environments on the progress ring and move completed bubbles into the results list."),
+                .init("Environment-wide updates keep every environment in a progress cycle with loading rings and animated result symbols."),
+                .init("Dashboard explains the four-environment limit for live system metrics."),
                 .init("Environment settings identify the selected environment and follow Arcane web configuration groups."),
                 .init("Trivy network settings list available Docker networks in a menu."),
                 .init("Environment Settings detail pages omit repeated environment banners."),
@@ -162,6 +163,7 @@ enum ReleaseNotes {
                 .init("Adaptive log viewer with full-screen reading and configurable line wrapping.")
             ],
             fixed: [
+                .init("Dashboard activity badges remain fully visible in the navigation toolbar."),
                 .init("Dashboard update and volume counts remain visible during pull-to-refresh."),
                 .init("Login keyboard and What's New wait for the launch animation to finish."),
                 .init("Masked environment-variable rows match other row heights."),

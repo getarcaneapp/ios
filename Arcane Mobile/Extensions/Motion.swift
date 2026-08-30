@@ -60,6 +60,12 @@ enum Motion {
     /// Continuous state changes in the environment-wide update scene.
     static let updateStage: Animation = .spring(response: 0.68, dampingFraction: 0.88)
 
+    /// Deliberate progress through the connector bars between fleet-update bubbles.
+    static let updateConnector: Animation = .smooth(duration: 1.35)
+
+    /// Continuous progress around the environment currently being updated.
+    static let updateBubbleSpinner: Animation = .linear(duration: 1.45)
+
     /// Slow simulated parallax drift for the active fleet-update bubble.
     static let updateBubbleDrift: Animation = .easeInOut(duration: 1.8)
 

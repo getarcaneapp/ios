@@ -78,6 +78,19 @@ private struct DashboardCountAvailability: Identifiable {
     let issues: [DashboardCountIssue]
 }
 
+nonisolated struct DashboardLiveStatsLimitPresentation: Equatable, Sendable {
+    let maximumStreams: Int
+
+    init?(enabledEnvironmentCount: Int, maximumStreams: Int) {
+        guard maximumStreams > 0, enabledEnvironmentCount > maximumStreams else { return nil }
+        self.maximumStreams = maximumStreams
+    }
+
+    var message: String {
+        "Live CPU, memory, and disk metrics are streamed for the first \(maximumStreams) enabled environments to stay within the server connection limit. Container and image counts still load for every environment."
+    }
+}
+
 private enum DashboardEnvironmentLiveState: Sendable, Equatable {
     case online(DockerInfo)
     case offline
@@ -145,6 +158,13 @@ struct DashboardView: View {
     private var envID: EnvironmentID { manager.activeEnvironmentID }
     private var streamStore: DashboardStreamStore { fleet.dashboardStream }
     private var statsHistory: SystemStatsHistoryStore { fleet.statsHistory }
+
+    private var liveStatsLimitPresentation: DashboardLiveStatsLimitPresentation? {
+        DashboardLiveStatsLimitPresentation(
+            enabledEnvironmentCount: allEnvironments.filter(\.enabled).count,
+            maximumStreams: SystemStatsHistoryStore.maxStreams
+        )
+    }
 
     private var canPrune: Bool {
         manager.permissions.has(Permission.System.prune, in: envID)
@@ -227,26 +247,9 @@ struct DashboardView: View {
                 // mode already exposes it next to the sidebar wordmark.
                 if !showsSidebarButton, isNavigationRoot, manager.supportsActivities {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
+                        DashboardActivityToolbarButton(failureCount: failedActivities.count) {
                             quickActionRouter.openActivityCenter()
-                        } label: {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .appAccentToolbarSymbol()
-                                .overlay(alignment: .topTrailing) {
-                                    if !failedActivities.isEmpty {
-                                        Text(verbatim: "\(failedActivities.count)")
-                                            .font(.caption2.bold())
-                                            .foregroundStyle(.white)
-                                            .padding(.horizontal, 4)
-                                            .frame(minWidth: 16, minHeight: 16)
-                                            .background(.red, in: .capsule)
-                                            .offset(x: 9, y: -8)
-                                    }
-                                }
                         }
-                        .accessibilityLabel(failedActivities.isEmpty
-                            ? "Activity Center"
-                            : "Activity Center, \(failedActivities.count) failures")
                     }
                 }
 
@@ -404,6 +407,11 @@ struct DashboardView: View {
 
             if streamStore.streamFailed, !streamStore.streamUnsupported {
                 streamFailedBanner
+            }
+
+            if let liveStatsLimitPresentation {
+                DashboardLiveStatsLimitNotice(presentation: liveStatsLimitPresentation)
+                    .padding(.horizontal, 4)
             }
 
             LazyVStack(spacing: 10) {
@@ -1155,6 +1163,61 @@ struct DashboardView: View {
             allEnvironments.count
         )
         environments = dashboardEnvironments(from: allEnvironments)
+    }
+}
+
+private struct DashboardActivityToolbarButton: View {
+    let failureCount: Int
+    let action: () -> Void
+
+    @ViewBuilder
+    var body: some View {
+        if #available(iOS 26, *) {
+            button.badge(failureCount)
+        } else {
+            button
+        }
+    }
+
+    private var button: some View {
+        Button(action: action) {
+            Image(systemName: "clock.arrow.circlepath")
+                .appAccentToolbarSymbol()
+                .frame(width: 32, height: 32)
+                .overlay(alignment: .topTrailing) {
+                    if #unavailable(iOS 26), failureCount > 0 {
+                        Text(verbatim: "\(failureCount)")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(.red, in: .capsule)
+                    }
+                }
+        }
+        .accessibilityLabel(failureCount == 0
+            ? "Activity Center"
+            : "Activity Center, \(failureCount) failures")
+    }
+}
+
+private struct DashboardLiveStatsLimitNotice: View {
+    let presentation: DashboardLiveStatsLimitPresentation
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(presentation.message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: Radius.nested))
+        .accessibilityElement(children: .combine)
     }
 }
 

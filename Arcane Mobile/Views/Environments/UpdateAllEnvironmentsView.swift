@@ -27,7 +27,6 @@ struct UpdateAllEnvironmentsView: View {
 
     @State private var phase: Phase = .loading
     @State private var pollTask: Task<Void, Never>?
-    @Namespace private var resultIconNamespace
 
     /// The manager environment. The server ignores the path segment for these
     /// endpoints — the manager always orchestrates the whole fleet.
@@ -91,7 +90,7 @@ struct UpdateAllEnvironmentsView: View {
     private var phaseContent: some View {
         if let sceneModel {
             VStack(spacing: 24) {
-                FleetUpdateScene(model: sceneModel, iconNamespace: resultIconNamespace)
+                FleetUpdateScene(model: sceneModel)
 
                 Group {
                     phaseDetails
@@ -99,8 +98,6 @@ struct UpdateAllEnvironmentsView: View {
                 .transition(.opacity)
                 .motionAwareAnimation(Motion.state, value: phaseKey)
             }
-            .motionAwareAnimation(Motion.reflow, value: sceneModel.ringEnvironments.map(\.id))
-            .motionAwareAnimation(Motion.updateBubbleHandoff, value: sceneModel.activeEnvironment?.id)
         } else if case .unsupported(let message) = phase {
             ContentUnavailableView(
                 "Not Available",
@@ -126,8 +123,8 @@ struct UpdateAllEnvironmentsView: View {
         switch phase {
         case .ready(let lastJob):
             readyDetails(lastJob: lastJob)
-        case .polling(let job), .reconnecting(let job):
-            runningDetails(job: job)
+        case .polling, .reconnecting:
+            EmptyView()
         case .finished(let job, _):
             finishedDetails(job: job)
         case .loading, .triggering, .unsupported, .failed:
@@ -232,7 +229,7 @@ struct UpdateAllEnvironmentsView: View {
                 activeEnvironment: job.isTerminal
                     ? nil
                     : results.first { $0.status == .updating },
-                ringEnvironments: job.isTerminal ? [] : ringModels(for: results)
+                ringEnvironments: ringModels(for: results)
             )
         case .unsupported, .failed:
             return nil
@@ -319,35 +316,13 @@ struct UpdateAllEnvironmentsView: View {
         return raw
     }
 
-    // MARK: - Running
-
-    @ViewBuilder
-    private func runningDetails(job: EnvironmentUpdateJob) -> some View {
-        let orderedResults = resultsInProcessingOrder(job.results ?? [])
-        let results = orderedResults.filter { isCompletedResult($0) }
-        if !results.isEmpty {
-            resultsTimeline(results: results)
-                .motionAwareAnimation(Motion.reflow, value: results.map(\.status))
-        }
-    }
-
     // MARK: - Finished
 
-    @ViewBuilder
     private func finishedDetails(job: EnvironmentUpdateJob) -> some View {
         let results = resultsInProcessingOrder(job.results ?? [])
-        let displayedResults = job.isTerminal
-            ? results
-            : results.filter { isCompletedResult($0) }
         let counts = resultCounts(results)
 
-        VStack(spacing: 24) {
-            metricsStrip(updated: counts.updated, failed: counts.failed, skipped: counts.skipped)
-
-            if !displayedResults.isEmpty {
-                resultsTimeline(results: displayedResults)
-            }
-        }
+        return metricsStrip(updated: counts.updated, failed: counts.failed, skipped: counts.skipped)
     }
 
     private func metricsStrip(updated: Int, failed: Int, skipped: Int) -> some View {
@@ -379,31 +354,6 @@ struct UpdateAllEnvironmentsView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Results timeline
-
-    private func resultsTimeline(results: [EnvironmentUpdateResult]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Results")
-                    .font(.headline)
-                Spacer(minLength: 12)
-                Text(verbatim: String(results.count))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.bottom, 10)
-            Divider()
-            ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
-                FleetUpdateResultRow(result: result, iconNamespace: resultIconNamespace)
-                    .padding(.vertical, 14)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                if index < results.count - 1 {
-                    Divider().padding(.leading, 44)
-                }
-            }
-        }
-    }
-
     private func completedResultCount(_ results: [EnvironmentUpdateResult]) -> Int {
         results.filter { isCompletedResult($0) }.count
     }
@@ -428,9 +378,8 @@ struct UpdateAllEnvironmentsView: View {
     private func ringModels(
         for results: [EnvironmentUpdateResult]
     ) -> [FleetUpdateRingEnvironment] {
-        results.enumerated().compactMap { index, result in
-            guard !isCompletedResult(result) else { return nil }
-            return FleetUpdateRingEnvironment(
+        results.enumerated().map { index, result in
+            FleetUpdateRingEnvironment(
                 result: result,
                 slotIndex: index,
                 totalCount: results.count
@@ -584,7 +533,7 @@ struct UpdateAllEnvironmentsView: View {
 
 // MARK: - Update scene
 
-private enum FleetUpdateSceneKind: Equatable {
+enum FleetUpdateSceneKind: Equatable {
     case loading
     case ready
     case starting
@@ -625,7 +574,7 @@ private enum FleetUpdateSceneKind: Equatable {
     }
 }
 
-private struct FleetUpdateRingEnvironment: Identifiable, Equatable {
+struct FleetUpdateRingEnvironment: Identifiable, Equatable {
     let result: EnvironmentUpdateResult
     let slotIndex: Int
     let totalCount: Int
@@ -633,7 +582,7 @@ private struct FleetUpdateRingEnvironment: Identifiable, Equatable {
     var id: String { result.id }
 }
 
-private struct FleetUpdateSceneModel: Equatable {
+struct FleetUpdateSceneModel: Equatable {
     let kind: FleetUpdateSceneKind
     let title: String
     let subtitle: String
@@ -701,9 +650,8 @@ private struct FleetUpdateSceneModel: Equatable {
     }
 }
 
-private struct FleetUpdateScene: View {
+struct FleetUpdateScene: View {
     let model: FleetUpdateSceneModel
-    let iconNamespace: Namespace.ID
 
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var focusSize: CGFloat = 152
@@ -786,7 +734,7 @@ private struct FleetUpdateScene: View {
                 )
                 .rotationEffect(.degrees(-90))
                 .opacity(model.ringFraction == 0 ? 0 : 1)
-                .animation(Motion.gauge, value: model.ringFraction)
+                .animation(Motion.updateConnector, value: model.ringFraction)
 
             animatedSymbol
                 .opacity(model.showsPercentage || model.showsActiveEnvironment ? 0 : 1)
@@ -804,7 +752,6 @@ private struct FleetUpdateScene: View {
                     environments: model.ringEnvironments,
                     activeEnvironmentID: model.activeEnvironment?.id,
                     tint: model.kind.tint,
-                    iconNamespace: iconNamespace,
                     ringDiameter: min(focusSize, 172)
                 )
                 .transition(.opacity)
@@ -898,11 +845,44 @@ private enum FleetUpdateBubblePhase: CaseIterable {
     }
 }
 
+nonisolated enum FleetUpdateBubblePresentation: Equatable, Sendable {
+    case pending
+    case updating
+    case succeeded
+    case skipped
+    case failed
+    case unknown
+
+    init(status: EnvironmentUpdateResultStatus) {
+        self = switch status {
+        case .pending: .pending
+        case .updating: .updating
+        case .updated, .upToDate, .triggered: .succeeded
+        case .skippedOffline: .skipped
+        case .failed: .failed
+        case .unknown: .unknown
+        }
+    }
+
+    var terminalSymbol: String? {
+        switch self {
+        case .pending, .updating: nil
+        case .succeeded: "checkmark"
+        case .skipped: "wifi.slash"
+        case .failed: "xmark"
+        case .unknown: "questionmark"
+        }
+    }
+
+    var isTerminal: Bool {
+        terminalSymbol != nil
+    }
+}
+
 private struct FleetUpdateRingEnvironments: View {
     let environments: [FleetUpdateRingEnvironment]
     let activeEnvironmentID: String?
     let tint: Color
-    let iconNamespace: Namespace.ID
     let ringDiameter: CGFloat
 
     private var activeEnvironment: EnvironmentUpdateResult? {
@@ -933,7 +913,6 @@ private struct FleetUpdateRingEnvironments: View {
                     environment: environment,
                     isActive: environment.id == activeEnvironmentID,
                     tint: tint,
-                    iconNamespace: iconNamespace,
                     ringDiameter: ringDiameter
                 )
             }
@@ -947,7 +926,6 @@ private struct FleetUpdateRingBubble: View {
     let environment: FleetUpdateRingEnvironment
     let isActive: Bool
     let tint: Color
-    let iconNamespace: Namespace.ID
     let ringDiameter: CGFloat
 
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -955,8 +933,34 @@ private struct FleetUpdateRingBubble: View {
 
     private var isManager: Bool { environment.result.environmentId == "0" }
 
+    private var presentation: FleetUpdateBubblePresentation {
+        FleetUpdateBubblePresentation(status: environment.result.status)
+    }
+
+    private var bubbleTint: Color {
+        switch presentation {
+        case .pending, .updating: tint
+        case .succeeded: .green
+        case .skipped: .gray
+        case .failed: .red
+        case .unknown: .orange
+        }
+    }
+
+    private var symbol: String {
+        presentation.terminalSymbol ?? (isManager ? "crown.fill" : "server.rack")
+    }
+
+    private var showsLoadingRing: Bool {
+        isActive && presentation == .updating
+    }
+
     private var animationPhases: [FleetUpdateBubblePhase] {
         reduceMotion || !isActive ? [.resting] : FleetUpdateBubblePhase.allCases
+    }
+
+    private var loadingRingPhases: [Double] {
+        reduceMotion || !showsLoadingRing ? [0] : [0, 360]
     }
 
     private var angle: Double {
@@ -984,7 +988,7 @@ private struct FleetUpdateRingBubble: View {
     }
 
     private var cutoutSize: CGFloat {
-        bubbleSize + (isActive ? 8 : 6)
+        bubbleSize + (showsLoadingRing ? 12 : 6)
     }
 
     var body: some View {
@@ -993,20 +997,57 @@ private struct FleetUpdateRingBubble: View {
                 .fill(Color(uiColor: .systemBackground))
                 .frame(width: cutoutSize, height: cutoutSize)
 
+            Circle()
+                .stroke(bubbleTint.opacity(0.16), lineWidth: 2.5)
+                .frame(width: bubbleSize + 8, height: bubbleSize + 8)
+                .opacity(showsLoadingRing ? 1 : 0)
+                .scaleEffect(showsLoadingRing ? 1 : 0.86)
+
+            Circle()
+                .trim(from: 0.06, to: 0.74)
+                .stroke(
+                    bubbleTint,
+                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                )
+                .frame(width: bubbleSize + 8, height: bubbleSize + 8)
+                .opacity(showsLoadingRing ? 1 : 0)
+                .scaleEffect(showsLoadingRing ? 1 : 0.86)
+                .phaseAnimator(loadingRingPhases) { content, rotation in
+                    content.rotationEffect(.degrees(rotation))
+                } animation: { _ in
+                    Motion.updateBubbleSpinner
+                }
+
             ZStack {
                 Circle()
-                    .fill(tint.opacity(isActive ? 0.18 : 0.10))
+                    .fill(bubbleTint.opacity(isActive || presentation.isTerminal ? 0.18 : 0.10))
                 Circle()
-                    .stroke(tint.opacity(isActive ? 0.42 : 0.22), lineWidth: 1)
-                Image(systemName: isManager ? "crown.fill" : "server.rack")
-                    .font(.system(size: max(7, bubbleSize * 0.38), weight: .semibold))
-                    .foregroundStyle(tint)
-                    .opacity(isActive || bubbleSize >= 16 ? 1 : 0)
+                    .stroke(
+                        bubbleTint.opacity(isActive || presentation.isTerminal ? 0.44 : 0.22),
+                        lineWidth: 1
+                    )
+                Image(systemName: symbol)
+                    .font(
+                        .system(
+                            size: max(7, bubbleSize * (presentation.isTerminal ? 0.44 : 0.38)),
+                            weight: .semibold
+                        )
+                    )
+                    .foregroundStyle(bubbleTint)
+                    .contentTransition(.symbolEffect(.replace))
+                    .symbolEffect(
+                        .bounce,
+                        options: .nonRepeating,
+                        value: reduceMotion ? FleetUpdateBubblePresentation.pending : presentation
+                    )
+                    .opacity(isActive || presentation.isTerminal || bubbleSize >= 16 ? 1 : 0)
                     .accessibilityHidden(true)
             }
             .frame(width: bubbleSize, height: bubbleSize)
         }
         .frame(width: cutoutSize, height: cutoutSize)
+        .motionAwareAnimation(Motion.updateBubbleHandoff, value: presentation)
+        .motionAwareAnimation(Motion.updateBubbleHandoff, value: showsLoadingRing)
         .phaseAnimator(animationPhases) { content, phase in
             content
                 .offset(x: phase.horizontalOffset, y: phase.verticalOffset)
@@ -1016,117 +1057,6 @@ private struct FleetUpdateRingBubble: View {
         }
         .motionAwareAnimation(Motion.updateBubbleHandoff, value: isActive)
         .offset(x: ringOffset.width, y: ringOffset.height)
-        .matchedGeometryEffect(id: environment.id, in: iconNamespace)
         .zIndex(isActive ? 2 : 1)
-    }
-}
-
-// MARK: - Row
-
-private struct FleetUpdateResultRow: View {
-    let result: EnvironmentUpdateResult
-    let iconNamespace: Namespace.ID
-
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var isManager: Bool { result.environmentId == "0" }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: isManager ? "crown.fill" : "server.rack")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(isManager ? Color.indigo : .blue)
-                .frame(width: 32, height: 32)
-                .background((isManager ? Color.indigo : .blue).opacity(0.12), in: .circle)
-                .matchedGeometryEffect(id: result.id, in: iconNamespace)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(result.environmentName)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if isManager {
-                        Text("Manager")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if let versionChange {
-                    Text(versionChange)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                if let error = result.error, !error.isEmpty {
-                    Text(error)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 4) {
-                if result.status == .updating {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.caption2.weight(.bold))
-                        .symbolEffect(.rotate, options: .repeating, isActive: !reduceMotion)
-                }
-                Text(statusText)
-                    .font(.caption2.weight(.bold))
-                    .contentTransition(.interpolate)
-            }
-            .foregroundStyle(statusTint)
-            .motionAwareAnimation(Motion.state, value: result.status)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    /// Hide digest-style versions — they read as noise at row size.
-    private var versionChange: String? {
-        let from = displayable(result.fromVersion)
-        let to = displayable(result.toVersion)
-        switch (from, to) {
-        case let (.some(from), .some(to)) where from != to:
-            return "\(from) → \(to)"
-        case let (.some(from), .none):
-            return from
-        case let (.none, .some(to)):
-            return to
-        default:
-            return from
-        }
-    }
-
-    private func displayable(_ raw: String?) -> String? {
-        guard let raw, !raw.isEmpty, !raw.contains(":"), raw.count <= 20 else { return nil }
-        return raw
-    }
-
-    private var statusText: String {
-        switch result.status {
-        case .pending: return "Pending"
-        case .updating: return "Updating"
-        case .updated: return "Updated"
-        case .upToDate: return "Up to Date"
-        case .triggered: return "Triggered"
-        case .skippedOffline: return "Offline"
-        case .failed: return "Failed"
-        case .unknown: return "Unknown"
-        }
-    }
-
-    private var statusTint: Color {
-        switch result.status {
-        case .pending: return .gray
-        case .updating: return .blue
-        case .updated, .upToDate, .triggered: return .green
-        case .skippedOffline: return .gray
-        case .failed: return .red
-        case .unknown: return .blue
-        }
     }
 }
