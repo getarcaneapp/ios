@@ -548,7 +548,7 @@ struct ContainersView: View {
             Button(role: .destructive) {
                 Task { await stopContainer(container) }
             } label: {
-                Label("Stop", systemImage: "stop.fill")
+                DestructiveLabel(text: "Stop", systemImage: "stop.fill")
             }
             .tint(.red)
             Button {

@@ -153,7 +153,7 @@ struct EnvironmentDashboardCard: View {
                 Button(role: .destructive) {
                     showPruneSheet = true
                 } label: {
-                    Label("System Prune", systemImage: "trash")
+                    DestructiveLabel(text: "System Prune")
                 }
                 .tint(.red)
             }

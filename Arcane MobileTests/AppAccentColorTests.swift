@@ -52,6 +52,31 @@ struct AppAccentColorTests {
         #expect(pixel.alpha > 240)
     }
 
+    @MainActor
+    @Test
+    func destructiveLabelKeepsItsIconAndTitleRed() throws {
+        let fixture = DestructiveLabel(text: "Clear")
+            .font(.title2)
+            .padding(8)
+            .frame(width: 150, alignment: .leading)
+            .background(.white)
+            .foregroundStyle(.purple)
+            .tint(.purple)
+
+        let renderer = ImageRenderer(content: fixture)
+        renderer.scale = 1
+        let image = try #require(renderer.uiImage)
+        let pixels = try RGBAImage(image)
+
+        let iconRange = 8..<min(38, pixels.pixelWidth)
+        let titleStart = min(44, pixels.pixelWidth - 1)
+        let titleRange = titleStart..<pixels.pixelWidth
+
+        #expect(pixels.redPixelCount(in: iconRange) > 5)
+        #expect(pixels.redPixelCount(in: titleRange) > 5)
+        #expect(pixels.purplePixelCount(in: iconRange) == 0)
+    }
+
 }
 
 private struct RGBAImage {
@@ -65,6 +90,8 @@ private struct RGBAImage {
     private let width: Int
     private let height: Int
     private let bytes: [UInt8]
+
+    var pixelWidth: Int { width }
 
     init(_ image: UIImage) throws {
         let cgImage = try #require(image.cgImage)
@@ -98,6 +125,42 @@ private struct RGBAImage {
             blue: bytes[offset + 2],
             alpha: bytes[offset + 3]
         )
+    }
+
+    func redPixelCount(in xRange: Range<Int>) -> Int {
+        pixelCount(in: xRange) { pixel in
+            pixel.alpha > 80
+                && pixel.red > 100
+                && Int(pixel.red) > Int(pixel.green) + 40
+                && Int(pixel.red) > Int(pixel.blue) + 40
+        }
+    }
+
+    func purplePixelCount(in xRange: Range<Int>) -> Int {
+        pixelCount(in: xRange) { pixel in
+            pixel.alpha > 80
+                && pixel.red > 70
+                && pixel.blue > 70
+                && abs(Int(pixel.red) - Int(pixel.blue)) < 70
+                && pixel.green < min(pixel.red, pixel.blue) / 2
+        }
+    }
+
+    private func pixelCount(
+        in xRange: Range<Int>,
+        matching predicate: (Pixel) -> Bool
+    ) -> Int {
+        let lowerBound = max(xRange.lowerBound, 0)
+        let upperBound = min(xRange.upperBound, width)
+        guard lowerBound < upperBound else { return 0 }
+
+        var count = 0
+        for y in 0..<height {
+            for x in lowerBound..<upperBound where predicate(self[CGPoint(x: x, y: y)]) {
+                count += 1
+            }
+        }
+        return count
     }
 
 }

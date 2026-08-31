@@ -689,8 +689,9 @@ struct ProjectDetailView: View {
                         }
                         if manager.permissions.has(Permission.Containers.delete, in: environmentID) {
                             Button(role: .destructive) { showRemoveConfirmation = true } label: {
-                                Label("Remove", systemImage: "trash")
+                                DestructiveLabel(text: "Remove")
                             }
+                            .tint(.red)
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")

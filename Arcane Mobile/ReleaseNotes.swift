@@ -142,6 +142,18 @@ extension ReleaseNote {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.8.2",
+            changed: [
+                .init("Compact detail tabs and log layout with inline stream controls."),
+                .init("Removed log search from the viewer."),
+                .init("Log expansion and options use separate navigation-bar buttons.")
+            ],
+            fixed: [
+                .init("Destructive action icons consistently use red styling."),
+                .init("Live log following stays pinned to new output.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.8.1",
             new: [
                 .init("Potential secrets are blurred in container and image environment-variable views."),

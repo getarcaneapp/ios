@@ -78,8 +78,9 @@ struct EventsView: View {
                                         Button(role: .destructive) {
                                             pendingDeleteEvent = event
                                         } label: {
-                                            Label("Delete Event", systemImage: "trash")
+                                            DestructiveLabel(text: "Delete Event")
                                         }
+                                        .tint(.red)
                                     }
                                 }
                                 .swipeActions(edge: .leading, allowsFullSwipe: false) {

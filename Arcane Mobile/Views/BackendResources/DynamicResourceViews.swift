@@ -66,7 +66,7 @@ struct DynamicResourceListView: View {
                                     Button(role: action.destructive ? .destructive : nil) {
                                         selectedAction = PendingAction(action: action, item: item)
                                     } label: {
-                                        Label(action.title, systemImage: action.systemImage)
+                                        backendActionLabel(action)
                                     }
                                     .tint(action.destructive ? Color.red : nil)
                                 }
@@ -155,7 +155,7 @@ struct DynamicResourceListView: View {
                             Button(role: action.destructive ? .destructive : nil) {
                                 selectedAction = PendingAction(action: action, item: nil)
                             } label: {
-                                Label(action.title, systemImage: action.systemImage)
+                                backendActionLabel(action)
                             }
                             .tint(action.destructive ? Color.red : nil)
                         }
@@ -375,7 +375,7 @@ struct DynamicResourceDetailView: View {
                             Button(role: action.destructive ? .destructive : nil) {
                                 Task { await run(action) }
                             } label: {
-                                Label(action.title, systemImage: action.systemImage)
+                                backendActionLabel(action)
                             }
                             .tint(action.destructive ? Color.red : nil)
                         }
@@ -398,6 +398,15 @@ struct DynamicResourceDetailView: View {
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
+    }
+}
+
+@ViewBuilder
+private func backendActionLabel(_ action: BackendListAction) -> some View {
+    if action.destructive {
+        DestructiveLabel(text: action.title, systemImage: action.systemImage)
+    } else {
+        Label(action.title, systemImage: action.systemImage)
     }
 }
 

@@ -67,8 +67,9 @@ struct ImagePruneView: View {
                         Button(role: .destructive) {
                             Task { await runPrune() }
                         } label: {
-                            Label("Prune", systemImage: "trash")
+                            DestructiveLabel(text: "Prune")
                         }
+                        .tint(.red)
                     }
                 }
             }

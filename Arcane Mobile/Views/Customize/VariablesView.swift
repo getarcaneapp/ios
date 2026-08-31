@@ -213,8 +213,9 @@ struct VariablesView: View {
                                     Button(role: .destructive) {
                                         pendingDelete = variable
                                     } label: {
-                                        Label("Delete Variable", systemImage: "trash")
+                                        DestructiveLabel(text: "Delete Variable")
                                     }
+                                    .tint(.red)
                                 }
                             }
                             .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -262,8 +263,9 @@ struct VariablesView: View {
                                     Button(role: .destructive) {
                                         pendingDelete = variable
                                     } label: {
-                                        Label("Delete Variable", systemImage: "trash")
+                                        DestructiveLabel(text: "Delete Variable")
                                     }
+                                    .tint(.red)
                                 }
                             }
                             .swipeActions(edge: .leading, allowsFullSwipe: false) {

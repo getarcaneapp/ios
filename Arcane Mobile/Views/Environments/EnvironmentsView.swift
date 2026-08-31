@@ -151,8 +151,9 @@ struct EnvironmentFleetListRow: View {
             }
             if manager.permissions.has(Permission.System.prune, in: environmentID) {
                 Button(role: .destructive) { showPrune = true } label: {
-                    Label("System Prune", systemImage: "trash")
+                    DestructiveLabel(text: "System Prune")
                 }
+                .tint(.red)
             }
         } label: {
             Image(systemName: "ellipsis.circle")

@@ -32,53 +32,18 @@ struct LogViewerTests {
     }
 
     @Test
-    func searchMatchesMessageServiceSeverityAndVisibleTimestamp() throws {
+    func pausedCountIncludesAllNewLines() throws {
         let store = LogViewerStore(logStream: { nil })
-        store.receive([
-            try makeLine(
-                message: "HTTP server ready",
-                level: "info",
-                service: "api",
-                timestamp: "2026-08-29T12:34:56Z"
-            ),
-            try makeLine(
-                message: "queue depth high",
-                level: "warning",
-                service: "worker",
-                timestamp: "2026-08-29T12:35:00Z"
-            ),
-        ])
-
-        store.searchText = "worker"
-        #expect(store.filteredLines.map(\.line.text) == ["queue depth high"])
-
-        store.searchText = "WARN"
-        #expect(store.filteredLines.map(\.line.text) == ["queue depth high"])
-
-        store.searchText = "12:34:56"
-        #expect(store.filteredLines.isEmpty)
-
-        store.setTimestampVisibility(true)
-        #expect(store.filteredLines.map(\.line.text) == ["HTTP server ready"])
-    }
-
-    @Test
-    func pausedCountIncludesOnlyNewMatchingLines() throws {
-        let store = LogViewerStore(logStream: { nil })
-        store.searchText = "api"
         store.pauseFollowing()
         store.receive([
             try makeLine(message: "api connected", service: "gateway"),
             try makeLine(message: "worker connected", service: "worker"),
         ])
 
-        #expect(store.newLinesWhilePaused == 1)
-
-        store.searchText = "worker"
-        #expect(store.newLinesWhilePaused == 0)
+        #expect(store.newLinesWhilePaused == 2)
 
         store.receive([try makeLine(message: "job started", service: "worker")])
-        #expect(store.newLinesWhilePaused == 1)
+        #expect(store.newLinesWhilePaused == 3)
 
         store.resumeFollowing()
         #expect(store.isFollowing)
@@ -86,7 +51,7 @@ struct LogViewerTests {
     }
 
     @Test
-    func exportUsesFilteredLinesAndOnlyVisibleTimestamps() throws {
+    func exportUsesAllLinesAndOnlyVisibleTimestamps() throws {
         let store = LogViewerStore(logStream: { nil })
         store.receive([
             try makeLine(
@@ -97,12 +62,14 @@ struct LogViewerTests {
             ),
             try makeLine(message: "worker ready", level: "info", service: "worker"),
         ])
-        store.searchText = "request"
 
-        #expect(store.exportText(showTimestamps: false) == "[api] [ERROR] request failed")
+        #expect(
+            store.exportText(showTimestamps: false)
+                == "[api] [ERROR] request failed\n[worker] [INFO] worker ready"
+        )
         #expect(
             store.exportText(showTimestamps: true)
-                == "[2026-08-29T12:34:56Z] [api] [ERROR] request failed"
+                == "[2026-08-29T12:34:56Z] [api] [ERROR] request failed\n[worker] [INFO] worker ready"
         )
     }
 
@@ -195,6 +162,127 @@ struct LogViewerTests {
         }
     }
 
+    @Test
+    func embeddedViewerRendersCompactHeaderWithoutInlineActions() async throws {
+        let fixture = NavigationStack {
+            VStack(spacing: 0) {
+                ScrollableTabBar(
+                    selection: .constant("logs"),
+                    options: [
+                        ScrollableTabOption(
+                            "overview",
+                            title: "Overview",
+                            systemImage: "info.circle.fill",
+                            tint: .purple
+                        ),
+                        ScrollableTabOption(
+                            "stats",
+                            title: "Stats",
+                            systemImage: "chart.xyaxis.line",
+                            tint: .blue
+                        ),
+                        ScrollableTabOption(
+                            "logs",
+                            title: "Logs",
+                            systemImage: "text.alignleft",
+                            tint: .teal
+                        ),
+                    ],
+                    accessibilityLabel: "Container detail sections"
+                )
+
+                LogsView(title: "arcane", logStream: { nil }, embedded: true)
+            }
+            .navigationTitle("arcane")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .frame(width: 390, height: 844)
+        .background(Color(.systemBackground))
+        .environment(\.dynamicTypeSize, .large)
+
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 844)
+        let host = UIHostingController(rootView: fixture)
+        let window = UIWindow(frame: bounds)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        host.view.frame = bounds
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        await Task.yield()
+        try await Task.sleep(for: .milliseconds(100))
+        host.view.layoutIfNeeded()
+
+        let navigationBars = descendants(of: UINavigationBar.self, in: window)
+        let navigationSearchBars = descendants(of: UISearchBar.self, in: window)
+        let textFields = descendants(of: UITextField.self, in: window)
+        let navigationBar = try #require(navigationBars.first)
+
+        #expect(navigationBar.bounds.height < 80)
+        #expect(navigationSearchBars.isEmpty)
+        #expect(textFields.isEmpty)
+
+        let renderer = UIGraphicsImageRenderer(bounds: bounds)
+        let image = renderer.image { context in
+            host.view.layer.render(in: context.cgContext)
+        }
+
+        #expect(image.size == CGSize(width: 390, height: 844))
+        Attachment.record(image, named: "embedded-log-viewer-header", as: .png)
+    }
+
+    @Test
+    func liveViewerFollowsNewLines() async throws {
+        let store = LogViewerStore(logStream: { nil })
+        let fixture = LogConsole(
+            store: store,
+            showTimestamps: false,
+            wrapLines: true,
+            metadataLayout: .compact,
+            jumpToLatestRequest: 0
+        )
+        .frame(width: 390, height: 500)
+        .background(Color(.systemBackground))
+
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 500)
+        let host = UIHostingController(rootView: fixture)
+        let window = UIWindow(frame: bounds)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+
+        host.view.frame = bounds
+        host.view.layoutIfNeeded()
+
+        store.receive(try (0..<80).map { index in
+            try makeLine(message: longMessage(prefix: "initial", index: index))
+        })
+        try await settle(host)
+
+        let scrollView = try #require(
+            descendants(of: UIScrollView.self, in: window)
+                .first { $0.contentSize.height > $0.bounds.height }
+        )
+        let offsetBeforeNewLines = scrollView.contentOffset.y
+
+        store.receive(try (80..<100).map { index in
+            try makeLine(message: longMessage(prefix: "new", index: index))
+        })
+        try await settle(host)
+
+        let maximumOffset = max(
+            -scrollView.adjustedContentInset.top,
+            scrollView.contentSize.height
+                - scrollView.bounds.height
+                + scrollView.adjustedContentInset.bottom
+        )
+
+        #expect(store.isFollowing)
+        #expect(scrollView.contentOffset.y > offsetBeforeNewLines)
+        #expect(abs(scrollView.contentOffset.y - maximumOffset) < 2)
+    }
+
     private func makeLine(
         message: String,
         level: String? = nil,
@@ -210,6 +298,33 @@ struct LogViewerTests {
         )
         let data = try JSONEncoder().encode(fixture)
         return try JSONDecoder().decode(LogLine.self, from: data)
+    }
+
+    private func settle(_ host: UIViewController) async throws {
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        await Task.yield()
+        try await Task.sleep(for: .milliseconds(100))
+        host.view.layoutIfNeeded()
+    }
+
+    private func longMessage(prefix: String, index: Int) -> String {
+        "\(prefix) line \(index) "
+            + String(
+                repeating: "container log output continues across the available width ",
+                count: 4
+            )
+    }
+}
+
+@MainActor
+private func descendants<ViewType: UIView>(
+    of type: ViewType.Type,
+    in root: UIView
+) -> [ViewType] {
+    root.subviews.flatMap { subview in
+        let current = (subview as? ViewType).map { [$0] } ?? []
+        return current + descendants(of: type, in: subview)
     }
 }
 

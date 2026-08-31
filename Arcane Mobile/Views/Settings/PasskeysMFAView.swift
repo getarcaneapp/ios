@@ -230,8 +230,9 @@ struct PasskeysMFAView: View {
                     Button(role: .destructive) {
                         pendingDelete = passkey
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        DestructiveLabel(text: "Delete")
                     }
+                    .tint(.red)
                     .disabled(
                         passkeys.count == 1
                             && capabilities?.canDeleteLastPasskey == false

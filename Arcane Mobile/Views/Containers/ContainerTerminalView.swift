@@ -97,7 +97,7 @@ struct ContainerTerminalView: View {
                         Button(role: .destructive) {
                             Task { await clearOutput() }
                         } label: {
-                            Label("Clear Output", systemImage: "trash")
+                            DestructiveLabel(text: "Clear Output")
                         }
                         .tint(.red)
                     } label: {

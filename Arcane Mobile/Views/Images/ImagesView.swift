@@ -274,7 +274,7 @@ struct ImagesView: View {
                         Button(role: .destructive) {
                             pendingDestructive = .prune
                         } label: {
-                            Label("Quick Prune (Dangling)", systemImage: "trash")
+                            DestructiveLabel(text: "Quick Prune (Dangling)")
                         }
                         .tint(.red)
                         Button {

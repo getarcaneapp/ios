@@ -1,28 +1,5 @@
 import SwiftUI
 
-// Forces both the SF Symbol icon and the title to render in pure red.
-// `.foregroundStyle(.red)` on a plain Label isn't enough — destructive role,
-// hierarchical symbol rendering, and tint inheritance can each repaint the
-// icon in some other shade. Explicit Image with `.symbolRenderingMode(.monochrome)`
-// + `.foregroundStyle(.red)` wins everywhere (toolbar menus, context menus,
-// inline buttons). Pair with `.tint(.red)` on the enclosing Button when used
-// inside `swipeActions`.
-struct DestructiveLabel: View {
-    let text: String
-    var systemImage: String = "trash"
-
-    var body: some View {
-        Label {
-            Text(text)
-                .foregroundStyle(.red)
-        } icon: {
-            Image(systemName: systemImage)
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(.red)
-        }
-    }
-}
-
 // Card used as the `preview:` content for `.contextMenu` on list rows.
 // All major resource lists render this when the user long-presses a row,
 // so the look stays consistent across Containers / Images / Projects / etc.

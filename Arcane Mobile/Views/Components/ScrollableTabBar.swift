@@ -51,7 +51,7 @@ struct ScrollableTabBar<Selection: Hashable>: View {
             .scrollIndicators(.hidden)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
     }
@@ -80,7 +80,7 @@ struct ScrollableTabBar<Selection: Hashable>: View {
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.vertical, 7)
             .background(
                 isSelected ? option.tint.opacity(0.15) : Color.secondary.opacity(0.08),
                 in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous)

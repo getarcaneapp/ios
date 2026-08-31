@@ -155,6 +155,7 @@ struct RegistryFormView: View {
                                     repositoryNameRows.removeAll { $0.id == row.id }
                                 } label: {
                                     Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(.red)
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Remove repository name")

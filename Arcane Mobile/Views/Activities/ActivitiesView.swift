@@ -526,6 +526,7 @@ struct ActivityDetailView: View {
                             ProgressView()
                         } else {
                             Image(systemName: "xmark.circle")
+                                .foregroundStyle(.red)
                         }
                     }
                     .accessibilityLabel("Cancel activity")

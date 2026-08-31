@@ -230,7 +230,7 @@ struct ImageVulnerabilitiesView: View {
                     Button(role: .destructive) {
                         ignoreTarget = vuln
                     } label: {
-                        Label("Ignore", systemImage: "eye.slash")
+                        DestructiveLabel(text: "Ignore", systemImage: "eye.slash")
                     }
                     .tint(.red)
                 }

@@ -140,13 +140,16 @@ struct ProfileView: View {
                     Button(role: .destructive) {
                         pendingSignOut = .signOut
                     } label: {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        DestructiveLabel(
+                            text: "Sign Out",
+                            systemImage: "rectangle.portrait.and.arrow.right"
+                        )
                     }
                     .tint(.red)
                     Button(role: .destructive) {
                         pendingSignOut = .signOutAndChangeServer
                     } label: {
-                        Label("Sign Out & Change Server", systemImage: "link")
+                        DestructiveLabel(text: "Sign Out & Change Server", systemImage: "link")
                     }
                     .tint(.red)
                 } label: {

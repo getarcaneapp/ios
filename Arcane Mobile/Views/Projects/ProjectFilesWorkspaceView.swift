@@ -439,7 +439,7 @@ struct ProjectFilesWorkspaceView: View {
             Button(role: .destructive) {
                 pendingDelete = entry
             } label: {
-                Label("Delete", systemImage: "trash")
+                DestructiveLabel(text: "Delete")
             }
             .tint(.red)
         } else {
