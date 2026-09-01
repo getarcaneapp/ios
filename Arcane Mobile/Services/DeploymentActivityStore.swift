@@ -956,6 +956,13 @@ final class DeploymentActivityStore {
                                       manager: ArcaneClientManager,
                                       mutationStore: ResourceMutationStore) async {
         await invalidateCaches(for: operation, manager: manager)
+        if operation.kind == .containerUpdate || operation.kind == .imagePull {
+            await ImageUpdateCountStore.shared.refreshCount(
+                environmentID: operation.envID,
+                client: manager.client,
+                userID: manager.currentUser?.id
+            )
+        }
         switch operation.kind {
         case .containerRedeploy:
             mutationStore.markChanged(kind: .containers, envID: operation.envID)

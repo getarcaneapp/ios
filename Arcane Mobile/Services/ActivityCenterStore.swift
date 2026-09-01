@@ -90,6 +90,25 @@ nonisolated struct ActivityBatchSummary: Identifiable, Hashable, Sendable {
     }
 }
 
+nonisolated struct ActivityHistoryClearResult: Sendable {
+    let deleted: Int64
+    let failed: Int
+    let clearedEnvironmentIDs: Set<String>
+}
+
+nonisolated enum ActivityHistoryClearFilter {
+    static func retainingActiveActivities(
+        in activities: [Activity],
+        clearedEnvironmentIDs: Set<String>
+    ) -> [Activity] {
+        activities.filter { activity in
+            !clearedEnvironmentIDs.contains(activity.sourceEnvironmentKey)
+                || activity.status == .queued
+                || activity.status == .running
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class ActivityCenterStore {
@@ -327,14 +346,17 @@ final class ActivityCenterStore {
         }
     }
 
-    func clearHistory(environmentIDs allowedEnvironmentIDs: Set<String>) async -> (deleted: Int64, failed: Int)? {
+    func clearHistory(
+        environmentIDs allowedEnvironmentIDs: Set<String>
+    ) async -> ActivityHistoryClearResult? {
         guard let client else { return nil }
         let targets = environmentIDs.filter { allowedEnvironmentIDs.contains($0) }
         guard !targets.isEmpty else { return nil }
 
         var deleted: Int64 = 0
         var failed = 0
-        await withTaskGroup(of: (Int64?, Bool).self) { group in
+        var clearedEnvironmentIDs: Set<String> = []
+        await withTaskGroup(of: (String, Int64?).self) { group in
             var iterator = targets.makeIterator()
             let initialBatch = min(Self.maxConcurrentEnvironmentRequests, targets.count)
             for _ in 0..<initialBatch {
@@ -342,15 +364,16 @@ final class ActivityCenterStore {
                 group.addTask {
                     do {
                         let result = try await client.activities.clearHistory(envID: EnvironmentID(rawValue: id))
-                        return (result.deleted, true)
+                        return (id, result.deleted)
                     } catch {
-                        return (nil, false)
+                        return (id, nil)
                     }
                 }
             }
-            for await result in group {
-                if result.1, let count = result.0 {
+            for await (environmentID, count) in group {
+                if let count {
                     deleted += count
+                    clearedEnvironmentIDs.insert(environmentID)
                 } else {
                     failed += 1
                 }
@@ -360,17 +383,33 @@ final class ActivityCenterStore {
                             let result = try await client.activities.clearHistory(
                                 envID: EnvironmentID(rawValue: id)
                             )
-                            return (result.deleted, true)
+                            return (id, result.deleted)
                         } catch {
-                            return (nil, false)
+                            return (id, nil)
                         }
                     }
                 }
             }
         }
 
-        await load(refresh: true)
-        return (deleted, failed)
+        removeClearedHistory(environmentIDs: clearedEnvironmentIDs)
+        return ActivityHistoryClearResult(
+            deleted: deleted,
+            failed: failed,
+            clearedEnvironmentIDs: clearedEnvironmentIDs
+        )
+    }
+
+    func removeClearedHistory(environmentIDs: Set<String>) {
+        guard !environmentIDs.isEmpty else { return }
+        for (environmentID, bucket) in activityBuckets
+        where environmentIDs.contains(environmentID) {
+            activityBuckets[environmentID] = ActivityHistoryClearFilter.retainingActiveActivities(
+                in: bucket,
+                clearedEnvironmentIDs: environmentIDs
+            )
+        }
+        rebuildActivities()
     }
 
     private func consumeStream(client: ArcaneClient, generation: Int) async {

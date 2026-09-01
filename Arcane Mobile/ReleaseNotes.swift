@@ -143,14 +143,27 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.8.2",
+            new: [
+                .init("Support bundles with actionable redacted diagnostics."),
+                .init("iCloud Keychain connection profiles with optional password sign-in sync.")
+            ],
             changed: [
+                .init("Tab bar compacts on downward scrolling and expands on upward scrolling."),
+                .init("Reorganized App Settings with compact single-line rows."),
                 .init("Compact detail tabs and log layout with inline stream controls."),
                 .init("Removed log search from the viewer."),
-                .init("Log expansion and options use separate navigation-bar buttons.")
+                .init("Log expansion and options use separate navigation-bar buttons."),
+                .init("Dashboard environment cards show Arcane and Docker API versions."),
+                .init("Update All and Run Updater use centered native sheets.")
             ],
             fixed: [
                 .init("Destructive action icons consistently use red styling."),
-                .init("Live log following stays pinned to new output.")
+                .init("Live log following stays pinned to new output."),
+                .init("All Activities banners include running work."),
+                .init("Activity and update counts clear without relaunching."),
+                .init("Cleaner login controls with a properly spaced keyboard dismissal."),
+                .init("Disabled local password authentication is hidden from sign-in."),
+                .init("Tab bar stays compact during bottom-edge bounce.")
             ]
         ),
         ReleaseNote(

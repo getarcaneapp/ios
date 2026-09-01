@@ -10,11 +10,13 @@ struct Arcane_MobileApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @State private var clientManager = ArcaneClientManager()
+    @State private var connectionProfileStore = ConnectionProfileStore()
     @State private var showsLaunchSplash =
         UserDefaults.standard.object(forKey: "arcane.launchAnimationEnabled") as? Bool ?? true
     private var pinnedStore = PinnedItemsStore.shared
     private var resourceMutationStore = ResourceMutationStore.shared
     private var imageUpdateCountStore = ImageUpdateCountStore.shared
+    private var activityHistoryMutationStore = ActivityHistoryMutationStore.shared
     private let whatsNewEnvironment = ReleaseNotes.makeWhatsNewEnvironment()
     @AppStorage("accentColorHex") private var accentColorHex = ""
 
@@ -29,9 +31,11 @@ struct Arcane_MobileApp: App {
         WindowGroup {
             ContentView()
                 .environment(clientManager)
+                .environment(connectionProfileStore)
                 .environment(pinnedStore)
                 .environment(resourceMutationStore)
                 .environment(imageUpdateCountStore)
+                .environment(activityHistoryMutationStore)
                 .environment(\.isLaunchSplashPresented, showsLaunchSplash)
                 .environment(\.whatsNew, whatsNewEnvironment)
                 .appAccentColor(accentColorHex.isEmpty ? nil : accentColor)
@@ -81,6 +85,7 @@ struct Arcane_MobileApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
+                        connectionProfileStore.refreshFromICloud()
                         Task { @MainActor in
                             ReviewPrompter.shared.maybePromptIfDue()
                         }

@@ -3,6 +3,7 @@ import Arcane
 
 struct ActivitiesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ActivityHistoryMutationStore.self) private var historyMutationStore
 
     @State private var store = ActivityCenterStore()
     @State private var showClearConfirm = false
@@ -171,11 +172,15 @@ struct ActivitiesView: View {
         ) {
             Task {
                 if let result = await store.clearHistory(environmentIDs: clearableEnvironmentIDs) {
+                    historyMutationStore.recordClear(
+                        environmentIDs: result.clearedEnvironmentIDs
+                    )
                     var message = "Cleared \(result.deleted) completed activit\(result.deleted == 1 ? "y" : "ies")."
                     if result.failed > 0 {
                         message += " \(result.failed) environment\(result.failed == 1 ? "" : "s") could not be cleared."
                     }
                     showToast(.success(message))
+                    await store.load(refresh: true)
                 }
             }
         }

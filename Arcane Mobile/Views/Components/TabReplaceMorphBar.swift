@@ -17,6 +17,7 @@ struct TabReplaceMorphBar: View {
     let store: TabBarMorphStore
     var accentColor: Color = .accentColor
     var indicatorMotion: TabIndicatorMotion = .straight
+    var isCompact: Bool = false
     let pinnedTabs: [AppTab]
     /// The tab the user long-pressed to replace; nil collapses the callout.
     @Binding var swapTarget: AppTab?
@@ -48,7 +49,8 @@ struct TabReplaceMorphBar: View {
             store: store,
             onLongPressTab: onLongPressTab,
             accentColor: accentColor,
-            indicatorMotion: indicatorMotion
+            indicatorMotion: indicatorMotion,
+            isCompact: isCompact
         )
         .onGeometryChange(for: CGSize.self) { $0.size } action: { newValue in
             guard newValue.width > 0, newValue.height > 0 else { return }

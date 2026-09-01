@@ -9,6 +9,7 @@ enum LoginMode {
 
 struct LoginView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ConnectionProfileStore.self) private var profileStore
     @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
     @AppStorage("accentColorHex") private var accentColorHex: String = ""
     var mode: LoginMode
@@ -16,16 +17,26 @@ struct LoginView: View {
     @State private var serverURL: String = ""
     @State private var username: String = ""
     @State private var password: String = ""
+    @State private var syncSignInWithICloud = false
     @State private var recoveryCode: String = ""
     @State private var showSetup: Bool = false
+    @State private var showsConnectionProfiles = false
 
     @State private var showsPasswordForm: Bool = false
+    @State private var pendingPasswordCredentialChange: PendingPasswordCredentialChange?
     @State private var logoAppeared: Bool = false
     @FocusState private var focusedField: Field?
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private enum Field: Hashable {
         case serverURL, username, password, recoveryCode
+    }
+
+    private struct PendingPasswordCredentialChange {
+        let serverURL: String
+        let username: String
+        let password: String
+        let shouldSync: Bool
     }
 
     private var isSetupMode: Bool { mode == .setup || showSetup }
@@ -35,10 +46,10 @@ struct LoginView: View {
     }
 
     // When OIDC is enabled, the password form is hidden behind a disclosure
-    // so the provider button is the primary action. The user can still reveal
-    // it to sign in locally (e.g. admin fallback).
+    // so the provider button is the primary action. Servers can remove the
+    // local password path entirely through their public auth settings.
     private var shouldShowPasswordFields: Bool {
-        !manager.isOIDCAvailable || showsPasswordForm
+        manager.isLocalAuthAvailable && (!manager.isOIDCAvailable || showsPasswordForm)
     }
 
     // The user's chosen accent color from Settings, falling back to the
@@ -82,6 +93,11 @@ struct LoginView: View {
             .padding(.vertical, 24)
             .frame(maxWidth: .infinity)
             .containerRelativeFrame(.vertical, alignment: .center) { length, _ in length }
+            .background {
+                Color.clear
+                    .contentShape(.rect)
+                    .onTapGesture(perform: dismissKeyboard)
+            }
         }
         .scrollBounceBehavior(.basedOnSize)
         .scrollDismissesKeyboard(.interactively)
@@ -89,6 +105,26 @@ struct LoginView: View {
             if manager.pendingMFAChallenge == nil {
                 demoBanner
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if focusedField != nil {
+                Button("Done", action: dismissKeyboard)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            }
+        }
+        .sheet(isPresented: $showsConnectionProfiles) {
+            NavigationStack {
+                ConnectionProfilesView(suggestedServerURL: serverURL) { profile in
+                    connect(using: profile)
+                }
+            }
+            .toastHost(reservesTabBarSpace: false)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .background(
             ZStack {
@@ -113,8 +149,12 @@ struct LoginView: View {
         .animation(Motion.state, value: manager.isLoading)
         .animation(Motion.entrance, value: manager.pendingMFAChallenge)
         .animation(Motion.entrance, value: manager.isOIDCAvailable)
+        .animation(Motion.entrance, value: manager.isLocalAuthAvailable)
         .onAppear {
             serverURL = manager.serverURL
+            if !isSetupMode {
+                loadSyncedCredential(for: profileStore.profile(matching: manager.serverURL))
+            }
         }
         .onChange(of: manager.isStartingDemo) { _, isStarting in
             if isStarting { focusedField = nil }
@@ -123,6 +163,15 @@ struct LoginView: View {
             // Capabilities resolve after the initial focus fires; drop the
             // keyboard if the fields it targeted just went behind OIDC.
             if !shows { focusedField = nil }
+        }
+        .onChange(of: profileStore.syncedCredentialProfileIDs) { previousIDs, currentIDs in
+            guard !isSetupMode,
+                  username.isEmpty,
+                  password.isEmpty,
+                  let profile = profileStore.profile(matching: manager.serverURL),
+                  !previousIDs.contains(profile.id),
+                  currentIDs.contains(profile.id) else { return }
+            loadSyncedCredential(for: profile)
         }
         .task(id: oidcRefreshTaskID) {
             guard !isSetupMode, !manager.serverURL.isEmpty else { return }
@@ -144,7 +193,11 @@ struct LoginView: View {
             } else if manager.pendingMFAChallenge != nil {
                 focusedField = .recoveryCode
             } else if shouldShowPasswordFields {
-                focusedField = .username
+                if username.isEmpty {
+                    focusedField = .username
+                } else if password.isEmpty {
+                    focusedField = .password
+                }
             }
         }
     }
@@ -293,11 +346,29 @@ struct LoginView: View {
             }
             .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
 
-            Text("Include the scheme for a local server — http://192.168.1.50:3000")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
+            Button {
+                focusedField = nil
+                showsConnectionProfiles = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.crop.rectangle.stack.fill")
+                        .foregroundStyle(brandColor)
+                        .frame(width: 24)
+                    Text("Connection Profiles")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
+            .accessibilityHint("Opens saved Arcane server profiles")
         }
     }
 
@@ -329,6 +400,13 @@ struct LoginView: View {
                 .focused($focusedField, equals: .password)
                 .submitLabel(.go)
                 .onSubmit { signIn() }
+            }
+
+            Divider().padding(.leading, 16)
+
+            FieldRow(icon: "icloud", label: "Sync Sign-In with iCloud") {
+                Toggle("Sync Sign-In with iCloud", isOn: $syncSignInWithICloud)
+                    .tint(brandColor)
             }
         }
         .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
@@ -420,7 +498,7 @@ struct LoginView: View {
     // row underneath — the old stack put three full-width slabs in a column.
     @ViewBuilder
     private var signInActions: some View {
-        if manager.isOIDCAvailable && !showsPasswordForm {
+        if manager.isOIDCAvailable && (!manager.isLocalAuthAvailable || !showsPasswordForm) {
             primaryButton(
                 "Continue with \(providerDisplayName)",
                 icon: "key.fill",
@@ -428,7 +506,7 @@ struct LoginView: View {
                 action: signInWithOIDC
             )
             .disabled(manager.isLoading || manager.isOIDCSigningIn)
-        } else {
+        } else if manager.isLocalAuthAvailable {
             primaryButton(
                 "Sign In",
                 icon: "person.fill.checkmark",
@@ -446,7 +524,7 @@ struct LoginView: View {
                 action: signInWithPasskey
             )
 
-            if manager.isOIDCAvailable {
+            if manager.isOIDCAvailable && manager.isLocalAuthAvailable {
                 if showsPasswordForm {
                     secondaryButton(
                         providerDisplayName,
@@ -491,6 +569,7 @@ struct LoginView: View {
         Button("Back to Sign In") {
             focusedField = nil
             recoveryCode = ""
+            pendingPasswordCredentialChange = nil
             manager.cancelPendingMFA()
         }
         .buttonStyle(.borderless)
@@ -499,7 +578,7 @@ struct LoginView: View {
     }
 
     private var providerDisplayName: String {
-        let name = manager.oidcInfo?.providerName ?? ""
+        let name = manager.loginCapabilities?.oidcProviderName ?? ""
         return name.isEmpty ? "OIDC" : name
     }
 
@@ -600,30 +679,71 @@ struct LoginView: View {
     private func connectToServer() {
         focusedField = nil
         manager.configure(serverURL: serverURL)
+        guard manager.errorMessage == nil else { return }
+        serverURL = manager.serverURL
+        do {
+            let profile = try profileStore.saveConnectedServer(manager.serverURL)
+            loadSyncedCredential(for: profile)
+        } catch {
+            loadSyncedCredential(for: nil)
+            showToast(.info("Connected server wasn't saved as a profile"))
+        }
+        withAnimation(Motion.entrance) { showSetup = false }
+    }
+
+    private func dismissKeyboard() {
+        focusedField = nil
+    }
+
+    private func connect(using profile: ConnectionProfile) {
+        focusedField = nil
+        serverURL = profile.serverURL
+        manager.configure(serverURL: profile.serverURL)
+        guard manager.errorMessage == nil else { return }
+        loadSyncedCredential(for: profile)
         withAnimation(Motion.entrance) { showSetup = false }
     }
 
     private func signIn() {
+        guard manager.isLocalAuthAvailable else { return }
         focusedField = nil
-        Task { await manager.login(username: username, password: password) }
+        let pendingChange = PendingPasswordCredentialChange(
+            serverURL: manager.serverURL,
+            username: username,
+            password: password,
+            shouldSync: syncSignInWithICloud
+        )
+        pendingPasswordCredentialChange = pendingChange
+        Task {
+            await manager.login(username: pendingChange.username, password: pendingChange.password)
+            if manager.authState == .authenticated {
+                pendingPasswordCredentialChange = nil
+                applyPasswordCredentialChange(pendingChange)
+            } else if manager.pendingMFAChallenge == nil {
+                pendingPasswordCredentialChange = nil
+            }
+        }
     }
 
     private func revealPasswordForm() {
+        guard manager.isLocalAuthAvailable else { return }
         focusedField = nil
         withAnimation(Motion.entrance) { showsPasswordForm = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            focusedField = .username
+            focusedField = username.isEmpty ? .username : (password.isEmpty ? .password : nil)
         }
     }
 
     private func signInWithOIDC() {
         focusedField = nil
+        pendingPasswordCredentialChange = nil
         let anchor = AuthenticationPresentationAnchorProvider.current()
         Task { await manager.loginWithOIDC(anchor: anchor) }
     }
 
     private func signInWithPasskey() {
         focusedField = nil
+        pendingPasswordCredentialChange = nil
         let anchor = AuthenticationPresentationAnchorProvider.current()
         Task { await manager.loginWithPasskey(anchor: anchor) }
     }
@@ -631,12 +751,67 @@ struct LoginView: View {
     private func completeMFAWithPasskey() {
         focusedField = nil
         let anchor = AuthenticationPresentationAnchorProvider.current()
-        Task { await manager.completePendingMFAWithPasskey(anchor: anchor) }
+        let pendingChange = pendingPasswordCredentialChange
+        Task {
+            await manager.completePendingMFAWithPasskey(anchor: anchor)
+            if let pendingChange, manager.authState == .authenticated {
+                pendingPasswordCredentialChange = nil
+                applyPasswordCredentialChange(pendingChange)
+            }
+        }
     }
 
     private func completeMFAWithRecoveryCode() {
         focusedField = nil
-        Task { await manager.completePendingMFAWithRecoveryCode(recoveryCode) }
+        let pendingChange = pendingPasswordCredentialChange
+        Task {
+            await manager.completePendingMFAWithRecoveryCode(recoveryCode)
+            if let pendingChange, manager.authState == .authenticated {
+                pendingPasswordCredentialChange = nil
+                applyPasswordCredentialChange(pendingChange)
+            }
+        }
+    }
+
+    private func loadSyncedCredential(for profile: ConnectionProfile?) {
+        pendingPasswordCredentialChange = nil
+        username = ""
+        password = ""
+        syncSignInWithICloud = false
+        showsPasswordForm = false
+
+        guard let profile else { return }
+        do {
+            guard let credential = try profileStore.syncedCredential(for: profile) else { return }
+            username = credential.username
+            password = credential.password
+            syncSignInWithICloud = true
+            showsPasswordForm = true
+        } catch {
+            showToast(.error(error.localizedDescription))
+        }
+    }
+
+    private func applyPasswordCredentialChange(_ pendingChange: PendingPasswordCredentialChange) {
+        guard manager.authState == .authenticated else { return }
+        guard let currentURL = try? ConnectionProfileSync.normalizedServerURL(manager.serverURL),
+              let attemptedURL = try? ConnectionProfileSync.normalizedServerURL(pendingChange.serverURL),
+              currentURL == attemptedURL else { return }
+
+        do {
+            let profile = try profileStore.saveConnectedServer(pendingChange.serverURL)
+            if pendingChange.shouldSync {
+                try profileStore.saveSyncedCredential(
+                    for: profile,
+                    username: pendingChange.username,
+                    password: pendingChange.password
+                )
+            } else {
+                try profileStore.removeSyncedCredential(for: profile)
+            }
+        } catch {
+            showToast(.error(error.localizedDescription))
+        }
     }
 }
 

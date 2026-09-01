@@ -114,6 +114,18 @@ struct AnimatedTabSelectionTests {
     }
 
     @MainActor
+    @Test
+    func compactGlassBarRendersAsOneSurface() throws {
+        let expanded = try renderedMorphingBar(isCompact: false)
+        let compact = try renderedMorphingBar(isCompact: true)
+
+        #expect(expanded.size == CGSize(width: 390, height: 100))
+        #expect(compact.size == expanded.size)
+        Attachment.record(expanded, named: "morphing-tab-bar-expanded", as: .png)
+        Attachment.record(compact, named: "morphing-tab-bar-compact", as: .png)
+    }
+
+    @MainActor
     private func renderedStrip(colorScheme: ColorScheme) throws -> UIImage {
         let visualTabs = [
             tabs[0],
@@ -144,6 +156,25 @@ struct AnimatedTabSelectionTests {
         .padding(20)
         .background(Color(uiColor: .systemGroupedBackground))
         .environment(\.colorScheme, colorScheme)
+
+        let renderer = ImageRenderer(content: fixture)
+        renderer.scale = 3
+        return try #require(renderer.uiImage)
+    }
+
+    @MainActor
+    private func renderedMorphingBar(isCompact: Bool) throws -> UIImage {
+        let fixture = MorphingTabBar(
+            tabs: tabs,
+            selectedID: .constant("dashboard"),
+            store: TabBarMorphStore.shared,
+            onLongPressTab: { _ in },
+            accentColor: .orange,
+            isCompact: isCompact
+        )
+        .frame(width: 390, height: 100, alignment: .bottom)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .environment(\.colorScheme, .dark)
 
         let renderer = ImageRenderer(content: fixture)
         renderer.scale = 3

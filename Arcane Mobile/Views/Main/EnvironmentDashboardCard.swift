@@ -1,6 +1,26 @@
 import SwiftUI
 import Arcane
 
+nonisolated enum DashboardVersionBadgeFormatter {
+    static func arcane(
+        displayVersion: String,
+        currentTag: String?,
+        currentVersion: String
+    ) -> String {
+        var raw = displayVersion
+        if raw.isEmpty { raw = currentTag ?? "" }
+        if raw.isEmpty { raw = currentVersion }
+        guard !raw.isEmpty else { return "—" }
+        return raw.hasPrefix("v") ? raw : "v\(raw)"
+    }
+
+    static func dockerAPI(_ rawValue: String?) -> String {
+        guard let rawValue else { return "—" }
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "—" : trimmed
+    }
+}
+
 struct EnvironmentDashboardCard: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environment: Arcane.Environment
@@ -49,10 +69,10 @@ struct EnvironmentDashboardCard: View {
                         Text(environment.name ?? environment.id)
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
-                        if let versionInfo = streamSnapshot?.versionInfo {
-                            arcaneVersionBadge(versionInfo)
-                        }
                     }
+
+                    versionBadgesRow
+
                     Text(cardStatus.text)
                         .font(.caption2)
                         .foregroundStyle(
@@ -290,6 +310,39 @@ struct EnvironmentDashboardCard: View {
 
     // MARK: - Action items & version badge
 
+    private var versionBadgesRow: some View {
+        HStack(spacing: 6) {
+            if let versionInfo = streamSnapshot?.versionInfo {
+                arcaneVersionBadge(versionInfo)
+            } else if let currentVersion = cachedCard?.versionInfo?.currentVersion,
+                      !currentVersion.isEmpty {
+                let label = DashboardVersionBadgeFormatter.arcane(
+                    displayVersion: "",
+                    currentTag: nil,
+                    currentVersion: currentVersion
+                )
+                versionBadgeBody("Arcane \(label)", showsUpdate: false)
+                    .accessibilityLabel("Arcane \(label)")
+            } else {
+                versionBadgeBody("Arcane —", showsUpdate: false)
+                    .accessibilityLabel("Arcane version unavailable")
+            }
+
+            versionBadgeBody(
+                "Docker API \(DashboardVersionBadgeFormatter.dockerAPI(dockerInfo?.apiVersion))",
+                showsUpdate: false
+            )
+            .accessibilityLabel(
+                dockerInfo == nil
+                    ? "Docker API version unavailable"
+                    : "Docker API version \(DashboardVersionBadgeFormatter.dockerAPI(dockerInfo?.apiVersion))"
+            )
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 2)
+    }
+
     private func actionItemsRow(_ items: [ActionItem]) -> some View {
         let isVisible = !items.isEmpty
         let hasCritical = items.contains { $0.severity == .critical }
@@ -330,21 +383,7 @@ struct EnvironmentDashboardCard: View {
     @ViewBuilder
     private func arcaneVersionBadge(_ info: VersionInfo) -> some View {
         let label = Self.versionBadgeText(info)
-        let badge = HStack(spacing: 4) {
-            Text(label)
-                .font(.caption2.weight(.medium))
-                .monospaced()
-            if info.updateAvailable {
-                Circle()
-                    .fill(.orange)
-                    .frame(width: 6, height: 6)
-                    .accessibilityHidden(true)
-            }
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .foregroundStyle(.secondary)
-        .background(.secondary.opacity(0.12), in: Capsule())
+        let badge = versionBadgeBody("Arcane \(label)", showsUpdate: info.updateAvailable)
         .accessibilityLabel(info.updateAvailable ? "Arcane \(label), update available" : "Arcane \(label)")
 
         if info.updateAvailable, canUpgrade {
@@ -361,11 +400,31 @@ struct EnvironmentDashboardCard: View {
     }
 
     private static func versionBadgeText(_ info: VersionInfo) -> String {
-        var raw = info.displayVersion
-        if raw.isEmpty { raw = info.currentTag ?? "" }
-        if raw.isEmpty { raw = info.currentVersion }
-        guard !raw.isEmpty else { return "unknown" }
-        return raw.hasPrefix("v") ? raw : "v\(raw)"
+        DashboardVersionBadgeFormatter.arcane(
+            displayVersion: info.displayVersion,
+            currentTag: info.currentTag,
+            currentVersion: info.currentVersion
+        )
+    }
+
+    private func versionBadgeBody(_ text: String, showsUpdate: Bool) -> some View {
+        HStack(spacing: 4) {
+            Text(text)
+                .font(.caption2.weight(.medium))
+                .monospaced()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            if showsUpdate {
+                Circle()
+                    .fill(.orange)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .foregroundStyle(.secondary)
+        .background(.secondary.opacity(0.12), in: Capsule())
     }
 
     private func percentShort(_ v: Double?) -> String {

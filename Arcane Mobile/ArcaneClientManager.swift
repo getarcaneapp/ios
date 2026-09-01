@@ -60,6 +60,32 @@ enum ArcaneMobileOIDC {
     static let redirectURI = "arcane-mobile://oidc-callback"
 }
 
+nonisolated struct LoginCapabilities: Equatable, Sendable {
+    let localAuthEnabled: Bool
+    let oidcEnabled: Bool
+    let oidcProviderName: String
+    let oidcProviderLogoURL: String
+
+    init(publicSettings: [PublicSetting]) {
+        let values = Dictionary(
+            publicSettings.map { ($0.key, $0.value) },
+            uniquingKeysWith: { _, new in new }
+        )
+        let localAuthValue = values["authLocalEnabled"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        // Older servers do not publish authLocalEnabled, so only an explicit
+        // false disables the password path.
+        localAuthEnabled = localAuthValue != "false"
+        oidcEnabled = values["oidcEnabled"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == "true"
+        oidcProviderName = values["oidcProviderName"] ?? ""
+        oidcProviderLogoURL = values["oidcProviderLogoUrl"] ?? ""
+    }
+}
+
 @Observable
 final class ArcaneClientManager {
     // MARK: - Persisted config
@@ -76,13 +102,8 @@ final class ArcaneClientManager {
     var isLoading: Bool = false
     var errorMessage: String?
 
-    // MARK: - OIDC
-    struct OIDCDisplayInfo: Sendable {
-        let enabled: Bool
-        let providerName: String
-        let providerLogoUrl: String
-    }
-    var oidcInfo: OIDCDisplayInfo?
+    // MARK: - Login capabilities
+    var loginCapabilities: LoginCapabilities?
     var isOIDCSigningIn: Bool = false
 
     // MARK: - Passkeys and post-2.6 features
@@ -202,7 +223,7 @@ final class ArcaneClientManager {
         cacheSessionIdentity = UUID().uuidString
         configureClient(for: parsed, force: true)
         authState = .login
-        oidcInfo = nil
+        loginCapabilities = nil
         mirrorToAppGroup()
         Task { await ResponseCache.shared.invalidateAll() }
         Task { await refreshLoginCapabilities() }
@@ -216,15 +237,15 @@ final class ArcaneClientManager {
     /// is still looking at the same configured client.
     func refreshLoginCapabilities() async {
         guard let capturedClient = client else {
-            oidcInfo = nil
+            loginCapabilities = nil
             return
         }
         let generation = clientGeneration
 
-        let nextOIDCInfo = await fetchOIDCDisplayInfoIfAvailable(using: capturedClient)
+        let nextCapabilities = await fetchLoginCapabilitiesIfAvailable(using: capturedClient)
 
         guard generation == clientGeneration else { return }
-        oidcInfo = nextOIDCInfo
+        loginCapabilities = nextCapabilities
     }
 
     func retryConnectionBootstrapIfNeeded() async {
@@ -245,7 +266,11 @@ final class ArcaneClientManager {
     }
 
     var isOIDCAvailable: Bool {
-        oidcInfo?.enabled == true
+        loginCapabilities?.oidcEnabled == true
+    }
+
+    var isLocalAuthAvailable: Bool {
+        loginCapabilities?.localAuthEnabled ?? true
     }
 
     var supportsActivities: Bool {
@@ -851,25 +876,13 @@ final class ArcaneClientManager {
         configuredClientURL = url
     }
 
-    private func fetchOIDCDisplayInfo(using client: ArcaneClient) async throws -> OIDCDisplayInfo {
-        // The login page has no auth yet, so use the public settings endpoint
-        // which exposes oidcEnabled + provider display fields.
-        let data = try await client.transport.rawRequest(
-            "environments/0/settings/public",
-            body: Optional<String>.none,
-            authorized: false
-        )
-        let settings = try JSONDecoder().decode([PublicSetting].self, from: data)
-        let dict = Dictionary(settings.map { ($0.key, $0.value) }, uniquingKeysWith: { _, new in new })
-        return OIDCDisplayInfo(
-            enabled: dict["oidcEnabled"]?.lowercased() == "true",
-            providerName: dict["oidcProviderName"] ?? "",
-            providerLogoUrl: dict["oidcProviderLogoUrl"] ?? ""
-        )
+    private func fetchLoginCapabilities(using client: ArcaneClient) async throws -> LoginCapabilities {
+        let settings = try await client.settings.getPublicSettings(envID: .localDocker)
+        return LoginCapabilities(publicSettings: settings)
     }
 
-    private func fetchOIDCDisplayInfoIfAvailable(using client: ArcaneClient) async -> OIDCDisplayInfo? {
-        try? await fetchOIDCDisplayInfo(using: client)
+    private func fetchLoginCapabilitiesIfAvailable(using client: ArcaneClient) async -> LoginCapabilities? {
+        try? await fetchLoginCapabilities(using: client)
     }
 
     private func applyAuthenticationResult(

@@ -104,6 +104,7 @@ private enum DashboardEnvironmentLiveState: Sendable, Equatable {
 struct DashboardView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ImageUpdateCountStore.self) private var imageUpdateCountStore
+    @SwiftUI.Environment(ActivityHistoryMutationStore.self) private var historyMutationStore
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(FleetStore.self) private var fleet
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
@@ -171,7 +172,18 @@ struct DashboardView: View {
     }
 
     private var imageUpdatesTotal: Int? {
-        streamStore.aggregate?.imageUpdates ?? supplementalImageUpdatesTotal
+        let sharedTotal = imageUpdateCountStore.total(
+            client: manager.client,
+            userID: manager.currentUser?.id,
+            environmentIDs: allEnvironments.filter(\.enabled).map {
+                EnvironmentID(rawValue: $0.id)
+            }
+        )
+        return DashboardImageUpdateCountResolver.resolve(
+            shared: sharedTotal,
+            streamed: streamStore.aggregate?.imageUpdates,
+            supplemental: supplementalImageUpdatesTotal
+        )
     }
 
     private var isNavigationRoot: Bool {
@@ -264,9 +276,12 @@ struct DashboardView: View {
                 }
             }
             .sheet(isPresented: $showUpdateAll) {
-                UpdateAllEnvironmentsView(environmentCount: rawEnvironmentCount)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
+                NavigationStack {
+                    UpdateAllEnvironmentsView(environmentCount: rawEnvironmentCount)
+                }
+                .presentationDetents([.medium, .large])
+                .presentationContentInteraction(.resizes)
+                .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showPruneSheet) {
                 SystemPruneView(environmentID: envID)
@@ -371,6 +386,13 @@ struct DashboardView: View {
                 if supported, isDashboardVisible {
                     fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: true)
                 }
+            }
+            .onChange(of: historyMutationStore.latestClear) { _, event in
+                guard let event else { return }
+                failedActivities = ActivityHistoryClearFilter.retainingActiveActivities(
+                    in: failedActivities,
+                    clearedEnvironmentIDs: event.environmentIDs
+                )
             }
         }
         .onChange(of: isNavigationRoot, initial: true) { _, isRoot in
@@ -858,8 +880,16 @@ struct DashboardView: View {
             await streamStore.refresh()
         }
 
-        let activities = await loadFailedWork()
+        let clearSequence = historyMutationStore.latestClear?.sequence
+        var activities = await loadFailedWork()
         if !Task.isCancelled {
+            if let clearEvent = historyMutationStore.latestClear,
+               clearEvent.sequence != clearSequence {
+                activities = ActivityHistoryClearFilter.retainingActiveActivities(
+                    in: activities,
+                    clearedEnvironmentIDs: clearEvent.environmentIDs
+                )
+            }
             failedActivities = activities
         }
         publishWidgetSnapshot()
@@ -1163,6 +1193,12 @@ struct DashboardView: View {
             allEnvironments.count
         )
         environments = dashboardEnvironments(from: allEnvironments)
+    }
+}
+
+nonisolated enum DashboardImageUpdateCountResolver {
+    static func resolve(shared: Int?, streamed: Int?, supplemental: Int?) -> Int? {
+        shared ?? streamed ?? supplemental
     }
 }
 

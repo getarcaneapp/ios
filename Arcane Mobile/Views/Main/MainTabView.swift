@@ -15,6 +15,7 @@ struct MainTabView: View {
     @State private var router = QuickActionRouter.shared
     @State private var morphStore = TabBarMorphStore.shared
     @State private var fleetStore = FleetStore()
+    @State private var bottomBarScrollStore = BottomBarScrollStore()
     @AppStorage("accentColorHex") private var accentColorHex = ""
     @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
     @AppStorage(TabIndicatorMotion.storageKey) private var tabIndicatorMotion: TabIndicatorMotion = .straight
@@ -108,6 +109,13 @@ struct MainTabView: View {
             : FloatingBottomBarMetrics.rootContentClearance
     }
 
+    private var isBottomBarCompact: Bool {
+        !sidebarNavigationEnabled
+            && !morphStore.isMorphed
+            && swapTarget == nil
+            && bottomBarScrollStore.isCompact
+    }
+
     @ViewBuilder
     private var coreTabView: some View {
         // The native tab bar is hidden per-tab (`.toolbar(.hidden, for: .tabBar)`)
@@ -119,6 +127,10 @@ struct MainTabView: View {
                     TabNavigationContainer(tabID: tab.id, morphStore: morphStore) {
                         appTabDestination(tab, manager: manager, selectedTab: $selectedTab)
                     }
+                    .tracksBottomBarScroll(
+                        isActive: selectedTab == tab.id,
+                        store: bottomBarScrollStore
+                    )
                     .environment(\.currentTabID, tab.id)
                     .toolbar(.hidden, for: .tabBar)
                     .id(tab.isEnvironmentScoped ? "\(tab.id)-\(manager.activeEnvironmentID.rawValue)" : tab.id)
@@ -126,6 +138,10 @@ struct MainTabView: View {
             }
             Tab("Settings", systemImage: "gearshape.fill", value: "settings") {
                 SettingsView(excludedTabs: Set(visibleTabs))
+                    .tracksBottomBarScroll(
+                        isActive: selectedTab == AppTab.settings.id,
+                        store: bottomBarScrollStore
+                    )
                     .environment(\.currentTabID, "settings")
                     .toolbar(.hidden, for: .tabBar)
             }
@@ -162,6 +178,7 @@ struct MainTabView: View {
                     store: morphStore,
                     accentColor: accentColor,
                     indicatorMotion: tabIndicatorMotion,
+                    isCompact: isBottomBarCompact,
                     pinnedTabs: store.pinnedTabs,
                     swapTarget: $swapTarget,
                     availableTabs: availableTabSet,
@@ -179,7 +196,8 @@ struct MainTabView: View {
                 store: morphStore,
                 onLongPressTab: handleLongPressTab,
                 accentColor: accentColor,
-                indicatorMotion: tabIndicatorMotion
+                indicatorMotion: tabIndicatorMotion,
+                isCompact: isBottomBarCompact
             )
             .padding(.bottom, 18)
             .frame(maxHeight: .infinity, alignment: .bottom)
@@ -289,10 +307,12 @@ struct MainTabView: View {
             .onChange(of: morphStore.popToRootToken) { _, _ in
                 guard !sidebarNavigationEnabled else { return }
                 guard let tabID = morphStore.popToRootTabID, tabID == selectedTab || tabID == "settings" else { return }
+                bottomBarScrollStore.reset()
                 popVisibleNavigationStacksToRoot()
                 morphStore.clearTab(tabID)
             }
             .onChange(of: selectedTab) { oldValue, newValue in
+                bottomBarScrollStore.reset()
                 if sidebarNavigationEnabled {
                     morphStore.clearTab(oldValue)
                     isSidebarDestinationRoot = true
@@ -300,6 +320,11 @@ struct MainTabView: View {
                 }
                 morphStore.activeTabID = newValue
                 UserDefaults.standard.set(newValue, forKey: "arcane.lastSelectedTabID")
+            }
+            .onChange(of: morphStore.isMorphed) { _, isMorphed in
+                if isMorphed {
+                    bottomBarScrollStore.reset()
+                }
             }
             .onChange(of: router.pendingTabID) { _, newValue in
                 guard let target = newValue else { return }
@@ -310,6 +335,7 @@ struct MainTabView: View {
                 ensureSelectedTabVisible()
             }
             .onChange(of: sidebarNavigationEnabled) { _, _ in
+                bottomBarScrollStore.reset()
                 swapTarget = nil
                 isSidebarPresented = false
                 isSidebarDestinationRoot = true
@@ -322,6 +348,7 @@ struct MainTabView: View {
                 morphStore.activeTabID = selectedTab
             }
             .onAppear {
+                bottomBarScrollStore.reset()
                 if let target = router.pendingTabID {
                     routeToDestination(target)
                     router.pendingTabID = nil
@@ -340,6 +367,7 @@ struct MainTabView: View {
     private func handleLongPressTab(_ idx: Int) {
         let tabs = visibleTabs
         guard idx >= 0, idx < tabs.count else { return }
+        bottomBarScrollStore.reset()
         HapticsManager.medium()
         swapTarget = tabs[idx]
     }
@@ -394,6 +422,48 @@ struct MainTabView: View {
         if !allowed.contains(selectedTab) {
             selectedTab = allowedDestinationIDs.first ?? AppTab.settings.id
         }
+    }
+}
+
+// MARK: - Scroll-driven tab-bar compaction
+
+private struct BottomBarScrollTrackingModifier: ViewModifier {
+    let isActive: Bool
+    let store: BottomBarScrollStore
+
+    func body(content: Content) -> some View {
+        content
+            // This modifier intentionally wraps the page hierarchy rather than
+            // each individual List/ScrollView. SwiftUI binds it to the first
+            // scroll view below the page, which is the root vertical scroller.
+            .onScrollGeometryChange(for: BottomBarScrollSample.self) { geometry in
+                let offset = geometry.contentOffset.y + geometry.contentInsets.top
+                let scrollableHeight = geometry.contentSize.height
+                    + geometry.contentInsets.top
+                    + geometry.contentInsets.bottom
+                let maximumOffset = max(
+                    0,
+                    scrollableHeight - geometry.containerSize.height
+                )
+
+                return BottomBarScrollSample(
+                    verticalOffset: offset.rounded(.towardZero),
+                    maximumVerticalOffset: maximumOffset.rounded(.towardZero),
+                    isVerticallyScrollable: maximumOffset > 1
+                )
+            } action: { _, sample in
+                guard isActive else { return }
+                store.observe(sample)
+            }
+    }
+}
+
+private extension View {
+    func tracksBottomBarScroll(
+        isActive: Bool,
+        store: BottomBarScrollStore
+    ) -> some View {
+        modifier(BottomBarScrollTrackingModifier(isActive: isActive, store: store))
     }
 }
 

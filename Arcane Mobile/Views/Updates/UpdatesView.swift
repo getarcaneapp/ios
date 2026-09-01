@@ -8,6 +8,8 @@ struct UpdatesView: View {
     @State private var environments: [Arcane.Environment] = []
     @State private var pickerMode: PickerMode?
     @State private var navTarget: NavTarget?
+    @State private var showsUpdaterSheet = false
+    @State private var initialUpdaterEnvironmentID: String?
     @State private var environmentLoadError: String?
 
     /// True when this page is PUSHED inside another tab's stack (e.g. from
@@ -38,17 +40,18 @@ struct UpdatesView: View {
     var body: some View {
         AllEnvironmentsImageUpdatesView()
             .navigationDestination(item: $navTarget) { target in
-                switch target.mode {
-                case .runUpdater:
-                    UpdaterRunView(environmentID: EnvironmentID(rawValue: target.envID))
-                case .history:
-                    UpdaterHistoryView(environmentID: EnvironmentID(rawValue: target.envID))
-                }
+                UpdaterHistoryView(environmentID: EnvironmentID(rawValue: target.envID))
+            }
+            .sheet(isPresented: $showsUpdaterSheet) {
+                UpdaterRunSheet(
+                    environments: environments,
+                    initialEnvironmentID: initialUpdaterEnvironmentID
+                )
             }
             .sheet(item: $pickerMode) { mode in
                 NavigationStack {
                     EnvironmentPickerSheet(envs: environments, mode: mode) { env in
-                        navTarget = NavTarget(envID: env.id, mode: mode)
+                        navTarget = NavTarget(envID: env.id)
                         pickerMode = nil
                     }
                 }
@@ -68,8 +71,13 @@ struct UpdatesView: View {
             if let environmentLoadError { showToast(.error(environmentLoadError)) }
             return
         }
+        if mode == .runUpdater {
+            initialUpdaterEnvironmentID = environments.count == 1 ? environments.first?.id : nil
+            showsUpdaterSheet = true
+            return
+        }
         if environments.count == 1, let only = environments.first {
-            navTarget = NavTarget(envID: only.id, mode: mode)
+            navTarget = NavTarget(envID: only.id)
         } else {
             pickerMode = mode
         }
@@ -136,8 +144,7 @@ enum PickerMode: String, Identifiable {
 
 private struct NavTarget: Hashable, Identifiable {
     let envID: String
-    let mode: PickerMode
-    var id: String { "\(envID)-\(mode.rawValue)" }
+    var id: String { envID }
 }
 
 private struct EnvironmentPickerSheet: View {

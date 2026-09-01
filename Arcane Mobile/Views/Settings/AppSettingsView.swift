@@ -31,18 +31,13 @@ struct AppSettingsView: View {
         cacheSizeBytes > 0 ? Int64(cacheSizeBytes).byteString : "Empty"
     }
 
-    private var serverURLText: String {
-        manager.serverURL.isEmpty ? "Not configured" : manager.serverURL
-    }
-
     var body: some View {
         List {
             generalSection
-            activityNotificationsSection
-            serverSection
-            aboutSection
+            notificationsSection
+            connectionsSection
             supportSection
-            // Danger zone — destructive actions stay at the very bottom.
+            aboutSection
             storageSection
         }
         .listStyle(.insetGrouped)
@@ -79,7 +74,6 @@ struct AppSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private var generalSection: some View {
         Section("General") {
             NavigationLink(destination: AppearanceSettingsView()) {
@@ -91,33 +85,25 @@ struct AppSettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private var activityNotificationsSection: some View {
+    private var notificationsSection: some View {
         Section {
-            HStack(spacing: 12) {
+            Picker(selection: $activityToastScopeRawValue) {
+                ForEach(ActivityToastScope.allCases) { scope in
+                    Text(scope.title).tag(scope.rawValue)
+                }
+            } label: {
                 SettingsRow(
                     title: "Activity Toasts",
                     systemImage: "bell.badge.fill",
                     color: .orange
                 )
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Picker("Activity Toasts", selection: $activityToastScopeRawValue) {
-                    ForEach(ActivityToastScope.allCases) { scope in
-                        Text(scope.title).tag(scope.rawValue)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize(horizontal: true, vertical: false)
-                .accessibilityLabel("Activity Toasts")
-                .accessibilityValue(activityToastScope.title)
             }
+            .pickerStyle(.menu)
+
             if manager.supportsMobilePush {
                 Toggle(isOn: pushEnabledBinding) {
                     SettingsRow(
                         title: "Push Notifications",
-                        subtitle: push.isEnabled(for: manager.serverOrigin) ? "Enabled on this device" : nil,
                         systemImage: "iphone.radiowaves.left.and.right",
                         color: .blue
                     )
@@ -125,7 +111,7 @@ struct AppSettingsView: View {
                 .disabled(push.isBusy || !pushAvailable)
             }
         } header: {
-            Text("Activity Notifications")
+            Text("Notifications")
         } footer: {
             Text(notificationsFooter)
         }
@@ -160,25 +146,29 @@ struct AppSettingsView: View {
         ActivityToastScope(rawValue: activityToastScopeRawValue) ?? .userInitiated
     }
 
-    @ViewBuilder
-    private var serverSection: some View {
+    private var connectionsSection: some View {
         Section {
+            NavigationLink(destination: ConnectionProfilesView()) {
+                SettingsRow(
+                    title: "Connection Profiles",
+                    systemImage: "person.crop.rectangle.stack.fill",
+                    color: .indigo
+                )
+            }
             NavigationLink(destination: ServerInfoView()) {
                 SettingsRow(
                     title: "Server Info",
-                    subtitle: serverURLText,
                     systemImage: "server.rack",
                     color: .teal
                 )
             }
         } header: {
-            Text("Server")
+            Text("Connections")
         } footer: {
-            Text("To change servers, sign out from your Account page.")
+            Text("Connection profiles sync through iCloud Keychain. Password sign-in sync is optional; session tokens stay on this device.")
         }
     }
 
-    @ViewBuilder
     private var storageSection: some View {
         Section {
             Button(role: .destructive) {
@@ -198,7 +188,7 @@ struct AppSettingsView: View {
                 }
             }
         } header: {
-            Text("Danger Zone")
+            Text("Storage")
         } footer: {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Cached images and API responses are re-fetched as needed.")
@@ -207,7 +197,6 @@ struct AppSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private var aboutSection: some View {
         Section("About") {
             Button {
@@ -223,11 +212,8 @@ struct AppSettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            if let docsURL = URL(string: "https://getarcane.app") {
-                Link(destination: docsURL) {
-                    SettingsExternalRow(title: "Documentation", systemImage: "globe", color: .blue)
-                }
-                ShareLink(item: docsURL) {
+            if let shareURL = URL(string: "https://getarcane.app") {
+                ShareLink(item: shareURL) {
                     SettingsRow(
                         title: "Share Arcane",
                         systemImage: "square.and.arrow.up",
@@ -241,18 +227,54 @@ struct AppSettingsView: View {
                     SettingsExternalRow(title: "Privacy Policy", systemImage: "hand.raised.fill", color: .gray)
                 }
             }
+            if let coffeeURL = URL(string: "https://buymeacoffee.com/kmendell") {
+                Link(destination: coffeeURL) {
+                    SettingsExternalRow(
+                        title: "Buy Me a Coffee",
+                        systemImage: "cup.and.saucer.fill",
+                        color: .orange
+                    )
+                }
+            }
         }
     }
 
-    @ViewBuilder
     private var supportSection: some View {
         Section("Support") {
-            supportRows
+            NavigationLink(destination: SupportBundleView()) {
+                SettingsRow(
+                    title: "Support Bundle",
+                    systemImage: "doc.text.magnifyingglass",
+                    color: .teal
+                )
+            }
+            if let docsURL = URL(string: "https://getarcane.app") {
+                Link(destination: docsURL) {
+                    SettingsExternalRow(title: "Documentation", systemImage: "globe", color: .blue)
+                }
+            }
+            if let issuesURL = URL(string: "https://github.com/getarcaneapp/ios/issues") {
+                Link(destination: issuesURL) {
+                    SettingsExternalRow(
+                        title: "Report an Issue",
+                        systemImage: "exclamationmark.bubble",
+                        color: .orange
+                    )
+                }
+            }
+            if let discordURL = URL(string: "https://discord.gg/WyXYpdyV3Z") {
+                Link(destination: discordURL) {
+                    SettingsExternalRow(
+                        title: "Join the Discord",
+                        systemImage: "bubble.left.and.bubble.right.fill",
+                        color: .indigo
+                    )
+                }
+            }
         }
     }
 
-    /// Compact replacement for the old "Version" section rows; tapping copies
-    /// the full version string since the rows it replaced were copyable.
+    /// Tapping the bottom footer copies the complete version string.
     private var versionFooter: some View {
         Button {
             UIPasteboard.general.string = "\(appVersionString) (\(appBuildString))"
@@ -272,29 +294,6 @@ struct AppSettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Copy version \(appVersionString), build \(appBuildString)")
-    }
-
-    @ViewBuilder
-    private var supportRows: some View {
-        if let coffeeURL = URL(string: "https://buymeacoffee.com/kmendell") {
-            Link(destination: coffeeURL) {
-                SettingsExternalRow(title: "Buy Me a Coffee", systemImage: "cup.and.saucer.fill", color: .orange)
-            }
-        }
-        if let discordURL = URL(string: "https://discord.gg/WyXYpdyV3Z") {
-            Link(destination: discordURL) {
-                SettingsExternalRow(
-                    title: "Join the Discord",
-                    systemImage: "bubble.left.and.bubble.right.fill",
-                    color: .indigo
-                )
-            }
-        }
-        if let issuesURL = URL(string: "https://github.com/getarcaneapp/ios/issues") {
-            Link(destination: issuesURL) {
-                SettingsExternalRow(title: "Report an Issue", systemImage: "exclamationmark.bubble", color: .orange)
-            }
-        }
     }
 
     private func refreshCacheSize() async {

@@ -38,6 +38,15 @@ struct AllEnvironmentsImageUpdatesView: View {
         }
     }
 
+    private var imageMutationVersion: Int {
+        buckets.reduce(0) { version, bucket in
+            version &+ mutationStore.version(
+                kind: .images,
+                envID: EnvironmentID(rawValue: bucket.id)
+            )
+        }
+    }
+
     var body: some View {
         Group {
             if !hasLoadedOnce && isLoading {
@@ -77,8 +86,11 @@ struct AllEnvironmentsImageUpdatesView: View {
         }
         .navigationTitle("Updates")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $updaterRunTarget) { target in
-            UpdaterRunView(environmentID: EnvironmentID(rawValue: target.envID))
+        .sheet(item: $updaterRunTarget) { target in
+            UpdaterRunSheet(
+                environments: [],
+                initialEnvironmentID: target.envID
+            )
         }
         .sheet(item: $detailTarget) { target in
             NavigationStack {
@@ -95,6 +107,10 @@ struct AllEnvironmentsImageUpdatesView: View {
         .onChange(of: DeploymentActivityStore.shared.isRunning) { _, running in
             guard !running, !updatingKeys.isEmpty else { return }
             updatingKeys.removeAll()
+            Task { await loadAll(refresh: true) }
+        }
+        .onChange(of: imageMutationVersion) {
+            guard hasLoadedOnce, !isLoading else { return }
             Task { await loadAll(refresh: true) }
         }
     }

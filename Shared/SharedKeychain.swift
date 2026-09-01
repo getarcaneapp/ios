@@ -10,6 +10,7 @@ nonisolated enum SharedKeychain {
     static let service = "com.arcane.mobile.tokens"
     /// Team ID prefix is fixed for this app's signing identity.
     static let accessGroup = "4L6GXKX423.com.getarcaneapp.ios.mobile.shared"
+    static let appAccessGroup = "4L6GXKX423.com.getarcaneapp.ios.mobile"
 
     /// The shared-group store — what intents/widgets read, and what the app
     /// migrates into.
@@ -28,7 +29,7 @@ nonisolated enum SharedKeychain {
     /// some systems the entitlement change makes it miss — querying the group
     /// explicitly is the reliable upgrade path.
     static var legacyAppGroupStore: KeychainTokenStore {
-        KeychainTokenStore(service: service, accessGroup: "4L6GXKX423.com.getarcaneapp.ios.mobile")
+        KeychainTokenStore(service: service, accessGroup: appAccessGroup)
     }
 
     static var credentialOrigin: String? {

@@ -50,7 +50,7 @@ struct UpdateAllEnvironmentsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        GeometryReader { proxy in
             ScrollView {
                 VStack(spacing: 32) {
                     if !isAdmin {
@@ -68,14 +68,15 @@ struct UpdateAllEnvironmentsView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
+                .frame(minHeight: proxy.size.height, alignment: .center)
             }
-            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .navigationTitle("Update All")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(doneTitle) { dismiss() }
-                }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .navigationTitle("Update All")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(doneTitle) { dismiss() }
             }
         }
         .interactiveDismissDisabled(phase == .triggering)

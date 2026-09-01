@@ -1,9 +1,96 @@
 import SwiftUI
 import Arcane
 
+struct UpdaterRunSheet: View {
+    @SwiftUI.Environment(\.dismiss) private var dismiss
+
+    let environments: [Arcane.Environment]
+    let initialEnvironmentID: String?
+
+    @State private var selectedEnvironmentID: String?
+
+    init(
+        environments: [Arcane.Environment],
+        initialEnvironmentID: String? = nil
+    ) {
+        self.environments = environments
+        self.initialEnvironmentID = initialEnvironmentID
+        _selectedEnvironmentID = State(initialValue: initialEnvironmentID)
+    }
+
+    var body: some View {
+        NavigationStack {
+            if let selectedEnvironmentID {
+                UpdaterRunView(
+                    environmentID: EnvironmentID(rawValue: selectedEnvironmentID),
+                    showsDismissButton: true
+                )
+                .id(selectedEnvironmentID)
+            } else {
+                environmentPicker
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationContentInteraction(.resizes)
+        .presentationDragIndicator(.visible)
+    }
+
+    private var environmentPicker: some View {
+        Group {
+            if environments.isEmpty {
+                ContentUnavailableView(
+                    "No Environments",
+                    systemImage: "server.rack",
+                    description: Text("Add an environment before running the updater.")
+                )
+            } else {
+                List {
+                    Section {
+                        ForEach(environments) { environment in
+                            Button {
+                                selectedEnvironmentID = environment.id
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(environment.displayName)
+                                            .foregroundStyle(.primary)
+                                        Text(environment.url)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                    }
+                                    Spacer(minLength: 8)
+                                    StatusBadge(status: environment.status)
+                                }
+                                .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } footer: {
+                        Text("Pick an environment to run the container updater on.")
+                    }
+                }
+                .listStyle(.insetGrouped)
+            }
+        }
+        .navigationTitle("Run Updater")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+        }
+    }
+}
+
 struct UpdaterRunView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(ImageUpdateCountStore.self) private var imageUpdateCountStore
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
+    var showsDismissButton = false
 
     private enum Phase: Equatable {
         case starting
@@ -18,43 +105,30 @@ struct UpdaterRunView: View {
     @State private var pollTask: Task<Void, Never>?
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 20) {
-                switch phase {
-                case .starting:
-                    startingHero
-                case .running:
-                    runningHero
-                    if let status = liveStatus {
-                        countersCard(containers: Int(status.updatingContainers), projects: Int(status.updatingProjects))
-                        if !status.containerIds.isEmpty {
-                            idListCard(title: "Containers Updating", icon: "shippingbox.fill", tint: .blue, ids: status.containerIds)
-                        }
-                        if !status.projectIds.isEmpty {
-                            idListCard(title: "Projects Updating", icon: "folder.fill", tint: .purple, ids: status.projectIds)
-                        }
-                    }
-                case .completed(let result):
-                    completedHero(result: result)
-                    resultCountersCard(result: result)
-                    if !result.items.isEmpty {
-                        resultItemsCard(items: result.items)
-                    }
-                case .failed(let message):
-                    ContentUnavailableView(
-                        "Updater Failed",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(message)
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 240)
+        GeometryReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 24) {
+                    FleetUpdateScene(model: sceneModel)
+                    phaseDetails
                 }
+                .frame(maxWidth: 680)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: proxy.size.height, alignment: .center)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 20)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Run Updater")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if showsDismissButton {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(doneTitle) { dismiss() }
+                }
+            }
+        }
+        .interactiveDismissDisabled(phase == .starting)
         .task { await start() }
         .onDisappear {
             pollTask?.cancel()
@@ -62,108 +136,108 @@ struct UpdaterRunView: View {
         }
     }
 
-    // MARK: - Hero cards
+    // MARK: - Update scene
 
-    private var startingHero: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.blue.opacity(0.18))
-                    .frame(width: 96, height: 96)
-                ProgressView()
-                    .controlSize(.large)
-            }
-            .glassEffectCompat(tint: Color.blue.opacity(0.25), in: .circle)
-            VStack(spacing: 6) {
-                Text("Starting…")
-                    .font(.title2.bold())
-                Text("Triggering updater")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+    private var sceneModel: FleetUpdateSceneModel {
+        switch phase {
+        case .starting:
+            return FleetUpdateSceneModel(
+                kind: .starting,
+                title: "Starting the updater",
+                subtitle: "Contacting the selected environment"
+            )
+        case .running:
+            return FleetUpdateSceneModel(
+                kind: .updating,
+                title: "Updating containers",
+                subtitle: runningSubtitle
+            )
+        case .completed(let result):
+            return FleetUpdateSceneModel(
+                kind: result.failed == 0 ? .completed : .warning,
+                title: result.failed == 0 ? "Updater complete" : "Finished with issues",
+                subtitle: completionSubtitle(result)
+            )
+        case .failed(let message):
+            return FleetUpdateSceneModel(
+                kind: .failed,
+                title: "Updater failed",
+                subtitle: message
+            )
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
-    private var runningHero: some View {
-        let subtitle: String = {
-            guard let status = liveStatus else { return "Working on it" }
-            var parts: [String] = []
-            if status.updatingContainers > 0 {
-                parts.append("\(status.updatingContainers) container\(status.updatingContainers == 1 ? "" : "s")")
+    @ViewBuilder
+    private var phaseDetails: some View {
+        switch phase {
+        case .starting:
+            EmptyView()
+        case .running:
+            if let status = liveStatus {
+                countersCard(
+                    containers: Int(status.updatingContainers),
+                    projects: Int(status.updatingProjects)
+                )
+                if !status.containerIds.isEmpty {
+                    idListCard(
+                        title: "Containers Updating",
+                        icon: "shippingbox.fill",
+                        tint: .blue,
+                        ids: status.containerIds
+                    )
+                }
+                if !status.projectIds.isEmpty {
+                    idListCard(
+                        title: "Projects Updating",
+                        icon: "folder.fill",
+                        tint: .purple,
+                        ids: status.projectIds
+                    )
+                }
             }
-            if status.updatingProjects > 0 {
-                parts.append("\(status.updatingProjects) project\(status.updatingProjects == 1 ? "" : "s")")
+        case .completed(let result):
+            resultCountersCard(result: result)
+            if !result.items.isEmpty {
+                resultItemsCard(items: result.items)
             }
-            return parts.isEmpty ? "Checking for updates" : parts.joined(separator: " · ") + " in progress"
-        }()
-
-        return VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.blue.opacity(0.18))
-                    .frame(width: 96, height: 96)
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 40, weight: .semibold))
-                    .foregroundStyle(Color.blue)
-                    .symbolEffect(.rotate, options: .repeating, isActive: true)
+        case .failed:
+            Button {
+                retry()
+            } label: {
+                Label("Try Again", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
             }
-            .glassEffectCompat(tint: Color.blue.opacity(0.25), in: .circle)
-            VStack(spacing: 6) {
-                Text("Running Updater")
-                    .font(.title2.bold())
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
-    private func completedHero(result: UpdaterResult) -> some View {
-        let success = result.failed == 0
-        let tint: Color = success ? .green : .orange
-        let icon = success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-        let title = success ? "Completed" : "Completed with Issues"
-        let subtitle: String = {
-            var parts: [String] = []
-            parts.append("\(result.updated) updated")
-            if result.failed > 0 { parts.append("\(result.failed) failed") }
-            if result.skipped > 0 { parts.append("\(result.skipped) skipped") }
-            parts.append("in \(result.duration)")
-            return parts.joined(separator: " · ")
-        }()
-
-        return VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(tint.opacity(0.18))
-                    .frame(width: 96, height: 96)
-                Image(systemName: icon)
-                    .font(.system(size: 40, weight: .semibold))
-                    .foregroundStyle(tint)
-            }
-            .glassEffectCompat(tint: tint.opacity(0.25), in: .circle)
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.title2.bold())
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+    private var runningSubtitle: String {
+        guard let status = liveStatus else { return "Checking for available updates" }
+        var parts: [String] = []
+        if status.updatingContainers > 0 {
+            parts.append("\(status.updatingContainers) container\(status.updatingContainers == 1 ? "" : "s")")
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
-        .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
+        if status.updatingProjects > 0 {
+            parts.append("\(status.updatingProjects) project\(status.updatingProjects == 1 ? "" : "s")")
+        }
+        return parts.isEmpty ? "Checking for available updates" : parts.joined(separator: " · ") + " in progress"
+    }
+
+    private func completionSubtitle(_ result: UpdaterResult) -> String {
+        var parts = ["\(result.updated) updated"]
+        if result.failed > 0 { parts.append("\(result.failed) failed") }
+        if result.skipped > 0 { parts.append("\(result.skipped) skipped") }
+        parts.append("in \(result.duration)")
+        return parts.joined(separator: " · ")
+    }
+
+    private var doneTitle: String {
+        switch phase {
+        case .completed, .failed: return "Done"
+        case .starting, .running: return "Close"
+        }
     }
 
     // MARK: - Counter cards
@@ -209,7 +283,7 @@ struct UpdaterRunView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            Text("\(value)")
+            Text(verbatim: String(value))
                 .font(.system(.title, design: .rounded).bold())
                 .foregroundStyle(.primary)
                 .contentTransition(.numericText())
@@ -306,19 +380,37 @@ struct UpdaterRunView: View {
                     client: client,
                     environmentID: environmentID
                 )
+                await imageUpdateCountStore.refreshCount(
+                    environmentID: environmentID,
+                    client: client,
+                    userID: manager.currentUser?.id
+                )
+                mutationStore.markChanged(kind: .images, envID: environmentID)
                 pollHandle.cancel()
                 await MainActor.run {
                     phase = .completed(result)
+                    pollTask = nil
+                    runTask = nil
                 }
             } catch {
                 pollHandle.cancel()
                 let message = friendlyErrorMessage(error)
                 await MainActor.run {
                     phase = .failed(message)
+                    pollTask = nil
+                    runTask = nil
                 }
             }
         }
         runTask = runHandle
+    }
+
+    private func retry() {
+        pollTask?.cancel()
+        runTask?.cancel()
+        pollTask = nil
+        runTask = nil
+        Task { await start() }
     }
 
     private func pollLoop(client: ArcaneClient) async {

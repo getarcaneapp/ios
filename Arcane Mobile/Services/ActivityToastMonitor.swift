@@ -9,27 +9,26 @@ final class ActivityToastMonitor {
     private static let maxReconnectDelaySeconds: Double = 30
 
     private var transportIdentity: ObjectIdentifier?
+    private var activeScope: ActivityToastScope?
     private var rememberedActivityKeys: Set<String> = []
     private var rememberedActivityOrder: [String] = []
     private var notifiedActivityKeys: Set<String> = []
     private var initializedSnapshotEnvironmentIDs: Set<String> = []
 
     func reset() {
+        dismissTrackedToast()
         transportIdentity = nil
-        rememberedActivityKeys.removeAll()
-        rememberedActivityOrder.removeAll()
-        notifiedActivityKeys.removeAll()
-        initializedSnapshotEnvironmentIDs.removeAll()
+        activeScope = nil
+        clearTracking()
     }
 
     func consume(client: ArcaneClient, scope: ActivityToastScope) async {
         let identity = ObjectIdentifier(client.transport)
-        if transportIdentity != identity {
+        if transportIdentity != identity || activeScope != scope {
+            dismissTrackedToast()
             transportIdentity = identity
-            rememberedActivityKeys.removeAll()
-            rememberedActivityOrder.removeAll()
-            notifiedActivityKeys.removeAll()
-            initializedSnapshotEnvironmentIDs.removeAll()
+            activeScope = scope
+            clearTracking()
         }
 
         var reconnectAttempt = 0
@@ -81,7 +80,11 @@ final class ActivityToastMonitor {
 
         for activity in event.activities {
             let sourceEnvironmentID = event.environmentID ?? activity.sourceEnvironmentKey
-            if isInitialSnapshot {
+            if isInitialSnapshot,
+               !ActivityToastInitialSnapshotPolicy.shouldPresent(
+                   status: activity.status,
+                   scope: scope
+               ) {
                 _ = remember(key(for: activity, environmentID: sourceEnvironmentID))
             } else {
                 handle(activity, environmentID: sourceEnvironmentID, scope: scope)
@@ -132,6 +135,19 @@ final class ActivityToastMonitor {
         return true
     }
 
+    private func dismissTrackedToast() {
+        guard let activityID = ToastPresenter.shared.activeToast?.activityID,
+              notifiedActivityKeys.contains(activityID) else { return }
+        dismissToast()
+    }
+
+    private func clearTracking() {
+        rememberedActivityKeys.removeAll()
+        rememberedActivityOrder.removeAll()
+        notifiedActivityKeys.removeAll()
+        initializedSnapshotEnvironmentIDs.removeAll()
+    }
+
     private func toastTitle(for activity: Activity) -> String {
         activity.type.displayName
     }
@@ -149,6 +165,13 @@ final class ActivityToastMonitor {
             state: state,
             progress: progress
         )
+    }
+}
+
+nonisolated enum ActivityToastInitialSnapshotPolicy {
+    static func shouldPresent(status: ActivityStatus, scope: ActivityToastScope) -> Bool {
+        guard scope == .all else { return false }
+        return status == .queued || status == .running
     }
 }
 

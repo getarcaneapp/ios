@@ -14,6 +14,7 @@ nonisolated enum SidebarUtilityDestination: String {
 struct AppSidebar: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(FleetStore.self) private var fleet
+    @SwiftUI.Environment(ActivityHistoryMutationStore.self) private var historyMutationStore
     @ScaledMetric(relativeTo: .largeTitle) private var logoHeight: CGFloat = 34
     @ScaledMetric(relativeTo: .largeTitle) private var logoLineHeight: CGFloat = 41
 
@@ -143,6 +144,11 @@ struct AppSidebar: View {
         .onDisappear {
             activityStore.stopStream()
             fleet.setVisible(false, consumer: "sidebar", supportsDashboardStream: manager.supportsActivities)
+        }
+        .onChange(of: historyMutationStore.latestClear) { _, event in
+            guard let event else { return }
+            activityStore.removeClearedHistory(environmentIDs: event.environmentIDs)
+            Task { await activityStore.load(refresh: true) }
         }
         .sheet(isPresented: $showUpgrade) {
             NavigationStack { SystemUpgradeView(environmentID: manager.activeEnvironmentID) }

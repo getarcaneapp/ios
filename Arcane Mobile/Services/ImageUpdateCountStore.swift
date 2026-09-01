@@ -20,7 +20,7 @@ final class ImageUpdateCountStore {
     /// these values when a tab reappears and starts its load task again.
     private var authoritativeEnvironmentIDs: Set<String> = []
 
-    private init() {}
+    init() {}
 
     func total(
         client: ArcaneClient?,
@@ -29,6 +29,10 @@ final class ImageUpdateCountStore {
     ) -> Int? {
         guard scope == Self.scope(client: client, userID: userID) else { return nil }
         guard !environmentIDs.isEmpty else { return nil }
+        // Summary-only values are the dashboard's fallback source already.
+        // Prefer this store only after an Updates surface or completed updater
+        // has supplied at least one fresher, row-derived environment count.
+        guard !authoritativeEnvironmentIDs.isEmpty else { return nil }
 
         var total = 0
         for environmentID in environmentIDs {
@@ -71,6 +75,21 @@ final class ImageUpdateCountStore {
         for (environmentID, count) in newCounts where !authoritativeEnvironmentIDs.contains(environmentID) {
             counts[environmentID] = count
         }
+    }
+
+    func refreshCount(
+        environmentID: EnvironmentID,
+        client: ArcaneClient?,
+        userID: String?
+    ) async {
+        guard let client,
+              let summary = try? await client.images.updateSummary(envID: environmentID) else { return }
+        setCount(
+            summary.imagesWithUpdates,
+            environmentID: environmentID,
+            client: client,
+            userID: userID
+        )
     }
 
     private func prepare(for nextScope: Scope) {

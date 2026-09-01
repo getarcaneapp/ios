@@ -33,6 +33,9 @@ struct MorphingTabBar: View {
     /// Sidebar mode hides navigation tabs but reuses the exact same root/detail
     /// action rendering. Dock mode keeps the default `true` behavior.
     var showsNavigationTabs: Bool = true
+    /// Visually condenses the navigation capsule while leaving the bar mounted
+    /// and interactive. Detail action controls never use this state.
+    var isCompact: Bool = false
 
     /// Sizing for the tabs capsule and the morphed controls. The tabs capsule
     /// fills the available width — like the native floating tab bar — so only its
@@ -45,6 +48,16 @@ struct MorphingTabBar: View {
     private var payload: TabBarMorphStore.Payload? { store.activePayload }
 
     private var rootActions: [ActionButtonItem] { store.activeRootActions }
+
+    private var compactsNavigationCapsule: Bool {
+        isCompact && showsNavigationTabs && !isMorphed
+    }
+
+    /// Preserve horizontal hit-target width when root action pills already
+    /// share the row with the navigation capsule.
+    private var compactHorizontalScale: CGFloat {
+        compactsNavigationCapsule && rootActions.isEmpty ? 0.86 : 1
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -69,6 +82,17 @@ struct MorphingTabBar: View {
                         }
                     }
                 }
+                // Liquid Glass promotes child surfaces into this container.
+                // Transform the resolved container so its capsule, selection
+                // indicator, and icons stay together while compacting. The
+                // 60-point capsule renders at 48 points tall, preserving the
+                // minimum interactive target without resizing cached glass.
+                .scaleEffect(
+                    x: compactHorizontalScale,
+                    y: compactsNavigationCapsule ? 0.8 : 1,
+                    anchor: .bottom
+                )
+                .motionAwareAnimation(Motion.state, value: compactsNavigationCapsule)
             }
 
             // Root-page accessory pills (e.g. Updates: Run Updater / History).
