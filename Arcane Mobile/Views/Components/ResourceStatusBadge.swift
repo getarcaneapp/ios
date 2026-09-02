@@ -66,12 +66,23 @@ struct ResourceStatusBadge: View {
     /// changes — captures both so a colour-only change still animates.
     private var animationKey: String { "\(normalizedStatus)|\(live)" }
 
+    /// In-flight states breathe until they settle.
+    private var isTransitional: Bool {
+        switch normalizedStatus {
+        case "partial", "partially running", "starting", "restarting", "removing", "creating":
+            return true
+        default:
+            return false
+        }
+    }
+
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
                 .font(.caption.weight(.semibold))
                 .symbolRenderingMode(.hierarchical)
                 .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.pulse, options: .repeating, isActive: isTransitional)
                 .frame(minWidth: 16, minHeight: 16)
 
             Text(displayText)

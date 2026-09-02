@@ -63,7 +63,7 @@ struct AppSidebar: View {
                     .frame(maxWidth: .infinity, maxHeight: logoHeight, alignment: .leading)
                     .accessibilityLabel("Arcane")
 
-                SidebarActivityButton(failureCount: failedActivityCount)
+                SidebarActivityButton()
             }
             .frame(height: logoLineHeight)
             .padding(.leading, 20)
@@ -196,15 +196,6 @@ struct AppSidebar: View {
         .accessibilityLabel("Active environment: \(manager.activeEnvironmentName)")
     }
 
-    private var failedActivityCount: Int {
-        activityStore.historyItems.reduce(0) { total, item in
-            switch item {
-            case .activity(let activity): return total + (activity.status == .failed ? 1 : 0)
-            case .batch(let batch): return total + batch.failedCount
-            }
-        }
-    }
-
     private var showsUpgradeBanner: Bool {
         guard manager.permissions.has(Permission.System.upgrade),
               let state = fleet.dashboardStream.state(for: manager.activeEnvironmentID.rawValue),
@@ -213,9 +204,10 @@ struct AppSidebar: View {
     }
 }
 
+/// Activity Center entry point. Failed work is surfaced by the dashboard's
+/// Attention Center, so this button carries no badge of its own.
 private struct SidebarActivityButton: View {
     @State private var router = QuickActionRouter.shared
-    let failureCount: Int
 
     var body: some View {
         Button {
@@ -223,22 +215,11 @@ private struct SidebarActivityButton: View {
         } label: {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.title2.weight(.semibold))
-                .overlay(alignment: .topTrailing) {
-                    if failureCount > 0 {
-                        Text(failureCount > 99 ? "99+" : String(failureCount))
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 4)
-                            .frame(minWidth: 16, minHeight: 16)
-                            .background(.red, in: .capsule)
-                            .offset(x: 9, y: -8)
-                    }
-                }
         }
         .buttonStyle(.plain)
         .frame(width: 44, height: 44)
         .contentShape(.circle)
-        .accessibilityLabel(failureCount > 0 ? "Activity Center, \(failureCount) failures" : "Activity Center")
+        .accessibilityLabel("Activity Center")
     }
 }
 

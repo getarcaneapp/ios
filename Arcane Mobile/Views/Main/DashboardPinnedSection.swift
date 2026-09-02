@@ -42,8 +42,41 @@ struct DashboardPinnedSection: View {
     }
 
     var body: some View {
-        Group {
-            cardContent
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                DashboardSectionTitle("Pinned")
+                Spacer()
+                if isLoading, !items.isEmpty {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            VStack(spacing: 0) {
+                if items.isEmpty {
+                    HStack(spacing: 10) {
+                        if isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text(isLoading ? "Loading pinned items…" : "Pinned items are unavailable in this environment.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        row(item)
+                        if index < items.count - 1 {
+                            Divider().padding(.leading, 58)
+                        }
+                    }
+                }
+            }
+            .glassCardBackground()
+            .id("pinned.rows.\(items.count)")
+            .motionAwareAnimation(Motion.reflow, value: items.map(\.id))
         }
         .task { await reload() }
         .onChange(of: manager.activeEnvironmentID.rawValue) { _, _ in
@@ -63,32 +96,6 @@ struct DashboardPinnedSection: View {
         }
     }
 
-    @ViewBuilder
-    private var cardContent: some View {
-        if !items.isEmpty || isLoading {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text("Pinned")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if isLoading {
-                        ProgressView()
-                            .scaleEffect(0.75)
-                    }
-                }
-                .padding(.horizontal, 4)
-                .padding(.bottom, 6)
-
-                ForEach(items) { item in
-                    row(item)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .motionAwareAnimation(Motion.reflow, value: items.map(\.id))
-        }
-    }
-
     private func row(_ item: DashboardPinnedItem) -> some View {
         HStack(spacing: 8) {
             Button {
@@ -97,7 +104,7 @@ struct DashboardPinnedSection: View {
                 DashboardPinnedRowContent(item: item)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.plain)
+            .cardRowLinkStyle()
 
             Button {
                 Task { await runAction(for: item) }
@@ -110,17 +117,19 @@ struct DashboardPinnedSection: View {
                         Image(systemName: item.actionSystemImage)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(item.actionTint)
+                            .contentTransition(.symbolEffect(.replace))
+                            .motionAwareAnimation(Motion.state, value: item.isRunning)
                     }
                 }
                 .frame(width: 32, height: 32)
                 .contentShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
             .glassEffectCompat(interactive: true, in: .circle)
             .disabled(runningID != nil)
             .accessibilityLabel(item.actionTitle)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
@@ -354,23 +363,20 @@ private struct DashboardPinnedRowContent: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack(alignment: .bottomTrailing) {
-                Image(systemName: item.icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(item.tint, in: .circle)
-                Circle()
-                    .fill(item.isRunning ? Color.green : Color.secondary.opacity(0.5))
-                    .frame(width: 9, height: 9)
-                    .offset(x: 1, y: 1)
-            }
-            .accessibilityHidden(true)
+            DashboardRowIcon(systemImage: item.icon, tint: item.tint)
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .fill(item.isRunning ? Color.green : Color.secondary.opacity(0.5))
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 1.5))
+                        .offset(x: 2, y: 2)
+                }
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.primary)
                     .lineLimit(1)
                 Text(item.status)
                     .font(.caption)
@@ -379,9 +385,7 @@ private struct DashboardPinnedRowContent: View {
             }
 
             Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .font(.caption2.bold())
-                .foregroundStyle(.secondary.opacity(0.5))
+            DashboardRowChevron()
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)

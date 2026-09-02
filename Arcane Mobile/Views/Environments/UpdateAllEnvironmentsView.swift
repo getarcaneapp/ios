@@ -13,6 +13,9 @@ struct UpdateAllEnvironmentsView: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     let environmentCount: Int
+    /// Skip the in-sheet confirmation and trigger the run as soon as preflight
+    /// finds no job in progress. The dashboard confirms on its own button.
+    var startsImmediately = false
 
     private enum Phase: Equatable {
         case loading
@@ -423,7 +426,11 @@ struct UpdateAllEnvironmentsView: View {
         do {
             let job = try await client.system.updateAllStatus(envID: managerEnvID)
             if job.isTerminal {
-                phase = .ready(lastJob: job)
+                if startsImmediately {
+                    await trigger()
+                } else {
+                    phase = .ready(lastJob: job)
+                }
             } else {
                 // A job is already running (started here earlier, or from the
                 // web UI) — resume watching it instead of offering a new run.
@@ -433,11 +440,19 @@ struct UpdateAllEnvironmentsView: View {
         } catch ArcaneError.notFound {
             // No job has ever run. (Also what an old server without the
             // endpoint returns — the POST disambiguates.)
-            phase = .ready(lastJob: nil)
+            await readyOrStart()
         } catch ArcaneError.decoding {
-            phase = .ready(lastJob: nil)
+            await readyOrStart()
         } catch {
             phase = .failed(friendlyErrorMessage(error))
+        }
+    }
+
+    private func readyOrStart() async {
+        if startsImmediately {
+            await trigger()
+        } else {
+            phase = .ready(lastJob: nil)
         }
     }
 
@@ -655,17 +670,26 @@ struct FleetUpdateScene: View {
     let model: FleetUpdateSceneModel
 
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .largeTitle) private var focusSize: CGFloat = 152
+    @ScaledMetric(relativeTo: .largeTitle) private var focusSize: CGFloat = 96
     @State private var hasAppeared = false
     @State private var completionPulse = 0
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 24) {
             focus
+
+            if !model.ringEnvironments.isEmpty {
+                FleetUpdatePipeline(
+                    environments: model.ringEnvironments,
+                    activeEnvironmentID: model.activeEnvironment?.id,
+                    tint: model.kind.tint
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
 
             VStack(spacing: 6) {
                 Text(model.title)
-                    .font(.largeTitle.weight(.bold))
+                    .font(.title.weight(.bold))
                     .multilineTextAlignment(.center)
                     .contentTransition(.interpolate)
 
@@ -676,19 +700,39 @@ struct FleetUpdateScene: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .contentTransition(.interpolate)
                     .motionAwareAnimation(Motion.state, value: model.subtitle)
+
+                if let active = model.activeEnvironment, model.showsActiveEnvironment {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .symbolEffect(.rotate, options: .repeating, isActive: !reduceMotion)
+                        Text(active.environmentName)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(model.kind.tint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(model.kind.tint.opacity(0.12), in: Capsule())
+                    .padding(.top, 6)
+                    .id(active.id)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
             }
         }
         .frame(maxWidth: .infinity, minHeight: 248)
         .padding(.vertical, 4)
         .background {
+            // Square so the glow is a true circle, never an oval behind the disc.
             RadialGradient(
-                colors: [model.kind.tint.opacity(0.13), model.kind.tint.opacity(0.035), .clear],
+                colors: [model.kind.tint.opacity(0.12), model.kind.tint.opacity(0.03), .clear],
                 center: .center,
                 startRadius: 0,
-                endRadius: 108
+                endRadius: 120
             )
-            .frame(width: 320, height: 240)
-            .blur(radius: 8)
+            .frame(width: 260, height: 260)
+            .blur(radius: 10)
+            .offset(y: -40)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
@@ -696,6 +740,7 @@ struct FleetUpdateScene: View {
         .scaleEffect(reduceMotion || hasAppeared ? 1 : 0.94)
         .motionAwareAnimation(Motion.updateStage, value: model.kind)
         .motionAwareAnimation(Motion.updateStage, value: model.title)
+        .motionAwareAnimation(Motion.updateStage, value: model.activeEnvironment?.id)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(model.title)
         .accessibilityValue(model.accessibilityValue)
@@ -714,52 +759,32 @@ struct FleetUpdateScene: View {
         }
     }
 
+    /// Tinted disc carrying the phase symbol, or the percentage while the
+    /// fleet updates with no single environment in flight. Progress itself
+    /// lives in the pipeline connectors, so there is no ring here.
     private var focus: some View {
         ZStack {
             Circle()
-                .fill(model.kind.tint.opacity(0.055))
-                .scaleEffect(model.kind.isTerminal ? 1.07 : 1)
-
+                .fill(model.kind.tint.opacity(model.kind.isTerminal ? 0.16 : 0.10))
             Circle()
-                .stroke(model.kind.tint.opacity(0.14), lineWidth: 1)
-                .scaleEffect(model.kind.isTerminal ? 1.07 : 1)
-
-            Circle()
-                .stroke(Color.secondary.opacity(0.12), lineWidth: 5)
-
-            Circle()
-                .trim(from: 0, to: model.ringFraction)
-                .stroke(
-                    model.kind.tint,
-                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .opacity(model.ringFraction == 0 ? 0 : 1)
-                .animation(Motion.updateConnector, value: model.ringFraction)
+                .stroke(model.kind.tint.opacity(0.2), lineWidth: 1)
 
             animatedSymbol
-                .opacity(model.showsPercentage || model.showsActiveEnvironment ? 0 : 1)
-                .scaleEffect(model.showsPercentage || model.showsActiveEnvironment ? 0.82 : 1)
+                .opacity(model.showsPercentage ? 0 : 1)
+                .scaleEffect(model.showsPercentage ? 0.82 : 1)
 
             Text(verbatim: "\(model.percentage)%")
-                .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                .font(.system(.title2, design: .rounded).weight(.semibold))
+                .foregroundStyle(model.kind.tint)
                 .contentTransition(.numericText())
                 .opacity(model.showsPercentage ? 1 : 0)
                 .scaleEffect(model.showsPercentage ? 1 : 0.82)
                 .motionAwareAnimation(Motion.updateStage, value: model.percentage)
-
-            if !model.ringEnvironments.isEmpty {
-                FleetUpdateRingEnvironments(
-                    environments: model.ringEnvironments,
-                    activeEnvironmentID: model.activeEnvironment?.id,
-                    tint: model.kind.tint,
-                    ringDiameter: min(focusSize, 172)
-                )
-                .transition(.opacity)
-            }
         }
-        .frame(width: min(focusSize, 172), height: min(focusSize, 172))
+        .frame(width: min(focusSize, 96), height: min(focusSize, 96))
+        .scaleEffect(model.kind.isTerminal ? 1.06 : 1)
         .motionAwareAnimation(Motion.updateStage, value: model.showsPercentage)
+        .motionAwareAnimation(Motion.updateStage, value: model.kind.isTerminal)
     }
 
     private var baseSymbol: some View {
@@ -880,57 +905,87 @@ nonisolated enum FleetUpdateBubblePresentation: Equatable, Sendable {
     }
 }
 
-private struct FleetUpdateRingEnvironments: View {
+/// Left-to-right pipeline in processing order: each environment is a bubble,
+/// joined by connector bars that fill as the run advances. The active bubble
+/// wears a spinner and floats; pending bubbles drift gently; finished ones
+/// settle with their result glyph.
+private struct FleetUpdatePipeline: View {
     let environments: [FleetUpdateRingEnvironment]
     let activeEnvironmentID: String?
     let tint: Color
-    let ringDiameter: CGFloat
 
-    private var activeEnvironment: EnvironmentUpdateResult? {
-        environments.first { $0.id == activeEnvironmentID }?.result
+    private var bubbleSize: CGFloat {
+        switch environments.count {
+        case ...5: 40
+        case 6...8: 32
+        case 9...12: 26
+        default: 20
+        }
+    }
+
+    private func isSettled(_ environment: FleetUpdateRingEnvironment) -> Bool {
+        FleetUpdateBubblePresentation(status: environment.result.status).isTerminal
+    }
+
+    /// Connector after `index`: full once that environment is settled, half
+    /// while it is the one updating, empty otherwise.
+    private func connectorFill(after index: Int) -> CGFloat {
+        let environment = environments[index]
+        if isSettled(environment) { return 1 }
+        if environment.id == activeEnvironmentID { return 0.5 }
+        return 0
     }
 
     var body: some View {
-        ZStack {
-            if let activeEnvironment {
-                VStack(spacing: 3) {
-                    Text(activeEnvironment.environmentName)
-                        .font(.caption.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-
-                    Text("Updating")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: ringDiameter * 0.56)
-                .id(activeEnvironment.id)
-                .transition(.opacity)
-            }
-
-            ForEach(environments) { environment in
-                FleetUpdateRingBubble(
+        HStack(spacing: 0) {
+            ForEach(Array(environments.enumerated()), id: \.element.id) { index, environment in
+                FleetUpdateBubble(
                     environment: environment,
+                    index: index,
                     isActive: environment.id == activeEnvironmentID,
                     tint: tint,
-                    ringDiameter: ringDiameter
+                    size: bubbleSize
                 )
+                if index < environments.count - 1 {
+                    FleetUpdateConnector(fill: connectorFill(after: index), tint: tint)
+                }
             }
         }
-        .frame(width: ringDiameter, height: ringDiameter)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: 420)
         .accessibilityHidden(true)
     }
 }
 
-private struct FleetUpdateRingBubble: View {
+private struct FleetUpdateConnector: View {
+    let fill: CGFloat
+    let tint: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.16))
+                Capsule()
+                    .fill(tint)
+                    .frame(width: max(0, proxy.size.width * fill))
+            }
+        }
+        .frame(height: 3)
+        .frame(minWidth: 8, maxWidth: .infinity)
+        .padding(.horizontal, 6)
+        .animation(Motion.updateConnector, value: fill)
+    }
+}
+
+private struct FleetUpdateBubble: View {
     let environment: FleetUpdateRingEnvironment
+    let index: Int
     let isActive: Bool
     let tint: Color
-    let ringDiameter: CGFloat
+    let size: CGFloat
 
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric(relativeTo: .headline) private var activeIconSize: CGFloat = 48
 
     private var isManager: Bool { environment.result.environmentId == "0" }
 
@@ -952,68 +1007,40 @@ private struct FleetUpdateRingBubble: View {
         presentation.terminalSymbol ?? (isManager ? "crown.fill" : "server.rack")
     }
 
-    private var showsLoadingRing: Bool {
+    private var showsSpinner: Bool {
         isActive && presentation == .updating
     }
 
-    private var animationPhases: [FleetUpdateBubblePhase] {
-        reduceMotion || !isActive ? [.resting] : FleetUpdateBubblePhase.allCases
+    /// Active bubble bobs visibly; pending ones drift half as far, each
+    /// starting from a different phase so the row doesn't move in lockstep.
+    private var floatPhases: [FleetUpdateBubblePhase] {
+        guard !reduceMotion, !presentation.isTerminal else { return [.resting] }
+        let all = FleetUpdateBubblePhase.allCases
+        let shift = index % all.count
+        return Array(all[shift...] + all[..<shift])
     }
 
-    private var loadingRingPhases: [Double] {
-        reduceMotion || !showsLoadingRing ? [0] : [0, 360]
-    }
+    private var floatScale: CGFloat { isActive ? 1.6 : 0.8 }
 
-    private var angle: Double {
-        let slotCount = max(environment.totalCount, 1)
-        return -.pi / 2
-            + Double(environment.slotIndex) / Double(slotCount) * 2 * .pi
-    }
-
-    private var ringOffset: CGSize {
-        let radius = ringDiameter / 2
-        return CGSize(
-            width: CGFloat(cos(angle)) * radius,
-            height: CGFloat(sin(angle)) * radius
-        )
-    }
-
-    private var inactiveIconSize: CGFloat {
-        let circumference = ringDiameter * .pi
-        let slotCount = CGFloat(max(environment.totalCount, 1))
-        return min(28, max(10, circumference * 0.76 / slotCount))
-    }
-
-    private var bubbleSize: CGFloat {
-        isActive ? min(activeIconSize, 56) : inactiveIconSize
-    }
-
-    private var cutoutSize: CGFloat {
-        bubbleSize + (showsLoadingRing ? 12 : 6)
+    private var spinnerPhases: [Double] {
+        reduceMotion || !showsSpinner ? [0] : [0, 360]
     }
 
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color(uiColor: .systemBackground))
-                .frame(width: cutoutSize, height: cutoutSize)
+                .stroke(bubbleTint.opacity(0.18), lineWidth: 2.5)
+                .frame(width: size + 10, height: size + 10)
+                .opacity(showsSpinner ? 1 : 0)
+                .scaleEffect(showsSpinner ? 1 : 0.85)
 
             Circle()
-                .stroke(bubbleTint.opacity(0.16), lineWidth: 2.5)
-                .frame(width: bubbleSize + 8, height: bubbleSize + 8)
-                .opacity(showsLoadingRing ? 1 : 0)
-                .scaleEffect(showsLoadingRing ? 1 : 0.86)
-
-            Circle()
-                .trim(from: 0.06, to: 0.74)
-                .stroke(
-                    bubbleTint,
-                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
-                )
-                .frame(width: bubbleSize + 8, height: bubbleSize + 8)
-                .opacity(showsLoadingRing ? 1 : 0)
-                .scaleEffect(showsLoadingRing ? 1 : 0.86)
-                .phaseAnimator(loadingRingPhases) { content, rotation in
+                .trim(from: 0.08, to: 0.72)
+                .stroke(bubbleTint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .frame(width: size + 10, height: size + 10)
+                .opacity(showsSpinner ? 1 : 0)
+                .scaleEffect(showsSpinner ? 1 : 0.85)
+                .phaseAnimator(spinnerPhases) { content, rotation in
                     content.rotationEffect(.degrees(rotation))
                 } animation: { _ in
                     Motion.updateBubbleSpinner
@@ -1021,19 +1048,11 @@ private struct FleetUpdateRingBubble: View {
 
             ZStack {
                 Circle()
-                    .fill(bubbleTint.opacity(isActive || presentation.isTerminal ? 0.18 : 0.10))
+                    .fill(bubbleTint.opacity(isActive || presentation.isTerminal ? 0.2 : 0.1))
                 Circle()
-                    .stroke(
-                        bubbleTint.opacity(isActive || presentation.isTerminal ? 0.44 : 0.22),
-                        lineWidth: 1
-                    )
+                    .stroke(bubbleTint.opacity(isActive || presentation.isTerminal ? 0.5 : 0.24), lineWidth: 1)
                 Image(systemName: symbol)
-                    .font(
-                        .system(
-                            size: max(7, bubbleSize * (presentation.isTerminal ? 0.44 : 0.38)),
-                            weight: .semibold
-                        )
-                    )
+                    .font(.system(size: max(8, size * (presentation.isTerminal ? 0.44 : 0.4)), weight: .semibold))
                     .foregroundStyle(bubbleTint)
                     .contentTransition(.symbolEffect(.replace))
                     .symbolEffect(
@@ -1041,23 +1060,20 @@ private struct FleetUpdateRingBubble: View {
                         options: .nonRepeating,
                         value: reduceMotion ? FleetUpdateBubblePresentation.pending : presentation
                     )
-                    .opacity(isActive || presentation.isTerminal || bubbleSize >= 16 ? 1 : 0)
-                    .accessibilityHidden(true)
             }
-            .frame(width: bubbleSize, height: bubbleSize)
+            .frame(width: size, height: size)
+            .scaleEffect(isActive ? 1.15 : 1)
         }
-        .frame(width: cutoutSize, height: cutoutSize)
-        .motionAwareAnimation(Motion.updateBubbleHandoff, value: presentation)
-        .motionAwareAnimation(Motion.updateBubbleHandoff, value: showsLoadingRing)
-        .phaseAnimator(animationPhases) { content, phase in
-            content
-                .offset(x: phase.horizontalOffset, y: phase.verticalOffset)
-                .scaleEffect(phase.scale)
+        .frame(width: size + 12, height: size + 12)
+        .phaseAnimator(floatPhases) { content, phase in
+            content.offset(
+                x: phase.horizontalOffset * floatScale * 0.4,
+                y: phase.verticalOffset * floatScale
+            )
         } animation: { _ in
             Motion.updateBubbleDrift
         }
+        .motionAwareAnimation(Motion.updateBubbleHandoff, value: presentation)
         .motionAwareAnimation(Motion.updateBubbleHandoff, value: isActive)
-        .offset(x: ringOffset.width, y: ringOffset.height)
-        .zIndex(isActive ? 2 : 1)
     }
 }

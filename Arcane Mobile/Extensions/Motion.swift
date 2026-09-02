@@ -57,6 +57,13 @@ enum Motion {
     /// Progress bars and the dashboard stat ring.
     static let gauge: Animation = .spring(response: 0.55, dampingFraction: 0.85)
 
+    /// Ring gauges sweeping in from empty on first appear — a touch slower
+    /// than `gauge` so the fill is legible as motion, not a snap.
+    static let gaugeReveal: Animation = .spring(response: 0.9, dampingFraction: 0.8)
+
+    /// Per-item delay for staggered entrances (cards, popover rows).
+    static let stagger: TimeInterval = 0.045
+
     /// Continuous state changes in the environment-wide update scene.
     static let updateStage: Animation = .spring(response: 0.68, dampingFraction: 0.88)
 
@@ -115,6 +122,8 @@ enum Motion {
 /// glow. Reduce Motion drops the scale (fade only).
 private struct CardEntranceModifier: ViewModifier {
     let identity: String
+    /// Position in a staggered group; each step waits `Motion.stagger` longer.
+    let index: Int
     @State private var hasAppeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -125,12 +134,16 @@ private struct CardEntranceModifier: ViewModifier {
     func body(content: Content) -> some View {
         let hasPlayed = hasAppeared || Self.seenIdentities.contains(identity)
         content
-            .scaleEffect(reduceMotion || hasPlayed ? 1 : 0.98)
+            .scaleEffect(reduceMotion || hasPlayed ? 1 : 0.97)
+            .offset(y: reduceMotion || hasPlayed ? 0 : 10)
             .opacity(hasPlayed ? 1 : 0)
             .onAppear {
                 guard !hasAppeared, !Self.seenIdentities.contains(identity) else { return }
                 Self.seenIdentities.insert(identity)
-                withAnimation(reduceMotion ? Motion.reducedFallback : Motion.entrance) {
+                let animation = reduceMotion
+                    ? Motion.reducedFallback
+                    : Motion.entrance.delay(Double(index) * Motion.stagger)
+                withAnimation(animation) {
                     hasAppeared = true
                 }
             }
@@ -138,11 +151,68 @@ private struct CardEntranceModifier: ViewModifier {
 }
 
 extension View {
-    /// One-shot scale + fade entrance for a card / tile. Pass a stable
+    /// One-shot rise + fade entrance for a card / tile. Pass a stable
     /// `identity` — the latch is keyed on it and survives scroll-lazy teardown,
-    /// so returning to the page never replays the animation.
-    func cardEntrance(id: String) -> some View {
-        modifier(CardEntranceModifier(identity: id))
+    /// so returning to the page never replays the animation. `index` staggers
+    /// siblings so a group cascades in instead of popping at once.
+    func cardEntrance(id: String, index: Int = 0) -> some View {
+        modifier(CardEntranceModifier(identity: id, index: index))
+    }
+}
+
+// MARK: - Staggered reveal (non-latching)
+
+/// Rise + fade entrance that replays every time the view appears — for
+/// transient surfaces like popover rows, where the cascade is part of the
+/// "expanding out" feel. Reduce Motion collapses to a fade.
+private struct StaggeredRevealModifier: ViewModifier {
+    let index: Int
+    @State private var revealed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: reduceMotion || revealed ? 0 : 6)
+            .opacity(revealed ? 1 : 0)
+            .onAppear {
+                let animation = reduceMotion
+                    ? Motion.reducedFallback
+                    : Motion.entrance.delay(Double(index) * Motion.stagger)
+                withAnimation(animation) { revealed = true }
+            }
+    }
+}
+
+extension View {
+    func staggeredReveal(index: Int) -> some View {
+        modifier(StaggeredRevealModifier(index: index))
+    }
+}
+
+// MARK: - Scroll-edge fade
+
+/// Cards ease in as they scroll into view and recede at the edges: a light
+/// fade plus (optionally) a 3% shrink. Contained — no blur, no parallax.
+/// Reduce Motion keeps the fade only.
+private struct ScrollEdgeFadeModifier: ViewModifier {
+    let scales: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.scrollTransition(.interactive, axis: .vertical) { view, phase in
+            view
+                .opacity(phase.isIdentity ? 1 : 0.55)
+                .scaleEffect(scales && !reduceMotion && !phase.isIdentity ? 0.97 : 1)
+        }
+    }
+}
+
+extension View {
+    /// Scroll-edge fade for cards in a `ScrollView` only. Never apply this to
+    /// `List` rows: the list's scroll geometry never reports rows as fully in
+    /// view, so every row sits permanently at the faded opacity.
+    func scrollEdgeFade(scales: Bool = true) -> some View {
+        modifier(ScrollEdgeFadeModifier(scales: scales))
     }
 }
 

@@ -32,6 +32,67 @@ extension View {
     }
 }
 
+/// Opaque Liquid Glass card that still follows the system Liquid Glass
+/// appearance setting (Clear / Tinted). The glass itself is left untinted so
+/// the system chooses its look; the extra opacity comes from a translucent
+/// wash of the grouped card colour layered *over* the glass, plus a hairline
+/// rim so edges hold over dark backgrounds. Reduce Transparency swaps the
+/// whole thing for the solid card fill. iOS 18 uses the soft-depth card fill.
+///
+/// Glass caches its shape: only apply this to surfaces whose height does not
+/// shrink in place (re-`id` the view if its row count can drop).
+struct GlassCardBackgroundModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let isHighlighted: Bool
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
+    @SwiftUI.Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    /// Wash over the glass: dense enough to hide what scrolls beneath, light
+    /// enough that the system glass (clear or tinted) still reads through.
+    private static let washOpacity: Double = 0.78
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *), !reduceTransparency {
+            content
+                .background(
+                    shape.fill(Color(uiColor: .secondarySystemGroupedBackground).opacity(Self.washOpacity))
+                )
+                .glassEffect(.regular, in: shape)
+                .overlay {
+                    shape
+                        .strokeBorder(
+                            isHighlighted
+                                ? Color.accentColor.opacity(0.45)
+                                : Color.white.opacity(colorScheme == .dark ? 0.08 : 0.5),
+                            lineWidth: isHighlighted ? 1.5 : 1
+                        )
+                        .allowsHitTesting(false)
+                }
+        } else {
+            content
+                .dashboardCardBackground(cornerRadius: cornerRadius)
+                .overlay {
+                    if isHighlighted {
+                        shape
+                            .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1.5)
+                            .allowsHitTesting(false)
+                    }
+                }
+        }
+    }
+}
+
+extension View {
+    /// Opaque Liquid Glass card surface (see `GlassCardBackgroundModifier`).
+    func glassCardBackground(cornerRadius: CGFloat = Radius.card, isHighlighted: Bool = false) -> some View {
+        modifier(GlassCardBackgroundModifier(cornerRadius: cornerRadius, isHighlighted: isHighlighted))
+    }
+}
+
 /// Row-link style for NavigationLinks/Buttons that present card rows. Custom
 /// styles bypass the system highlight, which stays latched after popping back
 /// from a pushed page when the row carries a custom background/contentShape.

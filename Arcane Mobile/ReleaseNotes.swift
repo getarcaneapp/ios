@@ -145,7 +145,15 @@ enum ReleaseNotes {
             version: "0.8.2",
             new: [
                 .init("Support bundles with actionable redacted diagnostics."),
-                .init("iCloud Keychain connection profiles with included password sign-ins.")
+                .init("iCloud Keychain connection profiles with included password sign-ins."),
+                .init("Attention Center toolbar button with an expanding summary; hold it to open the full center."),
+                .init("Activity Center button no longer badges failed activities."),
+                .init("Activity Center and System Prune are separate toolbar buttons."),
+                .init("Environment cards open details on tap and show their actions on long press."),
+                .init("Environment cards show icon counts beside the name and full-width CPU, memory, and disk rings; the active environment is marked by its outline."),
+                .init("Update All is a two-tap icon button that expands into a confirm step and starts the run immediately."),
+                .init("Update All progress shows environments as a left-to-right pipeline with floating bubbles and filling connectors."),
+                .init("Staggered card entrances, sweeping ring gauges, and scroll-edge fades on the dashboard.")
             ],
             changed: [
                 .init("Connection profiles manage server details and saved sign-ins together."),
@@ -156,6 +164,7 @@ enum ReleaseNotes {
                 .init("Removed log search from the viewer."),
                 .init("Log expansion and options use separate navigation-bar buttons."),
                 .init("Dashboard environment cards show Arcane and Docker API versions."),
+                .init("Dashboard redesign with frosted Liquid Glass cards that follow the system Liquid Glass appearance, compact rings, and a large title."),
                 .init("Update All and Run Updater use centered native sheets.")
             ],
             fixed: [

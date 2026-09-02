@@ -108,6 +108,7 @@ struct DashboardView: View {
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(FleetStore.self) private var fleet
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selectedTab: String
     var showsSidebarButton = false
     var onOpenSidebar: () -> Void = {}
@@ -132,6 +133,10 @@ struct DashboardView: View {
     /// Pushes AllVulnerabilitiesView for the environment named in the route.
     @State private var vulnerabilityRoute: EnvironmentDetailRoute?
     @State private var showAPIKeys = false
+    /// Compact summary popover anchored to the top-left toolbar button.
+    @State private var showAttentionSummary = false
+    /// Full Attention Center sheet.
+    @State private var showAttentionCenter = false
     @State private var quickActionRouter = QuickActionRouter.shared
     /// Guards the scenePhase handler — hidden tab pages also receive scene
     /// phase changes and must not start their own stream.
@@ -150,6 +155,10 @@ struct DashboardView: View {
     @State private var showVolumes = false
     @State private var showImageUpdates = false
     @State private var showUpdateAll = false
+    /// First tap arms the Update All button (it expands into a confirm
+    /// capsule); the second tap starts the run. Disarms itself after a moment.
+    @State private var isUpdateAllArmed = false
+    @State private var updateAllDisarmTask: Task<Void, Never>?
     @State private var liveCountsRefreshTask: Task<Void, Never>?
     @State private var visibleEnvironmentCount = 50
 
@@ -197,11 +206,10 @@ struct DashboardView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 16) {
-                    dashboardHeader
-                    if !hasLoadedOnce && isLoading {
-                        skeletonView
-                    } else if environments.isEmpty && hasLoadedEnvironments {
+                LazyVStack(alignment: .leading, spacing: 36) {
+                    if showsSkeleton {
+                        skeletonContent
+                    } else if showsEmptyState {
                         ContentUnavailableView {
                             Label("No Environments", systemImage: "server.rack")
                         } description: {
@@ -209,18 +217,7 @@ struct DashboardView: View {
                         }
                         .padding(.top, 48)
                     } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            overviewGrid
-                            fleetCountAvailabilityNote
-                        }
-                            .cardEntrance(id: "dashboard.overview")
-
-                        let attention = needsAttentionItems
-                        if !attention.isEmpty {
-                            NeedsAttentionSection(items: attention)
-                                .padding(.top, 8)
-                                .transition(.opacity)
-                        }
+                        overviewSection
 
                         if hasPinnedDashboardResources {
                             DashboardPinnedSection(
@@ -228,21 +225,22 @@ struct DashboardView: View {
                                 onOpenContainer: { containerRoute = $0 },
                                 onOpenProject: { projectRoute = $0 }
                             )
-                            .padding(.top, 8)
-                            .transition(.opacity)
+                            .cardEntrance(id: "dashboard.pinned", index: 4)
+                            .scrollEdgeFade()
                         }
 
                         environmentsSection
-                            .padding(.top, 8)
                     }
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
             }
-            .softTopScrollEdgeEffectCompat()
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("")
-            .toolbarTitleDisplayMode(.inline)
+            .softTopScrollEdgeEffectCompat()
+            .navigationTitle("Dashboard")
+            .navigationBarTitleDisplayMode(.large)
+            .modifier(DashboardDateSubtitle())
             .toolbar {
                 if showsSidebarButton, isNavigationRoot {
                     ToolbarItem(placement: .topBarLeading) {
@@ -254,15 +252,36 @@ struct DashboardView: View {
                     }
                 }
 
+                // Needs Attention lives in the toolbar: the button expands into
+                // a compact summary popover, which opens the full Attention
+                // Center sheet.
+                if isNavigationRoot {
+                    ToolbarItem(placement: .topBarLeading) {
+                        AttentionToolbarButton(
+                            items: needsAttentionItems,
+                            isPresented: $showAttentionSummary,
+                            onSelect: { item in performAttentionAction(item.action) },
+                            onOpenCenter: { performAttentionAction { showAttentionCenter = true } }
+                        )
+                    }
+                }
+
+
                 // Tab-bar mode has no sidebar hosting the Activity Center, so
                 // the dashboard toolbar is its standing entry point. Sidebar
                 // mode already exposes it next to the sidebar wordmark.
                 if !showsSidebarButton, isNavigationRoot, manager.supportsActivities {
                     ToolbarItem(placement: .navigationBarTrailing) {
-                        DashboardActivityToolbarButton(failureCount: failedActivities.count) {
+                        DashboardActivityToolbarButton {
                             quickActionRouter.openActivityCenter()
                         }
                     }
+                }
+
+                // Keep Activity Center and Prune as two separate glass
+                // buttons instead of one shared pill.
+                if #available(iOS 26, *), !showsSidebarButton, isNavigationRoot, manager.supportsActivities, canPrune {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
 
                 if canPrune {
@@ -275,9 +294,16 @@ struct DashboardView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showAttentionCenter) {
+                AttentionCenterView(items: needsAttentionItems) { item in
+                    performAttentionAction(item.action)
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(isPresented: $showUpdateAll) {
                 NavigationStack {
-                    UpdateAllEnvironmentsView(environmentCount: rawEnvironmentCount)
+                    UpdateAllEnvironmentsView(environmentCount: rawEnvironmentCount, startsImmediately: true)
                 }
                 .presentationDetents([.medium, .large])
                 .presentationContentInteraction(.resizes)
@@ -402,42 +428,60 @@ struct DashboardView: View {
 
     // MARK: - Subviews
 
+    /// First load with no data yet: placeholder cards instead of content.
+    private var showsSkeleton: Bool {
+        !hasLoadedOnce && isLoading
+    }
+
+    /// Only after an environments fetch succeeded and returned nothing.
+    private var showsEmptyState: Bool {
+        !showsSkeleton && environments.isEmpty && hasLoadedEnvironments
+    }
+
     private var hasPinnedDashboardResources: Bool {
         !pinnedStore.pinnedIDs(kind: .container, envID: envID).isEmpty ||
             !pinnedStore.pinnedIDs(kind: .project, envID: envID).isEmpty
     }
 
+    /// Dismisses the summary popover / center before running an item action.
+    /// Presenting a sheet or pushing a route while another presentation is
+    /// still animating out gets dropped by UIKit, hence the short wait.
+    private func performAttentionAction(_ action: @escaping () -> Void) {
+        showAttentionSummary = false
+        showAttentionCenter = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            action()
+        }
+    }
+
+    private var environmentColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 340), spacing: 12)]
+    }
+
     private var environmentsSection: some View {
-        LazyVStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Text("Environments")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center) {
+                DashboardSectionTitle("Environments")
                 Spacer()
                 if manager.currentUser?.isAdmin == true {
-                    Button {
-                        showUpdateAll = true
-                    } label: {
-                        Label("Update All", systemImage: "arrow.up.circle.fill")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Update All")
+                    updateAllButton
                 }
             }
-            .padding(.horizontal, 4)
 
             if streamStore.streamFailed, !streamStore.streamUnsupported {
                 streamFailedBanner
             }
 
             if let liveStatsLimitPresentation {
-                DashboardLiveStatsLimitNotice(presentation: liveStatsLimitPresentation)
-                    .padding(.horizontal, 4)
+                Text(liveStatsLimitPresentation.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            LazyVStack(spacing: 10) {
-                ForEach(environments) { env in
+            LazyVGrid(columns: environmentColumns, alignment: .leading, spacing: 12) {
+                ForEach(Array(environments.enumerated()), id: \.element.id) { index, env in
                     EnvironmentFleetListRow(
                         environment: env,
                         dockerInfo: fleet.dockerInfoByEnvironmentID[env.id],
@@ -452,8 +496,10 @@ struct DashboardView: View {
                             await refreshEnvironmentDockerInfo(environmentID: env.id)
                         }
                     )
-                    .padding(.horizontal, 12)
-                    .dashboardEnvironmentOutline()
+                    // Cascade only the first screenful; later cards appear as
+                    // they scroll in, faded by the edge transition instead.
+                    .cardEntrance(id: "dashboard.environment.\(env.id)", index: min(index, 5) + 4)
+                    .scrollEdgeFade()
                 }
             }
 
@@ -470,36 +516,110 @@ struct DashboardView: View {
         }
     }
 
+    /// Environments whose dashboard snapshot reports a newer Arcane release.
+    /// Nil until at least one snapshot has loaded (v1 servers never do), so
+    /// the button stays enabled when the answer is unknown.
+    private var arcaneUpgradeCount: Int? {
+        let loaded = environments.compactMap { env -> Bool? in
+            guard let state = streamStore.state(for: env.id), state.hasLoaded,
+                  let info = state.snapshot?.versionInfo else { return nil }
+            return info.updateAvailable
+        }
+        guard !loaded.isEmpty else { return nil }
+        return loaded.filter { $0 }.count
+    }
+
+    /// Two-tap Update All. Resting: a compact capsule with the update icon and
+    /// the number of environments that have an upgrade. Armed: grows into a
+    /// red "Confirm Update" capsule. Confirming opens the sheet, which starts
+    /// the run immediately. Disabled once the fleet is known to be current.
+    /// Everything animates inside the capsule (no overlays), so the shape
+    /// morph stays smooth.
+    private var updateAllButton: some View {
+        let upgrades = arcaneUpgradeCount
+        let isUpToDate = upgrades == 0
+        return Button {
+            if isUpdateAllArmed {
+                disarmUpdateAll()
+                showUpdateAll = true
+            } else {
+                armUpdateAll()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isUpToDate ? "checkmark" : (isUpdateAllArmed ? "checkmark.circle.fill" : "arrow.up.circle.fill"))
+                    .contentTransition(.symbolEffect(.replace))
+                if isUpdateAllArmed {
+                    Text("Confirm Update")
+                        .fixedSize()
+                        .transition(.opacity)
+                } else if let upgrades, upgrades > 0 {
+                    Text(verbatim: "\(upgrades)")
+                        .monospacedDigit()
+                        .fixedSize()
+                        .transition(.opacity)
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(minWidth: 20)
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+        .tint(isUpdateAllArmed ? Color.red : Color.accentColor)
+        .disabled(isUpToDate)
+        .sensoryFeedback(.selection, trigger: isUpdateAllArmed)
+        .onDisappear { disarmUpdateAll() }
+        .accessibilityLabel(isUpToDate
+            ? "All environments are up to date"
+            : (isUpdateAllArmed
+                ? "Confirm update of all environments"
+                : "Update All\(upgrades.map { ", \($0) environments have upgrades" } ?? "")"))
+        .accessibilityHint(isUpdateAllArmed ? "Starts updating every environment" : "Tap again to confirm")
+    }
+
+    private func armUpdateAll() {
+        withAnimation(Motion.reduced(Motion.entrance, reduceMotion: reduceMotion)) {
+            isUpdateAllArmed = true
+        }
+        updateAllDisarmTask?.cancel()
+        updateAllDisarmTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            withAnimation(Motion.reduced(Motion.state, reduceMotion: reduceMotion)) {
+                isUpdateAllArmed = false
+            }
+        }
+    }
+
+    private func disarmUpdateAll() {
+        updateAllDisarmTask?.cancel()
+        updateAllDisarmTask = nil
+        withAnimation(Motion.reduced(Motion.state, reduceMotion: reduceMotion)) {
+            isUpdateAllArmed = false
+        }
+    }
+
     /// Shown when the aggregated stream burned its whole reconnect budget;
-    /// tiles and cards keep rendering last-known/legacy data underneath.
+    /// cards keep rendering last-known/legacy data underneath.
     private var streamFailedBanner: some View {
         HStack(spacing: 8) {
             Image(systemName: "wifi.exclamationmark")
-                .font(.caption.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.orange)
             Text("Live counts paused")
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
             Button("Retry") { streamStore.retry() }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.plain)
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.borderless)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
     }
 
-    private var dashboardHeader: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Dashboard")
-                .font(.system(.title, design: .default).bold())
-                .foregroundStyle(.primary)
-            Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
 
     /// Triage rows for the Needs Attention card, folded from data the
     /// dashboard already holds — no extra fetches. Empty means all clear
@@ -512,6 +632,7 @@ struct DashboardView: View {
         if let first = erroring.first {
             items.append(NeedsAttentionItem(
                 id: "offline-environments",
+                detail: "Live data is unavailable until the environment reconnects.",
                 severity: .critical,
                 icon: "wifi.exclamationmark",
                 title: erroring.count == 1
@@ -551,6 +672,7 @@ struct DashboardView: View {
         if vulnerabilities > 0, let target = vulnerabilityEnv {
             items.append(NeedsAttentionItem(
                 id: "vulnerabilities",
+                detail: "Open the vulnerability report for the most affected environment.",
                 severity: criticalVulns ? .critical : .warning,
                 icon: "exclamationmark.shield.fill",
                 title: "Actionable vulnerabilities",
@@ -563,6 +685,7 @@ struct DashboardView: View {
         if stopped > 0 {
             items.append(NeedsAttentionItem(
                 id: "stopped-containers",
+                detail: "Review containers that are not running.",
                 severity: .warning,
                 icon: "stop.fill",
                 title: "Stopped containers",
@@ -578,6 +701,7 @@ struct DashboardView: View {
         if imageUpdates > 0 {
             items.append(NeedsAttentionItem(
                 id: "image-updates",
+                detail: "Newer images are available to pull.",
                 severity: .warning,
                 icon: "arrow.triangle.2.circlepath",
                 title: "Image updates available",
@@ -588,6 +712,7 @@ struct DashboardView: View {
         if expiringKeys > 0 {
             items.append(NeedsAttentionItem(
                 id: "expiring-keys",
+                detail: "Rotate API keys before they expire.",
                 severity: .warning,
                 icon: "key.fill",
                 title: "API keys expiring soon",
@@ -598,6 +723,7 @@ struct DashboardView: View {
         if !failedActivities.isEmpty {
             items.append(NeedsAttentionItem(
                 id: "failed-activities",
+                detail: "Open the Activity Center to inspect failures.",
                 severity: .critical,
                 icon: "exclamationmark.triangle.fill",
                 title: "Failed activities",
@@ -608,27 +734,23 @@ struct DashboardView: View {
         return items
     }
 
-    private var skeletonView: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 2) {
+    private var skeletonContent: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack(alignment: .top, spacing: 8) {
                 ForEach(0..<4, id: \.self) { _ in
                     skeletonTile
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .glassCardBackground()
 
             VStack(alignment: .leading, spacing: 12) {
-                SkeletonRect(width: 110, height: 14)
-                    .padding(.horizontal, 4)
-
-                VStack(spacing: 10) {
-                    ForEach(0..<2, id: \.self) { _ in
-                        skeletonEnvironmentRow
-                            .padding(.horizontal, 12)
-                            .dashboardEnvironmentOutline()
-                    }
+                SkeletonRect(width: 150, height: 20)
+                ForEach(0..<2, id: \.self) { _ in
+                    skeletonEnvironmentCard
                 }
             }
-            .padding(.top, 8)
         }
         .accessibilityHidden(true)
         .allowsHitTesting(false)
@@ -636,51 +758,45 @@ struct DashboardView: View {
     }
 
     private var skeletonTile: some View {
-        HStack(spacing: 12) {
-            SkeletonCircle(size: 32)
-            SkeletonRect(width: 88, height: 14)
-            Spacer()
-            SkeletonRect(width: 48, height: 14)
-            SkeletonRect(width: 7, height: 12, cornerRadius: 2)
+        VStack(alignment: .leading, spacing: 6) {
+            SkeletonRect(width: 44, height: 20)
+            SkeletonRect(width: 56, height: 10, cornerRadius: 3)
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 10)
-    }
-
-    private var skeletonEnvironmentRow: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    SkeletonRect(width: 130, height: 14)
-                    SkeletonRect(width: 80, height: 10, cornerRadius: 3)
-                }
-                Spacer()
-                SkeletonFill(shape: Capsule())
-                    .frame(width: 56, height: 20)
-            }
-
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-                ForEach(0..<2, id: \.self) { _ in
-                    GridRow {
-                        SkeletonRect(width: 100, height: 28, cornerRadius: Radius.nested)
-                        SkeletonRect(width: 100, height: 28, cornerRadius: Radius.nested)
-                    }
-                }
-            }
-
-            HStack(spacing: 20) {
-                ForEach(0..<3, id: \.self) { _ in
-                    SkeletonCircle(size: 48)
-                }
-                Spacer(minLength: 0)
-            }
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var overviewGrid: some View {
+    private var skeletonEnvironmentCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    SkeletonRect(width: 150, height: 16)
+                    SkeletonRect(width: 90, height: 10, cornerRadius: 3)
+                }
+                Spacer()
+                SkeletonCircle(size: 22)
+            }
+            HStack(spacing: 12) {
+                ForEach(0..<4, id: \.self) { _ in
+                    SkeletonRect(width: 56, height: 30)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            HStack(spacing: 16) {
+                ForEach(0..<3, id: \.self) { _ in
+                    HStack(spacing: 7) {
+                        SkeletonCircle(size: 18)
+                        SkeletonRect(width: 52, height: 12)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCardBackground()
+    }
+
+    private var overviewSection: some View {
         // Docker info is the only count source that includes every container.
         // A failed environment request invalidates the fleet total instead of
         // falling back to the dashboard snapshot's filtered count.
@@ -688,36 +804,50 @@ struct DashboardView: View {
         let total = liveCounts?.total
         let images = liveCounts?.images
 
-        return VStack(spacing: 2) {
-            DashboardGlassTile(
-                title: "Updates",
-                value: imageUpdatesTotal.map { "\($0)" } ?? "—",
-                icon: "arrow.triangle.2.circlepath",
-                tint: .green
-            ) { showImageUpdates = true }
-            DashboardGlassTile(
-                title: "Containers",
-                value: running.flatMap { running in
-                    total.map { "\(running) / \($0)" }
-                } ?? "—",
-                icon: "cube.box.fill",
-                tint: .orange
-            ) { selectedTab = AppTab.containers.id }
-            DashboardGlassTile(
-                title: "Images",
-                value: images.map { "\($0)" } ?? "—",
-                icon: "photo.stack.fill",
-                tint: .purple
-            ) { selectedTab = AppTab.images.id }
-            DashboardGlassTile(
-                title: "Volumes",
-                value: volumesTotal.map { "\($0)" } ?? "—",
-                icon: "externaldrive.fill",
-                tint: .teal
-            ) { showVolumes = true }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                DashboardStatTile(
+                    title: "Updates",
+                    value: imageUpdatesTotal.map { "\($0)" } ?? "—",
+                    icon: "arrow.triangle.2.circlepath",
+                    tint: .green
+                ) { showImageUpdates = true }
+                .cardEntrance(id: "dashboard.tile.updates", index: 0)
+                DashboardStatTile(
+                    title: "Containers",
+                    value: running.flatMap { running in
+                        total.map { "\(running) / \($0)" }
+                    } ?? "—",
+                    icon: "cube.box.fill",
+                    tint: .orange
+                ) { selectedTab = AppTab.containers.id }
+                .cardEntrance(id: "dashboard.tile.containers", index: 1)
+                DashboardStatTile(
+                    title: "Images",
+                    value: images.map { "\($0)" } ?? "—",
+                    icon: "photo.stack.fill",
+                    tint: .purple
+                ) { selectedTab = AppTab.images.id }
+                .cardEntrance(id: "dashboard.tile.images", index: 2)
+                DashboardStatTile(
+                    title: "Volumes",
+                    value: volumesTotal.map { "\($0)" } ?? "—",
+                    icon: "externaldrive.fill",
+                    tint: .teal
+                ) { showVolumes = true }
+                .cardEntrance(id: "dashboard.tile.volumes", index: 3)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .glassCardBackground()
+            .scrollEdgeFade()
+
+            fleetCountAvailabilityNote
+                .cardEntrance(id: "dashboard.overview.note", index: 4)
         }
     }
 
+    /// Footnote under the overview panel (never inside it).
     @ViewBuilder
     private var fleetCountAvailabilityNote: some View {
         let issues = countAvailabilityIssues
@@ -743,6 +873,7 @@ struct DashboardView: View {
             }
         }
     }
+
 
     private var countAvailabilityIssues: [DashboardCountIssue] {
         guard hasLoadedFleetCounts else { return [] }
@@ -1202,58 +1333,32 @@ nonisolated enum DashboardImageUpdateCountResolver {
     }
 }
 
+/// Activity Center entry point. Failed work is surfaced by the Attention
+/// Center, so this button carries no badge of its own.
 private struct DashboardActivityToolbarButton: View {
-    let failureCount: Int
     let action: () -> Void
 
-    @ViewBuilder
     var body: some View {
-        if #available(iOS 26, *) {
-            button.badge(failureCount)
-        } else {
-            button
-        }
-    }
-
-    private var button: some View {
         Button(action: action) {
             Image(systemName: "clock.arrow.circlepath")
                 .appAccentToolbarSymbol()
                 .frame(width: 32, height: 32)
-                .overlay(alignment: .topTrailing) {
-                    if #unavailable(iOS 26), failureCount > 0 {
-                        Text(verbatim: "\(failureCount)")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 4)
-                            .frame(minWidth: 16, minHeight: 16)
-                            .background(.red, in: .capsule)
-                    }
-                }
         }
-        .accessibilityLabel(failureCount == 0
-            ? "Activity Center"
-            : "Activity Center, \(failureCount) failures")
+        .accessibilityLabel("Activity Center")
     }
 }
 
-private struct DashboardLiveStatsLimitNotice: View {
-    let presentation: DashboardLiveStatsLimitPresentation
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "info.circle.fill")
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(presentation.message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+/// iOS 26 shows today's date under the large title; iOS 18 has no subtitle
+/// slot on iPhone, so the title stands alone there.
+private struct DashboardDateSubtitle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.navigationSubtitle(
+                Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
+            )
+        } else {
+            content
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: Radius.nested))
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1305,7 +1410,9 @@ struct StatRing: View {
     }
 }
 
-struct DashboardGlassTile: View {
+/// One overview stat: rounded number over a caption with a tiny tinted glyph.
+/// Four of these share the single-row overview panel; each is a button.
+struct DashboardStatTile: View {
     let title: String
     let value: String
     let icon: String
@@ -1314,36 +1421,32 @@ struct DashboardGlassTile: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(tint)
-                        .frame(width: 32, height: 32)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 8)
+            VStack(alignment: .leading, spacing: 3) {
                 Text(value)
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .minimumScaleFactor(0.8)
+                    .font(.system(.title3, design: .rounded).weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.primary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .contentTransition(.numericText())
                     .motionAwareAnimation(Motion.state, value: value)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary.opacity(0.5))
+                HStack(spacing: 4) {
+                    Image(systemName: icon)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .symbolEffect(.bounce, value: value)
+                        .accessibilityHidden(true)
+                    Text(title)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .cardRowLinkStyle()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(value)")
         .accessibilityAddTraits(.isButton)
@@ -1351,13 +1454,48 @@ struct DashboardGlassTile: View {
     }
 }
 
-private extension View {
-    func dashboardEnvironmentOutline() -> some View {
-        overlay {
-            RoundedRectangle(cornerRadius: Radius.standard, style: .continuous)
-                .strokeBorder(Color(uiColor: .separator), lineWidth: 1)
-                .allowsHitTesting(false)
-        }
+/// Section heading for dashboard groups (Pinned, Environments).
+struct DashboardSectionTitle: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(Color.primary)
+    }
+}
+
+/// Symbol on a soft tint disc. Restrained — the tint sits at low opacity
+/// behind a tinted glyph rather than a saturated fill.
+struct DashboardRowIcon: View {
+    let systemImage: String
+    let tint: Color
+    var size: CGFloat = 30
+    /// The glyph bounces whenever this changes (e.g. the tile's value).
+    var changeToken: String = ""
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: size * 0.46, weight: .semibold))
+            .foregroundStyle(tint)
+            .symbolEffect(.bounce, value: changeToken)
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.14), in: Circle())
+            .accessibilityHidden(true)
+    }
+}
+
+/// Trailing disclosure chevron for button rows that act like navigation links.
+struct DashboardRowChevron: View {
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
     }
 }
 
@@ -1397,7 +1535,7 @@ struct DashboardTile: View {
     let color: Color
     let action: () -> Void
     var body: some View {
-        DashboardGlassTile(title: title, value: value, icon: icon, tint: color, action: action)
+        DashboardStatTile(title: title, value: value, icon: icon, tint: color, action: action)
     }
 }
 
