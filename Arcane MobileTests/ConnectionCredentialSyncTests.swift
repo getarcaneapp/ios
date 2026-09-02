@@ -66,6 +66,30 @@ struct ConnectionCredentialSyncTests {
     }
 
     @Test
+    func optionalProfileSignInRequiresEitherBothFieldsOrNeither() throws {
+        let connectionOnly = try SyncedConnectionCredential.optional(username: "", password: "")
+        #expect(connectionOnly == nil)
+
+        #expect(throws: ConnectionCredentialValidationError.emptyUsername) {
+            try SyncedConnectionCredential.optional(username: "", password: "password")
+        }
+        #expect(throws: ConnectionCredentialValidationError.emptyPassword) {
+            try SyncedConnectionCredential.optional(username: "admin", password: "")
+        }
+
+        let credential = try #require(
+            try SyncedConnectionCredential.optional(
+                username: "admin",
+                password: "super-secret-value"
+            )
+        )
+        #expect(credential.username == "admin")
+        #expect(credential.password == "super-secret-value")
+        #expect(!String(describing: credential).contains("admin"))
+        #expect(!String(reflecting: credential).contains("super-secret-value"))
+    }
+
+    @Test
     func keychainPolicyIsSynchronizableUnlockedAndAppPrivate() throws {
         let store = ConnectionCredentialKeychainStore(service: "test.connection.credentials")
         let profileID = UUID()

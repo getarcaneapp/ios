@@ -17,13 +17,15 @@ struct LoginView: View {
     @State private var serverURL: String = ""
     @State private var username: String = ""
     @State private var password: String = ""
-    @State private var syncSignInWithICloud = false
     @State private var recoveryCode: String = ""
     @State private var showSetup: Bool = false
     @State private var showsConnectionProfiles = false
 
     @State private var showsPasswordForm: Bool = false
     @State private var pendingPasswordCredentialChange: PendingPasswordCredentialChange?
+    @State private var savedSignInOffer: SavedSignInOffer?
+    @State private var isUsingSavedSignIn = false
+    @State private var savedSignInAttemptID: UUID?
     @State private var logoAppeared: Bool = false
     @FocusState private var focusedField: Field?
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -36,7 +38,17 @@ struct LoginView: View {
         let serverURL: String
         let username: String
         let password: String
-        let shouldSync: Bool
+    }
+
+    private struct SavedSignInOffer: CustomStringConvertible, CustomDebugStringConvertible {
+        let profile: ConnectionProfile
+        let credential: SyncedConnectionCredential
+
+        var description: String {
+            "SavedSignInOffer(profileID: \(profile.id), credentials: <redacted>)"
+        }
+
+        var debugDescription: String { description }
     }
 
     private var isSetupMode: Bool { mode == .setup || showSetup }
@@ -50,6 +62,15 @@ struct LoginView: View {
     // local password path entirely through their public auth settings.
     private var shouldShowPasswordFields: Bool {
         manager.isLocalAuthAvailable && (!manager.isOIDCAvailable || showsPasswordForm)
+    }
+
+    private var isSavedSignInOfferPresented: Binding<Bool> {
+        Binding(
+            get: { savedSignInOffer != nil },
+            set: { isPresented in
+                if !isPresented { savedSignInOffer = nil }
+            }
+        )
     }
 
     // The user's chosen accent color from Settings, falling back to the
@@ -126,6 +147,20 @@ struct LoginView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        .alert(
+            "Use Saved Sign-In?",
+            isPresented: isSavedSignInOfferPresented,
+            presenting: savedSignInOffer
+        ) { offer in
+            Button("Use Saved Sign-In") {
+                useSavedSignIn(offer)
+            }
+            Button("Not Now", role: .cancel) {
+                savedSignInOffer = nil
+            }
+        } message: { offer in
+            Text("Use the sign-in saved in iCloud for \(offer.profile.name)?")
+        }
         .background(
             ZStack {
                 LinearGradient(
@@ -147,14 +182,12 @@ struct LoginView: View {
         .animation(Motion.entrance, value: manager.errorMessage)
         .animation(Motion.entrance, value: manager.isStartingDemo)
         .animation(Motion.state, value: manager.isLoading)
+        .animation(Motion.state, value: isUsingSavedSignIn)
         .animation(Motion.entrance, value: manager.pendingMFAChallenge)
         .animation(Motion.entrance, value: manager.isOIDCAvailable)
         .animation(Motion.entrance, value: manager.isLocalAuthAvailable)
         .onAppear {
             serverURL = manager.serverURL
-            if !isSetupMode {
-                loadSyncedCredential(for: profileStore.profile(matching: manager.serverURL))
-            }
         }
         .onChange(of: manager.isStartingDemo) { _, isStarting in
             if isStarting { focusedField = nil }
@@ -164,14 +197,23 @@ struct LoginView: View {
             // keyboard if the fields it targeted just went behind OIDC.
             if !shows { focusedField = nil }
         }
+        .onChange(of: manager.isLocalAuthAvailable) { _, isAvailable in
+            guard !isAvailable else { return }
+            savedSignInOffer = nil
+            username = ""
+            password = ""
+            isUsingSavedSignIn = false
+            savedSignInAttemptID = nil
+        }
         .onChange(of: profileStore.syncedCredentialProfileIDs) { previousIDs, currentIDs in
             guard !isSetupMode,
+                  !isLaunchSplashPresented,
                   username.isEmpty,
                   password.isEmpty,
                   let profile = profileStore.profile(matching: manager.serverURL),
                   !previousIDs.contains(profile.id),
                   currentIDs.contains(profile.id) else { return }
-            loadSyncedCredential(for: profile)
+            offerSavedCredential(for: profile)
         }
         .task(id: oidcRefreshTaskID) {
             guard !isSetupMode, !manager.serverURL.isEmpty else { return }
@@ -188,6 +230,13 @@ struct LoginView: View {
                 return
             }
             guard !manager.isStartingDemo else { return }
+            if !isSetupMode, savedSignInOffer == nil {
+                offerSavedCredential(for: profileStore.profile(matching: manager.serverURL))
+            }
+            if savedSignInOffer != nil {
+                focusedField = nil
+                return
+            }
             if isSetupMode {
                 focusedField = .serverURL
             } else if manager.pendingMFAChallenge != nil {
@@ -401,13 +450,6 @@ struct LoginView: View {
                 .submitLabel(.go)
                 .onSubmit { signIn() }
             }
-
-            Divider().padding(.leading, 16)
-
-            FieldRow(icon: "icloud", label: "Sync Sign-In with iCloud") {
-                Toggle("Sync Sign-In with iCloud", isOn: $syncSignInWithICloud)
-                    .tint(brandColor)
-            }
         }
         .glassEffectCompat(in: .rect(cornerRadius: Radius.card))
     }
@@ -510,10 +552,15 @@ struct LoginView: View {
             primaryButton(
                 "Sign In",
                 icon: "person.fill.checkmark",
-                loading: manager.isLoading,
+                loading: manager.isLoading || isUsingSavedSignIn,
                 action: signIn
             )
-            .disabled(username.isEmpty || password.isEmpty || manager.isLoading)
+            .disabled(
+                username.isEmpty
+                    || password.isEmpty
+                    || manager.isLoading
+                    || isUsingSavedSignIn
+            )
         }
 
         HStack(spacing: 10) {
@@ -683,9 +730,9 @@ struct LoginView: View {
         serverURL = manager.serverURL
         do {
             let profile = try profileStore.saveConnectedServer(manager.serverURL)
-            loadSyncedCredential(for: profile)
+            offerSavedCredential(for: profile)
         } catch {
-            loadSyncedCredential(for: nil)
+            resetPasswordSignIn()
             showToast(.info("Connected server wasn't saved as a profile"))
         }
         withAnimation(Motion.entrance) { showSetup = false }
@@ -697,11 +744,17 @@ struct LoginView: View {
 
     private func connect(using profile: ConnectionProfile) {
         focusedField = nil
+        resetPasswordSignIn()
         serverURL = profile.serverURL
         manager.configure(serverURL: profile.serverURL)
         guard manager.errorMessage == nil else { return }
-        loadSyncedCredential(for: profile)
         withAnimation(Motion.entrance) { showSetup = false }
+        // Let the profile picker finish dismissing before presenting the
+        // native saved-sign-in alert from the login screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            guard profileStore.profile(matching: manager.serverURL)?.id == profile.id else { return }
+            offerSavedCredential(for: profile)
+        }
     }
 
     private func signIn() {
@@ -710,18 +763,11 @@ struct LoginView: View {
         let pendingChange = PendingPasswordCredentialChange(
             serverURL: manager.serverURL,
             username: username,
-            password: password,
-            shouldSync: syncSignInWithICloud
+            password: password
         )
         pendingPasswordCredentialChange = pendingChange
         Task {
-            await manager.login(username: pendingChange.username, password: pendingChange.password)
-            if manager.authState == .authenticated {
-                pendingPasswordCredentialChange = nil
-                applyPasswordCredentialChange(pendingChange)
-            } else if manager.pendingMFAChallenge == nil {
-                pendingPasswordCredentialChange = nil
-            }
+            await performPasswordSignIn(pendingChange)
         }
     }
 
@@ -756,7 +802,7 @@ struct LoginView: View {
             await manager.completePendingMFAWithPasskey(anchor: anchor)
             if let pendingChange, manager.authState == .authenticated {
                 pendingPasswordCredentialChange = nil
-                applyPasswordCredentialChange(pendingChange)
+                savePasswordSignIn(pendingChange)
             }
         }
     }
@@ -768,47 +814,94 @@ struct LoginView: View {
             await manager.completePendingMFAWithRecoveryCode(recoveryCode)
             if let pendingChange, manager.authState == .authenticated {
                 pendingPasswordCredentialChange = nil
-                applyPasswordCredentialChange(pendingChange)
+                savePasswordSignIn(pendingChange)
             }
         }
     }
 
-    private func loadSyncedCredential(for profile: ConnectionProfile?) {
-        pendingPasswordCredentialChange = nil
-        username = ""
-        password = ""
-        syncSignInWithICloud = false
-        showsPasswordForm = false
+    private func offerSavedCredential(for profile: ConnectionProfile?) {
+        resetPasswordSignIn()
 
-        guard let profile else { return }
+        guard manager.isLocalAuthAvailable, let profile else { return }
         do {
             guard let credential = try profileStore.syncedCredential(for: profile) else { return }
-            username = credential.username
-            password = credential.password
-            syncSignInWithICloud = true
-            showsPasswordForm = true
+            savedSignInOffer = SavedSignInOffer(profile: profile, credential: credential)
         } catch {
             showToast(.error(error.localizedDescription))
         }
     }
 
-    private func applyPasswordCredentialChange(_ pendingChange: PendingPasswordCredentialChange) {
+    private func resetPasswordSignIn() {
+        pendingPasswordCredentialChange = nil
+        savedSignInOffer = nil
+        username = ""
+        password = ""
+        showsPasswordForm = false
+        isUsingSavedSignIn = false
+        savedSignInAttemptID = nil
+    }
+
+    private func useSavedSignIn(_ offer: SavedSignInOffer) {
+        savedSignInOffer = nil
+        focusedField = nil
+        username = offer.credential.username
+        password = offer.credential.password
+        withAnimation(Motion.entrance) { showsPasswordForm = true }
+        isUsingSavedSignIn = true
+        let attemptID = UUID()
+        savedSignInAttemptID = attemptID
+
+        Task {
+            await manager.refreshLoginCapabilities()
+            guard savedSignInAttemptID == attemptID else { return }
+            guard manager.isLocalAuthAvailable else {
+                resetPasswordSignIn()
+                showToast(.info("Password sign-in is disabled on \(offer.profile.name)"))
+                return
+            }
+            guard profileStore.profile(matching: manager.serverURL)?.id == offer.profile.id else {
+                resetPasswordSignIn()
+                return
+            }
+
+            let pendingChange = PendingPasswordCredentialChange(
+                serverURL: offer.profile.serverURL,
+                username: offer.credential.username,
+                password: offer.credential.password
+            )
+            pendingPasswordCredentialChange = pendingChange
+            await performPasswordSignIn(pendingChange)
+            guard savedSignInAttemptID == attemptID else { return }
+            savedSignInAttemptID = nil
+            isUsingSavedSignIn = false
+        }
+    }
+
+    private func performPasswordSignIn(_ pendingChange: PendingPasswordCredentialChange) async {
+        await manager.login(username: pendingChange.username, password: pendingChange.password)
+        if manager.authState == .authenticated {
+            pendingPasswordCredentialChange = nil
+            savePasswordSignIn(pendingChange)
+        } else if manager.pendingMFAChallenge == nil {
+            pendingPasswordCredentialChange = nil
+        }
+    }
+
+    private func savePasswordSignIn(_ pendingChange: PendingPasswordCredentialChange) {
         guard manager.authState == .authenticated else { return }
         guard let currentURL = try? ConnectionProfileSync.normalizedServerURL(manager.serverURL),
               let attemptedURL = try? ConnectionProfileSync.normalizedServerURL(pendingChange.serverURL),
               currentURL == attemptedURL else { return }
 
         do {
-            let profile = try profileStore.saveConnectedServer(pendingChange.serverURL)
-            if pendingChange.shouldSync {
-                try profileStore.saveSyncedCredential(
-                    for: profile,
-                    username: pendingChange.username,
-                    password: pendingChange.password
-                )
-            } else {
-                try profileStore.removeSyncedCredential(for: profile)
-            }
+            let credential = try SyncedConnectionCredential(
+                username: pendingChange.username,
+                password: pendingChange.password
+            )
+            try profileStore.saveConnectedServer(
+                pendingChange.serverURL,
+                credential: credential
+            )
         } catch {
             showToast(.error(error.localizedDescription))
         }

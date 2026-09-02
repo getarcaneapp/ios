@@ -1,6 +1,18 @@
 import SwiftUI
 import Arcane
 
+nonisolated enum AuthenticationSettingsValidation {
+    static let sessionTimeoutMinutes = 15...525_600
+
+    static func sessionTimeoutError(for rawValue: String) -> String? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespaces)
+        guard let minutes = Int(trimmed), sessionTimeoutMinutes.contains(minutes) else {
+            return "Session Timeout must be a whole number between 15 and 525600 minutes."
+        }
+        return nil
+    }
+}
+
 struct AuthenticationSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
@@ -63,8 +75,8 @@ struct AuthenticationSettingsView: View {
                     title: "Session Timeout",
                     placeholder: "1440",
                     text: $authSessionTimeout,
-                    minValue: 15,
-                    maxValue: 1440
+                    minValue: AuthenticationSettingsValidation.sessionTimeoutMinutes.lowerBound,
+                    maxValue: AuthenticationSettingsValidation.sessionTimeoutMinutes.upperBound
                 )
                 FormPicker(
                     title: "Password Policy",
@@ -77,7 +89,7 @@ struct AuthenticationSettingsView: View {
             } header: {
                 Label("Local Authentication", systemImage: "person.badge.key")
             } footer: {
-                Text("Session length in minutes (15–1440). Stronger policies require more complex local passwords.")
+                Text("Session length in minutes (15–525600). Stronger policies require more complex local passwords.")
             }
 
             Section {
@@ -238,8 +250,9 @@ struct AuthenticationSettingsView: View {
     private func save() async {
         guard let client = manager.client else { return }
 
-        if let t = Int(authSessionTimeout.trimmingCharacters(in: .whitespaces)), t < 15 || t > 1440 {
-            errorMessage = "Session Timeout must be between 15 and 1440 minutes."
+        if let validationError = AuthenticationSettingsValidation.sessionTimeoutError(for: authSessionTimeout) {
+            errorMessage = validationError
+            showToast(.error(validationError))
             return
         }
 
@@ -279,7 +292,9 @@ struct AuthenticationSettingsView: View {
             originalState = formState
             showToast(.success("Authentication settings saved"))
         } catch {
-            errorMessage = friendlyErrorMessage(error)
+            let message = friendlyErrorMessage(error)
+            errorMessage = message
+            showToast(.error(message))
         }
     }
 }

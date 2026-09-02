@@ -145,9 +145,11 @@ enum ReleaseNotes {
             version: "0.8.2",
             new: [
                 .init("Support bundles with actionable redacted diagnostics."),
-                .init("iCloud Keychain connection profiles with optional password sign-in sync.")
+                .init("iCloud Keychain connection profiles with included password sign-ins.")
             ],
             changed: [
+                .init("Connection profiles manage server details and saved sign-ins together."),
+                .init("Saved iCloud sign-ins are offered after sign-out."),
                 .init("Tab bar compacts on downward scrolling and expands on upward scrolling."),
                 .init("Reorganized App Settings with compact single-line rows."),
                 .init("Compact detail tabs and log layout with inline stream controls."),
@@ -157,6 +159,7 @@ enum ReleaseNotes {
                 .init("Update All and Run Updater use centered native sheets.")
             ],
             fixed: [
+                .init("Authentication settings save with one-year session timeouts."),
                 .init("Destructive action icons consistently use red styling."),
                 .init("Live log following stays pinned to new output."),
                 .init("All Activities banners include running work."),

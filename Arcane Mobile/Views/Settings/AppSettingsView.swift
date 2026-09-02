@@ -165,7 +165,7 @@ struct AppSettingsView: View {
         } header: {
             Text("Connections")
         } footer: {
-            Text("Connection profiles sync through iCloud Keychain. Password sign-in sync is optional; session tokens stay on this device.")
+            Text("Connection profiles can include a password sign-in in iCloud Keychain. Sessions stay on this device.")
         }
     }
 

@@ -20,7 +20,6 @@ struct ConnectionProfilesView: View {
 
     private enum PendingConfirmation {
         case delete(ConnectionProfile)
-        case removeCredential(ConnectionProfile)
         case switchServer(ConnectionProfile)
     }
 
@@ -40,7 +39,7 @@ struct ConnectionProfilesView: View {
                         Label("Save Current Server", systemImage: "plus.circle.fill")
                     }
                 } footer: {
-                    Text("Adds the connected server without copying its credentials.")
+                    Text("Adds the connected server as a profile. Edit it to include a saved sign-in.")
                 }
             }
 
@@ -74,16 +73,6 @@ struct ConnectionProfilesView: View {
                                 }
                                 .tint(.blue)
                             }
-                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                                if profileStore.hasSyncedCredential(for: profile) {
-                                    Button {
-                                        pendingConfirmation = .removeCredential(profile)
-                                    } label: {
-                                        Label("Remove Sign-In", systemImage: "icloud.slash")
-                                    }
-                                    .tint(.orange)
-                                }
-                            }
                             .contextMenu {
                                 Button {
                                     editorTarget = EditorTarget(
@@ -92,13 +81,6 @@ struct ConnectionProfilesView: View {
                                     )
                                 } label: {
                                     Label("Edit Profile", systemImage: "pencil")
-                                }
-                                if profileStore.hasSyncedCredential(for: profile) {
-                                    Button(role: .destructive) {
-                                        pendingConfirmation = .removeCredential(profile)
-                                    } label: {
-                                        Label("Remove Synced Sign-In", systemImage: "icloud.slash")
-                                    }
                                 }
                                 Button(role: .destructive) {
                                     pendingConfirmation = .delete(profile)
@@ -114,7 +96,7 @@ struct ConnectionProfilesView: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(profileStore.syncState.description)
-                    Text("Profile names and server addresses sync through iCloud Keychain. Password sign-in sync is optional; session tokens and cookies stay on each device.")
+                    Text("Profiles can include a password sign-in. Profiles and sign-ins sync through iCloud Keychain; sessions stay on each device.")
                 }
             }
         }
@@ -143,17 +125,8 @@ struct ConnectionProfilesView: View {
             NavigationStack {
                 ConnectionProfileEditorView(
                     profile: target.profile,
-                    suggestedServerURL: target.suggestedServerURL,
-                    hasSyncedCredential: target.profile.map {
-                        profileStore.hasSyncedCredential(for: $0)
-                    } ?? false
-                ) { name, serverURL in
-                    if let profile = target.profile {
-                        try profileStore.update(profile, name: name, serverURL: serverURL)
-                    } else {
-                        try profileStore.save(name: name, serverURL: serverURL)
-                    }
-                }
+                    suggestedServerURL: target.suggestedServerURL
+                )
             }
             .toastHost(reservesTabBarSpace: false)
             .presentationDetents([.medium, .large])
@@ -170,20 +143,6 @@ struct ConnectionProfilesView: View {
                         do {
                             try profileStore.delete(profile)
                             showToast(.success("Connection profile deleted"))
-                        } catch {
-                            showToast(.error(error.localizedDescription))
-                        }
-                    }]
-                )
-            case .removeCredential(let profile):
-                return DeleteConfirmationConfig(
-                    title: "Remove Synced Sign-In?",
-                    message: "The username and password for \(profile.name) will be removed from iCloud Keychain on your devices. The connection profile will remain.",
-                    icon: "icloud.slash",
-                    actions: [DeleteConfirmationAction(title: "Remove Sign-In") {
-                        do {
-                            try profileStore.removeSyncedCredential(for: profile)
-                            showToast(.success("Synced sign-in removed"))
                         } catch {
                             showToast(.error(error.localizedDescription))
                         }
@@ -309,33 +268,42 @@ struct ConnectionProfilesView: View {
 }
 
 private struct ConnectionProfileEditorView: View {
+    @SwiftUI.Environment(ConnectionProfileStore.self) private var profileStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     let profile: ConnectionProfile?
-    let hasSyncedCredential: Bool
-    let onSave: (String, String) throws -> Void
 
     @State private var name: String
     @State private var serverURL: String
+    @State private var username = ""
+    @State private var password = ""
+    @State private var credentialLoadState: CredentialLoadState
+    @State private var hasExistingCredential = false
+    @State private var signInNotice: String?
     @State private var validationMessage: String?
     @FocusState private var focusedField: Field?
 
-    private enum Field {
+    private enum Field: Hashable {
         case name
         case serverURL
+        case username
+        case password
+    }
+
+    private enum CredentialLoadState: Equatable {
+        case loading
+        case ready
+        case failed
     }
 
     init(
         profile: ConnectionProfile?,
-        suggestedServerURL: String,
-        hasSyncedCredential: Bool,
-        onSave: @escaping (String, String) throws -> Void
+        suggestedServerURL: String
     ) {
         self.profile = profile
-        self.hasSyncedCredential = hasSyncedCredential
-        self.onSave = onSave
         _name = State(initialValue: profile?.name ?? "")
         _serverURL = State(initialValue: profile?.serverURL ?? suggestedServerURL)
+        _credentialLoadState = State(initialValue: profile == nil ? .ready : .loading)
     }
 
     var body: some View {
@@ -352,16 +320,52 @@ private struct ConnectionProfileEditorView: View {
                     .keyboardType(.URL)
                     .textContentType(.URL)
                     .focused($focusedField, equals: .serverURL)
-                    .submitLabel(.done)
-                    .onSubmit(save)
+                    .submitLabel(.next)
+                    .onSubmit { focusedField = .username }
             } header: {
                 Text("Profile")
             } footer: {
-                if hasSyncedCredential {
-                    Text("HTTP or HTTPS only. Changing the server URL removes its synced sign-in. URL credentials, query parameters, and fragments are removed before iCloud sync.")
-                } else {
-                    Text("HTTP or HTTPS only. URL credentials, query parameters, and fragments are removed before iCloud sync.")
+                Text("HTTP or HTTPS only. URL credentials, query parameters, and fragments are removed before iCloud sync.")
+            }
+
+            Section {
+                switch credentialLoadState {
+                case .loading:
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Loading Saved Sign-In")
+                            .foregroundStyle(.secondary)
+                    }
+                case .failed:
+                    Button("Retry Loading Sign-In", action: loadCredential)
+                case .ready:
+                    TextField("Username", text: $username)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .textContentType(.username)
+                        .focused($focusedField, equals: .username)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .password }
+
+                    SecureField("Password", text: $password)
+                        .textContentType(.password)
+                        .focused($focusedField, equals: .password)
+                        .submitLabel(.done)
+                        .onSubmit(save)
+
+                    if hasExistingCredential {
+                        Button("Remove Saved Sign-In", role: .destructive) {
+                            username = ""
+                            password = ""
+                            hasExistingCredential = false
+                            signInNotice = "The saved sign-in will be removed when you save."
+                        }
+                    }
                 }
+            } header: {
+                Text("Sign-In (Optional)")
+            } footer: {
+                Text(signInNotice ?? "A saved sign-in travels with this profile through iCloud Keychain.")
             }
 
             if let validationMessage {
@@ -380,23 +384,79 @@ private struct ConnectionProfileEditorView: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save", action: save)
-                    .disabled(serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(
+                        serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || credentialLoadState != .ready
+                    )
             }
         }
         .onChange(of: name) { _, _ in validationMessage = nil }
-        .onChange(of: serverURL) { _, _ in validationMessage = nil }
+        .onChange(of: serverURL) { _, newValue in
+            validationMessage = nil
+            clearCredentialIfServerChanged(to: newValue)
+        }
+        .onChange(of: username) { _, _ in validationMessage = nil }
+        .onChange(of: password) { _, _ in validationMessage = nil }
+        .task { loadCredential() }
         .onAppear {
             focusedField = profile == nil && serverURL.isEmpty ? .serverURL : .name
         }
     }
 
     private func save() {
+        guard credentialLoadState == .ready else { return }
         do {
-            try onSave(name, serverURL)
+            let credential = try SyncedConnectionCredential.optional(
+                username: username,
+                password: password
+            )
+            try profileStore.saveConnectionProfile(
+                profile,
+                name: name,
+                serverURL: serverURL,
+                credential: credential
+            )
             showToast(.success(profile == nil ? "Connection profile added" : "Connection profile updated"))
             dismiss()
         } catch {
             validationMessage = error.localizedDescription
         }
+    }
+
+    private func loadCredential() {
+        guard let profile else {
+            credentialLoadState = .ready
+            return
+        }
+
+        credentialLoadState = .loading
+        validationMessage = nil
+        do {
+            let credential = try profileStore.syncedCredential(for: profile)
+            let draftURL = try? ConnectionProfileSync.normalizedServerURL(serverURL)
+            if let credential, draftURL == profile.serverURL {
+                username = credential.username
+                password = credential.password
+                hasExistingCredential = true
+            } else if credential != nil {
+                signInNotice = "Re-enter the sign-in after changing the server address."
+            }
+            credentialLoadState = .ready
+        } catch {
+            credentialLoadState = .failed
+            validationMessage = error.localizedDescription
+        }
+    }
+
+    private func clearCredentialIfServerChanged(to newValue: String) {
+        guard let profile,
+              hasExistingCredential,
+              let normalized = try? ConnectionProfileSync.normalizedServerURL(newValue),
+              normalized != profile.serverURL else { return }
+
+        username = ""
+        password = ""
+        hasExistingCredential = false
+        signInNotice = "Re-enter the sign-in after changing the server address."
     }
 }

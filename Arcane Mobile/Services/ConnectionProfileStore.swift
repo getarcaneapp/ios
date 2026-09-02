@@ -405,6 +405,51 @@ final class ConnectionProfileStore {
         try write(profileID: nil, name: name, serverURL: serverURL)
     }
 
+    /// Saves the metadata and optional password sign-in as one app-level
+    /// connection profile. The two records remain separate in Keychain so the
+    /// widget-readable profile metadata never grants access to credentials.
+    @discardableResult
+    func saveConnectionProfile(
+        _ profile: ConnectionProfile?,
+        name: String,
+        serverURL: String,
+        credential: SyncedConnectionCredential?
+    ) throws -> ConnectionProfile {
+        let savedProfile: ConnectionProfile
+        if let profile {
+            savedProfile = try update(profile, name: name, serverURL: serverURL)
+        } else {
+            savedProfile = try save(name: name, serverURL: serverURL)
+        }
+
+        if let credential {
+            try saveSyncedCredential(
+                for: savedProfile,
+                username: credential.username,
+                password: credential.password
+            )
+        } else if hasSyncedCredential(for: savedProfile) {
+            try removeSyncedCredential(for: savedProfile)
+        }
+        return savedProfile
+    }
+
+    /// A successful local login belongs to its connection profile, so update
+    /// both together instead of maintaining a separate login-screen setting.
+    @discardableResult
+    func saveConnectedServer(
+        _ serverURL: String,
+        credential: SyncedConnectionCredential
+    ) throws -> ConnectionProfile {
+        let profile = try saveConnectedServer(serverURL)
+        try saveSyncedCredential(
+            for: profile,
+            username: credential.username,
+            password: credential.password
+        )
+        return profile
+    }
+
     @discardableResult
     func update(_ profile: ConnectionProfile, name: String, serverURL: String) throws -> ConnectionProfile {
         let normalized = try ConnectionProfileSync.normalizedServerURL(serverURL)

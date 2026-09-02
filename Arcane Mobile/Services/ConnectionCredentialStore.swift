@@ -5,6 +5,31 @@ nonisolated struct SyncedConnectionCredential: Equatable, Sendable, CustomString
     let username: String
     let password: String
 
+    init(username: String, password: String) throws {
+        guard !username.isEmpty else {
+            throw ConnectionCredentialValidationError.emptyUsername
+        }
+        guard !password.isEmpty else {
+            throw ConnectionCredentialValidationError.emptyPassword
+        }
+        guard username.utf8.count <= ConnectionCredentialRecord.maximumUsernameBytes,
+              password.utf8.count <= ConnectionCredentialRecord.maximumPasswordBytes else {
+            throw ConnectionCredentialValidationError.credentialTooLarge
+        }
+
+        self.username = username
+        self.password = password
+    }
+
+    /// Empty fields represent a connection-only profile. A partially entered
+    /// sign-in is rejected so saving a profile never silently drops a secret.
+    static func optional(username: String, password: String) throws -> Self? {
+        if username.isEmpty, password.isEmpty {
+            return nil
+        }
+        return try Self(username: username, password: password)
+    }
+
     var description: String {
         "SyncedConnectionCredential(username: <redacted>, password: <redacted>)"
     }
@@ -22,9 +47,9 @@ nonisolated enum ConnectionCredentialValidationError: LocalizedError, Equatable,
     var errorDescription: String? {
         switch self {
         case .emptyUsername:
-            return "Enter a username before enabling iCloud sign-in sync."
+            return "Enter a username or clear both sign-in fields."
         case .emptyPassword:
-            return "Enter a password before enabling iCloud sign-in sync."
+            return "Enter a password or clear both sign-in fields."
         case .credentialTooLarge:
             return "The username or password is too large to sync."
         case .invalidProfile:
@@ -47,16 +72,7 @@ nonisolated struct ConnectionCredentialRecord: Codable, Equatable, Sendable, Cus
     let password: String
 
     init(profile: ConnectionProfile, username: String, password: String) throws {
-        guard !username.isEmpty else {
-            throw ConnectionCredentialValidationError.emptyUsername
-        }
-        guard !password.isEmpty else {
-            throw ConnectionCredentialValidationError.emptyPassword
-        }
-        guard username.utf8.count <= Self.maximumUsernameBytes,
-              password.utf8.count <= Self.maximumPasswordBytes else {
-            throw ConnectionCredentialValidationError.credentialTooLarge
-        }
+        let credential = try SyncedConnectionCredential(username: username, password: password)
         guard let normalizedServerURL = try? ConnectionProfileSync.normalizedServerURL(profile.serverURL) else {
             throw ConnectionCredentialValidationError.invalidProfile
         }
@@ -64,8 +80,8 @@ nonisolated struct ConnectionCredentialRecord: Codable, Equatable, Sendable, Cus
         version = Self.schemaVersion
         profileID = profile.id
         serverURL = normalizedServerURL
-        self.username = username
-        self.password = password
+        self.username = credential.username
+        self.password = credential.password
     }
 
     func credential(for profile: ConnectionProfile) -> SyncedConnectionCredential? {
@@ -75,7 +91,7 @@ nonisolated struct ConnectionCredentialRecord: Codable, Equatable, Sendable, Cus
               serverURL == normalizedServerURL else {
             return nil
         }
-        return SyncedConnectionCredential(username: username, password: password)
+        return try? SyncedConnectionCredential(username: username, password: password)
     }
 
     var description: String {
