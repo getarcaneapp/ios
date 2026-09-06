@@ -7,7 +7,6 @@ struct ContainersView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let environmentID: EnvironmentID
     let environmentName: String
@@ -20,6 +19,8 @@ struct ContainersView: View {
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var pendingDestructive: ContainerDestructive?
+    @State private var showCreateContainer = false
+    @State private var showCompose = false
     @State private var showFilterSheet = false
     @State private var stateFilter = ContainerStateFilter.all
     @State private var updateFilter = ResourceUpdateFilter.all
@@ -151,13 +152,8 @@ struct ContainersView: View {
     /// Refresh the cached `sections`. Called only when an input that affects
     /// grouping actually changes (search settle, sort, filter, pins, or the
     /// source list) — never on every body evaluation.
-    private func rebuildSections(animated: Bool = false) {
-        let new = computeSections()
-        if animated {
-            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) { sections = new }
-        } else {
-            sections = new
-        }
+    private func rebuildSections() {
+        sections = computeSections()
         pruneSelection(validIDs: Set(containers.map(\.id)))
     }
 
@@ -204,7 +200,11 @@ struct ContainersView: View {
 
     private var bulkOverflowItems: [ActionButtonItem] {
         guard !selectedContainerIDs.isEmpty else { return [] }
-        return [
+        var items: [ActionButtonItem] = []
+        if manager.serverCapabilities?.mode == .rbac, manager.permissions.has(Permission.Containers.read, in: environmentID) {
+            items.append(ActionButtonItem(id: "generate-compose", title: "Generate Compose", systemImage: "doc.text", tint: .accentColor) { showCompose = true })
+        }
+        items.append(
             ActionButtonItem(
                 id: "bulk-delete",
                 title: "Remove",
@@ -213,7 +213,8 @@ struct ContainersView: View {
             ) {
                 pendingDestructive = .bulkRemove(selectedContainerIDs)
             }
-        ]
+        )
+        return items
     }
 
     var body: some View {
@@ -284,6 +285,9 @@ struct ContainersView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
+                    if manager.permissions.has(Permission.Containers.create, in: environmentID) {
+                        Button("Create Container", systemImage: "plus") { showCreateContainer = true }
+                    }
                     if !isSelecting {
                         Button {
                             enterSelectionMode()
@@ -363,6 +367,14 @@ struct ContainersView: View {
                 )
             }
         }
+        .sheet(isPresented: $showCreateContainer) {
+            ContainerConfigurationView(environmentID: environmentID) { id in
+                routedContainer = ContainerSummary(id: id, image: "", imageId: "", state: "", status: "")
+            }
+        }
+        .sheet(isPresented: $showCompose) {
+            ContainerComposeView(environmentID: environmentID, containerIDs: selectedContainerIDs)
+        }
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
                 Form {
@@ -429,9 +441,9 @@ struct ContainersView: View {
         .onChange(of: debouncedSearchText) {
             Task { await loadContainers(refresh: true) }
         }
-        .onChange(of: stateFilter) { rebuildSections(animated: true) }
-        .onChange(of: updateFilter) { rebuildSections(animated: true) }
-        .onChange(of: sortOrder) { rebuildSections(animated: true) }
+        .onChange(of: stateFilter) { rebuildSections() }
+        .onChange(of: updateFilter) { rebuildSections() }
+        .onChange(of: sortOrder) { rebuildSections() }
         .onChange(of: pinnedIDs) { rebuildSections() }
         .morphingActions(
             primary: bulkPrimaryItem,
@@ -829,7 +841,7 @@ struct ContainersView: View {
     ) async {
         await invalidateContainerCaches()
         mutationStore.markChanged(kind: .containers, envID: environmentID)
-        rebuildSections(animated: true)
+        rebuildSections()
         exitSelectionMode()
         if result.failed.isEmpty {
             showToast(.success(successTitle(result.succeeded)))

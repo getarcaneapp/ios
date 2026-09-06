@@ -1,0 +1,23 @@
+{
+  "images" : [
+    {
+      "filename" : "arcane-liquid-glass-light-56.png",
+      "idiom" : "universal",
+      "scale" : "1x"
+    },
+    {
+      "filename" : "arcane-liquid-glass-light-112.png",
+      "idiom" : "universal",
+      "scale" : "2x"
+    },
+    {
+      "filename" : "arcane-liquid-glass-light-1024.png",
+      "idiom" : "universal",
+      "scale" : "3x"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

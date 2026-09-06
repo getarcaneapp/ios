@@ -9,7 +9,6 @@ struct ContainerTerminalView: View {
     let environmentID: EnvironmentID
 
     @State private var outputLines: [TerminalOutputLine] = []
-    @State private var outputText = ""
     @State private var outputRevision: UInt64 = 0
     @State private var input: String = ""
     @State private var session: BoundedTerminalSession?
@@ -19,6 +18,8 @@ struct ContainerTerminalView: View {
     @State private var shell: String = "/bin/sh"
     @State private var outputTask: Task<Void, Never>?
     @State private var outputProcessor = TerminalOutputProcessor()
+    @State private var followBehavior = TerminalOutputFollowBehavior()
+    @State private var userIsScrolling = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -54,7 +55,26 @@ struct ContainerTerminalView: View {
                         .padding(12)
                     }
                     .background(Color(.systemBackground))
+                    .onScrollPhaseChange { _, newPhase in
+                        switch newPhase {
+                        case .tracking, .interacting, .decelerating:
+                            userIsScrolling = true
+                        case .idle, .animating:
+                            userIsScrolling = false
+                        @unknown default:
+                            userIsScrolling = false
+                        }
+                    }
+                    .onScrollGeometryChange(for: Bool.self) { geometry in
+                        geometry.visibleRect.maxY >= geometry.contentSize.height - 28
+                    } action: { _, isAtBottom in
+                        followBehavior.observe(
+                            isAtBottom: isAtBottom,
+                            userIsScrolling: userIsScrolling
+                        )
+                    }
                     .onChange(of: outputRevision) { _, _ in
+                        guard followBehavior.isFollowing else { return }
                         withAnimation(.none) {
                             proxy.scrollTo("bottom", anchor: .bottom)
                         }
@@ -87,12 +107,11 @@ struct ContainerTerminalView: View {
                         .disabled(isConnected || isConnecting)
 
                         Button {
-                            UIPasteboard.general.string = outputText
-                            showToast(.copied())
+                            Task { await copyAllOutput() }
                         } label: {
                             Label("Copy All", systemImage: "doc.on.doc")
                         }
-                        .disabled(outputText.isEmpty)
+                        .disabled(outputLines.isEmpty)
 
                         Button(role: .destructive) {
                             Task { await clearOutput() }
@@ -199,7 +218,7 @@ struct ContainerTerminalView: View {
             )
             await outputProcessor.clear()
             outputLines = []
-            outputText = ""
+            followBehavior.resume()
             session = terminalSession
             isConnected = true
             isConnecting = false
@@ -233,7 +252,7 @@ private extension ContainerTerminalView {
 
                 let now = clock.now
                 if lastFlush == nil || lastFlush!.duration(to: now) >= .milliseconds(50) {
-                    await publish(await processor.snapshot())
+                    await publish(await processor.lineSnapshot())
                     lastFlush = now
                 }
             }
@@ -249,7 +268,7 @@ private extension ContainerTerminalView {
         await processor.finish()
         await waitForFlushInterval(after: lastFlush, clock: clock)
         guard !Task.isCancelled else { return }
-        await publish(await processor.snapshot())
+        await publish(await processor.lineSnapshot())
         await MainActor.run { isConnected = false }
     }
 
@@ -265,17 +284,24 @@ private extension ContainerTerminalView {
         }
     }
 
-    func publish(_ snapshot: TerminalOutputSnapshot) {
-        guard snapshot.lines != outputLines || snapshot.fullText != outputText else { return }
-        outputLines = snapshot.lines
-        outputText = snapshot.fullText
+    func publish(_ lines: [TerminalOutputLine]) {
+        guard lines != outputLines else { return }
+        outputLines = lines
         outputRevision &+= 1
+    }
+
+    func copyAllOutput() async {
+        let snapshot = await outputProcessor.snapshot()
+        let text = snapshot.fullText
+        guard !text.isEmpty else { return }
+        UIPasteboard.general.string = text
+        showToast(.copied())
     }
 
     func clearOutput() async {
         await outputProcessor.clear()
         outputLines = []
-        outputText = ""
+        followBehavior.resume()
         outputRevision &+= 1
     }
 

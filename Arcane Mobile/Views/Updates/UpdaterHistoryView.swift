@@ -15,11 +15,15 @@ struct UpdaterHistoryView: View {
     @State private var errorMessage: String?
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
+    @State private var displayedRecords: [AutoUpdateRecord] = []
 
-    private var filtered: [AutoUpdateRecord] {
+    private func rebuildDisplayedRecords() {
         let trimmed = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return records }
-        return records.filter { record in
+        guard !trimmed.isEmpty else {
+            displayedRecords = records
+            return
+        }
+        displayedRecords = records.filter { record in
             record.resourceName.localizedCaseInsensitiveContains(trimmed) ||
             record.resourceType.localizedCaseInsensitiveContains(trimmed) ||
             record.status.rawValue.localizedCaseInsensitiveContains(trimmed)
@@ -37,7 +41,7 @@ struct UpdaterHistoryView: View {
                 ContentUnavailableView("No Update History", systemImage: "clock.arrow.circlepath")
             } else {
                 List {
-                    ForEach(filtered) { record in
+                    ForEach(displayedRecords) { record in
                         NavigationLink {
                             UpdaterHistoryDetailView(record: record)
                         } label: {
@@ -69,6 +73,7 @@ struct UpdaterHistoryView: View {
         .navigationTitle("Updater History")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search updater history")
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .onChange(of: debouncedSearchText) { rebuildDisplayedRecords() }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
@@ -93,6 +98,7 @@ struct UpdaterHistoryView: View {
         do {
             let fetched = try await client.updater.history(limit: limit, envID: environmentID)
             records = fetched
+            rebuildDisplayedRecords()
             hasMore = fetched.count >= limit
             errorMessage = nil
         } catch {
@@ -108,6 +114,7 @@ struct UpdaterHistoryView: View {
         do {
             let fetched = try await client.updater.history(limit: newLimit, envID: environmentID)
             records = fetched
+            rebuildDisplayedRecords()
             limit = newLimit
             hasMore = fetched.count >= newLimit
         } catch {

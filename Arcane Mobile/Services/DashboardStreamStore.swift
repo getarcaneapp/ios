@@ -11,7 +11,9 @@ import Arcane
 @MainActor
 @Observable
 final class DashboardStreamStore {
-    struct EnvironmentState: Identifiable {
+    @MainActor
+    @Observable
+    final class EnvironmentState: Identifiable {
         let id: String
         var name: String
         var snapshot: DashboardSnapshot?
@@ -22,6 +24,11 @@ final class DashboardStreamStore {
         var streamError = false
         var errorMessage: String?
         var errorCode: DashboardStreamErrorCode?
+
+        init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
     }
 
     struct AggregateCounts: Equatable {
@@ -40,6 +47,9 @@ final class DashboardStreamStore {
     /// Latched when the server 404s the stream endpoint (predates arcane#2901).
     /// Permanent until configure() sees a different client.
     private(set) var streamUnsupported = false
+    /// Cached separately from the environment dictionary so consumers of the
+    /// fleet totals update only when a displayed count changes.
+    private(set) var aggregate: AggregateCounts?
 
     private var client: ArcaneClient?
     private var clientIdentity: ObjectIdentifier?
@@ -66,7 +76,9 @@ final class DashboardStreamStore {
     /// Aggregate tile counts across tracked environments. Every environment
     /// must have a snapshot from the current stream connection; stale or
     /// partial data is never presented as a live fleet total.
-    var aggregate: AggregateCounts? {
+    static func resolvedAggregate(
+        from statesByEnvironmentID: [String: EnvironmentState]
+    ) -> AggregateCounts? {
         guard !statesByEnvironmentID.isEmpty else { return nil }
         var counts = AggregateCounts()
         for state in statesByEnvironmentID.values {
@@ -100,6 +112,7 @@ final class DashboardStreamStore {
         clientIdentity = identity
         self.client = client
         statesByEnvironmentID = [:]
+        aggregate = nil
         streamUnsupported = false
         streamFailed = false
     }
@@ -157,10 +170,9 @@ final class DashboardStreamStore {
         for environment in enabled {
             let name = environment.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let displayName = name.isEmpty ? environment.id : name
-            if var existing = statesByEnvironmentID[environment.id] {
+            if let existing = statesByEnvironmentID[environment.id] {
                 if existing.name != displayName {
                     existing.name = displayName
-                    statesByEnvironmentID[environment.id] = existing
                 }
                 continue
             }
@@ -172,6 +184,7 @@ final class DashboardStreamStore {
                 }
             }
         }
+        rebuildAggregate()
     }
 
     /// Re-fetch every tracked environment's snapshot over REST (pull-to-refresh).
@@ -271,43 +284,48 @@ final class DashboardStreamStore {
     private func applySnapshot(_ snapshot: DashboardSnapshot, environmentID: String) {
         // Events can keep arriving briefly for environments removed by
         // reconcile; don't resurrect them.
-        guard var state = statesByEnvironmentID[environmentID] else { return }
+        guard let state = statesByEnvironmentID[environmentID] else { return }
         state.snapshot = snapshot
         state.hasLoaded = true
         state.loading = false
         state.streamError = false
         state.errorMessage = nil
         state.errorCode = nil
-        statesByEnvironmentID[environmentID] = state
+        rebuildAggregate()
     }
 
     private func applyError(message: String?, code: DashboardStreamErrorCode?, environmentID: String) {
-        guard var state = statesByEnvironmentID[environmentID] else { return }
+        guard let state = statesByEnvironmentID[environmentID] else { return }
         state.snapshot = nil
         state.hasLoaded = false
         state.loading = false
         state.streamError = true
         state.errorMessage = message
         state.errorCode = code
-        statesByEnvironmentID[environmentID] = state
+        rebuildAggregate()
     }
 
     private func invalidateSnapshots() {
-        for (id, var state) in statesByEnvironmentID {
+        for state in statesByEnvironmentID.values {
             state.snapshot = nil
             state.hasLoaded = false
             state.loading = true
-            statesByEnvironmentID[id] = state
         }
+        rebuildAggregate()
     }
 
     private func clearAllStreamErrors() {
-        for (id, var state) in statesByEnvironmentID where state.streamError {
+        for state in statesByEnvironmentID.values where state.streamError {
             state.streamError = false
             state.errorMessage = nil
             state.errorCode = nil
-            statesByEnvironmentID[id] = state
         }
+    }
+
+    private func rebuildAggregate() {
+        let next = Self.resolvedAggregate(from: statesByEnvironmentID)
+        guard next != aggregate else { return }
+        aggregate = next
     }
 
     private func refreshEnvironment(_ environmentID: String, generation: Int) async {

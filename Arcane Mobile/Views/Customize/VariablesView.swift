@@ -11,6 +11,7 @@ struct VariablesView: View {
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var showsSyncStatus = false
+    @State private var displayedVariables: [GlobalVariable] = []
 
     private var canRead: Bool {
         manager.permissions.has(Permission.Variables.read, in: nil)
@@ -32,10 +33,13 @@ struct VariablesView: View {
         manager.permissions.has(Permission.Variables.sync, in: nil)
     }
 
-    private var filteredVariables: [GlobalVariable] {
+    private func rebuildDisplayedVariables() {
         let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return store.variables }
-        return store.variables.filter { variable in
+        guard !query.isEmpty else {
+            displayedVariables = store.variables
+            return
+        }
+        displayedVariables = store.variables.filter { variable in
             variable.key.localizedCaseInsensitiveContains(query)
                 || (!variable.isSecret && variable.value.localizedCaseInsensitiveContains(query))
                 || store.scopeLabel(for: variable).localizedCaseInsensitiveContains(query)
@@ -84,6 +88,8 @@ struct VariablesView: View {
         .navigationTitle("Variables")
         .searchable(text: $searchText, prompt: "Search variables")
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .onChange(of: debouncedSearchText) { rebuildDisplayedVariables() }
+        .onChange(of: store.variables) { rebuildDisplayedVariables() }
         .toolbar {
             if canRead, !store.isUnsupported {
                 if canSync {
@@ -170,10 +176,10 @@ struct VariablesView: View {
             }
 
             Section {
-                if filteredVariables.isEmpty {
+                if displayedVariables.isEmpty {
                     ContentUnavailableView.search(text: searchText)
                 } else {
-                    ForEach(filteredVariables) { variable in
+                    ForEach(displayedVariables) { variable in
                         if canUpdate {
                             Button {
                                 editorRoute = .edit(variable)
@@ -292,7 +298,7 @@ struct VariablesView: View {
             } header: {
                 ResourceCountSectionHeader(
                     "Variables",
-                    loadedCount: filteredVariables.count
+                    loadedCount: displayedVariables.count
                 )
             }
         }
@@ -691,6 +697,7 @@ private final class VariablesStore {
     private(set) var isUnsupported = false
     private(set) var errorMessage: String?
     private(set) var pollingRevision = 0
+    @ObservationIgnored private var environmentNamesByID: [String: String] = [:]
 
     var syncSummary: String {
         let failures = syncStatuses.filter { $0.status == .error }.count
@@ -725,6 +732,7 @@ private final class VariablesStore {
     func reset() {
         variables = []
         environments = []
+        environmentNamesByID = [:]
         syncStatuses = []
         isLoading = false
         isSyncing = false
@@ -754,6 +762,7 @@ private final class VariablesStore {
             let loadedEnvironments = await environmentTask
             syncStatuses = loadedStatuses ?? []
             environments = loadedEnvironments ?? []
+            rebuildEnvironmentNames()
             isUnsupported = false
             requestPollingIfNeeded()
         } catch ArcaneError.notFound {
@@ -825,10 +834,13 @@ private final class VariablesStore {
             return "All environments"
         }
         guard !variable.environmentIDs.isEmpty else { return "No environments" }
-        let namesByID = Dictionary(uniqueKeysWithValues: environments.map {
+        return variable.environmentIDs.map { environmentNamesByID[$0] ?? $0 }.joined(separator: ", ")
+    }
+
+    private func rebuildEnvironmentNames() {
+        environmentNamesByID = Dictionary(uniqueKeysWithValues: environments.map {
             ($0.id, $0.name?.nilIfEmpty ?? $0.id)
         })
-        return variable.environmentIDs.map { namesByID[$0] ?? $0 }.joined(separator: ", ")
     }
 
     private func mergeSyncStatuses(_ statuses: [EnvironmentSyncStatus]) {

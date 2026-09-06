@@ -107,6 +107,7 @@ struct DashboardView: View {
     @SwiftUI.Environment(ActivityHistoryMutationStore.self) private var historyMutationStore
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(FleetStore.self) private var fleet
+    @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selectedTab: String
@@ -160,6 +161,7 @@ struct DashboardView: View {
     @State private var isUpdateAllArmed = false
     @State private var updateAllDisarmTask: Task<Void, Never>?
     @State private var liveCountsRefreshTask: Task<Void, Never>?
+    @State private var mutationRefreshTask: Task<Void, Never>?
     @State private var visibleEnvironmentCount = 50
 
     private static let environmentBatchSize = 50
@@ -376,16 +378,33 @@ struct DashboardView: View {
             }
             .onAppear {
                 isDashboardVisible = true
+                // Tab switches stop the fleet streams (see onDisappear) and
+                // the auto-refresh guards skip while hidden — without this the
+                // toolbar badge and tiles stay frozen after coming back.
+                if hasLoadedOnce {
+                    fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
+                    Task { await refreshDashboard(reconnectStream: false) }
+                }
             }
             .onDisappear {
                 isDashboardVisible = false
                 liveCountsRefreshTask?.cancel()
                 liveCountsRefreshTask = nil
+                mutationRefreshTask?.cancel()
+                mutationRefreshTask = nil
                 fleet.setVisible(false, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
             }
             .onChange(of: streamStore.aggregate) { previous, current in
                 publishWidgetSnapshot()
                 guard current != nil, current != previous else { return }
+                // liveCounts comes from docker info, not the stream — skip the
+                // full docker refetch when only the update count changed.
+                let containersChanged =
+                    previous?.runningContainers != current?.runningContainers
+                    || previous?.stoppedContainers != current?.stoppedContainers
+                    || previous?.totalContainers != current?.totalContainers
+                    || previous?.totalImages != current?.totalImages
+                guard containersChanged else { return }
                 liveCountsRefreshTask?.cancel()
                 liveCountsRefreshTask = Task { await refreshLiveCounts() }
             }
@@ -394,12 +413,22 @@ struct DashboardView: View {
                 case .background:
                     liveCountsRefreshTask?.cancel()
                     liveCountsRefreshTask = nil
+                    mutationRefreshTask?.cancel()
+                    mutationRefreshTask = nil
                     fleet.setVisible(false, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
                     publishWidgetSnapshot()
                     WidgetSnapshotPublisher.shared.flush()
                 case .active:
                     if isDashboardVisible {
                         fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
+                        // Returning from background (or relaunch-adjacent
+                        // foreground) must show fresh counts — the stream
+                        // replays snapshots but volumes/updates/history don't.
+                        // No reconnect: setVisible already restarts the
+                        // streams, and a second teardown would flap the cards.
+                        if hasLoadedOnce {
+                            Task { await refreshDashboard(reconnectStream: false) }
+                        }
                     }
                 default:
                     break
@@ -419,6 +448,22 @@ struct DashboardView: View {
                     in: failedActivities,
                     clearedEnvironmentIDs: event.environmentIDs
                 )
+            }
+            // Mutations elsewhere (prune, container/image/volume actions,
+            // finished deployment operations) change the counts this page
+            // shows. Debounce rapid bursts into one refresh.
+            .onChange(of: mutationStore.versions) {
+                guard hasLoadedOnce, isDashboardVisible else { return }
+                mutationRefreshTask?.cancel()
+                mutationRefreshTask = Task {
+                    try? await Task.sleep(for: .milliseconds(800))
+                    guard !Task.isCancelled else { return }
+                    await refreshDashboard(reconnectStream: false)
+                }
+            }
+            .onChange(of: DeploymentActivityStore.shared.isRunning) { _, running in
+                guard !running, hasLoadedOnce, isDashboardVisible else { return }
+                Task { await refreshDashboard(reconnectStream: false) }
             }
         }
         .onChange(of: isNavigationRoot, initial: true) { _, isRoot in
@@ -627,8 +672,10 @@ struct DashboardView: View {
     private var needsAttentionItems: [NeedsAttentionItem] {
         var items: [NeedsAttentionItem] = []
 
+        // Fold over the full catalog, not the visible prefix — attention
+        // must not undercount past the first fifty environments.
         // Offline / erroring environments from the live stream states.
-        let erroring = environments.filter { streamStore.state(for: $0.id)?.streamError == true }
+        let erroring = allEnvironments.filter { streamStore.state(for: $0.id)?.streamError == true }
         if let first = erroring.first {
             items.append(NeedsAttentionItem(
                 id: "offline-environments",
@@ -645,15 +692,24 @@ struct DashboardView: View {
             ))
         }
 
-        // Fold server-computed action items across every environment snapshot.
+        // Fold server-computed action items across every environment. Prefer
+        // the fleet store's REST snapshots (fresh on every pull-to-refresh)
+        // and fall back to the live stream snapshot — the stream can lag the
+        // server reconcile tick, fail, or be unsupported on older servers.
         var stopped = 0, updates = 0, expiringKeys = 0
         var vulnerabilities = 0
         var vulnerabilityEnv: (id: String, name: String, count: Int)?
         var criticalVulns = false
-        for env in environments {
-            guard let state = streamStore.state(for: env.id), state.hasLoaded,
-                  let snapshotItems = state.snapshot?.actionItems.items else { continue }
-            for item in snapshotItems {
+        for env in allEnvironments {
+            let snapshotItems: [ActionItem]?
+            if let fleetItems = fleet.actionItemsByEnvironmentID[env.id]?.items {
+                snapshotItems = fleetItems
+            } else if let state = streamStore.state(for: env.id), state.hasLoaded {
+                snapshotItems = state.snapshot?.actionItems.items
+            } else {
+                continue
+            }
+            for item in snapshotItems ?? [] {
                 switch item.kind {
                 case .stoppedContainers: stopped += item.count
                 case .imageUpdates: updates += item.count
@@ -923,13 +979,29 @@ struct DashboardView: View {
 
     // MARK: - Data loading
 
-    private func refreshDashboard() async {
+    /// Full dashboard refresh. Manual pull-to-refresh reconnects the live
+    /// streams; automatic triggers (mutations, finished operations,
+    /// foreground) skip the reconnect — tearing down a healthy stream
+    /// invalidates every snapshot at once and the cards visibly flap between
+    /// snapshot and fallback counts. The REST snapshot refresh inside
+    /// `loadData` is enough to pick up fresh counts there.
+    private func refreshDashboard(reconnectStream: Bool = true) async {
         // Reconnecting invalidates the live aggregate immediately. Preserve
         // its last successful update total until the replacement arrives.
         supplementalImageUpdatesTotal = imageUpdatesTotal
-        streamStore.reconnect()
-        statsHistory.reconnect()
+        if reconnectStream {
+            streamStore.reconnect()
+            statsHistory.reconnect()
+        }
         await loadData(refresh: true)
+        // loadData's fleet aggregates arrive via background tasks — await a
+        // fresh pass here so the pull-to-refresh spinner covers the new
+        // container/image counts instead of leaving stale tiles behind.
+        await fleet.refreshDockerInformation(client: manager.client)
+        await fleet.refreshActionItems(client: manager.client)
+        guard !Task.isCancelled else { return }
+        updateFleetLiveStateFromStore()
+        hasLoadedFleetCounts = true
     }
 
     private func loadData(refresh: Bool = false) async {
@@ -944,12 +1016,12 @@ struct DashboardView: View {
         if !refresh {
             volumesTotal = nil
             supplementalImageUpdatesTotal = nil
+            liveCounts = nil
+            environmentLiveStates = [:]
+            volumeCountUnavailableEnvironmentIDs = []
+            updateCountUnavailableEnvironmentIDs = []
+            hasLoadedFleetCounts = false
         }
-        liveCounts = nil
-        environmentLiveStates = [:]
-        volumeCountUnavailableEnvironmentIDs = []
-        updateCountUnavailableEnvironmentIDs = []
-        hasLoadedFleetCounts = false
         if !hasLoadedOnce { isLoading = true }
         defer {
             isLoading = false
@@ -1007,7 +1079,10 @@ struct DashboardView: View {
             overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
                 ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
         }
-        if refresh, streamStore.isStreaming {
+        if refresh {
+            // REST snapshots are fresh even when the live stream is down,
+            // unsupported (older servers), or still reconnecting — without
+            // this the Attention Center keeps stale counts after actions.
             await streamStore.refresh()
         }
 
@@ -1329,7 +1404,12 @@ struct DashboardView: View {
 
 nonisolated enum DashboardImageUpdateCountResolver {
     static func resolve(shared: Int?, streamed: Int?, supplemental: Int?) -> Int? {
-        shared ?? streamed ?? supplemental
+        // Summary sources first. The stream's action-item tally counts
+        // *resources* (a project with several outdated images counts once)
+        // and lags the server reconcile tick — letting it win makes the tile
+        // and the Attention Center row flap between two numbers (and even
+        // zero out) right after a fresh summary already arrived.
+        shared ?? supplemental ?? streamed
     }
 }
 
@@ -1549,7 +1629,7 @@ struct SmoothProgressBar: View {
             .trim(from: 0.0, to: CGFloat(min(progress, 1.0)))
             .stroke(tint, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             .rotationEffect(Angle(degrees: -90))
-            .animation(Motion.gauge, value: progress)
+            .motionAwareAnimation(Motion.follow, value: progress)
     }
 }
 
@@ -1834,6 +1914,11 @@ struct SystemPruneView: View {
         do {
             let result = try await client.system.prune(request, envID: environmentID)
             await ResponseCache.shared.invalidateEnvironment(environmentID.rawValue)
+            let mutations = ResourceMutationStore.shared
+            if containerMode != .none { mutations.markChanged(kind: .containers, envID: environmentID) }
+            if imageMode != .none { mutations.markChanged(kind: .images, envID: environmentID) }
+            if volumeMode != .none { mutations.markChanged(kind: .volumes, envID: environmentID) }
+            if networkMode != .none { mutations.markChanged(kind: .networks, envID: environmentID) }
             if !manager.supportsActivities {
                 showToast(.success(formatPruneResult(result)))
             }

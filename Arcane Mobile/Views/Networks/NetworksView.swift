@@ -6,7 +6,6 @@ struct NetworksView: View {
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -81,17 +80,10 @@ struct NetworksView: View {
     /// Refresh the cached partition. Called only when an input that affects
     /// grouping actually changes (search settle, sort, filter, or the source
     /// list) — never on every body evaluation.
-    private func rebuildSections(animated: Bool = false) {
+    private func rebuildSections() {
         let (system, user) = computePartition()
-        if animated {
-            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
-                systemNetworks = system
-                userNetworks = user
-            }
-        } else {
-            systemNetworks = system
-            userNetworks = user
-        }
+        systemNetworks = system
+        userNetworks = user
     }
 
     /// Section item counts — drives the List's implicit reflow animation so a
@@ -311,7 +303,7 @@ struct NetworksView: View {
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: typeFilter) { rebuildSections() }
-        .onChange(of: sortOrder) { rebuildSections(animated: true) }
+        .onChange(of: sortOrder) { rebuildSections() }
     }
 
     private func networkPreview(_ network: NetworkSummary) -> some View {

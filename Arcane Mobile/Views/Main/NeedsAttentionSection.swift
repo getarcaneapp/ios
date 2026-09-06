@@ -58,7 +58,11 @@ struct AttentionToolbarButton: View {
 
     var body: some View {
         if #available(iOS 26, *) {
-            popoverButton.badge(items.count)
+            if items.isEmpty {
+                popoverButton
+            } else {
+                popoverButton.badge(items.count)
+            }
         } else {
             popoverButton
         }

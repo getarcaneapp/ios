@@ -164,6 +164,12 @@ final class FleetStore {
         await task.value
     }
 
+    func refreshActionItems(client: ArcaneClient?) async {
+        guard let client else { return }
+        let task = startActionItemsLoad(client: client)
+        await task.value
+    }
+
     func prioritizeStats(activeEnvironmentID: String) {
         statsHistory.reconcile(environments: statsOrdered(activeEnvironmentID: activeEnvironmentID))
     }
@@ -214,6 +220,9 @@ final class FleetStore {
         let enabledIDs = Set(enabled.map(\.id))
         actionItemsByEnvironmentID = actionItemsByEnvironmentID.filter { enabledIDs.contains($0.key) }
 
+        // Batch: every per-env write re-renders all dashboard rows, so
+        // accumulate off-store and publish once instead of flapping N times.
+        var fetched: [String: ActionItems] = [:]
         await withTaskGroup(of: (String, ActionItems?).self) { group in
             var iterator = enabled.makeIterator()
             for _ in 0..<min(Self.maxConcurrentEnvironmentRequests, enabled.count) {
@@ -232,9 +241,7 @@ final class FleetStore {
                     return
                 }
                 if let items {
-                    actionItemsByEnvironmentID[environmentID] = items
-                } else {
-                    actionItemsByEnvironmentID.removeValue(forKey: environmentID)
+                    fetched[environmentID] = items
                 }
 
                 if let environment = iterator.next() {
@@ -247,6 +254,10 @@ final class FleetStore {
                 }
             }
         }
+        guard !Task.isCancelled, identity == clientIdentity else { return }
+        for (environmentID, items) in fetched {
+            actionItemsByEnvironmentID[environmentID] = items
+        }
     }
 
     private func loadDockerInformation(client: ArcaneClient, identity: ObjectIdentifier) async {
@@ -255,6 +266,11 @@ final class FleetStore {
         dockerInfoByEnvironmentID = dockerInfoByEnvironmentID.filter { enabledIDs.contains($0.key) }
         unavailableEnvironmentIDs.formIntersection(enabledIDs)
 
+        // Batch: every revision bump re-renders the whole dashboard (tiles +
+        // all cards), so accumulate off-store and publish once instead of
+        // re-animating every tile once per environment.
+        var fetched: [String: DockerInfo] = [:]
+        var failedIDs = Set<String>()
         await withTaskGroup(of: (String, DockerInfo?).self) { group in
             var iterator = enabled.makeIterator()
             for _ in 0..<min(Self.maxConcurrentEnvironmentRequests, enabled.count) {
@@ -274,13 +290,10 @@ final class FleetStore {
                     return
                 }
                 if let info {
-                    dockerInfoByEnvironmentID[environmentID] = info
-                    unavailableEnvironmentIDs.remove(environmentID)
+                    fetched[environmentID] = info
                 } else {
-                    dockerInfoByEnvironmentID.removeValue(forKey: environmentID)
-                    unavailableEnvironmentIDs.insert(environmentID)
+                    failedIDs.insert(environmentID)
                 }
-                dockerInformationRevision &+= 1
 
                 if let environment = iterator.next() {
                     group.addTask {
@@ -293,5 +306,15 @@ final class FleetStore {
                 }
             }
         }
+        guard !Task.isCancelled, identity == clientIdentity else { return }
+        for (environmentID, info) in fetched {
+            dockerInfoByEnvironmentID[environmentID] = info
+            unavailableEnvironmentIDs.remove(environmentID)
+        }
+        for environmentID in failedIDs {
+            dockerInfoByEnvironmentID.removeValue(forKey: environmentID)
+            unavailableEnvironmentIDs.insert(environmentID)
+        }
+        dockerInformationRevision &+= 1
     }
 }

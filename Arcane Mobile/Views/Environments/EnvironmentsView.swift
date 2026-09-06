@@ -21,6 +21,10 @@ struct EnvironmentFleetListRow: View {
     @State private var canUpgrade = false
     /// Rings sweep in from empty on first appear.
     @State private var gaugesRevealed = false
+    /// Process-lifetime latch per environment: LazyVGrid teardown recreates
+    /// rows on scroll/refresh, and replaying the sweep each time reads as the
+    /// rings jumping. The sweep plays once per session.
+    private static var revealedEnvironmentIDs = Set<String>()
 
     private var environmentID: EnvironmentID { EnvironmentID(rawValue: environment.id) }
     private var snapshot: DashboardSnapshot? { streamState?.hasLoaded == true ? streamState?.snapshot : nil }
@@ -183,6 +187,13 @@ struct EnvironmentFleetListRow: View {
         }
         .onAppear {
             guard !gaugesRevealed else { return }
+            // Recreated rows (scroll, refresh) skip the sweep — replaying it
+            // is what makes the rings jump.
+            guard !Self.revealedEnvironmentIDs.contains(environment.id) else {
+                gaugesRevealed = true
+                return
+            }
+            Self.revealedEnvironmentIDs.insert(environment.id)
             withAnimation(Motion.gaugeReveal.delay(0.2)) { gaugesRevealed = true }
         }
     }
@@ -192,8 +203,12 @@ struct EnvironmentFleetListRow: View {
         let shown = gaugesRevealed ? value : 0
         let valueText = percent.map { "\(Int($0.rounded()))%" } ?? "—"
         return HStack(spacing: 7) {
+            // Live stats frames arrive continuously: track them with the fast
+            // linear streaming curve, not a spring — a spring re-fired every
+            // frame never settles and the rings visibly judder. Reduce Motion
+            // aware, unlike the raw `.animation` this replaces.
             MetricRing(progress: shown / 100, tint: tint, size: 18, lineWidth: 3)
-                .animation(Motion.gauge, value: value)
+                .motionAwareAnimation(Motion.follow, value: shown)
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -50,12 +50,28 @@ struct AllVulnerabilitiesView: View {
         .navigationTitle("All Vulnerabilities")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if manager.permissions.has("vulnerabilities:read", in: environmentID), manager.supportsActivities {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        ImagePatchTargetsView(environmentID: environmentID)
+                    } label: {
+                        Image(systemName: "wrench.and.screwdriver")
+                            .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Patch images")
+                }
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     showFilterSheet = true
                 } label: {
                     Image(systemName: filterCount > 0 ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        .appAccentToolbarSymbol()
                 }
+                .accessibilityLabel("Filter vulnerabilities")
             }
         }
         .sheet(isPresented: $showFilterSheet) {

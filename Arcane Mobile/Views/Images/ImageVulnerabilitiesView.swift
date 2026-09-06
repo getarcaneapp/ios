@@ -21,6 +21,7 @@ struct ImageVulnerabilitiesView: View {
     @State private var errorMessage: String?
     @State private var ignoreTarget: VulnerabilityRecord?
     @State private var unignoreId: String?
+    @State private var displayedVulnerabilities: [VulnerabilityRecord] = []
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
 
@@ -28,8 +29,8 @@ struct ImageVulnerabilitiesView: View {
         "\(v.vulnerabilityId)|\(v.pkgName)|\(v.installedVersion ?? "")"
     }
 
-    private var filtered: [VulnerabilityRecord] {
-        vulnerabilities.filter { v in
+    private func rebuildDisplayedVulnerabilities() {
+        displayedVulnerabilities = vulnerabilities.filter { v in
             let isIgnored = ignoredById[ignoreKey(v)] != nil
             return showIgnored || !isIgnored
         }
@@ -45,6 +46,24 @@ struct ImageVulnerabilitiesView: View {
         }
         .navigationTitle(embedded ? "" : "Vulnerabilities")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if manager.permissions.has("images:patch", in: environmentID), manager.supportsActivities {
+                if embedded {
+                    if #available(iOS 26, *) {
+                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        ImagePatchView(environmentID: environmentID, imageID: imageID, imageName: imageDisplayName)
+                    } label: {
+                        Image(systemName: "wrench.and.screwdriver")
+                            .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Patch image")
+                }
+            }
+        }
         .task { await initialLoad() }
         .refreshable { await reload() }
         .sheet(item: $ignoreTarget) { target in
@@ -54,6 +73,7 @@ struct ImageVulnerabilitiesView: View {
                 environmentID: environmentID
             ) { newRecord in
                 ignoredById[ignoreKey(target)] = newRecord
+                rebuildDisplayedVulnerabilities()
             }
         }
         .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
@@ -61,13 +81,11 @@ struct ImageVulnerabilitiesView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .onChange(of: showIgnored) { rebuildDisplayedVulnerabilities() }
     }
 
     private var scanList: some View {
-        // Filter once per body evaluation; the local shadows the computed
-        // property so the three usages below don't re-filter independently.
-        let filtered = self.filtered
-        return ScrollView {
+        ScrollView {
             LazyVStack(spacing: 16) {
                 if let summary {
                     VStack(alignment: .leading, spacing: 10) {
@@ -97,7 +115,7 @@ struct ImageVulnerabilitiesView: View {
                 .disabled(isScanning)
                 .dashboardCardBackground(cornerRadius: Radius.standard)
 
-                if filtered.isEmpty && !isLoading {
+                if displayedVulnerabilities.isEmpty && !isLoading {
                     ContentUnavailableView(
                         "No vulnerabilities",
                         systemImage: "checkmark.shield",
@@ -107,10 +125,10 @@ struct ImageVulnerabilitiesView: View {
                 } else {
                     ResourceCountSectionHeader(
                         "Findings",
-                        loadedCount: filtered.count
+                        loadedCount: displayedVulnerabilities.count
                     )
 
-                    ForEach(filtered) { vuln in
+                    ForEach(displayedVulnerabilities) { vuln in
                         vulnerabilityLink(vuln)
                     }
 
@@ -258,6 +276,7 @@ struct ImageVulnerabilitiesView: View {
     private func reload() async {
         page = 1
         vulnerabilities = []
+        displayedVulnerabilities = []
         await loadSummary()
         await loadVulnerabilities()
     }
@@ -300,6 +319,7 @@ struct ImageVulnerabilitiesView: View {
             }
             let items: [VulnerabilityRecord] = try await client.rest.get(path, query: query)
             vulnerabilities.append(contentsOf: items)
+            rebuildDisplayedVulnerabilities()
             hasMore = items.count == 50
         } catch {
             // Empty list / not yet scanned — silent.
@@ -307,6 +327,7 @@ struct ImageVulnerabilitiesView: View {
     }
 
     private func loadMore() async {
+        guard hasMore, !isLoading else { return }
         page += 1
         await loadVulnerabilities()
     }
@@ -330,6 +351,7 @@ struct ImageVulnerabilitiesView: View {
             let path = client.rest.environmentPath(environmentID, "vulnerabilities/ignore/\(ignoreId)")
             let _: AnyDecodableMessage = try await client.rest.delete(path)
             ignoredById.removeValue(forKey: key)
+            rebuildDisplayedVulnerabilities()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

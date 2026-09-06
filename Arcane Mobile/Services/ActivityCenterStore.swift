@@ -125,6 +125,9 @@ final class ActivityCenterStore {
     private(set) var activities: [Activity] = []
     private(set) var runningItems: [ActivityCenterItem] = []
     private(set) var historyItems: [ActivityCenterItem] = []
+    private(set) var filteredActivityCount = 0
+    private(set) var availableTypes: [String] = []
+    private(set) var availableResourceTypes: [String] = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     private(set) var isStreaming = false
@@ -169,12 +172,20 @@ final class ActivityCenterStore {
     }
 
     private func recomputeGroupedItems() {
-        let items = calculateGroupedItems()
+        let filtered = filteredActivities
+        filteredActivityCount = filtered.count
+        let nextTypes = sortedUnique(activities.map(\.type.rawValue))
+        if nextTypes != availableTypes { availableTypes = nextTypes }
+        let nextResourceTypes = sortedUnique(activities.compactMap(\.resourceType))
+        if nextResourceTypes != availableResourceTypes {
+            availableResourceTypes = nextResourceTypes
+        }
+        let items = calculateGroupedItems(from: filtered)
         runningItems = items.filter(\.isActive)
         historyItems = items.filter { !$0.isActive }
     }
 
-    private func calculateGroupedItems() -> [ActivityCenterItem] {
+    private func calculateGroupedItems(from filteredActivities: [Activity]) -> [ActivityCenterItem] {
         var unbatched: [Activity] = []
         var batches: [String: [Activity]] = [:]
 
@@ -197,14 +208,6 @@ final class ActivityCenterStore {
             }
         }
         return items.sorted { $0.sortTime > $1.sortTime }
-    }
-
-    var availableTypes: [String] {
-        sortedUnique(activities.map(\.type.rawValue))
-    }
-
-    var availableResourceTypes: [String] {
-        sortedUnique(activities.compactMap(\.resourceType))
     }
 
     func configure(client: ArcaneClient?) {

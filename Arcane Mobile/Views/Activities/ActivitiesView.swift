@@ -259,7 +259,7 @@ struct ActivitiesView: View {
             if showsCount {
                 ResourceCountSectionHeader(
                     title,
-                    loadedCount: store.filteredActivities.count,
+                    loadedCount: store.filteredActivityCount,
                     hasMore: store.hasMore
                 )
             } else {

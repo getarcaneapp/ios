@@ -7,7 +7,6 @@ struct VolumesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -94,13 +93,8 @@ struct VolumesView: View {
     /// grouping actually changes (search settle, sort, filter, pins, or the
     /// source list) — never on every body evaluation. Volume sizes are read
     /// per-row and don't affect grouping, so they don't trigger a rebuild.
-    private func rebuildSections(animated: Bool = false) {
-        let new = computeSections()
-        if animated {
-            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) { sections = new }
-        } else {
-            sections = new
-        }
+    private func rebuildSections() {
+        sections = computeSections()
         pruneSelection(validIDs: Set(volumes.map(\.id)))
     }
 
@@ -327,7 +321,7 @@ struct VolumesView: View {
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: scopeFilter) { rebuildSections() }
-        .onChange(of: sortOrder) { rebuildSections(animated: true) }
+        .onChange(of: sortOrder) { rebuildSections() }
         .onChange(of: pinnedIDs) { rebuildSections() }
         .morphingActions(
             primary: bulkPrimaryItem,
@@ -553,13 +547,11 @@ struct VolumesView: View {
         }
         let failedNames = Set(result.failed.map(\.id))
         let removedNames = Set(names.filter { !failedNames.contains($0) })
-        withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
-            volumes.removeAll { removedNames.contains($0.name) }
-            for name in removedNames {
-                sizes.removeValue(forKey: name)
-            }
-            rebuildSections()
+        volumes.removeAll { removedNames.contains($0.name) }
+        for name in removedNames {
+            sizes.removeValue(forKey: name)
         }
+        rebuildSections()
         await invalidateVolumeCaches()
         mutationStore.markChanged(kind: .volumes, envID: environmentID)
         exitSelectionMode()

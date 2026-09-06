@@ -1,6 +1,12 @@
 import SwiftUI
 import UIKit
 
+enum AppIconPreviewAsset {
+    static func name(for alternateIconName: String?) -> String {
+        "\(alternateIconName ?? "AppIcon")-Preview-HighContrast"
+    }
+}
+
 private struct AppIconOption: Identifiable, Hashable {
     /// `nil` represents the primary / default icon.
     let alternateName: String?
@@ -20,7 +26,11 @@ struct AppIconPickerView: View {
     /// Returns an array starting with the primary icon, followed by each alternate.
     private var options: [AppIconOption] {
         var result: [AppIconOption] = [
-            .init(alternateName: nil, displayName: "Default", previewAssetName: "AppIcon-Preview")
+            .init(
+                alternateName: nil,
+                displayName: "Default",
+                previewAssetName: AppIconPreviewAsset.name(for: nil)
+            )
         ]
         guard
             let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any],
@@ -30,7 +40,7 @@ struct AppIconPickerView: View {
             result.append(.init(
                 alternateName: name,
                 displayName: prettify(name),
-                previewAssetName: "\(name)-Preview"
+                previewAssetName: AppIconPreviewAsset.name(for: name)
             ))
         }
         return result
@@ -85,6 +95,7 @@ struct AppIconPickerView: View {
         if let image = UIImage(named: name) {
             Image(uiImage: image)
                 .resizable()
+                .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 56, height: 56)
                 .clipShape(RoundedRectangle(cornerRadius: Radius.nested, style: .continuous))

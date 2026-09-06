@@ -13,16 +13,30 @@ struct JobsListView: View {
     @State private var debouncedSearchText = ""
     @State private var runningJobs: Set<String> = []
     @State private var actionMessage: String?
+    @State private var groups: [JobGroup] = []
+    @State private var filteredJobCount = 0
 
-    private var grouped: [(category: String, jobs: [JobStatus])] {
-        let filtered = filteredJobs
-        let groups = Dictionary(grouping: filtered) { $0.category.isEmpty ? "Other" : $0.category }
-        return groups.keys.sorted().map { key in
-            (category: key, jobs: groups[key]?.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending } ?? [])
-        }
+    private struct JobGroup: Identifiable {
+        let category: String
+        let jobs: [JobStatus]
+        var id: String { category }
     }
 
-    private var filteredJobs: [JobStatus] {
+    private func rebuildGroups() {
+        let filtered = filteredJobs()
+        let groups = Dictionary(grouping: filtered) { $0.category.isEmpty ? "Other" : $0.category }
+        self.groups = groups.keys.sorted().map { key in
+            JobGroup(
+                category: key,
+                jobs: groups[key]?.sorted {
+                    $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                } ?? []
+            )
+        }
+        filteredJobCount = filtered.count
+    }
+
+    private func filteredJobs() -> [JobStatus] {
         let trimmed = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return jobs }
         return jobs.filter { job in
@@ -43,8 +57,7 @@ struct JobsListView: View {
                 ContentUnavailableView("No Jobs", systemImage: "play.square.stack")
             } else {
                 List {
-                    let groups = grouped
-                    ForEach(groups, id: \.category) { group in
+                    ForEach(groups) { group in
                         Section {
                             ForEach(group.jobs) { job in
                                 NavigationLink {
@@ -104,7 +117,7 @@ struct JobsListView: View {
                             if group.category == groups.first?.category {
                                 ResourceCountSectionHeader(
                                     group.category.capitalized,
-                                    loadedCount: filteredJobs.count
+                                    loadedCount: filteredJobCount
                                 )
                             } else {
                                 Text(group.category.capitalized)
@@ -118,6 +131,7 @@ struct JobsListView: View {
         .navigationTitle("Jobs")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search jobs")
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .onChange(of: debouncedSearchText) { rebuildGroups() }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
@@ -139,6 +153,7 @@ struct JobsListView: View {
         do {
             let response = try await client.jobs.list(envID: environmentID)
             jobs = response.jobs
+            rebuildGroups()
             isAgent = response.isAgent
             errorMessage = nil
         } catch {

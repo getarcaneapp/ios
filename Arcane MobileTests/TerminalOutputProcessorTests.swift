@@ -6,6 +6,20 @@ import Testing
 @Suite
 struct TerminalOutputProcessorTests {
     @Test
+    func followBehaviorPausesForManualScrollingAndResumesAtBottom() {
+        var behavior = TerminalOutputFollowBehavior()
+
+        behavior.observe(isAtBottom: false, userIsScrolling: false)
+        #expect(behavior.isFollowing)
+
+        behavior.observe(isAtBottom: false, userIsScrolling: true)
+        #expect(!behavior.isFollowing)
+
+        behavior.observe(isAtBottom: true, userIsScrolling: true)
+        #expect(behavior.isFollowing)
+    }
+
+    @Test
     func utf8SurvivesEveryFrameSplit() {
         let bytes = Array("A€🙂Z".utf8)
         for split in 0...bytes.count {

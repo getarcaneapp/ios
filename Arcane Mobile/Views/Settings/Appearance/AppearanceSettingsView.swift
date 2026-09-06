@@ -46,61 +46,61 @@ struct AppearanceSettingsView: View {
     @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
     @AppStorage("arcane.launchAnimationEnabled") private var launchAnimationEnabled = true
     @AppStorage(TabIndicatorMotion.storageKey) private var tabIndicatorMotion: TabIndicatorMotion = .straight
+    @State private var showAccentColorMenu = false
     @State private var showTabBarResetConfirm = false
     @State private var navTabsStore = NavTabsStore.shared
 
-    // Derive the selected swatch from the stored hex so the two can never
-    // drift apart. An empty hex means "use the system default" which we
-    // visually represent as the blue swatch. `nil` means a custom hex from
-    // an older build is stored, so no swatch is highlighted.
+    // Derive the picker selection from the stored hex so the two cannot drift
+    // apart. An empty hex represents the blue system default. `nil` preserves
+    // a custom hex stored by an older build until the user chooses a preset.
     private var selectedOption: AccentColorOption? {
         if accentColorHex.isEmpty { return .blue }
         let normalized = accentColorHex.lowercased()
         return AccentColorOption.allCases.first { $0.hex.lowercased() == normalized }
     }
 
-    /// A 26pt swatch inside a fixed 36pt slot; the selected one earns a 2pt
-    /// ring in its own color. Fixed slot size = no layout shift on selection.
-    private func accentSwatch(_ option: AccentColorOption) -> some View {
-        let isSelected = selectedOption == option
-        return Button {
-            accentColorHex = option.hex
-        } label: {
-            Circle()
-                .fill(option.color)
-                .frame(width: 26, height: 26)
-                .overlay {
-                    Circle()
-                        .strokeBorder(option.color, lineWidth: 2)
-                        .frame(width: 36, height: 36)
-                        .opacity(isSelected ? 1 : 0)
-                        .scaleEffect(isSelected ? 1 : 0.7)
-                }
-                .frame(width: 36, height: 36)
-                .motionAwareAnimation(Motion.state, value: isSelected)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(option.displayName))
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    private var selectedAccentColor: Color {
+        selectedOption?.color ?? Color(hex: accentColorHex) ?? .blue
     }
 
     var body: some View {
         Form {
             Section {
-                // Compact single-row picker (like the system accent picker):
-                // small swatches, selection shown as a concentric ring in the
-                // swatch's own color rather than a checkmark.
-                ScrollView(.horizontal, showsIndicators: false) {
+                Button {
+                    showAccentColorMenu = true
+                } label: {
                     HStack(spacing: 12) {
-                        ForEach(AccentColorOption.allCases) { option in
-                            accentSwatch(option)
+                        SettingsRow(
+                            title: "Accent Color",
+                            systemImage: "paintpalette.fill",
+                            color: selectedAccentColor
+                        )
+                        Spacer()
+                        HStack(spacing: 8) {
+                            if let selectedOption {
+                                Circle()
+                                    .fill(selectedOption.color)
+                                    .frame(width: 9, height: 9)
+                                Text(selectedOption.displayName)
+                                    .foregroundStyle(selectedOption.color)
+                            }
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .font(.subheadline)
+                        .fixedSize()
+                        .popover(isPresented: $showAccentColorMenu, arrowEdge: .top) {
+                            AccentColorMenu(selection: selectedOption) { option in
+                                accentColorHex = option.hex
+                                showAccentColorMenu = false
+                            }
+                            .presentationCompactAdaptation(.popover)
                         }
                     }
-                    .padding(.vertical, 2)
+                    .contentShape(Rectangle())
                 }
-                .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
-            } header: {
-                Text("Accent Color")
+                .buttonStyle(.plain)
             } footer: {
                 Text("Choose a color to customize the app's appearance.")
             }
@@ -149,9 +149,12 @@ struct AppearanceSettingsView: View {
                 Section {
                     NavigationLink(destination: AppIconPickerView()) {
                         HStack(spacing: 12) {
-                            if let image = UIImage(named: UIApplication.shared.alternateIconName.map({ "\($0)-Preview" }) ?? "AppIcon-Preview") {
+                            if let image = UIImage(named: AppIconPreviewAsset.name(
+                                for: UIApplication.shared.alternateIconName
+                            )) {
                                 Image(uiImage: image)
                                     .resizable()
+                                    .interpolation(.high)
                                     .aspectRatio(contentMode: .fit)
                                     .frame(width: 32, height: 32)
                                     .clipShape(RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
@@ -200,5 +203,47 @@ struct AppearanceSettingsView: View {
         ) {
             navTabsStore.resetToDefaults()
         }
+    }
+}
+
+private struct AccentColorMenu: View {
+    let selection: AccentColorOption?
+    let onSelect: (AccentColorOption) -> Void
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(AccentColorOption.allCases) { option in
+                    Button {
+                        onSelect(option)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(option.color)
+                                .frame(width: 12, height: 12)
+                                .overlay {
+                                    Circle()
+                                        .strokeBorder(.primary.opacity(0.12), lineWidth: 0.5)
+                                }
+                            Text(option.displayName)
+                                .foregroundStyle(option.color)
+                            Spacer()
+                            if selection == option {
+                                Image(systemName: "checkmark")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(option.color)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .frame(height: 42)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selection == option ? .isSelected : [])
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .frame(width: 240, height: 478)
     }
 }

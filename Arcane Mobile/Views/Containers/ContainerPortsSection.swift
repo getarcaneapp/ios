@@ -3,6 +3,15 @@ import Arcane
 
 struct ContainerPortsSection: View {
     let ports: [ContainerPort]
+    private let sortedPorts: [ContainerPort]
+
+    init(ports: [ContainerPort]) {
+        self.ports = ports
+        sortedPorts = ports.sorted { lhs, rhs in
+            if lhs.privatePort != rhs.privatePort { return lhs.privatePort < rhs.privatePort }
+            return lhs.type < rhs.type
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -20,13 +29,6 @@ struct ContainerPortsSection: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
-        }
-    }
-
-    private var sortedPorts: [ContainerPort] {
-        ports.sorted { lhs, rhs in
-            if lhs.privatePort != rhs.privatePort { return lhs.privatePort < rhs.privatePort }
-            return lhs.type < rhs.type
         }
     }
 

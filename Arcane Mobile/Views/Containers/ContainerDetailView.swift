@@ -7,14 +7,21 @@ struct ContainerDetailView: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let container: ContainerSummary
+    @State private var container: ContainerSummary
     let environmentID: EnvironmentID
+
+    init(container: ContainerSummary, environmentID: EnvironmentID) {
+        _container = State(initialValue: container)
+        self.environmentID = environmentID
+    }
 
     @State private var details: ContainerDetails?
     @State private var isLoading = false
     @State private var isActioning = false
     @State private var errorMessage: String?
     @State private var showTerminal = false
+    @State private var showEdit = false
+    @State private var showCommit = false
     @State private var showRename = false
     @State private var showInspect = false
     @State private var runningActionID: String?
@@ -147,6 +154,17 @@ struct ContainerDetailView: View {
         }
         .fullScreenCover(isPresented: $showTerminal) {
             ContainerTerminalView(container: container, environmentID: environmentID)
+        }
+        .sheet(isPresented: $showEdit) {
+            ContainerConfigurationView(environmentID: environmentID, containerID: container.id) { id in
+                container = ContainerSummary(id: id, image: "", imageId: "", state: "", status: "")
+                details = nil
+                selectedTab = .overview
+                Task { await loadDetails() }
+            }
+        }
+        .sheet(isPresented: $showCommit) {
+            ContainerCommitView(environmentID: environmentID, containerID: container.id)
         }
         .sheet(isPresented: $showRename) {
             RenameContainerSheet(currentName: displayedName) { newName in
@@ -327,6 +345,14 @@ struct ContainerDetailView: View {
                 showInspect = true
             }
         ]
+        if manager.serverCapabilities?.mode == .rbac {
+            if manager.permissions.has("containers:edit", in: environmentID) {
+                items.append(ActionButtonItem(id: "edit", title: "Edit", systemImage: "slider.horizontal.3", tint: .accentColor) { showEdit = true })
+            }
+            if manager.permissions.has("images:commit", in: environmentID) {
+                items.append(ActionButtonItem(id: "commit", title: "Commit to Image", systemImage: "square.stack.3d.up", tint: .accentColor) { showCommit = true })
+            }
+        }
         if isRunning && !isPaused {
             items.append(ActionButtonItem(id: "terminal", title: "Terminal", systemImage: "terminal.fill", tint: .accentColor) {
                 showTerminal = true
@@ -607,14 +633,19 @@ struct ContainerDetailView: View {
 
     private func loadDetails() async {
         guard let client = manager.client else { return }
+        let requestedID = container.id
+        let generation = manager.clientGeneration
         isLoading = true
         defer { isLoading = false }
         do {
-            details = try await RemoteDataLimits.boundedContainerInspect(
+            let loaded = try await RemoteDataLimits.boundedContainerInspect(
                 client: client,
                 environmentID: environmentID,
-                containerID: container.id
+                containerID: requestedID
             )
+            try Task.checkCancellation()
+            guard requestedID == container.id, generation == manager.clientGeneration else { return }
+            details = loaded
         } catch {
             // Ignore inspect errors — show what we have
         }
@@ -638,21 +669,27 @@ struct EnvVarsView: View {
 
     @State private var searchText = ""
     @State private var revealReset = 0
+    @State private var displayedEntries: [EnvironmentVariableDisplayEntry]
 
     init(vars: [String]) {
-        entries = vars.enumerated().map { offset, rawValue in
+        let entries = vars.enumerated().map { offset, rawValue in
             EnvironmentVariableDisplayEntry(
                 id: offset,
                 variable: ParsedEnvironmentVariable(rawValue: rawValue)
             )
         }
+        self.entries = entries
+        _displayedEntries = State(initialValue: entries)
     }
 
-    private var filteredEntries: [EnvironmentVariableDisplayEntry] {
+    private func rebuildDisplayedEntries() {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return entries }
+        guard !query.isEmpty else {
+            displayedEntries = entries
+            return
+        }
 
-        return entries.filter { entry in
+        displayedEntries = entries.filter { entry in
             let variable = entry.variable
             if variable.name.localizedCaseInsensitiveContains(query) {
                 return true
@@ -670,7 +707,7 @@ struct EnvVarsView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 10) {
-                ForEach(filteredEntries) { entry in
+                ForEach(displayedEntries) { entry in
                     EnvironmentVariableValueRow(
                         variable: entry.variable,
                         revealReset: revealReset
@@ -684,6 +721,7 @@ struct EnvVarsView: View {
         .softTopScrollEdgeEffectCompat()
         .background(Color(uiColor: .systemGroupedBackground))
         .searchable(text: $searchText)
+        .onChange(of: searchText) { rebuildDisplayedEntries() }
         .navigationTitle("Environment Variables")
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {

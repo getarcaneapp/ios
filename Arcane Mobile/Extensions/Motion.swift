@@ -199,10 +199,11 @@ private struct ScrollEdgeFadeModifier: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
+        let shouldScale = scales && !reduceMotion
         content.scrollTransition(.interactive, axis: .vertical) { view, phase in
             view
                 .opacity(phase.isIdentity ? 1 : 0.55)
-                .scaleEffect(scales && !reduceMotion && !phase.isIdentity ? 0.97 : 1)
+                .scaleEffect(shouldScale && !phase.isIdentity ? 0.97 : 1)
         }
     }
 }

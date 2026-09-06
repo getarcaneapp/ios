@@ -183,6 +183,22 @@ nonisolated struct TerminalOutputSnapshot: Sendable, Equatable {
     let fullText: String
 }
 
+nonisolated struct TerminalOutputFollowBehavior: Sendable, Equatable {
+    private(set) var isFollowing = true
+
+    mutating func observe(isAtBottom: Bool, userIsScrolling: Bool) {
+        if isAtBottom {
+            isFollowing = true
+        } else if userIsScrolling {
+            isFollowing = false
+        }
+    }
+
+    mutating func resume() {
+        isFollowing = true
+    }
+}
+
 nonisolated struct TerminalOutputBuffer: Sendable {
     private(set) var lines: [TerminalOutputLine] = []
     private var nextID: UInt64 = 0
@@ -227,6 +243,10 @@ nonisolated struct TerminalOutputBuffer: Sendable {
             lines: lines,
             fullText: lines.map(\.text).joined(separator: "\n")
         )
+    }
+
+    func lineSnapshot() -> [TerminalOutputLine] {
+        lines
     }
 
     private mutating func ensureCurrentLine() {
@@ -282,5 +302,9 @@ actor TerminalOutputProcessor {
 
     func snapshot() -> TerminalOutputSnapshot {
         buffer.snapshot()
+    }
+
+    func lineSnapshot() -> [TerminalOutputLine] {
+        buffer.lineSnapshot()
     }
 }

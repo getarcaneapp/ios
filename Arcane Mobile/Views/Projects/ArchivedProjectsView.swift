@@ -16,9 +16,10 @@ struct ArchivedProjectsView: View {
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var loadGeneration = 0
+    @State private var displayedProjects: [ProjectDetails] = []
 
-    private var sortedProjects: [ProjectDetails] {
-        projects.sorted { lhs, rhs in
+    private func rebuildDisplayedProjects() {
+        displayedProjects = projects.sorted { lhs, rhs in
             (lhs.archivedAt ?? .distantPast) > (rhs.archivedAt ?? .distantPast)
         }
     }
@@ -47,7 +48,7 @@ struct ArchivedProjectsView: View {
             } else {
                 List {
                     Section {
-                        ForEach(sortedProjects) { project in
+                        ForEach(displayedProjects) { project in
                             ArchivedProjectRow(project: project)
                                 .contextMenu {
                                     Button {
@@ -137,6 +138,7 @@ struct ArchivedProjectsView: View {
         } else if reset {
             totalItemCount = nil
         }
+        rebuildDisplayedProjects()
     }
 
     private func loadMore() async {
@@ -152,6 +154,7 @@ struct ArchivedProjectsView: View {
             let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/unarchive")
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             projects.removeAll { $0.id == project.id }
+            rebuildDisplayedProjects()
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
         } catch {

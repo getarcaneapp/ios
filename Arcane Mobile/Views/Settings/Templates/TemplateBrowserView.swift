@@ -46,21 +46,21 @@ struct TemplateBrowserView: View {
                     Button("Try Again") { Task { await store.reload() } }
                 }
             } else {
-                VStack(spacing: 0) {
-                    ScrollableTabBar(
-                        selection: source,
-                        options: TemplateSourceSelection.allCases.map {
-                            ScrollableTabOption(
-                                $0,
-                                title: $0.title,
-                                systemImage: $0.icon,
-                                tint: templateSourceTint($0)
-                            )
-                        },
-                        accessibilityLabel: "Template source"
-                    )
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ScrollableTabBar(
+                            selection: source,
+                            options: TemplateSourceSelection.allCases.map {
+                                ScrollableTabOption(
+                                    $0,
+                                    title: $0.title,
+                                    systemImage: $0.icon,
+                                    tint: templateSourceTint($0)
+                                )
+                            },
+                            accessibilityLabel: "Template source"
+                        )
 
-                    ScrollView {
                         LazyVStack(spacing: 10) {
                             if store.templates.isEmpty {
                                 ContentUnavailableView {
@@ -111,13 +111,13 @@ struct TemplateBrowserView: View {
                         .padding(.horizontal)
                         .padding(.bottom, 16)
                     }
-                    .softTopScrollEdgeEffectCompat()
-                    .background(Color(uiColor: .systemGroupedBackground))
                 }
+                .softTopScrollEdgeEffectCompat()
+                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle("Templates")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
         .searchable(
             text: searchText,
             placement: .navigationBarDrawer(displayMode: .always),
@@ -135,6 +135,7 @@ struct TemplateBrowserView: View {
                         TemplateRegistriesView()
                     } label: {
                         Image(systemName: "gearshape")
+                            .appAccentToolbarSymbol()
                     }
                     .accessibilityLabel("Manage Template Registries")
                 }
@@ -276,6 +277,7 @@ struct TemplateRow: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
     }

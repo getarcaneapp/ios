@@ -288,6 +288,15 @@ final class ArcaneClientManager {
             return false
         }
 
+        switch tab {
+        case .federatedCredentials:
+            return user.hasPermission("federated:list")
+        case .systemBackups:
+            return user.isGlobalAdmin && user.hasPermission("system-backups:read")
+        default:
+            break
+        }
+
         if supportsV2,
            let permissionsManifest,
            !permissionsManifest.accessSurfaces.isEmpty,

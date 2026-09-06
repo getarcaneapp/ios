@@ -8,6 +8,10 @@ struct ImageDetailView: View {
     let image: ImageSummary
     let environmentID: EnvironmentID
 
+    @State private var showTag = false
+    @State private var exportedImage: URL?
+    @State private var exporting = false
+    @State private var exportTask: Task<Void, Never>?
     @State private var details: ImageDetailSummary?
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -92,6 +96,25 @@ struct ImageDetailView: View {
         )
         .navigationTitle("Image Details")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if manager.permissions.has("images:tag", in: environmentID) {
+                        Button("Tag image", systemImage: "tag") { showTag = true }
+                    }
+                    if manager.permissions.has("images:read", in: environmentID) {
+                        Button(exporting ? "Exporting…" : "Export image", systemImage: "square.and.arrow.up") {
+                            exportTask = Task { await exportImage() }
+                        }.disabled(exporting)
+                    }
+                    if let exportedImage { ShareLink("Share image archive", item: exportedImage) }
+                } label: { Image(systemName: "ellipsis.circle") }
+            }
+        }
+        .sheet(isPresented: $showTag) { ImageTagView(environmentID: environmentID, imageID: image.id) }
+        .onDisappear { exportTask?.cancel(); cleanupExport() }
+        .onChange(of: manager.clientGeneration) { exportTask?.cancel(); cleanupExport(); showTag = false }
+        .onChange(of: manager.activeEnvironmentID) { exportTask?.cancel(); cleanupExport(); showTag = false }
         .task { await loadDetails() }
         .task { await loadUpdateStatus() }
         .task { await loadUsingContainers() }
@@ -106,6 +129,30 @@ struct ImageDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private func exportImage() async {
+        guard let client = manager.client else { return }
+        let generation = manager.clientGeneration
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        exporting = true
+        defer { exporting = false }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let file = directory.appendingPathComponent("image.tar")
+            try await client.images.export(envID: environmentID, imageID: image.id, to: file)
+            guard !Task.isCancelled, generation == manager.clientGeneration else { try? FileManager.default.removeItem(at: directory); return }
+            cleanupExport(); exportedImage = file
+            showToast(.info("Image archive ready to share from the actions menu"))
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            showToast(.error(error.localizedDescription))
+        }
+    }
+
+    private func cleanupExport() {
+        if let exportedImage { try? FileManager.default.removeItem(at: exportedImage.deletingLastPathComponent()) }
+        exportedImage = nil
     }
 
     private var detailSectionTabs: some View {

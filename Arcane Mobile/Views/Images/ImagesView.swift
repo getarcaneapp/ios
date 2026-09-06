@@ -6,7 +6,6 @@ struct ImagesView: View {
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     let environmentID: EnvironmentID
     let environmentName: String
 
@@ -92,13 +91,8 @@ struct ImagesView: View {
     /// Refresh the cached `sections`. Called only when an input that affects
     /// grouping actually changes (search settle, sort, filter, or the source
     /// list) — never on every body evaluation.
-    private func rebuildSections(animated: Bool = false) {
-        let new = computeSections()
-        if animated {
-            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) { sections = new }
-        } else {
-            sections = new
-        }
+    private func rebuildSections() {
+        sections = computeSections()
         pruneSelection(validIDs: Set(images.map(\.id)))
     }
 
@@ -380,7 +374,7 @@ struct ImagesView: View {
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: tagsFilter) { rebuildSections() }
-        .onChange(of: sortOrder) { rebuildSections(animated: true) }
+        .onChange(of: sortOrder) { rebuildSections() }
         .morphingActions(
             primary: bulkPrimaryItem,
             runningItemID: bulkRunningActionID,
@@ -598,10 +592,8 @@ struct ImagesView: View {
         }
         let failedIDs = Set(result.failed.map(\.id))
         let removedIDs = Set(ids.filter { !failedIDs.contains($0) })
-        withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
-            images.removeAll { removedIDs.contains($0.id) }
-            rebuildSections()
-        }
+        images.removeAll { removedIDs.contains($0.id) }
+        rebuildSections()
         await invalidateImageCaches()
         mutationStore.markChanged(kind: .images, envID: environmentID)
         exitSelectionMode()
@@ -715,6 +707,10 @@ struct PullImageView: View {
     let environmentID: EnvironmentID
 
     @State private var imageName = ""
+    @State private var searchTerm = ""
+    @State private var searchResults: [ImageSearchResult] = []
+    @State private var searching = false
+    @State private var searchError: String?
 
     var body: some View {
         NavigationStack {
@@ -729,7 +725,40 @@ struct PullImageView: View {
                         helper: "Include a tag when you do not want Docker to assume latest."
                     )
                 }
+                Section("Search Docker Hub") {
+                    TextField("Search repositories", text: $searchTerm)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    if searching { ProgressView() }
+                    if let searchError { Text(searchError).foregroundStyle(.secondary) }
+                    ForEach(searchResults) { result in
+                        Button { imageName = result.name } label: {
+                            VStack(alignment: .leading) {
+                                Text(result.name)
+                                Text(result.description).font(.caption).lineLimit(2)
+                                Text("\(String(result.starCount)) stars\(result.official ? " · Official" : "")")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
             }
+            .task(id: "\(manager.serverURL)|\(manager.clientGeneration)|\(environmentID.rawValue)|\(searchTerm)") {
+                searchResults = []; searchError = nil
+                let term = searchTerm.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !term.isEmpty, let client = manager.client else { return }
+                searching = true
+                defer { searching = false }
+                do {
+                    try await Task.sleep(for: .milliseconds(350))
+                    let results = try await client.images.search(envID: environmentID, term: term)
+                    guard !Task.isCancelled else { return }
+                    searchResults = results
+                } catch is CancellationError { }
+                catch ArcaneError.notFound { searchError = "Image search is not available on this server." }
+                catch { searchError = error.localizedDescription }
+            }
+            .onChange(of: manager.clientGeneration) { dismiss() }
+            .onChange(of: manager.activeEnvironmentID) { dismiss() }
             .navigationTitle("Pull Image")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -746,7 +775,7 @@ struct PullImageView: View {
 
     private func startPull() {
         let reference = imageName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !reference.isEmpty else { return }
+        guard !reference.isEmpty, manager.permissions.has("images:pull", in: environmentID), manager.activeEnvironmentID == environmentID else { return }
         dismiss()
         DeploymentActivityStore.shared.start(
             kind: .imagePull,

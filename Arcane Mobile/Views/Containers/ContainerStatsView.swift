@@ -12,6 +12,7 @@ struct ContainerStatsView: View {
     @State private var streamTask: Task<Void, Never>?
     @State private var isStreaming = false
     @State private var errorMessage: String?
+    @State private var chartSeries = ContainerStatsChartSeries()
 
     private let windowSize = 60
 
@@ -93,7 +94,7 @@ struct ContainerStatsView: View {
                         colors: [Color.accentColor],
                         legend: nil,
                         unit: "%",
-                        series: [frames.map(\.cpuPercent)]
+                        series: [chartSeries.cpu]
                     )
                     .equatable()
                     memoryCard
@@ -102,7 +103,7 @@ struct ContainerStatsView: View {
                         colors: [.green, .orange],
                         legend: ["RX", "TX"],
                         unit: "B/s",
-                        series: [frames.map(\.netRxPerSec), frames.map(\.netTxPerSec)]
+                        series: [chartSeries.networkReceive, chartSeries.networkTransmit]
                     )
                     .equatable()
                     StatsChartCard(
@@ -110,7 +111,7 @@ struct ContainerStatsView: View {
                         colors: [Color.accentColor, Color.accentColor.opacity(0.5)],
                         legend: ["Read", "Write"],
                         unit: "B/s",
-                        series: [frames.map(\.blockReadPerSec), frames.map(\.blockWritePerSec)]
+                        series: [chartSeries.blockRead, chartSeries.blockWrite]
                     )
                     .equatable()
             }
@@ -183,7 +184,7 @@ struct ContainerStatsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            MemoryChart(points: frames.map { Double($0.memoryUsed) / 1_048_576 })
+            MemoryChart(points: chartSeries.memoryMegabytes)
                 .equatable()
         }
         .padding(12)
@@ -223,6 +224,7 @@ struct ContainerStatsView: View {
                         bufferedFrames.removeFirst(bufferedFrames.count - windowSize)
                     }
                     frames = bufferedFrames
+                    chartSeries = ContainerStatsChartSeries(frames: bufferedFrames)
                     latest = parsed
                 }
             } catch is CancellationError {
@@ -258,6 +260,33 @@ struct ContainerStatsView: View {
         previous: ContainerStatsFrame?
     ) -> ContainerStatsFrame? {
         ContainerStatsFrame.from(json: .object(raw), previous: previous)
+    }
+}
+
+nonisolated struct ContainerStatsChartSeries: Equatable, Sendable {
+    var cpu: [Double] = []
+    var memoryMegabytes: [Double] = []
+    var networkReceive: [Double] = []
+    var networkTransmit: [Double] = []
+    var blockRead: [Double] = []
+    var blockWrite: [Double] = []
+
+    init(frames: [ContainerStatsFrame] = []) {
+        cpu.reserveCapacity(frames.count)
+        memoryMegabytes.reserveCapacity(frames.count)
+        networkReceive.reserveCapacity(frames.count)
+        networkTransmit.reserveCapacity(frames.count)
+        blockRead.reserveCapacity(frames.count)
+        blockWrite.reserveCapacity(frames.count)
+
+        for frame in frames {
+            cpu.append(frame.cpuPercent)
+            memoryMegabytes.append(Double(frame.memoryUsed) / 1_048_576)
+            networkReceive.append(frame.netRxPerSec)
+            networkTransmit.append(frame.netTxPerSec)
+            blockRead.append(frame.blockReadPerSec)
+            blockWrite.append(frame.blockWritePerSec)
+        }
     }
 }
 

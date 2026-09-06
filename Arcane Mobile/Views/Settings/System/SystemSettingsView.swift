@@ -892,14 +892,16 @@ struct ContainerMultiSelectView: View {
         return running + orphaned
     }
 
-    private var filteredRows: [Row] {
-        guard !search.isEmpty else { return allRows }
-        return allRows.filter { $0.name.localizedCaseInsensitiveContains(search) }
+    private func filteredRows(from rows: [Row]) -> [Row] {
+        guard !search.isEmpty else { return rows }
+        return rows.filter { $0.name.localizedCaseInsensitiveContains(search) }
     }
 
     var body: some View {
+        let rows = allRows
+        let displayedRows = filteredRows(from: rows)
         List {
-            if allRows.isEmpty {
+            if rows.isEmpty {
                 ContentUnavailableView(
                     "No Containers",
                     systemImage: "shippingbox",
@@ -907,7 +909,7 @@ struct ContainerMultiSelectView: View {
                 )
             } else {
                 Section {
-                    ForEach(filteredRows) { row in
+                    ForEach(displayedRows) { row in
                         Button {
                             toggle(row.name)
                         } label: {

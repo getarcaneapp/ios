@@ -88,6 +88,14 @@ struct VolumeBrowserView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
+                    if manager.serverCapabilities?.supportsRoleManagement == true,
+                       manager.permissions.has(Permission.Volumes.read, in: environmentID) {
+                        NavigationLink {
+                            VolumeWorkspaceView(environmentID: environmentID, volumeName: volumeName)
+                        } label: {
+                            Label("Manage files", systemImage: "doc.text")
+                        }
+                    }
                     Button {
                         pathInput = currentPath
                         showPathAlert = true

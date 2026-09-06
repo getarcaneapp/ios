@@ -142,6 +142,36 @@ extension ReleaseNote {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.8.3",
+            new: [
+                .init("Five new alternate app icons."),
+                .init("Container creation, editing, image commits, and Compose generation."),
+                .init("Volume file editing, transfers, and conflict review."),
+                .init("Volume and system backup policies, recovery, and S3 destinations."),
+                .init("Image tagging, export, and vulnerability patching."),
+                .init("Federated credential management.")
+            ],
+            changed: [
+                .init("Image patching uses a tools icon with separate toolbar controls."),
+                .init("Backup history uses toolbar actions and separate backup settings."),
+                .init("Standalone image builds removed from mobile navigation."),
+                .init("Accent color menu shows colored dots and labels."),
+                .init("App icon previews use native display resolutions."),
+                .init("Clearer gray grid backgrounds for app icons."),
+                .init("Templates use the same collapsible search layout as resource pages.")
+            ],
+            fixed: [
+                .init("Backup failures display the server's error message."),
+                .init("Volume backup deletion uses the correct backup route."),
+                .init("Template rows keep their icons and text aligned."),
+                .init("Dashboard counts refresh after prune, updates, and pull-to-refresh."),
+                .init("Dashboard rings track live stats without judder."),
+                .init("Dashboard attention badge refreshes when returning to the tab."),
+                .init("Attention Center badge no longer flickers during loads."),
+                .init("Smoother scrolling across dashboards, resource lists, logs, and terminal output.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.8.2",
             new: [
                 .init("Support bundles with actionable redacted diagnostics."),

@@ -7,7 +7,6 @@ struct ProjectsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
-    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let environmentID: EnvironmentID
     let environmentName: String
@@ -89,13 +88,8 @@ struct ProjectsView: View {
     /// Refresh the cached `sections`. Called only when an input that affects
     /// grouping actually changes (search settle, sort, filter, pins, or the
     /// source list) — never on every body evaluation.
-    private func rebuildSections(animated: Bool = false) {
-        let new = computeSections()
-        if animated {
-            withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) { sections = new }
-        } else {
-            sections = new
-        }
+    private func rebuildSections() {
+        sections = computeSections()
     }
 
     private var canBrowseTemplates: Bool {
@@ -296,7 +290,7 @@ struct ProjectsView: View {
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: statusFilter) { rebuildSections() }
         .onChange(of: updateFilter) { rebuildSections() }
-        .onChange(of: sortOrder) { rebuildSections(animated: true) }
+        .onChange(of: sortOrder) { rebuildSections() }
         .onChange(of: pinnedIDs) { rebuildSections() }
         .deleteConfirmation(item: $pendingDeleteProject) { project in
             DeleteConfirmationConfig(

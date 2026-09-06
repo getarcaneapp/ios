@@ -10,7 +10,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case swarm, events, customize, settings
     case templateRegistries, containerRegistries, variables, gitRepositories, gitOps
     case apiKeys, webhooks, authentication, notifications, jobs, users, roles, systemSettings
-    case activities, oidcRoleMappings
+    case activities, oidcRoleMappings, systemBackups, federatedCredentials
 
     enum Section: Hashable, CaseIterable {
         case management, resources, swarm, administration
@@ -57,6 +57,8 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .roles: return "Roles"
         case .systemSettings: return "Environment Settings"
         case .activities: return "Activities"
+        case .systemBackups: return "Backups"
+        case .federatedCredentials: return "Federated Credentials"
         case .oidcRoleMappings: return "OIDC Role Mappings"
         }
     }
@@ -103,6 +105,8 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .roles: return "person.crop.rectangle.stack.fill"
         case .systemSettings: return "slider.horizontal.3"
         case .activities: return "clock.arrow.circlepath"
+        case .systemBackups: return "externaldrive.badge.timemachine"
+        case .federatedCredentials: return "key.horizontal.fill"
         case .oidcRoleMappings: return "person.badge.key.fill"
         }
     }
@@ -112,14 +116,14 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .dashboard, .projects, .containers, .images, .users, .authentication:
             return .blue
         case .updates, .webhooks: return .green
-        case .imageVulnerabilities, .volumes, .activities: return .orange
+        case .imageVulnerabilities, .volumes, .activities, .systemBackups: return .orange
         case .networks, .variables: return .teal
         case .ports: return .cyan
         case .networkTopology, .swarm: return .mint
         case .events, .notifications: return .red
         case .customize, .containerRegistries, .roles: return .purple
         case .settings, .systemSettings: return .gray
-        case .templateRegistries, .gitRepositories, .gitOps, .oidcRoleMappings: return .indigo
+        case .templateRegistries, .gitRepositories, .gitOps, .oidcRoleMappings, .federatedCredentials: return .indigo
         case .apiKeys: return .yellow
         case .jobs: return .pink
         }
@@ -137,7 +141,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .events, .customize, .settings, .templateRegistries, .containerRegistries,
              .variables, .gitRepositories, .gitOps, .apiKeys, .webhooks, .authentication,
              .notifications, .jobs, .users, .roles, .systemSettings, .activities,
-             .oidcRoleMappings:
+             .oidcRoleMappings, .systemBackups, .federatedCredentials:
             return .administration
         }
     }
@@ -152,7 +156,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .customize:
             return [.templateRegistries, .containerRegistries, .variables, .gitRepositories]
         case .settings:
-            return [.apiKeys, .webhooks, .authentication, .notifications, .jobs, .users, .roles, .systemSettings]
+            return [.apiKeys, .federatedCredentials, .systemBackups, .webhooks, .authentication, .notifications, .jobs, .users, .roles, .systemSettings]
         default:
             return []
         }
@@ -164,7 +168,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .ports, .networkTopology: return .networks
         case .templateRegistries, .containerRegistries, .variables, .gitRepositories: return .customize
         case .apiKeys, .webhooks, .authentication, .notifications, .jobs, .users, .roles,
-             .systemSettings:
+             .systemSettings, .systemBackups, .federatedCredentials:
             return .settings
         default:
             return nil
@@ -196,7 +200,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
 
     var requiresV2: Bool {
         switch self {
-        case .activities, .variables, .roles, .oidcRoleMappings: return true
+        case .activities, .variables, .roles, .oidcRoleMappings, .systemBackups, .federatedCredentials: return true
         default: return false
         }
     }
@@ -244,6 +248,8 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .systemSettings:
             return ["settings.category.appearance", "settings.category.build", "settings.category.timeouts", "settings.category.diagnostics"]
         case .activities: return ["route.activities"]
+        case .systemBackups: return ["settings.category.systembackups"]
+        case .federatedCredentials: return []
         case .oidcRoleMappings: return ["route.oidc-role-mappings"]
         }
     }
@@ -308,6 +314,8 @@ func appTabDestination(
     case .roles: RolesView()
     case .systemSettings: SystemSettingsView()
     case .activities: ActivitiesView()
+    case .systemBackups: SystemBackupsView()
+    case .federatedCredentials: FederatedCredentialsView()
     case .oidcRoleMappings: OIDCRoleMappingsView()
     }
 }

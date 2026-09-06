@@ -27,8 +27,9 @@ struct DynamicResourceListView: View {
     @State private var pagination = ProgressivePaginationState()
     @State private var isLoadingMore = false
     @State private var loadMoreError: String?
+    @State private var displayedItems: [DynamicResource] = []
 
-    private var filteredItems: [DynamicResource] {
+    private func computeDisplayedItems() -> [DynamicResource] {
         items
             .filter { item in
                 debouncedSearchText.isEmpty ||
@@ -36,6 +37,10 @@ struct DynamicResourceListView: View {
                 item.subtitle.localizedCaseInsensitiveContains(debouncedSearchText)
             }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    private func rebuildDisplayedItems() {
+        displayedItems = computeDisplayedItems()
     }
 
     var body: some View {
@@ -55,7 +60,7 @@ struct DynamicResourceListView: View {
                         }
                     }
                     Section {
-                        ForEach(filteredItems) { item in
+                        ForEach(displayedItems) { item in
                             NavigationLink {
                                 DynamicResourceDetailView(title: item.title, resource: item, actions: actionsForRow(item))
                             } label: {
@@ -103,6 +108,7 @@ struct DynamicResourceListView: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search \(title.lowercased())")
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) {
+            rebuildDisplayedItems()
             Task { await load(refresh: true) }
         }
         .toolbar {
@@ -273,6 +279,7 @@ struct DynamicResourceListView: View {
             generation: generation
         ) else { return }
         items = PaginationLoader.merge(current: items, incoming: response.data, reset: reset)
+        rebuildDisplayedItems()
         loadMoreError = nil
     }
 
