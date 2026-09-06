@@ -90,7 +90,8 @@ struct ScrollableTabBar<Selection: Hashable>: View {
                     .stroke(isSelected ? option.tint.opacity(0.45) : .clear, lineWidth: 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
+        .motionAwareAnimation(Motion.state, value: isSelected)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(option.title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])

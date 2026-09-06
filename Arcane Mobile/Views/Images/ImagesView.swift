@@ -514,13 +514,20 @@ struct ImagesView: View {
 
     private func loadUpdateInfo(for newImages: [ImageSummary]) async {
         guard let client = manager.client else { return }
+        let generation = loadGeneration
+        let clientGeneration = manager.clientGeneration
         let refs = newImages
             .flatMap { $0.repoTags }
             .filter { $0 != "<none>:<none>" }
         guard !refs.isEmpty else { return }
         do {
             let map = try await client.images.updateInfoByRefs(envID: environmentID, imageRefs: refs)
-            updateInfo.merge(map.compactMapValues { $0?.asUpdateResponse }) { _, new in new }
+            guard !Task.isCancelled, generation == loadGeneration,
+                  clientGeneration == manager.clientGeneration else { return }
+            updateInfo.merge(map.compactMapValues { info in
+                guard let info, info.hasCheckResult || info.checkTime != nil else { return nil }
+                return info.asUpdateResponse
+            }) { _, new in new }
             rebuildSections()
         } catch {
             // Update info is best-effort decoration — silent failure.
@@ -528,15 +535,7 @@ struct ImagesView: View {
     }
 
     private func updateState(for image: ImageSummary) -> ImageUpdateState {
-        let tags = image.repoTags
-        for tag in tags where tag != "<none>:<none>" {
-            if let info = updateInfo[tag] {
-                if let err = info.error, !err.isEmpty { return .error(err) }
-                if info.hasUpdate { return .hasUpdate }
-                return .upToDate
-            }
-        }
-        return .unknown
+        ImageUpdateState.resolve(inline: image.updateInfo, references: image.repoTags, results: updateInfo)
     }
 
     private func loadMore() async {
@@ -606,13 +605,6 @@ struct ImagesView: View {
     }
 }
 
-enum ImageUpdateState: Equatable {
-    case unknown
-    case upToDate
-    case hasUpdate
-    case error(String)
-}
-
 struct ImageRow: View {
     let row: ImageRowModel
 
@@ -639,11 +631,6 @@ struct ImageRow: View {
                     Text(row.sizeText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if row.updateState != .unknown {
-                        Text("•")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                     UpdateStateBadge(state: row.updateState)
                 }
             }
@@ -662,37 +649,6 @@ struct ImageRowModel: Identifiable {
     let updateState: ImageUpdateState
 
     var id: String { image.id }
-}
-
-struct UpdateStateBadge: View {
-    let state: ImageUpdateState
-
-    var body: some View {
-        switch state {
-        case .unknown:
-            EmptyView()
-        case .upToDate:
-            badge("Up to date", systemImage: "checkmark.seal.fill", color: .green)
-        case .hasUpdate:
-            badge("Update available", systemImage: "arrow.up.circle.fill", color: .accentColor)
-        case .error(let message):
-            badge("Update check failed", systemImage: "exclamationmark.triangle.fill", color: .red,
-                  accessibility: "Update check failed: \(message)")
-        }
-    }
-
-    // A `Label` adds a wide icon-to-title gap; a tight HStack keeps the badge compact.
-    private func badge(_ text: String, systemImage: String, color: Color, accessibility: String? = nil) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: systemImage)
-            Text(text)
-        }
-        .font(.caption)
-        .foregroundStyle(color)
-        .lineLimit(1)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibility ?? text)
-    }
 }
 
 /// Input-only sheet: collects the image reference, then hands the pull to

@@ -34,6 +34,9 @@ enum Motion {
     /// Default content / state / tint swap.
     static let state: Animation = .smooth(duration: 0.25)
 
+    /// Small button-press feedback without changing layout.
+    static let press: Animation = .spring(response: 0.28, dampingFraction: 0.86)
+
     /// Brief fade for visuals that must clear before a longer surface morph finishes.
     static let earlyFade: Animation = .easeOut(duration: 0.1)
 
@@ -259,5 +262,17 @@ struct LoadingCrossfade<Skeleton: View, Content: View>: View {
         } else {
             content
         }
+    }
+}
+
+/// Restrained feedback for standalone buttons, never scrolling list rows.
+struct PressableButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .motionAwareAnimation(Motion.press, value: configuration.isPressed)
     }
 }

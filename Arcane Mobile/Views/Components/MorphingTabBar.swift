@@ -157,7 +157,7 @@ struct MorphingTabBar: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(primary.title)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(.capsule)
@@ -199,7 +199,7 @@ struct MorphingTabBar: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
         .accessibilityLabel(item.title)
         .frame(width: pillSize, height: pillSize)
         .contentShape(.circle)
@@ -220,7 +220,7 @@ struct MorphingTabBar: View {
                 .font(.title3)
                 .foregroundStyle(item.tint)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
         .accessibilityLabel(item.title)
         .frame(width: pillSize, height: pillSize)
         .contentShape(.circle)

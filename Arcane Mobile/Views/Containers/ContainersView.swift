@@ -931,6 +931,7 @@ struct ContainerRow: View {
                         }
                     }
                 }
+                UpdateStateBadge(state: ImageUpdateState(info: container.updateInfo))
             }
 
             Spacer()
@@ -948,6 +949,7 @@ struct ContainerRow: View {
         parts.append(container.isRunning ? "running" : "stopped")
         parts.append(container.image)
         parts.append(container.status)
+        parts.append(ImageUpdateState(info: container.updateInfo).accessibilityDescription)
         return parts.joined(separator: ", ")
     }
 }

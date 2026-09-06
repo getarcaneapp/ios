@@ -13,6 +13,9 @@ struct ResourceCountLabel: View {
     var body: some View {
         Label {
             countText
+                .contentTransition(.numericText())
+                .motionAwareAnimation(Motion.state, value: loadedCount)
+                .motionAwareAnimation(Motion.state, value: totalCount)
         } icon: {
             Image(systemName: "list.bullet")
         }

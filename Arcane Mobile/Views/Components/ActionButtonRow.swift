@@ -109,7 +109,7 @@ private struct ActionToolbarModifier: ViewModifier {
                 .contentShape(Circle())
                 .motionAwareAnimation(Motion.state, value: isRunning)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressableButtonStyle())
             .glassEffectCompat(tint: item.tint, interactive: true, in: .circle)
             .floatingSurfaceShadow()
             .disabled(buttonDisabled || isRunning)

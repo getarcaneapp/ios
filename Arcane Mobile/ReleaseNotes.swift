@@ -152,6 +152,8 @@ enum ReleaseNotes {
                 .init("Federated credential management.")
             ],
             changed: [
+                .init("Container and image rows show clear update-status badges."),
+                .init("Smoother button feedback, filter selection, and resource-count transitions."),
                 .init("Image patching uses a tools icon with separate toolbar controls."),
                 .init("Backup history uses toolbar actions and separate backup settings."),
                 .init("Standalone image builds removed from mobile navigation."),
@@ -161,6 +163,7 @@ enum ReleaseNotes {
                 .init("Templates use the same collapsible search layout as resource pages.")
             ],
             fixed: [
+                .init("Image update badges account for every image tag."),
                 .init("Backup failures display the server's error message."),
                 .init("Volume backup deletion uses the correct backup route."),
                 .init("Template rows keep their icons and text aligned."),
