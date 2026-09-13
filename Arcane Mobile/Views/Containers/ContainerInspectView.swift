@@ -23,29 +23,21 @@ struct ContainerInspectView: View {
                 ProgressView("Loading inspect…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, rawJSON.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.orange)
+                ContentUnavailableView {
+                    Label("Couldn't Load Inspect", systemImage: "exclamationmark.triangle")
+                } description: {
                     Text(errorMessage)
-                        .multilineTextAlignment(.center)
-                    Button("Retry") {
-                        Task { await load() }
-                    }
+                } actions: {
+                    Button("Retry") { Task { await load() } }
                 }
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                        Text(displayedJSON)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(14)
-                            .dashboardCardBackground(cornerRadius: Radius.standard)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                    Text(displayedJSON)
+                        .font(.body.monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding()
                 }
             }
         }

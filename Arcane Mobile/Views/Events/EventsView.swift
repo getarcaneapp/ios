@@ -18,11 +18,13 @@ struct EventsView: View {
                 ProgressView("Loading events…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage = store.errorMessage, store.events.isEmpty {
-                ContentUnavailableView(
-                    "Couldn't Load Events",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(errorMessage)
-                )
+                ContentUnavailableView {
+                    Label("Couldn't Load Events", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Retry") { Task { await store.reload() } }
+                }
             } else {
                 List {
                     if store.supportsSeverityCounts, let counts = store.severityCounts {
@@ -33,8 +35,8 @@ struct EventsView: View {
                                 onSelectAll: store.clearSeverities,
                                 onToggle: store.toggle
                             )
-                            .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-                            .listRowBackground(Color.clear)
+
+
                         }
                     }
 
@@ -47,7 +49,7 @@ struct EventsView: View {
                                 systemImage: "clock.badge.exclamationmark"
                             )
                         }
-                        .listRowBackground(Color.clear)
+
                     } else {
                         Section {
                             ForEach(store.events) { event in
@@ -121,24 +123,15 @@ struct EventsView: View {
                         }
                     }
 
-                    if store.hasMore {
-                        Button {
+                    PaginatedListFooter(
+                        hasMore: store.hasMore,
+                        loadMoreError: store.loadMoreError,
+                        onRetry: { Task { await store.loadMore() } },
+                        onLoadMore: {
+                            guard !store.isLoading, !store.isLoadingMore else { return }
                             Task { await store.loadMore() }
-                        } label: {
-                            HStack {
-                                Spacer()
-                                if store.isLoadingMore {
-                                    ProgressView()
-                                } else {
-                                    Label("Show More", systemImage: "arrow.down.circle")
-                                        .font(.subheadline.weight(.semibold))
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 4)
                         }
-                        .disabled(store.isLoadingMore)
-                    }
+                    )
                 }
                 .listStyle(.insetGrouped)
             }
@@ -331,31 +324,31 @@ private struct EventRow: View {
             Image(systemName: severityIcon)
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(severityTint)
-                .frame(width: 32, height: 32)
-                .background(severityTint.opacity(0.15), in: .circle)
+                .frame(width: 28)
+
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
+                    .font(.body)
+
                 if let description = event.description, !description.isEmpty {
                     Text(description)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+
                 }
                 HStack(spacing: 6) {
                     Text(event.timestamp, format: .relative(presentation: .named))
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
                     if !event.type.isEmpty {
                         Text("•")
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.tertiary)
                         Text(event.type)
-                            .font(.caption2.monospaced())
+                            .font(.caption.monospaced())
                             .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+
                     }
                 }
             }

@@ -187,43 +187,32 @@ struct ContainerDetailView: View {
     // MARK: - Overview tab
 
     private var overviewTab: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                statusHeader
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .dashboardCardBackground()
-
-                if let details {
-                    AdaptiveMetadataGrid(items: containerMetadata(details))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .dashboardCardBackground(cornerRadius: Radius.standard)
-
-                    configSection(details.config)
-                    stateSection(details.state)
-                    hostConfigSection(details.hostConfig)
-
-                    if !details.ports.isEmpty {
-                        ContainerPortsSection(ports: details.ports)
-                    }
-                    if let health = details.state.health {
-                        ContainerHealthSection(health: health)
-                    }
-                    let networks = details.networkSettings.networks
-                    if !networks.isEmpty {
-                        networkSection(networks)
+        List {
+            Section { statusHeader }
+            if let details {
+                Section("Overview") {
+                    ForEach(containerMetadata(details)) { item in
+                        LabeledContent(item.label) {
+                            Text(verbatim: item.value)
+                                .font(item.monospaced ? .body.monospaced() : .body)
+                                .foregroundStyle(item.tint)
+                                .textSelection(.enabled)
+                        }
                     }
                 }
+                configSection(details.config)
+                stateSection(details.state)
+                hostConfigSection(details.hostConfig)
+                if !details.ports.isEmpty { ContainerPortsSection(ports: details.ports) }
+                if let health = details.state.health { ContainerHealthSection(health: health) }
+                let networks = details.networkSettings.networks
+                if !networks.isEmpty { networkSection(networks) }
+            } else if isLoading {
+                ProgressView().frame(maxWidth: .infinity)
             }
-            .padding(.top, 8)
-            .padding(.horizontal)
-            .padding(.bottom, 16)
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     private var statusHeader: some View {
@@ -234,7 +223,6 @@ struct ContainerDetailView: View {
                         .font(.title)
                         .foregroundStyle(isRunning ? .green : .secondary)
                         .frame(width: 56, height: 56)
-                        .glassEffectCompat(in: .circle)
                 }
                 Image(systemName: "circle.fill")
                     .font(.system(size: 14))
@@ -246,11 +234,9 @@ struct ContainerDetailView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayedName)
                     .font(.title3.bold())
-                    .lineLimit(2)
                 Text(container.image)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
                 StatusBadge(status: statusString)
                     .padding(.top, 2)
             }
@@ -374,30 +360,16 @@ struct ContainerDetailView: View {
         return items
     }
 
-    /// Grouped card of label/value rows, mirroring the dashboard's
-    /// `DashboardInfoGroup`/`DashboardInfoRow` pair.
-    private func card<Content: View>(
+    private func detailSection<Content: View>(
         title: String,
         systemImage: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title, systemImage: systemImage)
-            VStack(spacing: 0) { content() }
-                .dashboardCardBackground(cornerRadius: Radius.standard)
-        }
+        Section { content() } header: { Label(title, systemImage: systemImage) }
     }
 
     private func row(_ label: String, @ViewBuilder value: () -> some View) -> some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 16)
-            value()
-                .multilineTextAlignment(.trailing)
-        }
-        .padding(12)
+        LabeledContent(label) { value().textSelection(.enabled) }
     }
 
     private func linkRow<Destination: View>(
@@ -405,23 +377,7 @@ struct ContainerDetailView: View {
         systemImage: String,
         @ViewBuilder destination: () -> Destination
     ) -> some View {
-        NavigationLink(destination: destination()) {
-            HStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary.opacity(0.5))
-            }
-            .padding(12)
-            .contentShape(.rect)
-        }
-        .cardRowLinkStyle()
+        NavigationLink(destination: destination()) { Label(title, systemImage: systemImage) }
     }
 
     private func monoValue(_ value: String) -> some View {
@@ -459,7 +415,7 @@ struct ContainerDetailView: View {
             return AnyView(EmptyView())
         }
         return AnyView(
-            card(title: "Execution", systemImage: "terminal") {
+            detailSection(title: "Execution", systemImage: "terminal") {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, rowItem in
                     switch rowItem {
                     case .label(let title, let value):
@@ -483,7 +439,7 @@ struct ContainerDetailView: View {
     }
 
     private func stateSection(_ state: ContainerState) -> some View {
-        card(title: "Runtime", systemImage: "waveform.path.ecg") {
+        detailSection(title: "Runtime", systemImage: "waveform.path.ecg") {
             row("Status") { Text(state.status.capitalized).font(.subheadline) }
             if let startedAt = state.startedAt {
                 row("Started") { Text(startedAt.formattedDate).font(.subheadline) }
@@ -507,7 +463,7 @@ struct ContainerDetailView: View {
             (hostConfig.memory ?? 0) > 0 || hostConfig.privileged == true ||
             !(hostConfig.binds ?? []).isEmpty
         if hasRows {
-            card(title: "Host Config", systemImage: "server.rack") {
+            detailSection(title: "Host Config", systemImage: "server.rack") {
                 if let mode = hostConfig.networkMode {
                     row("Network Mode") { Text(mode).font(.subheadline) }
                 }
@@ -530,19 +486,19 @@ struct ContainerDetailView: View {
     }
 
     private func networkSection(_ networks: [String: ContainerNetworkEndpoint]) -> some View {
-        card(title: "Networks", systemImage: "network") {
+        detailSection(title: "Networks", systemImage: "network") {
             ForEach(Array(networks.keys.sorted()), id: \.self) { netName in
                 if let endpoint = networks[netName] {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(netName).font(.subheadline.weight(.semibold))
                         if let ip = endpoint.ipAddress, !ip.isEmpty {
-                            Text("IP: \(ip)").font(.caption).foregroundStyle(.secondary)
+                            Text(verbatim: "IP: \(ip)").font(.callout.monospaced()).foregroundStyle(.secondary)
                         }
                         if let mac = endpoint.macAddress, !mac.isEmpty {
-                            Text("MAC: \(mac)").font(.caption).foregroundStyle(.secondary)
+                            Text(verbatim: "MAC: \(mac)").font(.callout.monospaced()).foregroundStyle(.secondary)
                         }
                     }
-                    .padding(12)
+                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -705,21 +661,16 @@ struct EnvVarsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 10) {
-                ForEach(displayedEntries) { entry in
-                    EnvironmentVariableValueRow(
-                        variable: entry.variable,
-                        revealReset: revealReset
-                    )
-                }
+        List {
+            ForEach(displayedEntries) { entry in
+                EnvironmentVariableValueRow(
+                    variable: entry.variable,
+                    revealReset: revealReset
+                )
             }
-            .padding(.top, 8)
-            .padding(.horizontal)
-            .padding(.bottom, 16)
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
         .searchable(text: $searchText)
         .onChange(of: searchText) { rebuildDisplayedEntries() }
         .navigationTitle("Environment Variables")
@@ -764,8 +715,6 @@ private struct EnvironmentVariableValueRow: View {
                         Label("Potential secret", systemImage: "lock.fill")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.orange)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
                             .accessibilityHidden(true)
                     }
                     Spacer(minLength: 0)
@@ -792,7 +741,7 @@ private struct EnvironmentVariableValueRow: View {
                                     .frame(width: 44, height: 44)
                                     .contentShape(.rect)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.borderless)
                             .accessibilityLabel(
                                 isRevealed
                                     ? "Hide value for \(variable.name)"
@@ -806,9 +755,7 @@ private struct EnvironmentVariableValueRow: View {
                     .textSelection(.enabled)
             }
         }
-        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground(cornerRadius: Radius.standard)
         .onChange(of: revealReset) {
             isRevealed = false
         }
@@ -819,24 +766,16 @@ struct LabelsView: View {
     let labels: [String: String]
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 10) {
-                ForEach(Array(labels.keys.sorted()), id: \.self) { key in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(key).font(.caption.bold()).foregroundStyle(.secondary)
-                        Text(labels[key] ?? "").font(.body).textSelection(.enabled)
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .dashboardCardBackground(cornerRadius: Radius.standard)
+        List {
+            ForEach(Array(labels.keys.sorted()), id: \.self) { key in
+                LabeledContent(key) {
+                    Text(verbatim: labels[key] ?? "")
+                        .textSelection(.enabled)
                 }
             }
-            .padding(.top, 8)
-            .padding(.horizontal)
-            .padding(.bottom, 16)
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Labels")
     }
 }
@@ -845,23 +784,15 @@ struct BindsView: View {
     let binds: [String]
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 10) {
-                ForEach(binds, id: \.self) { bind in
-                    Text(bind)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .dashboardCardBackground(cornerRadius: Radius.standard)
-                }
+        List {
+            ForEach(Array(binds.enumerated()), id: \.offset) { _, bind in
+                Text(verbatim: bind)
+                    .font(.body.monospaced())
+                    .textSelection(.enabled)
             }
-            .padding(.top, 8)
-            .padding(.horizontal)
-            .padding(.bottom, 16)
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Mounts")
     }
 }

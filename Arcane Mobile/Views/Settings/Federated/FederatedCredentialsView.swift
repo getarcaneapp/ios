@@ -4,6 +4,10 @@ import Arcane
 struct FederatedCredentialsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @State private var credentials: [FederatedCredential] = []
+    @State private var loadedIdentity = ""
+    @State private var requestID = UUID()
+    @State private var loadingIdentity: String?
+    @State private var loadMoreError: String?
     @State private var total = 0
     @State private var loading = false
     @State private var errorMessage: String?
@@ -19,16 +23,21 @@ struct FederatedCredentialsView: View {
             if unsupported {
                 ContentUnavailableView("Federated Credentials Unavailable", systemImage: "key.slash", description: Text("This server does not support federated credential management."))
             } else {
-                if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
+                if let errorMessage {
+                    Text(errorMessage).foregroundStyle(.red)
+                    Button("Retry") { Task { await load(reset: true) } }
+                }
                 ForEach(credentials) { credential in
                     NavigationLink {
                         FederatedCredentialDetailView(credential: credential, onSaved: { await load(reset: true) })
                     } label: {
-                        VStack(alignment: .leading) {
-                            Text(credential.name)
-                            Text(credential.issuerUrl).font(.caption).foregroundStyle(.secondary)
-                            Text(credential.enabled ? "Enabled" : "Disabled").font(.caption)
-                        }
+                        Label {
+                            VStack(alignment: .leading) {
+                                Text(credential.name)
+                                Text(credential.issuerUrl).font(.subheadline).foregroundStyle(.secondary)
+                                Text(credential.enabled ? "Enabled" : "Disabled").font(.caption).foregroundStyle(.secondary)
+                            }
+                        } icon: { Image(systemName: "key") }
                     }
                     .disabled(!manager.permissions.has("federated:read", in: nil))
                     .swipeActions(allowsFullSwipe: false) {
@@ -37,14 +46,28 @@ struct FederatedCredentialsView: View {
                         }
                     }
                 }
-                if loading { ProgressView() }
-                else if credentials.count < total { Button("Load more") { Task { await load(reset: false) } } }
-                else if credentials.isEmpty && errorMessage == nil { Text("No federated credentials").foregroundStyle(.secondary) }
+                if loading && credentials.isEmpty { ProgressView("Loading…").frame(maxWidth: .infinity) }
+                PaginatedListFooter(
+                    hasMore: credentials.count < total,
+                    loadMoreError: loadMoreError,
+                    onRetry: { Task { await load(reset: false) } },
+                    onLoadMore: { Task { await load(reset: false) } }
+                ).id(credentials.count)
+                if credentials.isEmpty && !loading && errorMessage == nil {
+                    ContentUnavailableView("No Federated Credentials", systemImage: "key", description: Text("Create a credential or try a different search."))
+                }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Federated Credentials")
         .searchable(text: $search)
-        .toolbar { if canManage && !unsupported { Button("Create", systemImage: "plus") { creating = true } } }
+        .toolbar {
+            if canManage && !unsupported {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Create Credential", systemImage: "plus") { creating = true }.labelStyle(.iconOnly)
+                }
+            }
+        }
         .task(id: identity) { await load(reset: true) }
         .refreshable { await load(reset: true) }
         .sheet(isPresented: $creating) { FederatedCredentialFormView(credential: nil, onSaved: { await load(reset: true) }) }
@@ -62,19 +85,27 @@ struct FederatedCredentialsView: View {
         guard manager.serverCapabilities?.supportsRoleManagement == true,
               manager.permissions.has("federated:list", in: nil), let client = manager.client else { return }
         let key = identity
-        if reset { credentials = []; total = 0; unsupported = false }
+        guard loadingIdentity != key else { return }
+        let request = UUID()
+        requestID = request
+        loadingIdentity = key
+        if loadedIdentity != key { credentials = []; total = 0; loadedIdentity = key }
+        if reset { unsupported = false }
         loading = true
         errorMessage = nil
-        defer { if identity == key { loading = false } }
+        loadMoreError = nil
+        defer { if requestID == request { loading = false; loadingIdentity = nil } }
         do {
             let result = try await client.federatedCredentials.list(query: .init(search: search, start: reset ? 0 : credentials.count, limit: 30, sortBy: "name", sortOrder: .ascending))
-            guard !Task.isCancelled, key == identity else { return }
+            guard !Task.isCancelled, key == identity, requestID == request else { return }
+            if reset { credentials = [] }
             credentials += result.data.filter { row in !credentials.contains { $0.id == row.id } }
             total = Int(result.pagination.totalItems)
         } catch {
-            guard !Task.isCancelled, key == identity else { return }
+            guard !Task.isCancelled, key == identity, requestID == request else { return }
             unsupported = (error as? ArcaneError) == .notFound
-            errorMessage = friendlyErrorMessage(error)
+            if reset { errorMessage = friendlyErrorMessage(error) }
+            else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 }
@@ -87,7 +118,7 @@ struct FederatedCredentialDetailView: View {
     @State private var editing = false
 
     var body: some View {
-        Form {
+        List {
             Section("Trust rule") {
                 LabeledContent("Issuer", value: credential.issuerUrl)
                 LabeledContent("Audiences", value: credential.audiences.joined(separator: ", "))
@@ -105,9 +136,14 @@ struct FederatedCredentialDetailView: View {
                 if let expires = credential.expiresAt { LabeledContent("Expires", value: expires.formatted()) }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle(credential.name)
         .onChange(of: manager.clientGeneration) { dismiss() }
-        .toolbar { if manager.currentUser?.isGlobalAdmin == true { Button("Edit") { editing = true } } }
+        .toolbar {
+            if manager.currentUser?.isGlobalAdmin == true {
+                ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } }
+            }
+        }
         .sheet(isPresented: $editing) {
             FederatedCredentialFormView(credential: credential) {
                 if let client = manager.client { do { credential = try await client.federatedCredentials.get(id: credential.id) } catch { showToast(.error(friendlyErrorMessage(error))) } }

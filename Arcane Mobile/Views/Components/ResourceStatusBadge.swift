@@ -3,10 +3,12 @@ import SwiftUI
 struct ResourceStatusBadge: View {
     let status: String?
     let isLive: Bool?
+    var usesCardStyle: Bool
 
-    init(status: String?, isLive: Bool? = nil) {
+    init(status: String?, isLive: Bool? = nil, usesCardStyle: Bool = false) {
         self.status = status
         self.isLive = isLive
+        self.usesCardStyle = usesCardStyle
     }
 
     private var normalizedStatus: String {
@@ -82,21 +84,21 @@ struct ResourceStatusBadge: View {
                 .font(.caption.weight(.semibold))
                 .symbolRenderingMode(.hierarchical)
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.pulse, options: .repeating, isActive: isTransitional)
+                .symbolEffect(.pulse, options: .repeating, isActive: usesCardStyle && isTransitional)
                 .frame(minWidth: 16, minHeight: 16)
 
             Text(displayText)
-                .font(.caption2.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .font(usesCardStyle ? .caption2.weight(.semibold) : .subheadline)
+                .lineLimit(usesCardStyle ? 1 : nil)
+                .minimumScaleFactor(usesCardStyle ? 0.8 : 1)
         }
         .foregroundStyle(tint)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(tint.opacity(live ? 0.16 : 0.12), in: Capsule())
+        .padding(.horizontal, usesCardStyle ? 8 : 0)
+        .padding(.vertical, usesCardStyle ? 4 : 0)
+        .background(tint.opacity(usesCardStyle ? (live ? 0.16 : 0.12) : 0), in: Capsule())
         .overlay {
             Capsule()
-                .strokeBorder(tint.opacity(live ? 0.28 : 0.18), lineWidth: 0.75)
+                .strokeBorder(tint.opacity(usesCardStyle ? (live ? 0.28 : 0.18) : 0), lineWidth: 0.75)
         }
         .motionAwareAnimation(Motion.state, value: animationKey)
         .accessibilityLabel("\(displayText) status")

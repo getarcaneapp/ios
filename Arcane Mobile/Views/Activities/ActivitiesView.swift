@@ -37,11 +37,13 @@ struct ActivitiesView: View {
                 ProgressView("Loading activities...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage = store.errorMessage, store.activities.isEmpty {
-                ContentUnavailableView(
-                    "Couldn't Load Activities",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(errorMessage)
-                )
+                ContentUnavailableView {
+                    Label("Couldn't Load Activities", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Retry") { Task { await store.retryLiveUpdates() } }
+                }
             } else if store.activities.isEmpty {
                 ContentUnavailableView(
                     "No Activities",
@@ -61,7 +63,7 @@ struct ActivitiesView: View {
                                     }
                                 }
                             )
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+
                         }
                     }
 
@@ -71,7 +73,7 @@ struct ActivitiesView: View {
                             systemImage: "line.3.horizontal.decrease.circle",
                             description: Text("Adjust the filters or search text.")
                         )
-                        .listRowBackground(Color.clear)
+
                     } else {
                         if !store.runningItems.isEmpty {
                             activitySection(
@@ -89,25 +91,15 @@ struct ActivitiesView: View {
                             )
                         }
 
-                        if store.hasMore && store.searchText.isEmpty {
-                            Section {
-                                Button {
-                                    Task { await store.loadMore() }
-                                } label: {
-                                    HStack {
-                                        Spacer()
-                                        if store.isLoadingMore {
-                                            ProgressView()
-                                        } else {
-                                            Label("Show More", systemImage: "arrow.down.circle")
-                                                .font(.subheadline.weight(.semibold))
-                                        }
-                                        Spacer()
-                                    }
-                                }
-                                .disabled(store.isLoadingMore)
-                            }
+                    PaginatedListFooter(
+                        hasMore: store.hasMore && store.searchText.isEmpty,
+                        loadMoreError: store.loadMoreError,
+                        onRetry: { Task { await store.loadMore() } },
+                        onLoadMore: {
+                            guard !store.isLoading, !store.isLoadingMore else { return }
+                            Task { await store.loadMore() }
                         }
+                    )
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -290,15 +282,15 @@ private struct ActivityBatchRow: View {
             Image(systemName: "square.stack.3d.up.fill")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(batch.status.activityTint)
-                .frame(width: 34, height: 34)
-                .background(batch.status.activityTint.opacity(0.14), in: .circle)
+                .frame(width: 28)
+
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(batch.displayTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
+                        .font(.body)
+
 
                     Spacer(minLength: 0)
 
@@ -306,12 +298,12 @@ private struct ActivityBatchRow: View {
                 }
 
                 Text(verbatim: "\(batch.completedCount) of \(batch.activities.count) completed")
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
 
                 if batch.failedCount > 0 {
                     Text("\(batch.failedCount) failed")
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.red)
                 }
 
@@ -325,7 +317,7 @@ private struct ActivityBatchRow: View {
                         Text(environmentLabel)
                     }
                 }
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.tertiary)
             }
         }
@@ -347,15 +339,15 @@ private struct ActivityBatchMemberRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(activity.displayTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
+                    .font(.body)
+
                 Text(activity.subtitle)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+
                 if let source = activity.sourceEnvironmentName, !source.isEmpty {
                     Text(source)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -378,8 +370,8 @@ private struct ActivityRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(activity.displayTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
+                        .font(.body)
+
 
                     Spacer(minLength: 0)
 
@@ -387,15 +379,15 @@ private struct ActivityRow: View {
                 }
 
                 Text(activity.subtitle)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+
 
                 if !activity.latestMessage.isEmpty {
                     Text(activity.latestMessage)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+
                 }
 
                 if let progress = activity.progress, activity.isCancellable {
@@ -410,7 +402,7 @@ private struct ActivityRow: View {
                         Text(source)
                     }
                 }
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.tertiary)
             }
         }
@@ -427,8 +419,8 @@ private struct ActivityIcon: View {
         Image(systemName: activity.typeIcon)
             .font(.callout.weight(.semibold))
             .foregroundStyle(activity.statusTint)
-            .frame(width: 34, height: 34)
-            .background(activity.statusTint.opacity(0.14), in: .circle)
+            .frame(width: 28)
+
             .accessibilityHidden(true)
     }
 }

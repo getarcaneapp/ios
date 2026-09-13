@@ -13,6 +13,7 @@ struct APIKeyDetailView: View {
     @State private var metadataLoaded = false
     @State private var showEditSheet = false
     @State private var showRotateConfirmation = false
+    @State private var pendingDelete: ActionButtonItem?
     @State private var revealedKey: APIKeySecretPresentation?
     @State private var runningActionID: String?
     @State private var refreshAfterReveal = false
@@ -145,11 +146,34 @@ struct APIKeyDetailView: View {
         }
         .navigationTitle("API Key")
         .navigationBarTitleDisplayMode(.inline)
-        .actionToolbar(
-            items: actionItems,
-            runningItemID: runningActionID,
-            resourceName: apiKey.name
-        )
+        .toolbar {
+            if !actionItems.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        ForEach(actionItems) { item in
+                            Button(role: item.role) {
+                                if item.role == .destructive { pendingDelete = item }
+                                else { item.action() }
+                            } label: {
+                                Label(item.title, systemImage: item.systemImage)
+                            }
+                            .disabled(runningActionID != nil)
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("API key actions")
+                }
+            }
+        }
+        .deleteConfirmation(item: $pendingDelete) { item in
+            DeleteConfirmationConfig(
+                title: "\(item.title) \(apiKey.name)?",
+                message: item.confirmationMessage ?? "This action cannot be undone.",
+                icon: item.systemImage,
+                actions: [DeleteConfirmationAction(title: item.title, action: item.action)]
+            )
+        }
         .deleteConfirmation(
             isPresented: $showRotateConfirmation,
             config: DeleteConfirmationConfig(
@@ -195,9 +219,6 @@ struct APIKeyDetailView: View {
                         Text(kindLabel)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.secondary.opacity(0.12), in: .capsule)
                     }
                 }
 

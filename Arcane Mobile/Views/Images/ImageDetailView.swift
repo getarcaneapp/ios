@@ -69,7 +69,6 @@ struct ImageDetailView: View {
                 )
             }
         }
-        .motionAwareAnimation(Motion.state, value: selectedSection)
         .morphingActions(
             primary: ActionButtonItem(
                 id: "recheck",
@@ -171,65 +170,40 @@ struct ImageDetailView: View {
     }
 
     private var overview: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                headerCard
-
-                if let details {
-                    metadataCard(details)
-                    identityCard(details)
-                }
-
-                if !usingContainers.isEmpty {
-                    usedByCard
-                }
-
-                if let details {
-                    if details.repoTags.count > 1 {
-                        tagsCard(details.repoTags)
+        List {
+            Section { imageHeader }
+            if let details {
+                Section("Overview") {
+                    ForEach(metadataItems(details)) { item in
+                        LabeledContent(item.label) { Text(verbatim: item.value).textSelection(.enabled) }
                     }
-
-                    configCard(details.config)
                 }
+                identitySection(details)
+            } else if isLoading {
+                ProgressView().frame(maxWidth: .infinity)
             }
-            .padding(.top, 8)
-            .padding(.horizontal)
-            .padding(.bottom, 16)
+            if !usingContainers.isEmpty { usedBySection }
+            if let details {
+                if details.repoTags.count > 1 { tagsSection(details.repoTags) }
+                configSection(details.config)
+            }
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
     }
 
-    private var headerCard: some View {
-        imageHeader
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .dashboardCardBackground()
-    }
-
-    private func metadataCard(_ details: ImageDetailSummary) -> some View {
-        AdaptiveMetadataGrid(items: metadataItems(details))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .dashboardCardBackground(cornerRadius: Radius.standard)
-    }
-
-    private func identityCard(_ details: ImageDetailSummary) -> some View {
-        infoRowCard(title: "Identity", systemImage: "number") {
+    private func identitySection(_ details: ImageDetailSummary) -> some View {
+        detailSection(title: "Identity", systemImage: "number") {
             valueRow("Image ID", monospacedValue: details.id)
             if !details.repoTags.isEmpty {
-                Divider().padding(.leading, 12)
                 valueRow("Tags", monospacedValue: details.repoTags.joined(separator: "\n"))
             }
         }
     }
 
-    private var usedByCard: some View {
-        infoRowCard(title: "Used By", systemImage: "cube.box", count: usingContainers.count) {
-            ForEach(Array(usingContainers.enumerated()), id: \.element.id) { index, container in
-                if index > 0 { Divider().padding(.leading, 12) }
+    private var usedBySection: some View {
+        detailSection(title: "Used By", systemImage: "cube.box", count: usingContainers.count) {
+            ForEach(Array(usingContainers.enumerated()), id: \.element.id) { _, container in
                 NavigationLink {
                     ContainerDetailView(container: container, environmentID: environmentID)
                 } label: {
@@ -238,41 +212,31 @@ struct ImageDetailView: View {
                         Text(container.displayName)
                             .font(.subheadline)
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
                         Spacer(minLength: 8)
-                        Image(systemName: "chevron.right")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.secondary.opacity(0.5))
                     }
-                    .padding(12)
-                    .contentShape(.rect)
                 }
-                .cardRowLinkStyle()
             }
         }
     }
 
-    private func tagsCard(_ tags: [String]) -> some View {
-        infoRowCard(title: "Tags", systemImage: "tag") {
-            ForEach(Array(tags.enumerated()), id: \.element) { index, tag in
-                if index > 0 { Divider().padding(.leading, 12) }
+    private func tagsSection(_ tags: [String]) -> some View {
+        detailSection(title: "Tags", systemImage: "tag") {
+            ForEach(Array(tags.enumerated()), id: \.element) { _, tag in
                 MonospacedValue(value: tag)
                     .font(.caption.monospaced())
-                    .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
-    private func configCard(_ config: ImageDetailConfig) -> some View {
+    private func configSection(_ config: ImageDetailConfig) -> some View {
         let rows = configRows(config)
         guard !rows.isEmpty else {
             return AnyView(EmptyView())
         }
         return AnyView(
-            infoRowCard(title: "Image Config", systemImage: "slider.horizontal.3") {
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    if index > 0 { Divider().padding(.leading, 12) }
+            detailSection(title: "Image Config", systemImage: "slider.horizontal.3") {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     switch row {
                     case .value(let label, let value):
                         valueRow(label, monospacedValue: value)
@@ -309,70 +273,32 @@ struct ImageDetailView: View {
         return rows
     }
 
-    /// Grouped card of label/value rows, mirroring the dashboard's
-    /// `DashboardInfoGroup`/`DashboardInfoRow` pair.
-    private func infoRowCard<Content: View>(
+    private func detailSection<Content: View>(
         title: String,
         systemImage: String,
         count: Int? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title, systemImage: systemImage, count: count)
-            VStack(spacing: 0) { content() }
-                .dashboardCardBackground(cornerRadius: Radius.standard)
+        Section { content() } header: {
+            Text(verbatim: count.map { "\(title) (\($0))" } ?? title)
         }
     }
 
-    /// Label stacked above the value so long monospace content (image IDs,
-    /// tag lists) wraps across the full card width instead of being squeezed
-    /// into the remaining space next to the label.
-    private func valueRow(
-        _ label: String,
-        monospacedValue: String,
-        lineLimit: Int? = nil
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func valueRow(_ label: String, monospacedValue: String) -> some View {
+        LabeledContent(label) {
             Text(verbatim: monospacedValue)
-                .font(.subheadline.monospaced())
+                .font(.body.monospaced())
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-                .lineLimit(lineLimit)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func valueRow(_ label: String, textValue: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(textValue)
-                .font(.subheadline)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        LabeledContent(label) { Text(textValue).textSelection(.enabled) }
     }
 
     private func configNavLink<Destination: View>(_ title: String, @ViewBuilder destination: () -> Destination) -> some View {
-        NavigationLink(destination: destination()) {
-            HStack {
-                Text(title)
-                    .font(.subheadline)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary.opacity(0.5))
-            }
-            .padding(12)
-            .contentShape(.rect)
-        }
-        .cardRowLinkStyle()
+        NavigationLink(destination: destination()) { Text(title) }
     }
 
     private func metadataItems(_ details: ImageDetailSummary) -> [ResourceMetadataItem] {
@@ -392,7 +318,6 @@ struct ImageDetailView: View {
                 .font(.title2)
                 .foregroundStyle(.purple)
                 .frame(width: 48, height: 48)
-                .glassEffectCompat(in: .circle)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(image.displayName)

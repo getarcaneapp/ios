@@ -97,7 +97,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .sidebarNavigationToolbar(isVisible: showsSidebarButton && navPath.isEmpty, action: onOpenSidebar)
-            .preservesSidebarNavigationBarMargins(isEnabled: showsSidebarButton)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink {

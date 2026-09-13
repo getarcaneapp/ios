@@ -30,7 +30,7 @@ struct ImageAttestationsView: View {
     var body: some View {
         Group {
             if isLoading && result == nil {
-                SkeletonListLoadingView(rowCount: 3)
+                ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, result == nil {
                 ContentUnavailableView {
                     Label("Couldn't Load Attestations", systemImage: "exclamationmark.triangle")
@@ -46,34 +46,25 @@ struct ImageAttestationsView: View {
                     Text("This image has no in-toto attestations attached (provenance, SBOM, …).")
                 }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(attestations) { attestation in
-                            Button {
-                                detailAttestation = attestation
-                            } label: {
-                                row(attestation)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                            }
-                            .buttonStyle(.plain)
-                            .dashboardCardBackground(cornerRadius: Radius.standard)
-                        }
-
-                        if let digest = result?.subjectDigest, !digest.isEmpty {
-                            Text("Subject digest: \(digest)")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 4)
+                List {
+                    ForEach(attestations) { attestation in
+                        Button {
+                            detailAttestation = attestation
+                        } label: {
+                            row(attestation)
                         }
                     }
-                    .padding(.top, 8)
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
+
+                    if let digest = result?.subjectDigest, !digest.isEmpty {
+                        Text("Subject digest: \(digest)")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                    }
                 }
+                .listStyle(.insetGrouped)
                 .softTopScrollEdgeEffectCompat()
-                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle(embedded ? "" : "Attestations")
@@ -124,7 +115,6 @@ struct ImageAttestationsView: View {
                 Text(attestation.predicateType)
                     .font(.caption2.monospaced())
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
                     .truncationMode(.middle)
             }
             Spacer()
@@ -226,8 +216,7 @@ private struct ImageAttestationDetailView: View {
                                 Text("\(algorithm):\(value)")
                                     .font(.caption2.monospaced())
                                     .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
+                                                    .truncationMode(.middle)
                             }
                         }
                     }

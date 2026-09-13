@@ -26,48 +26,32 @@ struct ImageUpdatesView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                summaryCard
-                scanCard
-
-                if !taggedRefs.isEmpty {
-                    ResourceCountSectionHeader(
-                        "Images",
-                        loadedCount: taggedRefs.count
-                    )
-
-                    VStack(spacing: 0) {
-                        ForEach(Array(taggedRefs.enumerated()), id: \.element) { index, ref in
-                            UpdateRow(
-                                ref: ref,
-                                info: byRef[ref],
-                                isChecking: checkingRef == ref,
-                                recheck: { Task { await recheck(ref: ref) } }
-                            )
-                            if index < taggedRefs.count - 1 {
-                                Divider().padding(.leading, 16)
-                            }
-                        }
+        List {
+            summarySection
+            scanSection
+            if !taggedRefs.isEmpty {
+                Section {
+                    ForEach(taggedRefs, id: \.self) { ref in
+                        UpdateRow(
+                            ref: ref,
+                            info: byRef[ref],
+                            isChecking: checkingRef == ref,
+                            recheck: { Task { await recheck(ref: ref) } }
+                        )
                     }
-                    .dashboardCardBackground(cornerRadius: Radius.standard)
-                }
-
-                if let error = errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                        .dashboardCardBackground(cornerRadius: Radius.standard)
+                } header: {
+                    ResourceCountSectionHeader("Images", loadedCount: taggedRefs.count)
                 }
             }
-            .padding(.top, 8)
-            .padding(.horizontal)
-            .padding(.bottom, 16)
+            if let error = errorMessage {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                }
+            }
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Updates")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -80,67 +64,41 @@ struct ImageUpdatesView: View {
         }
     }
 
-    private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("Summary", systemImage: "chart.bar.doc.horizontal")
-
+    private var summarySection: some View {
+        Section("Summary") {
             if let summary {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    DashboardMiniMetric(title: "Total", value: "\(summary.totalImages)", color: .secondary)
-                    DashboardMiniMetric(
-                        title: "With updates",
-                        value: "\(summary.imagesWithUpdates)",
-                        color: summary.imagesWithUpdates > 0 ? .orange : .secondary
-                    )
-                    DashboardMiniMetric(title: "Digest", value: "\(summary.digestUpdates)", color: Color.accentColor)
-                    DashboardMiniMetric(
-                        title: "Errors",
-                        value: "\(summary.errorsCount)",
-                        color: summary.errorsCount > 0 ? .red : .secondary
-                    )
+                LabeledContent("Total", value: String(summary.totalImages))
+                LabeledContent("With updates") {
+                    Text(verbatim: "\(summary.imagesWithUpdates)")
+                        .foregroundStyle(summary.imagesWithUpdates > 0 ? .orange : .secondary)
+                }
+                LabeledContent("Digest", value: String(summary.digestUpdates))
+                LabeledContent("Errors") {
+                    Text(verbatim: "\(summary.errorsCount)")
+                        .foregroundStyle(summary.errorsCount > 0 ? .red : .secondary)
                 }
             } else if loadingSummary {
-                HStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    Text("Loading summary…")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 8)
+                ProgressView("Loading summary…")
             } else {
-                Text("No summary available")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
+                Text("No summary available").foregroundStyle(.secondary)
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground()
     }
 
-    private var scanCard: some View {
-        VStack(spacing: 6) {
+    private var scanSection: some View {
+        Section {
             Button {
                 Task { await scanAll() }
             } label: {
                 HStack {
                     Label("Scan all images", systemImage: "magnifyingglass")
-                        .font(.subheadline.weight(.semibold))
                     Spacer(minLength: 8)
-                    if isScanning { ProgressView().scaleEffect(0.8) }
+                    if isScanning { ProgressView().controlSize(.small) }
                 }
-                .padding(16)
-                .contentShape(.rect)
             }
-            .buttonStyle(.plain)
             .disabled(isScanning)
-            .dashboardCardBackground(cornerRadius: Radius.standard)
-
+        } footer: {
             Text("Contacts each image's registry. Can take a while for large environments.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
         }
     }
 
@@ -248,8 +206,6 @@ struct UpdateRow: View {
                 .buttonStyle(.borderless)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
     }
 
     private func versionLine(_ info: ImageUpdateResponse) -> String {

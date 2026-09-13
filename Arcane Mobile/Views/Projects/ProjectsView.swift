@@ -26,11 +26,12 @@ struct ProjectsView: View {
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
     @State private var statusFilter = ProjectStatusFilter.all
     @State private var updateFilter = ResourceUpdateFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ProjectDetails>] = []
-    @State private var hasCompletedInitialReflow = false
+
     @State private var selectedProjectID: String?
 
     private enum ProjectStatusFilter: String, CaseIterable {
@@ -103,7 +104,7 @@ struct ProjectsView: View {
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove animates too.
-    private var sectionCounts: [Int] { sections.map(\.items.count) }
+
 
     private var actionErrorPresented: Binding<Bool> {
         Binding(
@@ -118,14 +119,16 @@ struct ProjectsView: View {
             showSkeleton: isLoading && projects.isEmpty,
             animatesTransition: false
         ) {
-            SkeletonListLoadingView()
+            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = errorMessage, projects.isEmpty {
-            ContentUnavailableView(
-                "Error",
-                systemImage: "exclamationmark.triangle",
-                description: Text(error)
-            )
+            ContentUnavailableView {
+                Label("Couldn't Load Projects", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(error)
+            } actions: {
+                Button("Retry") { Task { await loadProjects(reset: true) } }
+            }
         } else if projects.isEmpty {
             ContentUnavailableView {
                 Label("No Projects", systemImage: "square.stack.3d.up")
@@ -156,19 +159,15 @@ struct ProjectsView: View {
                 projectLink(project)
             }
 
-            if hasMore {
-                SkeletonListRow()
-                    .skeletonShimmer()
-                    .onAppear {
-                        Task { await loadMore() }
-                    }
-            }
+            PaginatedListFooter(
+                        hasMore: hasMore,
+                        loadMoreError: loadMoreError,
+                        onRetry: { Task { await loadMore() } },
+                        onLoadMore: { Task { await loadMore() } }
+                    )
         }
         .listStyle(.insetGrouped)
-        .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: sectionCounts)
-        .onChange(of: sectionCounts) { _, counts in
-            if !counts.isEmpty { hasCompletedInitialReflow = true }
-        }
+
     }
 
     @ToolbarContentBuilder
@@ -325,6 +324,7 @@ struct ProjectsView: View {
         let start = max(0, (requestedPage - 1) * Self.pageSize)
         if projects.isEmpty { isLoading = true }
         errorMessage = nil
+        loadMoreError = nil
         defer {
             if loadGeneration == generation {
                 isLoading = false
@@ -339,7 +339,8 @@ struct ProjectsView: View {
             applyProjectsPage(response, reset: reset, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
-            errorMessage = friendlyErrorMessage(error)
+            if reset { errorMessage = friendlyErrorMessage(error) }
+            else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 
@@ -512,17 +513,16 @@ struct ProjectRow: View {
             CachedAsyncImage(url: project.themedIconUrl(for: colorScheme), size: 36) {
                 Image(systemName: "square.stack.3d.up.fill")
                     .font(.title3)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.tint)
                     .frame(width: 36, height: 36)
-                    .background(Color.orange, in: .circle)
             }
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(project.displayName)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                        .font(.body)
+                        .lineLimit(nil)
                     if isPinned {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
@@ -536,7 +536,7 @@ struct ProjectRow: View {
 
             StatusIcon(status: project.status)
         }
-        .padding(.vertical, 2)
+
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }

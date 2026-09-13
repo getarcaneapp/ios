@@ -86,7 +86,7 @@ struct VariablesView: View {
             }
         }
         .navigationTitle("Variables")
-        .searchable(text: $searchText, prompt: "Search variables")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search variables")
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) { rebuildDisplayedVariables() }
         .onChange(of: store.variables) { rebuildDisplayedVariables() }
@@ -189,7 +189,6 @@ struct VariablesView: View {
                                     scopeLabel: store.scopeLabel(for: variable)
                                 )
                             }
-                            .buttonStyle(.plain)
                             .accessibilityHint("Opens variable editor")
                             .contextMenu {
                                 Button {
@@ -332,7 +331,7 @@ private struct VariableRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(variable.key)
-                    .font(.headline.monospaced())
+                    .font(.body.monospaced())
                     .foregroundStyle(.primary)
                 if variable.isSecret {
                     Label("Secret", systemImage: "lock.fill")
@@ -346,14 +345,11 @@ private struct VariableRow: View {
             Text(variable.isSecret ? "••••••••" : variable.value)
                 .font(.subheadline.monospaced())
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
 
             Label(scopeLabel, systemImage: variable.allEnvironments ? "globe" : "server.rack")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
-                .lineLimit(2)
         }
-        .padding(.vertical, 3)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
     }

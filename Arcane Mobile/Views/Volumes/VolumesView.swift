@@ -27,9 +27,10 @@ struct VolumesView: View {
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
     @State private var loadGeneration = 0
     @State private var sections: [StableListSection<String, Volume>] = []
-    @State private var hasCompletedInitialReflow = false
+
     @State private var isSelecting = false
     @State private var selection = Set<String>()
     @State private var isBulkRunning = false
@@ -104,7 +105,7 @@ struct VolumesView: View {
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove animates too.
-    private var sectionCounts: [Int] { sections.map(\.items.count) }
+
 
     private var selectedVolumes: [Volume] {
         volumes.filter { selection.contains($0.id) }
@@ -131,10 +132,16 @@ struct VolumesView: View {
             showSkeleton: isLoading && volumes.isEmpty,
             animatesTransition: false
         ) {
-            SkeletonListLoadingView()
+            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = errorMessage, volumes.isEmpty {
-                ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
+                ContentUnavailableView {
+                    Label("Couldn't Load Volumes", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Retry") { Task { await loadVolumes(reset: true) } }
+                }
             } else if volumes.isEmpty {
                 ContentUnavailableView {
                     Label("No Volumes", systemImage: "externaldrive")
@@ -159,20 +166,16 @@ struct VolumesView: View {
                         volumeLink(volume)
                     }
 
-                    if hasMore {
-                        SkeletonListRow()
-                            .skeletonShimmer()
-                            .onAppear {
-                                Task { await loadMore() }
-                            }
-                    }
+                    PaginatedListFooter(
+                        hasMore: hasMore,
+                        loadMoreError: loadMoreError,
+                        onRetry: { Task { await loadMore() } },
+                        onLoadMore: { Task { await loadMore() } }
+                    )
                 }
                 .listStyle(.insetGrouped)
                 .environment(\.editMode, .constant(isSelecting ? EditMode.active : EditMode.inactive))
-                .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: sectionCounts)
-                .onChange(of: sectionCounts) { _, counts in
-                    if !counts.isEmpty { hasCompletedInitialReflow = true }
-                }
+
             }
         }
         .navigationTitle("Volumes")
@@ -441,6 +444,7 @@ struct VolumesView: View {
         let start = max(0, (requestedPage - 1) * Self.pageSize)
         if volumes.isEmpty { isLoading = true }
         errorMessage = nil
+        loadMoreError = nil
         defer {
             if loadGeneration == generation {
                 isLoading = false
@@ -457,7 +461,8 @@ struct VolumesView: View {
             applyVolumesPage(response, reset: reset, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
-            errorMessage = friendlyErrorMessage(error)
+            if reset { errorMessage = friendlyErrorMessage(error) }
+            else { loadMoreError = friendlyErrorMessage(error) }
         }
         if reset || sizes.isEmpty {
             await loadSizes(refresh: refresh)
@@ -579,11 +584,11 @@ struct UsageBadge: View {
 
     var body: some View {
         Text(text)
-            .font(.caption2.bold())
+            .font(.subheadline)
             .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(color.opacity(0.15), in: Capsule())
+
+
+
     }
 }
 
@@ -607,16 +612,15 @@ struct VolumeRow: View {
         HStack(spacing: 12) {
             Image(systemName: "externaldrive.fill")
                 .font(.title3)
-                .foregroundStyle(.white)
+                .foregroundStyle(.tint)
                 .frame(width: 36, height: 36)
-                .background(Color.teal, in: .circle)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(volume.name)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                        .font(.body)
+                        .lineLimit(nil)
                     if isPinned {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
@@ -632,14 +636,14 @@ struct VolumeRow: View {
                     }
                     if !subtitleParts.isEmpty {
                         Text(subtitleParts.joined(separator: " · "))
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(nil)
                     }
                 }
             }
         }
-        .padding(.vertical, 2)
+
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }
@@ -673,24 +677,19 @@ struct VolumeDetailView: View {
     private enum VolumeRoute: Hashable { case browse, backups }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                headerCard
-                detailsCard
+        List {
+            headerSection
+            detailsSection
 
-                if !volume.containers.isEmpty {
-                    consumersCard
-                }
-
-                labelsCard
-                optionsCard
+            if !volume.containers.isEmpty {
+                consumersSection
             }
-            .padding(.top, 8)
-            .padding(.horizontal)
-            .padding(.bottom, 16)
+
+            labelsSection
+            optionsSection
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
         .morphingActions(
             primary: ActionButtonItem(
                 id: "browse",
@@ -751,168 +750,105 @@ struct VolumeDetailView: View {
         }
     }
 
-    private var headerCard: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "externaldrive.fill")
-                .font(.title)
-                .foregroundStyle(.orange)
-                .frame(width: 56, height: 56)
-                .glassEffectCompat(in: .circle)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(volume.name).font(.title3.bold()).lineLimit(2)
-                Text("Driver: \(volume.driver)").font(.caption).foregroundStyle(.secondary)
+    private var headerSection: some View {
+        Section {
+            Label {
+                VStack(alignment: .leading) {
+                    Text(volume.name).font(.headline)
+                    Text(volume.driver).font(.subheadline).foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "externaldrive.fill").foregroundStyle(.orange)
             }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground()
-    }
-
-    private var detailsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader("Details", systemImage: "info.circle")
-            VStack(spacing: 0) {
-                AdaptiveMetadataGrid(items: volumeMetadata)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                if !volume.mountpoint.isEmpty {
-                    Divider().padding(.leading, 12)
-                    infoRow("Mount Point") {
-                        MonospacedValue(value: volume.mountpoint)
-                    }
-                }
-                cardLink("Browse Files", systemImage: "folder") {
-                    VolumeBrowserView(environmentID: environmentID, volumeName: volume.name)
-                }
-                cardLink("Backups", systemImage: "clock.arrow.circlepath") {
-                    VolumeBackupsView(environmentID: environmentID, volumeName: volume.name)
-                }
-            }
-            .dashboardCardBackground(cornerRadius: Radius.standard)
         }
     }
 
-    private var consumersCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader("Consumers", systemImage: "cube.box", count: volume.containers.count)
-            VStack(spacing: 0) {
-                ForEach(Array(volume.containers.enumerated()), id: \.element) { index, containerID in
-                    if index > 0 { Divider().padding(.leading, 12) }
-                    if let container = resolvedContainer(for: containerID) {
-                        NavigationLink {
-                            ContainerDetailView(container: container, environmentID: environmentID)
-                        } label: {
-                            HStack(spacing: 10) {
-                                StatusIcon(status: container.status, isLive: container.isRunning)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(container.displayName)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.primary)
-                                    Text(verbatim: containerID)
-                                        .font(.caption2.monospaced())
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer(minLength: 8)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.secondary.opacity(0.5))
-                            }
-                            .padding(12)
-                            .contentShape(.rect)
-                        }
-                        .cardRowLinkStyle()
-                    } else {
+    private var detailsSection: some View {
+        Section("Details") {
+            ForEach(volumeMetadata) { item in
+                LabeledContent(item.label, value: item.value)
+            }
+            if !volume.mountpoint.isEmpty {
+                LabeledContent("Mount Point") {
+                    MonospacedValue(value: volume.mountpoint).textSelection(.enabled)
+                }
+            }
+            NavigationLink {
+                VolumeBrowserView(environmentID: environmentID, volumeName: volume.name)
+            } label: {
+                Label("Browse Files", systemImage: "folder")
+            }
+            NavigationLink {
+                VolumeBackupsView(environmentID: environmentID, volumeName: volume.name)
+            } label: {
+                Label("Backups", systemImage: "clock.arrow.circlepath")
+            }
+        }
+    }
+
+    private var consumersSection: some View {
+        Section {
+            ForEach(volume.containers, id: \.self) { containerID in
+                if let container = resolvedContainer(for: containerID) {
+                    NavigationLink {
+                        ContainerDetailView(container: container, environmentID: environmentID)
+                    } label: {
                         HStack {
-                            Text("Unavailable container")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 8)
-                            MonospacedValue(value: containerID, lineLimit: 1)
+                            StatusIcon(status: container.status, isLive: container.isRunning)
+                            VStack(alignment: .leading) {
+                                Text(container.displayName).font(.headline)
+                                Text(verbatim: containerID)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                        .padding(12)
+                    }
+                } else {
+                    LabeledContent("Unavailable container") {
+                        MonospacedValue(value: containerID).textSelection(.enabled)
                     }
                 }
             }
-            .dashboardCardBackground(cornerRadius: Radius.standard)
+        } header: {
+            Text(verbatim: "Consumers (\(volume.containers.count))")
         }
     }
 
     @ViewBuilder
-    private var labelsCard: some View {
-        let labels = volume.labels
-        if !labels.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                SectionHeader("Labels", systemImage: "tag")
-                VStack(spacing: 0) {
-                    ForEach(Array(labels.keys.sorted()), id: \.self) { key in
-                        keyValuePair(key, value: labels[key] ?? "")
+    private var labelsSection: some View {
+        if !volume.labels.isEmpty {
+            Section("Labels") {
+                ForEach(volume.labels.keys.sorted(), id: \.self) { key in
+                    LabeledContent(key) {
+                        Text(volume.labels[key] ?? "")
+                            .monospaced()
+                            .textSelection(.enabled)
                     }
                 }
-                .dashboardCardBackground(cornerRadius: Radius.standard)
             }
         }
     }
 
     @ViewBuilder
-    private var optionsCard: some View {
-        let options = volume.options
-        if !options.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                SectionHeader("Options", systemImage: "slider.horizontal.3")
-                VStack(spacing: 0) {
-                    ForEach(Array(options.keys.sorted()), id: \.self) { key in
-                        keyValuePair(key, value: options[key] ?? "")
+    private var optionsSection: some View {
+        if !volume.options.isEmpty {
+            Section("Options") {
+                ForEach(volume.options.keys.sorted(), id: \.self) { key in
+                    LabeledContent(key) {
+                        Text(volume.options[key] ?? "")
+                            .monospaced()
+                            .textSelection(.enabled)
                     }
                 }
-                .dashboardCardBackground(cornerRadius: Radius.standard)
             }
         }
     }
 
-    private func infoRow(_ label: String, @ViewBuilder value: () -> some View) -> some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 16)
-            value()
-        }
-        .padding(12)
-    }
 
-    private func keyValuePair(_ key: String, value: String) -> some View {
-        infoRow(key) {
-            Text(value)
-                .font(.subheadline)
-                .multilineTextAlignment(.trailing)
-        }
-    }
 
-    private func cardLink<Destination: View>(
-        _ title: String,
-        systemImage: String,
-        @ViewBuilder destination: () -> Destination
-    ) -> some View {
-        NavigationLink(destination: destination()) {
-            HStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary.opacity(0.5))
-            }
-            .padding(12)
-            .contentShape(.rect)
-        }
-        .cardRowLinkStyle()
-    }
+
+
+
 
     private var volumeMetadata: [ResourceMetadataItem] {
         [

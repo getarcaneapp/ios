@@ -231,7 +231,7 @@ struct ProjectDetailView: View {
                     }
                 }
             } header: {
-                SectionHeader("Services", systemImage: "cube.box", count: runtimeServices.count)
+                Text(verbatim: "Services (\(runtimeServices.count))")
             }
         }
         .listStyle(.insetGrouped)
@@ -239,38 +239,96 @@ struct ProjectDetailView: View {
     }
 
     private var projectHeader: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-                CachedAsyncImage(url: currentProject.themedIconUrl(for: colorScheme), size: 56) {
-                    Image(systemName: "square.stack.3d.up.fill")
-                        .font(.title)
-                        .foregroundStyle(.indigo)
-                        .frame(width: 56, height: 56)
-                        .glassEffectCompat(in: .circle)
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(currentProject.displayName)
-                        .font(.headline)
-                    let count = currentProject.serviceCount
-                    Text(verbatim: "\(count) service\(count == 1 ? "" : "s") · \(currentProject.runningCount) running")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(headerDate(currentProject.createdAt))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    if let version = currentProject.composeVersion {
-                        Text("Compose \(version)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+        Group {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    Label {
+                        VStack(alignment: .leading) {
+                            Text(currentProject.displayName).font(.headline)
+                            Text(verbatim: "\(currentProject.serviceCount) services · \(currentProject.runningCount) running")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        CachedAsyncImage(url: currentProject.themedIconUrl(for: colorScheme), size: 28) {
+                            Image(systemName: "square.stack.3d.up.fill").foregroundStyle(.indigo)
+                        }
                     }
-                    StatusBadge(status: currentProject.status)
-                        .padding(.top, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        StatusBadge(status: currentProject.status)
+                        Text(headerDate(currentProject.createdAt))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                            .accessibilityLabel("Created \(headerDate(currentProject.createdAt))")
+                    }
+                }
+                projectMetadata
+            }
+            if let version = currentProject.composeVersion {
+                LabeledContent("Compose", value: version)
+            }
+        }
+    }
+
+    private var projectLinks: [URL] {
+        var seen = Set<URL>()
+        return (currentProject.urls ?? []).compactMap { value in
+            guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let scheme = url.scheme?.lowercased(),
+                  ["http", "https"].contains(scheme),
+                  let host = url.host, !host.isEmpty,
+                  seen.insert(url).inserted else { return nil }
+            return url
+        }
+    }
+
+    @ViewBuilder
+    private var projectMetadata: some View {
+        let links = projectLinks
+        let tags = currentProject.tags ?? []
+        if !links.isEmpty || !tags.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                if !tags.isEmpty {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 12) {
+                            ForEach(tags, id: \.name) { tag in
+                                Label {
+                                    Text(verbatim: tag.name)
+                                } icon: {
+                                    Image(systemName: "tag.fill")
+                                        .foregroundStyle(tag.displayColor)
+                                }
+                                .accessibilityValue(tag.sources.contains("compose") ? "Compose tag" : "Tag")
+                            }
+                        }
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+                if !links.isEmpty {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 12) {
+                            ForEach(links, id: \.self) { url in
+                                Link(destination: url) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.up.right.square")
+                                        Text(verbatim: url.absoluteString)
+                                    }
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                        .fixedSize(horizontal: true, vertical: false)
+                    }
+                    .scrollIndicators(.hidden)
                 }
             }
-
+            .font(.caption)
+            .padding(.vertical, 4)
         }
-        .padding(.vertical, 4)
     }
 
     private var projectFilesSection: some View {

@@ -26,7 +26,7 @@ struct ContainersView: View {
     @State private var updateFilter = ResourceUpdateFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ContainerSummary>] = []
-    @State private var hasCompletedInitialReflow = false
+
     @State private var logsTarget: ContainerSummary?
     @State private var terminalTarget: ContainerSummary?
     @State private var isSelecting = false
@@ -163,7 +163,7 @@ struct ContainersView: View {
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove (start/stop/remove/prune) animates too.
-    private var sectionCounts: [Int] { sections.map(\.items.count) }
+
 
     private var selectedContainers: [ContainerSummary] {
         containers.filter { selection.contains($0.id) }
@@ -222,7 +222,7 @@ struct ContainersView: View {
             showSkeleton: isLoading && containers.isEmpty,
             animatesTransition: false
         ) {
-            SkeletonListLoadingView()
+            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = errorMessage, containers.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
@@ -252,27 +252,16 @@ struct ContainersView: View {
                         containerLink(container)
                     }
 
-                    if pagination.hasMore {
-                        if loadMoreError != nil {
-                            Button("Retry loading more") {
-                                Task { await loadMore() }
-                            }
-                            .frame(maxWidth: .infinity)
-                        } else {
-                            SkeletonListRow()
-                                .skeletonShimmer()
-                                .onAppear {
-                                    Task { await loadMore() }
-                                }
-                        }
-                    }
+                    PaginatedListFooter(
+                        hasMore: pagination.hasMore,
+                        loadMoreError: loadMoreError,
+                        onRetry: { Task { await loadMore() } },
+                        onLoadMore: { Task { await loadMore() } }
+                    )
                 }
                 .listStyle(.insetGrouped)
                 .environment(\.editMode, .constant(isSelecting ? EditMode.active : EditMode.inactive))
-                .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: sectionCounts)
-                .onChange(of: sectionCounts) { _, counts in
-                    if !counts.isEmpty { hasCompletedInitialReflow = true }
-                }
+
             }
         }
         .navigationTitle("Containers")
@@ -891,9 +880,8 @@ struct ContainerRow: View {
                 CachedAsyncImage(url: container.themedIconUrl(for: colorScheme), size: 36) {
                     Image(systemName: "cube.box.fill")
                         .font(.title3)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.tint)
                         .frame(width: 36, height: 36)
-                        .background(Color.accentColor, in: .circle)
                 }
                 Circle()
                     .fill(container.isRunning ? Color.green : Color.secondary.opacity(0.5))
@@ -906,8 +894,8 @@ struct ContainerRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Text(container.displayName)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
+                        .font(.body)
+                        .lineLimit(nil)
                     if isPinned {
                         Image(systemName: "pin.fill")
                             .font(.caption2)
@@ -919,13 +907,13 @@ struct ContainerRow: View {
                     HStack(spacing: 5) {
                         if !statusText.isEmpty {
                             Text(statusText)
-                                .font(.caption)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .lineLimit(nil)
                         }
                         if let health {
                             Image(systemName: health.icon)
-                                .font(.caption)
+                                .font(.subheadline)
                                 .foregroundStyle(health.color)
                                 .accessibilityLabel(health.label)
                         }
@@ -938,7 +926,7 @@ struct ContainerRow: View {
 
             StatusIcon(status: container.status, isLive: container.isRunning)
         }
-        .padding(.vertical, 2)
+
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
     }

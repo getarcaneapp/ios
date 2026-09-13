@@ -7,6 +7,7 @@ struct UpdaterHistoryView: View {
 
     private static let pageSize = 50
 
+    @State private var loadMoreError: String?
     @State private var records: [AutoUpdateRecord] = []
     @State private var limit: Int = UpdaterHistoryView.pageSize
     @State private var hasMore: Bool = false
@@ -48,24 +49,11 @@ struct UpdaterHistoryView: View {
                             UpdaterHistoryRow(record: record)
                         }
                     }
-                    if hasMore, searchText.isEmpty {
-                        Button {
-                            Task { await loadMore() }
-                        } label: {
-                            HStack {
-                                Spacer()
-                                if isLoadingMore {
-                                    ProgressView()
-                                } else {
-                                    Label("Show More", systemImage: "arrow.down.circle")
-                                        .font(.subheadline.weight(.semibold))
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 4)
-                        }
-                        .disabled(isLoadingMore)
-                    }
+            PaginatedListFooter(
+                hasMore: hasMore && searchText.isEmpty, loadMoreError: loadMoreError,
+                onRetry: { Task { await loadMore() } },
+                onLoadMore: { Task { await loadMore() } }
+            )
                 }
                 .listStyle(.insetGrouped)
             }
@@ -107,7 +95,8 @@ struct UpdaterHistoryView: View {
     }
 
     private func loadMore() async {
-        guard let client = manager.client, !isLoadingMore else { return }
+        guard let client = manager.client, hasMore, !isLoading, !isLoadingMore else { return }
+        loadMoreError = nil
         isLoadingMore = true
         defer { isLoadingMore = false }
         let newLimit = limit + Self.pageSize
@@ -118,7 +107,7 @@ struct UpdaterHistoryView: View {
             limit = newLimit
             hasMore = fetched.count >= newLimit
         } catch {
-            errorMessage = friendlyErrorMessage(error)
+            loadMoreError = friendlyErrorMessage(error)
         }
     }
 }

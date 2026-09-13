@@ -100,8 +100,7 @@ struct PortsView: View {
                             }
                             .frame(maxWidth: .infinity)
                         } else {
-                            SkeletonListRow()
-                                .skeletonShimmer()
+                            ProgressView("Loading more…").frame(maxWidth: .infinity)
                                 .onAppear {
                                     Task { await loadMore() }
                                 }

@@ -5,6 +5,7 @@ struct AllVulnerabilitiesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environmentID: EnvironmentID
 
+    @State private var loadMoreError: String?
     @State private var summary: EnvironmentVulnerabilitySummary?
     @State private var items: [VulnerabilityWithImage] = []
     @State private var imageOptions: [String] = []
@@ -35,10 +36,11 @@ struct AllVulnerabilitiesView: View {
                             VulnerabilityWithImageRow(item: item)
                         }
                     }
-                    if hasMore {
-                        Button("Load More") { Task { await loadMore() } }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                    }
+            PaginatedListFooter(
+                hasMore: hasMore, loadMoreError: loadMoreError,
+                onRetry: { Task { await loadMore() } },
+                onLoadMore: { Task { await loadMore() } }
+            )
                 }
             } else if !isLoading {
                 ContentUnavailableView("No vulnerabilities", systemImage: "checkmark.shield",
@@ -184,7 +186,6 @@ struct AllVulnerabilitiesView: View {
 
     private func reload() async {
         page = 1
-        items = []
         await loadItems()
     }
 
@@ -214,6 +215,7 @@ struct AllVulnerabilitiesView: View {
 
     private func loadItems() async {
         guard let client = manager.client else { return }
+        loadMoreError = nil
         isLoading = true
         defer { isLoading = false }
         do {
@@ -229,16 +231,18 @@ struct AllVulnerabilitiesView: View {
                 query.append(URLQueryItem(name: "imageName", value: img))
             }
             let newItems: [VulnerabilityWithImage] = try await client.rest.get(path, query: query)
-            items.append(contentsOf: newItems)
+            items = page == 1 ? newItems : items + newItems
             hasMore = newItems.count == 50
         } catch {
-            errorMessage = friendlyErrorMessage(error)
+            if page > 1 { loadMoreError = friendlyErrorMessage(error) } else { errorMessage = friendlyErrorMessage(error) }
         }
     }
 
     private func loadMore() async {
+        guard hasMore, !isLoading else { return }
         page += 1
         await loadItems()
+        if loadMoreError != nil { page -= 1 }
     }
 }
 

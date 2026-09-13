@@ -9,7 +9,6 @@ struct MainTabView: View {
     @State private var selectedTab: String = AppTab.dashboard.id
     @State private var swapTarget: AppTab? = nil
     @State private var isSidebarPresented = false
-    @State private var isSidebarDestinationRoot = true
     @State private var sidebarResetToken = 0
     @State private var store = NavTabsStore.shared
     @State private var router = QuickActionRouter.shared
@@ -224,22 +223,23 @@ struct MainTabView: View {
     @ViewBuilder
     private var sidebarModeView: some View {
         if horizontalSizeClass == .regular {
-            HStack(spacing: 0) {
+            NavigationSplitView {
                 appSidebar
-                    .frame(width: 300)
-
-                Divider()
-
+            } detail: {
                 sidebarDestination
             }
-            .background(Color(uiColor: .systemBackground))
         } else {
-            CompactSidebarDrawer(
-                isPresented: $isSidebarPresented,
-                isNavigationRoot: isSidebarDestinationRoot,
-                sidebar: { appSidebar },
-                content: { sidebarDestination }
-            )
+            sidebarDestination
+                .sheet(isPresented: $isSidebarPresented) {
+                    NavigationStack {
+                        appSidebar
+                            .toolbar {
+                                ToolbarItem(placement: .cancellationAction) {
+                                    Button("Done") { isSidebarPresented = false }
+                                }
+                            }
+                    }
+                }
         }
     }
 
@@ -247,7 +247,6 @@ struct MainTabView: View {
         AppSidebar(
             tabs: sidebarTabs,
             selectedID: selectedTab,
-            accentColor: accentColor,
             onSelect: navigateToSidebarDestination
         )
     }
@@ -259,8 +258,7 @@ struct MainTabView: View {
             morphStore: morphStore,
             accentColor: accentColor,
             showsMenuButton: horizontalSizeClass != .regular,
-            openSidebar: { isSidebarPresented = true },
-            onNavigationRootChange: { isSidebarDestinationRoot = $0 }
+            openSidebar: { isSidebarPresented = true }
         )
         .id(sidebarDestinationIdentity)
     }
@@ -315,7 +313,6 @@ struct MainTabView: View {
                 bottomBarScrollStore.reset()
                 if sidebarNavigationEnabled {
                     morphStore.clearTab(oldValue)
-                    isSidebarDestinationRoot = true
                     isSidebarPresented = false
                 }
                 morphStore.activeTabID = newValue
@@ -334,11 +331,13 @@ struct MainTabView: View {
             .onChange(of: allowedDestinationIDs) { _, _ in
                 ensureSelectedTabVisible()
             }
+            .onChange(of: horizontalSizeClass) { _, _ in
+                isSidebarPresented = false
+            }
             .onChange(of: sidebarNavigationEnabled) { _, _ in
                 bottomBarScrollStore.reset()
                 swapTarget = nil
                 isSidebarPresented = false
-                isSidebarDestinationRoot = true
                 sidebarResetToken &+= 1
                 morphStore.clearTab(selectedTab)
                 if sidebarNavigationEnabled {
@@ -391,7 +390,6 @@ struct MainTabView: View {
     private func navigateToSidebarDestination(_ destinationID: String) {
         morphStore.clearTab(selectedTab)
         sidebarResetToken &+= 1
-        isSidebarDestinationRoot = true
         isSidebarPresented = false
         selectedTab = destinationID
         ensureSelectedTabVisible()
@@ -401,7 +399,6 @@ struct MainTabView: View {
         if sidebarNavigationEnabled {
             morphStore.clearTab(selectedTab)
             sidebarResetToken &+= 1
-            isSidebarDestinationRoot = true
             isSidebarPresented = false
         }
         selectedTab = destinationID
@@ -418,10 +415,7 @@ struct MainTabView: View {
     }
 
     private func ensureSelectedTabVisible() {
-        let allowed = Set(allowedDestinationIDs)
-        if !allowed.contains(selectedTab) {
-            selectedTab = allowedDestinationIDs.first ?? AppTab.settings.id
-        }
+        selectedTab = SidebarNavigation.validSelection(selectedTab, allowedIDs: allowedDestinationIDs)
     }
 }
 
@@ -541,7 +535,6 @@ private struct SidebarDestinationContainer: View {
     let accentColor: Color
     let showsMenuButton: Bool
     let openSidebar: () -> Void
-    let onNavigationRootChange: (Bool) -> Void
 
     @State private var path = NavigationPath()
 
@@ -602,27 +595,22 @@ private struct SidebarDestinationContainer: View {
             NavigationStack(path: $path) {
                 ProfileView()
                     .sidebarNavigationToolbar(isVisible: showsMenuButton && path.isEmpty, action: openSidebar)
-                    .preservesSidebarNavigationBarMargins(isEnabled: showsMenuButton)
             }
             .onChange(of: path.isEmpty, initial: true) { _, isRoot in
-                onNavigationRootChange(isRoot)
                 if isRoot { morphStore.clearTab(selectedID) }
             }
         } else if selectedID == SidebarUtilityDestination.appSettings.rawValue {
             NavigationStack(path: $path) {
                 AppSettingsView()
                     .sidebarNavigationToolbar(isVisible: showsMenuButton && path.isEmpty, action: openSidebar)
-                    .preservesSidebarNavigationBarMargins(isEnabled: showsMenuButton)
             }
             .onChange(of: path.isEmpty, initial: true) { _, isRoot in
-                onNavigationRootChange(isRoot)
                 if isRoot { morphStore.clearTab(selectedID) }
             }
         } else if selectedID == AppTab.settings.id {
             SettingsView(
                 showsSidebarButton: showsMenuButton,
-                onOpenSidebar: openSidebar,
-                onNavigationRootChange: onNavigationRootChange
+                onOpenSidebar: openSidebar
             )
         } else if selectedTab == .dashboard {
             // Dashboard owns its NavigationStack and mounts the combined
@@ -630,154 +618,21 @@ private struct SidebarDestinationContainer: View {
             DashboardView(
                 selectedTab: $selectedID,
                 showsSidebarButton: showsMenuButton,
-                onOpenSidebar: openSidebar,
-                onNavigationRootChange: onNavigationRootChange
+                onOpenSidebar: openSidebar
             )
         } else if let selectedTab {
             NavigationStack(path: $path) {
                 appTabDestination(selectedTab, manager: manager, selectedTab: $selectedID)
                     .sidebarNavigationToolbar(isVisible: showsMenuButton && path.isEmpty, action: openSidebar)
-                    .preservesSidebarNavigationBarMargins(isEnabled: showsMenuButton)
             }
             .onChange(of: path.isEmpty, initial: true) { _, isRoot in
-                onNavigationRootChange(isRoot)
                 if isRoot { morphStore.clearTab(selectedID) }
             }
         } else {
             NavigationStack {
                 ContentUnavailableView("Page Unavailable", systemImage: "sidebar.left")
                     .sidebarNavigationToolbar(isVisible: showsMenuButton, action: openSidebar)
-                    .preservesSidebarNavigationBarMargins(isEnabled: showsMenuButton)
             }
-            .onAppear { onNavigationRootChange(true) }
-        }
-    }
-}
-
-/// Keeps `UINavigationBar` using the effective margins it had before the
-/// compact drawer translated its view partly beyond the window. UIKit otherwise
-/// recomputes those margins from the visible sliver, moving large titles and
-/// navigation-drawer search fields independently of the rest of the page.
-private struct SidebarNavigationBarMarginInstaller: UIViewRepresentable {
-    let isEnabled: Bool
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.isUserInteractionEnabled = false
-        view.backgroundColor = .clear
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        context.coordinator.update(from: uiView, isEnabled: isEnabled)
-    }
-
-    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
-        coordinator.restore()
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    @MainActor
-    final class Coordinator {
-        private weak var navigationBar: UINavigationBar?
-        private var originalInsetsLayoutMarginsFromSafeArea: Bool?
-        private var originalDirectionalLayoutMargins: NSDirectionalEdgeInsets?
-        private var stableDirectionalLayoutMargins: NSDirectionalEdgeInsets?
-        private var generation = 0
-
-        func update(from view: UIView, isEnabled: Bool) {
-            generation &+= 1
-            apply(from: view, isEnabled: isEnabled, retries: 10, generation: generation)
-        }
-
-        func restore() {
-            generation &+= 1
-            guard let navigationBar else { return }
-            if let originalInsetsLayoutMarginsFromSafeArea {
-                navigationBar.insetsLayoutMarginsFromSafeArea = originalInsetsLayoutMarginsFromSafeArea
-            }
-            if let originalDirectionalLayoutMargins {
-                navigationBar.directionalLayoutMargins = originalDirectionalLayoutMargins
-            }
-            self.navigationBar = nil
-            self.originalInsetsLayoutMarginsFromSafeArea = nil
-            self.originalDirectionalLayoutMargins = nil
-            stableDirectionalLayoutMargins = nil
-        }
-
-        private func apply(from view: UIView, isEnabled: Bool, retries: Int, generation: Int) {
-            guard self.generation == generation else { return }
-            guard let navigationController = navigationController(from: view) else {
-                guard retries > 0 else { return }
-                DispatchQueue.main.async { [weak self, weak view] in
-                    guard let self, let view else { return }
-                    self.apply(
-                        from: view,
-                        isEnabled: isEnabled,
-                        retries: retries - 1,
-                        generation: generation
-                    )
-                }
-                return
-            }
-
-            let bar = navigationController.navigationBar
-            if navigationBar !== bar {
-                restore()
-                self.generation = generation
-                bar.layoutIfNeeded()
-                navigationBar = bar
-                originalInsetsLayoutMarginsFromSafeArea = bar.insetsLayoutMarginsFromSafeArea
-                originalDirectionalLayoutMargins = bar.directionalLayoutMargins
-                stableDirectionalLayoutMargins = directionalInsets(
-                    from: bar.layoutMargins,
-                    layoutDirection: bar.effectiveUserInterfaceLayoutDirection
-                )
-            }
-
-            guard isEnabled, let stableDirectionalLayoutMargins else {
-                restore()
-                return
-            }
-            bar.insetsLayoutMarginsFromSafeArea = false
-            bar.directionalLayoutMargins = stableDirectionalLayoutMargins
-        }
-
-        private func navigationController(from view: UIView) -> UINavigationController? {
-            var responder: UIResponder? = view
-            while let current = responder {
-                if let navigationController = current as? UINavigationController {
-                    return navigationController
-                }
-                if let viewController = current as? UIViewController,
-                   let navigationController = viewController.navigationController {
-                    return navigationController
-                }
-                responder = current.next
-            }
-            return nil
-        }
-
-        private func directionalInsets(
-            from insets: UIEdgeInsets,
-            layoutDirection: UIUserInterfaceLayoutDirection
-        ) -> NSDirectionalEdgeInsets {
-            NSDirectionalEdgeInsets(
-                top: insets.top,
-                leading: layoutDirection == .rightToLeft ? insets.right : insets.left,
-                bottom: insets.bottom,
-                trailing: layoutDirection == .rightToLeft ? insets.left : insets.right
-            )
-        }
-    }
-}
-
-extension View {
-    func preservesSidebarNavigationBarMargins(isEnabled: Bool) -> some View {
-        background {
-            SidebarNavigationBarMarginInstaller(isEnabled: isEnabled)
-                .frame(width: 0, height: 0)
         }
     }
 }

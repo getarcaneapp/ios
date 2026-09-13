@@ -19,17 +19,17 @@ struct BackupPolicyEditor: View {
             ForEach($policies) { $policy in
                 Section("Policy") {
                     Toggle("Enabled", isOn: $policy.enabled)
-                    TextField("Cron schedule", text: $policy.schedule).textInputAutocapitalization(.never)
+                    FormTextField(title: "Cron schedule", placeholder: "", text: $policy.schedule, autocapitalization: .never, autocorrectionDisabled: true).textInputAutocapitalization(.never)
                     Stepper("Keep \(policy.retentionCount) backups", value: $policy.retentionCount, in: 0...3650)
                     Toggle("Local storage", isOn: $policy.localEnabled)
                     Toggle("S3 storage", isOn: $policy.s3Enabled)
                     if policy.s3Enabled { BackupDestinationPicker(selection: $policy.s3DestinationId, destinations: destinations) }
                     if volumeName != nil || systemVolumes { Toggle("Stop containers during backup", isOn: $policy.stopContainers) }
                     if systemVolumes {
-                        Picker("Volumes", selection: $policy.selectionMode) {
+                        FormPicker(title: "Volumes", selection: $policy.selectionMode) {
                             Text("All").tag("all"); Text("Only listed").tag("allowlist"); Text("Except listed").tag("blocklist")
                         }
-                        if policy.selectionMode != "all" { TextField("Volume names, one per line", text: $policy.volumeNames, axis: .vertical) }
+                        if policy.selectionMode != "all" { FormTextField(title: "Volume names, one per line", placeholder: "", text: $policy.volumeNames, autocapitalization: .never, autocorrectionDisabled: true, axis: .vertical) }
                         Toggle("Ignore anonymous volumes", isOn: $policy.ignoreAnonymous)
                     }
                     Button("Remove policy", role: .destructive) { policies.removeAll { $0.id == policy.id } }
@@ -104,7 +104,7 @@ struct BackupDestinationPicker: View {
     @Binding var selection: String
     let destinations: [S3Destination]
     var body: some View {
-        Picker("S3 destination", selection: $selection) {
+        FormPicker(title: "S3 destination", selection: $selection) {
             Text("Select destination").tag("")
             ForEach(destinations) { destination in Text(destination.name).tag(destination.id) }
             if !selection.isEmpty && !destinations.contains(where: { $0.id == selection }) { Text(selection).tag(selection) }

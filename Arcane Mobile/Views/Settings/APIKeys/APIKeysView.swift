@@ -81,39 +81,28 @@ struct APIKeysView: View {
                     }
                 }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
+                List {
+                    Section {
+                        ForEach(apiKeys) { key in
+                            keyLink(key)
+                        }
+                        PaginatedListFooter(
+                            hasMore: pagination.hasMore,
+                            loadMoreError: loadMoreError,
+                            onRetry: { Task { await loadMore() } },
+                            onLoadMore: { Task { await loadMore() } }
+                        )
+                    } header: {
                         ResourceCountSectionHeader(
                             "API Keys",
                             loadedCount: apiKeys.count,
                             totalCount: pagination.totalItems,
                             hasMore: pagination.hasMore
                         )
-
-                        ForEach(apiKeys) { key in
-                            keyLink(key)
-                        }
-
-                        if pagination.hasMore {
-                            if loadMoreError != nil {
-                                Button("Retry loading more") {
-                                    Task { await loadMore() }
-                                }
-                                .frame(maxWidth: .infinity)
-                            } else {
-                                SkeletonListRow()
-                                    .skeletonShimmer()
-                                    .onAppear {
-                                        Task { await loadMore() }
-                                    }
-                            }
-                        }
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
                 }
+                .listStyle(.insetGrouped)
                 .softTopScrollEdgeEffectCompat()
-                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle("API Keys")
@@ -190,12 +179,8 @@ struct APIKeysView: View {
             }
         } label: {
             APIKeyRow(apiKey: key, assignedUser: user)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
                 .contentShape(.rect)
         }
-        .cardRowLinkStyle()
-        .dashboardCardBackground(cornerRadius: Radius.standard)
         .contextMenu {
             Button {
                 UIPasteboard.general.string = key.keyPrefix
@@ -346,31 +331,24 @@ struct APIKeyRow: View {
                     .font(.title3)
                     .foregroundStyle(.yellow)
                     .frame(width: 38, height: 38)
-                    .background(.regularMaterial, in: .circle)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(apiKey.name)
-                        .font(.headline)
-                        .lineLimit(1)
+                        .font(.body)
                     Text(verbatim: "\(apiKey.keyPrefix)…")
-                        .font(.caption.monospaced())
+                        .font(.subheadline.monospaced())
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
 
                 Spacer(minLength: 8)
 
                 APIKeyStatusBadge(isExpired: isExpired)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
             }
 
             if let description = apiKey.description, !description.isEmpty {
                 Text(description)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
             }
 
             HStack(alignment: .top, spacing: 12) {
@@ -416,7 +394,6 @@ private struct APIKeyCompactMetadata: View {
                 Text(value)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
             Spacer(minLength: 0)
         }
@@ -433,14 +410,9 @@ struct APIKeyStatusBadge: View {
             isExpired ? "Expired" : "Active",
             systemImage: isExpired ? "xmark.circle.fill" : "checkmark.circle.fill"
         )
-        .font(.caption2.weight(.semibold))
+        .font(.subheadline)
         .foregroundStyle(tint)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(tint.opacity(0.12), in: .capsule)
-        .overlay {
-            Capsule().strokeBorder(tint.opacity(0.2), lineWidth: 0.75)
-        }
+
     }
 }
 

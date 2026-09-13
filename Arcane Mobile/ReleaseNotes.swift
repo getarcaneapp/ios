@@ -144,6 +144,7 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.8.3",
             new: [
+                .init("Colored Compose tags with links beneath them in the project header."),
                 .init("Five new alternate app icons."),
                 .init("Container creation, editing, image commits, and Compose generation."),
                 .init("Volume file editing, transfers, and conflict review."),
@@ -152,6 +153,9 @@ enum ReleaseNotes {
                 .init("Federated credential management.")
             ],
             changed: [
+                .init("Project status and creation date aligned beside the project name."),
+                .init("Resource lists and details use consistent native sections and controls."),
+                .init("Sidebar navigation uses an iPad split view and an iPhone navigation sheet."),
                 .init("Container and image rows show clear update-status badges."),
                 .init("Smoother button feedback, filter selection, and resource-count transitions."),
                 .init("Image patching uses a tools icon with separate toolbar controls."),
@@ -163,6 +167,7 @@ enum ReleaseNotes {
                 .init("Templates use the same collapsible search layout as resource pages.")
             ],
             fixed: [
+                .init("Template filters scroll with the list without overlapping the navigation header."),
                 .init("Image update badges account for every image tag."),
                 .init("Backup failures display the server's error message."),
                 .init("Volume backup deletion uses the correct backup route."),

@@ -27,95 +27,77 @@ struct TemplateBrowserView: View {
         searchText: Binding<String>,
         source: Binding<TemplateSourceSelection>
     ) -> some View {
-        Group {
+        List {
             if !canListTemplates {
                 ContentUnavailableView(
                     "Templates Access Required",
                     systemImage: "lock.fill",
                     description: Text("Your role cannot list templates.")
                 )
-            } else if store.isLoading && store.templates.isEmpty {
-                ProgressView("Loading templates…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage = store.errorMessage, store.templates.isEmpty {
-                ContentUnavailableView {
-                    Label("Couldn't Load Templates", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(errorMessage)
-                } actions: {
-                    Button("Try Again") { Task { await store.reload() } }
-                }
+                .listRowBackground(Color.clear)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ScrollableTabBar(
-                            selection: source,
-                            options: TemplateSourceSelection.allCases.map {
-                                ScrollableTabOption(
-                                    $0,
-                                    title: $0.title,
-                                    systemImage: $0.icon,
-                                    tint: templateSourceTint($0)
-                                )
-                            },
-                            accessibilityLabel: "Template source"
-                        )
-
-                        LazyVStack(spacing: 10) {
-                            if store.templates.isEmpty {
-                                ContentUnavailableView {
-                                    Label(
-                                        store.queryKey == "|all" ? "No Templates" : "No Matching Templates",
-                                        systemImage: "doc.text.magnifyingglass"
-                                    )
-                                }
-                                .padding(.top, 24)
-                            } else {
-                                let groups = groupedTemplates
-                                ForEach(groups, id: \.name) { group in
-                                    templateGroup(group)
-                                }
-                            }
-
-                            if let errorMessage = store.errorMessage, !store.templates.isEmpty {
-                                Label(errorMessage, systemImage: "exclamationmark.triangle")
-                                    .font(.footnote)
-                                    .foregroundStyle(.red)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(14)
-                                    .dashboardCardBackground(cornerRadius: Radius.standard)
-                            }
-
-                            if store.hasMore {
-                                Button {
-                                    Task { await store.loadMore() }
-                                } label: {
-                                    HStack {
-                                        Spacer()
-                                        if store.isLoadingMore {
-                                            ProgressView()
-                                        } else {
-                                            Label("Show More", systemImage: "arrow.down.circle")
-                                                .font(.subheadline.weight(.semibold))
-                                        }
-                                        Spacer()
-                                    }
-                                    .padding(12)
-                                    .contentShape(.rect)
-                                }
-                                .cardRowLinkStyle()
-                                .disabled(store.isLoadingMore)
-                                .dashboardCardBackground(cornerRadius: Radius.standard)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 16)
-                    }
+                Section {
+                    ScrollableTabBar(
+                        selection: source,
+                        options: TemplateSourceSelection.allCases.map {
+                            ScrollableTabOption(
+                                $0,
+                                title: $0.title,
+                                systemImage: $0.icon,
+                                tint: templateSourceTint($0)
+                            )
+                        },
+                        accessibilityLabel: "Template source"
+                    )
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
-                .softTopScrollEdgeEffectCompat()
-                .background(Color(uiColor: .systemGroupedBackground))
+
+                if store.isLoading && store.templates.isEmpty {
+                    ProgressView("Loading templates…")
+                        .frame(maxWidth: .infinity)
+                        .listRowBackground(Color.clear)
+                } else if let errorMessage = store.errorMessage, store.templates.isEmpty {
+                    ContentUnavailableView {
+                        Label("Couldn't Load Templates", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(errorMessage)
+                    } actions: {
+                        Button("Try Again") { Task { await store.reload() } }
+                    }
+                    .listRowBackground(Color.clear)
+                } else {
+                    if store.templates.isEmpty {
+                        ContentUnavailableView {
+                            Label(
+                                store.queryKey == "|all" ? "No Templates" : "No Matching Templates",
+                                systemImage: "doc.text.magnifyingglass"
+                            )
+                        }
+                        .listRowBackground(Color.clear)
+                    } else {
+                        ForEach(groupedTemplates, id: \.name) { group in
+                            templateGroup(group)
+                        }
+                    }
+
+                    if let errorMessage = store.errorMessage, !store.templates.isEmpty {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+
+                    PaginatedListFooter(
+                        hasMore: store.hasMore,
+                        loadMoreError: store.loadMoreError,
+                        onRetry: { Task { await store.loadMore() } },
+                        onLoadMore: { Task { await store.loadMore() } }
+                    )
+                }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Templates")
         .navigationBarTitleDisplayMode(.large)
         .searchable(
@@ -159,25 +141,15 @@ struct TemplateBrowserView: View {
 
     @ViewBuilder
     private func templateGroup(_ group: (name: String, templates: [Template])) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        Section {
+            ForEach(group.templates) { template in templateRow(template) }
+        } header: {
             if group.name == groupedTemplates.first?.name {
-                ResourceCountSectionHeader(
-                    group.name,
-                    loadedCount: store.templates.count,
-                    totalCount: store.totalItemCount,
-                    hasMore: store.hasMore
-                )
+                ResourceCountSectionHeader(group.name, loadedCount: store.templates.count,
+                    totalCount: store.totalItemCount, hasMore: store.hasMore)
             } else {
-                SectionHeader(group.name, systemImage: "folder")
+                Text(group.name)
             }
-
-            VStack(spacing: 0) {
-                ForEach(Array(group.templates.enumerated()), id: \.element.id) { index, template in
-                    if index > 0 { Divider().padding(.leading, 12) }
-                    templateRow(template)
-                }
-            }
-            .dashboardCardBackground(cornerRadius: Radius.standard)
         }
     }
 
@@ -186,15 +158,9 @@ struct TemplateBrowserView: View {
         if canReadTemplates {
             NavigationLink(destination: TemplatePreviewView(template: template)) {
                 TemplateRow(template: template)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .contentShape(.rect)
             }
-            .cardRowLinkStyle()
         } else {
             TemplateRow(template: template)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
         }
     }
 

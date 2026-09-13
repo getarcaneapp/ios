@@ -8,24 +8,19 @@ struct JobDetailView: View {
     let onRun: () async -> Void
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                headerCard
-                scheduleCard
-                flagsCard
+        List {
+            headerSection
+            scheduleSection
+            flagsSection
 
-                if !job.prerequisites.isEmpty {
-                    prerequisitesCard(job.prerequisites)
-                }
-
-                identifierCard
+            if !job.prerequisites.isEmpty {
+                prerequisitesSection(job.prerequisites)
             }
-            .padding(.top, 8)
-            .padding(.horizontal)
-            .padding(.bottom, 16)
+
+            identifierSection
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(job.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -47,55 +42,26 @@ struct JobDetailView: View {
         }
     }
 
-    // MARK: - Cards
-
-    /// Grouped card of rows, mirroring the dashboard's info-group vocabulary.
-    private func card<Content: View>(
-        title: String,
-        systemImage: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title, systemImage: systemImage)
-            VStack(spacing: 0) { content() }
-                .dashboardCardBackground(cornerRadius: Radius.standard)
-        }
-    }
-
-    private var headerCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 44, height: 44)
-                    .background(tint.opacity(0.15), in: .circle)
-                    .symbolEffect(.rotate, options: .repeating, isActive: isRunning)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(job.name)
-                        .font(.headline)
+    private var headerSection: some View {
+        Section {
+            Label {
+                VStack(alignment: .leading) {
+                    Text(job.name).font(.headline)
                     if !job.category.isEmpty {
-                        Text(job.category.capitalized)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(tint)
+                        Text(job.category.capitalized).font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
+            } icon: {
+                Image(systemName: icon).foregroundStyle(tint)
             }
             if !job.description.isEmpty {
-                Text(job.description)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
+                Text(job.description).textSelection(.enabled)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground()
     }
 
-    private var scheduleCard: some View {
-        card(title: "Schedule", systemImage: "clock") {
+    private var scheduleSection: some View {
+        Section("Schedule") {
             row("Cron") {
                 Text(job.schedule)
                     .font(.subheadline.monospaced())
@@ -111,8 +77,8 @@ struct JobDetailView: View {
         }
     }
 
-    private var flagsCard: some View {
-        card(title: "Flags", systemImage: "flag") {
+    private var flagsSection: some View {
+        Section("Flags") {
             row("Enabled") { valueText(job.enabled ? "Yes" : "No") }
             row("Continuous") { valueText(job.isContinuous ? "Yes" : "No") }
             row("Manager Only") { valueText(job.managerOnly ? "Yes" : "No") }
@@ -120,10 +86,9 @@ struct JobDetailView: View {
         }
     }
 
-    private func prerequisitesCard(_ prerequisites: [JobPrerequisite]) -> some View {
-        card(title: "Prerequisites", systemImage: "checklist") {
-            ForEach(Array(prerequisites.enumerated()), id: \.offset) { index, prerequisite in
-                if index > 0 { Divider().padding(.leading, 12) }
+    private func prerequisitesSection(_ prerequisites: [JobPrerequisite]) -> some View {
+        Section("Prerequisites") {
+            ForEach(Array(prerequisites.enumerated()), id: \.offset) { _, prerequisite in
                 HStack(spacing: 10) {
                     Image(systemName: prerequisite.isMet ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .foregroundStyle(prerequisite.isMet ? .green : .red)
@@ -135,13 +100,12 @@ struct JobDetailView: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
-                .padding(12)
             }
         }
     }
 
-    private var identifierCard: some View {
-        card(title: "Identifier", systemImage: "number") {
+    private var identifierSection: some View {
+        Section("Identifier") {
             row("Job ID") {
                 Text(job.id)
                     .font(.caption.monospaced())
@@ -160,14 +124,7 @@ struct JobDetailView: View {
     }
 
     private func row(_ label: String, @ViewBuilder value: () -> some View) -> some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 16)
-            value()
-        }
-        .padding(12)
+        LabeledContent(label) { value() }
     }
 
     private func valueText(_ value: String) -> some View {

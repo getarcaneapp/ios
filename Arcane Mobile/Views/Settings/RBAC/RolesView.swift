@@ -40,11 +40,13 @@ struct RolesView: View {
                 ProgressView("Loading roles…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = errorMessage, roles.isEmpty {
-                ContentUnavailableView(
-                    "Error",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(error)
-                )
+                ContentUnavailableView {
+                    Label("Couldn't Load Roles", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Try Again") { Task { await load(refresh: true) } }
+                }
             } else {
                 List {
                     let builtIns = roles.filter { $0.builtIn }
@@ -94,20 +96,12 @@ struct RolesView: View {
                         }
                     }
 
-                    if pagination.hasMore {
-                        if loadMoreError != nil {
-                            Button("Retry loading more") {
-                                Task { await loadMore() }
-                            }
-                            .frame(maxWidth: .infinity)
-                        } else {
-                            SkeletonListRow()
-                                .skeletonShimmer()
-                                .onAppear {
-                                    Task { await loadMore() }
-                                }
-                        }
-                    }
+                    PaginatedListFooter(
+                        hasMore: pagination.hasMore,
+                        loadMoreError: loadMoreError,
+                        onRetry: { Task { await loadMore() } },
+                        onLoadMore: { Task { await loadMore() } }
+                    )
                 }
                 .listStyle(.insetGrouped)
             }
@@ -268,14 +262,12 @@ struct RoleRow: View {
                 .font(.title3)
                 .foregroundStyle(role.iconColor)
                 .frame(width: 40, height: 40)
-                .glassEffectCompat(in: .circle)
             VStack(alignment: .leading, spacing: 3) {
-                Text(role.displayName).font(.headline)
+                Text(role.displayName).font(.body)
                 if let desc = role.description, !desc.isEmpty {
                     Text(desc)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
                 }
                 HStack(spacing: 6) {
                     Text(verbatim: "\(role.permissions.count) permissions")
@@ -295,13 +287,9 @@ struct RoleRow: View {
             if role.builtIn {
                 Text("Built-in")
                     .font(.caption2.weight(.semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.gray.opacity(0.18), in: .capsule)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 2)
     }
 }
 

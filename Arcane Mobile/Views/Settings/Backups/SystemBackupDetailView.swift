@@ -15,7 +15,7 @@ struct SystemBackupDetailView: View {
     private var canRestore: Bool { manager.permissions.has("system-backups:restore", in: nil) && (!isVolume || manager.permissions.has("volumes:backup", in: EnvironmentID(rawValue: "0"))) }
     private var canManage: Bool { manager.permissions.has("system-backups:manage", in: nil) && (!isVolume || manager.permissions.has("volumes:backup", in: EnvironmentID(rawValue: "0"))) }
     var body: some View {
-        Form {
+        List {
             Section("Backup") {
                 LabeledContent("Resource", value: entry.resourceName)
                 LabeledContent("Status", value: entry.status)
@@ -25,7 +25,7 @@ struct SystemBackupDetailView: View {
             }
             if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
             if !isVolume {
-                Section { SecureField("Recovery key", text: $recoveryKey).privacySensitive().textInputAutocapitalization(.never).autocorrectionDisabled() }
+                Section { FormSecureField(title: "Recovery key", placeholder: "", text: $recoveryKey).privacySensitive().textInputAutocapitalization(.never).autocorrectionDisabled() }
                 footer: { Text("Leave empty to use the server's configured key.") }
             }
             if entry.status == "succeeded" {
@@ -42,6 +42,7 @@ struct SystemBackupDetailView: View {
             }
             if canManage { Button("Delete backup", role: .destructive) { pending = .delete } }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Backup Details").disabled(busy)
         .modifier(BackupSessionScope())
         .task(id: manager.clientGeneration) {

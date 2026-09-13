@@ -13,7 +13,7 @@ struct ImageHistoryView: View {
     var body: some View {
         Group {
             if isLoading && items.isEmpty {
-                SkeletonListLoadingView(rowCount: 5)
+                ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, items.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load History", systemImage: "exclamationmark.triangle")
@@ -29,43 +29,35 @@ struct ImageHistoryView: View {
                     description: Text("This image did not return any layer history.")
                 )
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(items) { item in
-                            VStack(alignment: .leading, spacing: 7) {
-                                HStack {
-                                    MonospacedValue(value: layerID(item.id), lineLimit: 1)
-                                    Spacer(minLength: 8)
-                                    Text(item.size.byteString)
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                }
-                                if !item.createdBy.isEmpty {
-                                    MonospacedValue(value: item.createdBy, lineLimit: 3)
-                                }
-                                HStack {
-                                    if item.created > 0 {
-                                        Text(Date(timeIntervalSince1970: TimeInterval(item.created)), format: .dateTime.year().month().day())
-                                    }
-                                    if !item.tags.isEmpty {
-                                        Text(item.tags.joined(separator: ", "))
-                                            .lineLimit(1)
-                                    }
-                                }
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                List {
+                    ForEach(items) { item in
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack {
+                                MonospacedValue(value: layerID(item.id), lineLimit: 1)
+                                Spacer(minLength: 8)
+                                Text(item.size.byteString)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
                             }
-                            .padding(14)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .dashboardCardBackground(cornerRadius: Radius.standard)
+                            if !item.createdBy.isEmpty {
+                                MonospacedValue(value: item.createdBy, lineLimit: nil)
+                            }
+                            HStack {
+                                if item.created > 0 {
+                                    Text(Date(timeIntervalSince1970: TimeInterval(item.created)), format: .dateTime.year().month().day())
+                                }
+                                if !item.tags.isEmpty {
+                                    Text(item.tags.joined(separator: ", "))
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.top, 8)
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
                 }
+                .listStyle(.insetGrouped)
                 .softTopScrollEdgeEffectCompat()
-                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .task { await load() }

@@ -8,8 +8,10 @@ struct ArchivedProjectsView: View {
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
 
+    @State private var loadMoreError: String?
     @State private var projects: [ProjectDetails] = []
     @State private var isLoading = false
+    @State private var isLoadingMore = false
     @State private var errorMessage: String?
     @State private var unarchivingID: String?
     @State private var currentPage = 1
@@ -67,12 +69,11 @@ struct ArchivedProjectsView: View {
                                 }
                         }
 
-                        if hasMore {
-                            Button("Load More") {
-                                Task { await loadMore() }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .center)
-                        }
+            PaginatedListFooter(
+                hasMore: hasMore, loadMoreError: loadMoreError,
+                onRetry: { Task { await loadMore() } },
+                onLoadMore: { Task { await loadMore() } }
+            )
                     } header: {
                         ResourceCountSectionHeader(
                             "Archived Projects",
@@ -96,6 +97,8 @@ struct ArchivedProjectsView: View {
 
     private func load(reset: Bool, refresh: Bool = false) async {
         guard let client = manager.client else { return }
+        if !reset && (isLoading || isLoadingMore) { return }
+        if reset { loadMoreError = nil } else { isLoadingMore = true; loadMoreError = nil }
         loadGeneration += 1
         let generation = loadGeneration
         let requestedPage = reset ? 1 : currentPage + 1
@@ -105,6 +108,7 @@ struct ArchivedProjectsView: View {
         defer {
             if loadGeneration == generation {
                 isLoading = false
+                isLoadingMore = false
             }
         }
         do {
@@ -119,7 +123,7 @@ struct ArchivedProjectsView: View {
             applyProjectsPage(response, reset: reset, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
-            errorMessage = friendlyErrorMessage(error)
+            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 

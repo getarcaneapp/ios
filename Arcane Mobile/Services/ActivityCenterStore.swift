@@ -133,6 +133,7 @@ final class ActivityCenterStore {
     private(set) var isStreaming = false
     private(set) var hasMore = false
     private(set) var errorMessage: String?
+    private(set) var loadMoreError: String?
     private(set) var streamErrorMessage: String?
     private(set) var environmentIDs: [String] = []
 
@@ -224,6 +225,7 @@ final class ActivityCenterStore {
         limit = Self.pageSize
         hasMore = false
         errorMessage = nil
+        loadMoreError = nil
         clearStreamWarning()
         recomputeGroupedItems()
     }
@@ -231,6 +233,7 @@ final class ActivityCenterStore {
     func load(reset: Bool = true, refresh: Bool = false) async {
         guard let client else { return }
         if reset {
+            loadMoreError = nil
             limit = Self.pageSize
             hasMore = false
         }
@@ -289,6 +292,10 @@ final class ActivityCenterStore {
             }
         }
 
+        if !reset && failures > 0 {
+            loadMoreError = "Couldn't load more activities. Try again."
+            return
+        }
         activityBuckets = buckets
         hasMore = anyHasMore
         rebuildActivities()
@@ -298,11 +305,13 @@ final class ActivityCenterStore {
     }
 
     func loadMore() async {
-        guard !isLoadingMore, hasMore else { return }
+        guard !isLoading, !isLoadingMore, hasMore else { return }
         isLoadingMore = true
+        loadMoreError = nil
         defer { isLoadingMore = false }
         limit += Self.pageSize
         await load(reset: false)
+        if loadMoreError != nil { limit -= Self.pageSize }
     }
 
     func startStream() {

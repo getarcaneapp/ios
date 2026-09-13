@@ -45,6 +45,7 @@ final class TemplateBrowserStore {
     private(set) var hasMore = false
     private(set) var totalItemCount: Int64?
     private(set) var errorMessage: String?
+    private(set) var loadMoreError: String?
 
     var searchText = ""
     var source: TemplateSourceSelection = .all
@@ -69,6 +70,7 @@ final class TemplateBrowserStore {
         hasMore = false
         totalItemCount = nil
         errorMessage = nil
+        loadMoreError = nil
     }
 
     func reload(clearExisting: Bool = false) async {
@@ -77,6 +79,7 @@ final class TemplateBrowserStore {
         if clearExisting { templates = [] }
         isLoading = true
         errorMessage = nil
+        loadMoreError = nil
         defer { isLoading = false }
 
         do {
@@ -96,6 +99,7 @@ final class TemplateBrowserStore {
                 ? response.pagination.totalItems
                 : nil
             errorMessage = nil
+            loadMoreError = nil
         } catch is CancellationError {
             return
         } catch {
@@ -105,8 +109,9 @@ final class TemplateBrowserStore {
     }
 
     func loadMore() async {
-        guard let client, hasMore, !isLoadingMore else { return }
+        guard let client, hasMore, !isLoading, !isLoadingMore else { return }
         let requestedQuery = queryKey
+        loadMoreError = nil
         isLoadingMore = true
         defer { isLoadingMore = false }
 
@@ -128,12 +133,12 @@ final class TemplateBrowserStore {
             if response.pagination.totalItems >= 0 {
                 totalItemCount = response.pagination.totalItems
             }
-            errorMessage = nil
+            loadMoreError = nil
         } catch is CancellationError {
             return
         } catch {
             guard requestedQuery == queryKey else { return }
-            errorMessage = friendlyErrorMessage(error)
+            loadMoreError = friendlyErrorMessage(error)
         }
     }
 

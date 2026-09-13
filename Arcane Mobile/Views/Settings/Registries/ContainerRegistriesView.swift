@@ -41,46 +41,32 @@ struct ContainerRegistriesView: View {
                     Button("Add Registry") { showCreateRegistrySheet = true }
                 }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
+                List {
+                    Section {
+                        ForEach(registries) { registry in
+                            RegistryActionRow(
+                                registry: registry,
+                                onEdit: { editingRegistry = registry },
+                                onDelete: { pendingDeleteRegistry = registry }
+                            )
+                        }
+                        PaginatedListFooter(
+                            hasMore: pagination.hasMore,
+                            loadMoreError: loadMoreError,
+                            onRetry: { Task { await loadMore() } },
+                            onLoadMore: { Task { await loadMore() } }
+                        )
+                    } header: {
                         ResourceCountSectionHeader(
                             "Container Registries",
                             loadedCount: registries.count,
                             totalCount: pagination.totalItems,
                             hasMore: pagination.hasMore
                         )
-
-                        ForEach(registries) { registry in
-                            PressableRegistryRow(
-                                registry: registry,
-                                onEdit: { editingRegistry = registry },
-                                onDelete: { pendingDeleteRegistry = registry }
-                            )
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .dashboardCardBackground(cornerRadius: Radius.standard)
-                        }
-
-                        if pagination.hasMore {
-                            if loadMoreError != nil {
-                                Button("Retry loading more") {
-                                    Task { await loadMore() }
-                                }
-                                .frame(maxWidth: .infinity)
-                            } else {
-                                SkeletonListRow()
-                                    .skeletonShimmer()
-                                    .onAppear {
-                                        Task { await loadMore() }
-                                    }
-                            }
-                        }
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
                 }
+                .listStyle(.insetGrouped)
                 .softTopScrollEdgeEffectCompat()
-                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle("Container Registries")
@@ -262,30 +248,21 @@ struct RegistryRow: View {
             Image(systemName: "shippingbox.fill")
                 .font(.title3).foregroundStyle(Color.accentColor)
                 .frame(width: 36, height: 36)
-                // A frosted (non-glass) chip: a standalone .glassEffect per row
-                // re-lays-out inside the List and triggers SwiftUI's "glassEffect
-                // tried to update multiple times per frame" warning. Material gives
-                // the same look without the per-row glass pass.
-                .background(.regularMaterial, in: .circle)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                Text(title).font(.body)
+                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
             if !registry.enabled {
                 Text("Disabled")
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 2)
     }
 }
 
-private struct PressableRegistryRow: View {
+private struct RegistryActionRow: View {
     let registry: ContainerRegistry
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -293,12 +270,8 @@ private struct PressableRegistryRow: View {
     var body: some View {
         Button(action: onEdit) {
             RegistryRow(registry: registry)
-                // Without this, a plain-style button in a List only registers taps
-                // on the opaque text/icon — the rest of the row (and its padding)
-                // is dead, so users had to long-press. Make the whole row tappable.
                 .contentShape(Rectangle())
         }
-        .cardRowLinkStyle()
         .contextMenu {
             Button(action: onEdit) {
                 Label("Edit", systemImage: "pencil")

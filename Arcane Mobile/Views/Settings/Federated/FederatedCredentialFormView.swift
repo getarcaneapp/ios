@@ -23,28 +23,28 @@ struct FederatedCredentialFormView: View {
         NavigationStack {
             Form {
                 Section("Credential") {
-                    TextField("Name", text: $form.name)
-                    TextField("Description", text: $form.description, axis: .vertical)
+                    FormTextField(title: "Name", placeholder: "", text: $form.name, autocapitalization: .never, autocorrectionDisabled: true)
+                    FormTextField(title: "Description", placeholder: "", text: $form.description, autocapitalization: .never, autocorrectionDisabled: true, axis: .vertical)
                     Toggle("Enabled", isOn: $form.enabled)
                 }
                 Section("Trust rule") {
-                    TextField("Issuer URL", text: $form.issuerUrl).keyboardType(.URL)
-                    TextField("Audiences, one per line", text: $form.audiences, axis: .vertical)
-                    TextField("Subject claim", text: $form.subjectClaim)
-                    Picker("Match type", selection: $form.matchType) {
+                    FormTextField(title: "Issuer URL", placeholder: "", text: $form.issuerUrl, keyboardType: .URL, autocapitalization: .never, autocorrectionDisabled: true)
+                    FormTextField(title: "Audiences, one per line", placeholder: "", text: $form.audiences, autocapitalization: .never, autocorrectionDisabled: true, axis: .vertical)
+                    FormTextField(title: "Subject claim", placeholder: "", text: $form.subjectClaim, autocapitalization: .never, autocorrectionDisabled: true)
+                    FormPicker(title: "Match type", selection: $form.matchType) {
                         Text("Exact").tag("exact")
                         Text("Glob").tag("glob")
                     }
-                    TextField("Subject match", text: $form.subjectMatch, axis: .vertical)
+                    FormTextField(title: "Subject match", placeholder: "", text: $form.subjectMatch, autocapitalization: .never, autocorrectionDisabled: true, axis: .vertical)
                 }
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                Section("Access") {
-                    Picker("Role", selection: $form.roleId) {
+                Section {
+                    FormPicker(title: "Role", selection: $form.roleId) {
                         Text("Choose role").tag("")
                         ForEach(roles) { Text($0.name).tag($0.id) }
                     }
-                    Picker("Environment", selection: $form.environmentId) {
+                    FormPicker(title: "Environment", selection: $form.environmentId) {
                         Text("Global").tag("")
                         ForEach(environments) { Text($0.name ?? $0.id).tag($0.id) }
                     }
@@ -54,7 +54,8 @@ struct FederatedCredentialFormView: View {
                     Toggle("Expires", isOn: $form.expires)
                         .disabled(credential?.expiresAt != nil)
                     if form.expires { DatePicker("Expiration", selection: $form.expiresAt) }
-                    if credential?.expiresAt != nil { Text("This server allows changing an expiration date but does not support removing it.").font(.caption).foregroundStyle(.secondary) }
+                } header: { Text("Access") } footer: {
+                    if credential?.expiresAt != nil { Text("This server allows changing an expiration date but does not support removing it.") }
                 }
                 if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red) } }
                 if let validation = form.validationMessage { Section { Text(validation).font(.caption).foregroundStyle(.secondary) } }
@@ -63,7 +64,7 @@ struct FederatedCredentialFormView: View {
             .navigationTitle(credential == nil ? "Create Credential" : "Edit Credential")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { Task { await save() } }.disabled(saving || form.validationMessage != nil || manager.currentUser?.isGlobalAdmin != true) }
+                ToolbarItem(placement: .confirmationAction) { Button(credential == nil ? "Create" : "Save") { Task { await save() } }.disabled(saving || form.validationMessage != nil || manager.currentUser?.isGlobalAdmin != true) }
             }
             .task {
                 guard let client = manager.client else { return }

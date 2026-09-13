@@ -1720,7 +1720,7 @@ struct StatusBadge: View {
     }
 
     var body: some View {
-        ResourceStatusBadge(status: status, isLive: isLive)
+        ResourceStatusBadge(status: status, isLive: isLive, usesCardStyle: true)
     }
 }
 

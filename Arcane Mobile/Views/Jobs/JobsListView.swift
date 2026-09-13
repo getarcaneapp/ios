@@ -52,7 +52,13 @@ struct JobsListView: View {
                 ProgressView("Loading jobs…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, jobs.isEmpty {
-                ContentUnavailableView("Couldn't Load Jobs", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+                ContentUnavailableView {
+                    Label("Couldn't Load Jobs", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Retry") { Task { await load(refresh: true) } }
+                }
             } else if jobs.isEmpty {
                 ContentUnavailableView("No Jobs", systemImage: "play.square.stack")
             } else {
@@ -186,30 +192,30 @@ private struct JobRow: View {
             Image(systemName: icon)
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(tint)
-                .frame(width: 32, height: 32)
-                .background(tint.opacity(0.15), in: .circle)
+                .frame(width: 28)
+
                 .symbolEffect(.rotate, options: .repeating, isActive: isRunning)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(job.name)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                    .font(.body)
+
                 if !job.description.isEmpty {
                     Text(job.description)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+
                 }
                 HStack(spacing: 6) {
                     Text(job.schedule)
-                        .font(.caption2.monospaced())
+                        .font(.caption.monospaced())
                         .foregroundStyle(.tertiary)
                     if let next = job.nextRun {
                         Text("•")
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.tertiary)
                         Text(next, format: .relative(presentation: .named))
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -251,8 +257,6 @@ struct JobBadge: View {
         Text(text)
             .font(.caption2.weight(.bold))
             .foregroundStyle(tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(tint.opacity(0.15), in: .capsule)
+
     }
 }

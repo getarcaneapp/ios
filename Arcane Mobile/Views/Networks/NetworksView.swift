@@ -25,10 +25,11 @@ struct NetworksView: View {
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
     @State private var loadGeneration = 0
     @State private var systemNetworks: [NetworkSummary] = []
     @State private var userNetworks: [NetworkSummary] = []
-    @State private var hasCompletedInitialReflow = false
+
 
     private enum NetworkTypeFilter: String, CaseIterable {
         case all = "All", standard = "Standard", internalOnly = "Internal"
@@ -88,17 +89,22 @@ struct NetworksView: View {
 
     /// Section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove (delete/prune) animates too.
-    private var networkCounts: [Int] { [systemNetworks.count, userNetworks.count] }
 
     var body: some View {
         LoadingCrossfade(
             showSkeleton: isLoading && networks.isEmpty,
             animatesTransition: false
         ) {
-            SkeletonListLoadingView()
+            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = errorMessage, networks.isEmpty {
-                ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
+                ContentUnavailableView {
+                    Label("Couldn't Load Networks", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Retry") { Task { await loadNetworks(reset: true) } }
+                }
             } else if networks.isEmpty {
                 ContentUnavailableView {
                     Label("No Networks", systemImage: "network")
@@ -172,19 +178,15 @@ struct NetworksView: View {
                             }
                         }
                     }
-                    if hasMore {
-                        SkeletonListRow()
-                            .skeletonShimmer()
-                            .onAppear {
-                                Task { await loadMore() }
-                            }
-                    }
+                    PaginatedListFooter(
+                        hasMore: hasMore,
+                        loadMoreError: loadMoreError,
+                        onRetry: { Task { await loadMore() } },
+                        onLoadMore: { Task { await loadMore() } }
+                    )
                 }
                 .listStyle(.insetGrouped)
-                .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: networkCounts)
-                .onChange(of: networkCounts) { _, counts in
-                    if !counts.isEmpty { hasCompletedInitialReflow = true }
-                }
+
             }
         }
         .navigationTitle("Networks")
@@ -341,6 +343,7 @@ struct NetworksView: View {
         let start = max(0, (requestedPage - 1) * Self.pageSize)
         if networks.isEmpty { isLoading = true }
         errorMessage = nil
+        loadMoreError = nil
         defer {
             if loadGeneration == generation {
                 isLoading = false
@@ -356,7 +359,8 @@ struct NetworksView: View {
             applyNetworksPage(response, reset: reset, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
-            errorMessage = friendlyErrorMessage(error)
+            if reset { errorMessage = friendlyErrorMessage(error) }
+            else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 
@@ -431,25 +435,25 @@ struct NetworkRow: View {
                 .font(.title3)
                 .foregroundStyle(.teal)
                 .frame(width: 36, height: 36)
-                .glassEffectCompat(in: .circle)
+
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(network.name)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
+                    .font(.body)
+                    .lineLimit(nil)
                 HStack(spacing: 8) {
                     Text(network.driver)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                     if network.isInternal {
-                        Text("• Internal").font(.caption).foregroundStyle(.orange)
+                        Text("• Internal").font(.subheadline).foregroundStyle(.orange)
                     }
                     if network.containerCount > 0 {
                         HStack(spacing: 3) {
                             Image(systemName: "cube.box.fill")
                             Text("\(network.containerCount)")
                         }
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.teal)
                     }
                 }
@@ -457,7 +461,7 @@ struct NetworkRow: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 2)
+
     }
 }
 
@@ -479,53 +483,49 @@ struct NetworkDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                headerCard
-                detailsCard
+        List {
+            headerSection
+            detailsSection
 
-                if let inspect {
-                    peersCard(inspect)
-                    servicesCard(inspect)
-                }
+            if let inspect {
+                peersSection(inspect)
+                servicesSection(inspect)
+            }
 
-                if let ipam = inspect?.ipam {
-                    ipamCard(ipam)
-                }
+            if let ipam = inspect?.ipam {
+                ipamSection(ipam)
+            }
 
-                connectedContainersCard
+            connectedContainersSection
 
-                if let inspect, !inspect.labels.isEmpty {
-                    keyValueCard("Labels", systemImage: "tag", pairs: inspect.labels)
-                }
+            if let inspect, !inspect.labels.isEmpty {
+                keyValueSection("Labels", systemImage: "tag", pairs: inspect.labels)
+            }
 
-                if let inspect, !inspect.options.isEmpty {
-                    keyValueCard("Options", systemImage: "slider.horizontal.3", pairs: inspect.options)
-                }
+            if let inspect, !inspect.options.isEmpty {
+                keyValueSection("Options", systemImage: "slider.horizontal.3", pairs: inspect.options)
+            }
 
-                if isLoadingInspect && inspect == nil {
-                    HStack(spacing: 10) {
-                        ProgressView().controlSize(.small)
-                        Text("Loading network details…")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 8)
-                }
-
-                if let inspectError, inspect == nil {
-                    Label(inspectError, systemImage: "exclamationmark.triangle")
+            if isLoadingInspect && inspect == nil {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading network details…")
                         .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 8)
+            }
+
+            if let inspectError, inspect == nil {
+                Section {
+                    Label(inspectError, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
-                        .padding(.horizontal, 4)
+                    Button("Retry") { Task { await loadInspect() } }
                 }
             }
-            .padding(.top, 8)
-            .padding(.horizontal)
-            .padding(.bottom, 16)
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(network.name.isEmpty ? network.id : network.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -564,63 +564,55 @@ struct NetworkDetailView: View {
         }
     }
 
-    private var headerCard: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "network")
-                .font(.title)
-                .foregroundStyle(.teal)
-                .frame(width: 56, height: 56)
-                .glassEffectCompat(in: .circle)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(network.name).font(.title3.bold())
-                Text(network.driver).font(.caption).foregroundStyle(.secondary)
+    private var headerSection: some View {
+        Section {
+            Label {
+                VStack(alignment: .leading) {
+                    Text(network.name).font(.headline)
+                    Text(network.driver).font(.subheadline).foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "network").foregroundStyle(.teal)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardCardBackground()
     }
 
-    /// Grouped card of label/value rows, mirroring the dashboard's
-    /// `DashboardInfoGroup`/`DashboardInfoRow` pair.
-    private func infoCard<Content: View>(
+    private func infoSection<Content: View>(
         title: String,
         systemImage: String,
         count: Int? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title, systemImage: systemImage, count: count)
-            VStack(spacing: 0) { content() }
-                .dashboardCardBackground(cornerRadius: Radius.standard)
+        Section {
+            content()
+        } header: {
+            Text(verbatim: count.map { "\(title) (\($0))" } ?? title)
         }
     }
 
-    private var detailsCard: some View {
-        infoCard(title: "Details", systemImage: "info.circle") {
-            AdaptiveMetadataGrid(items: networkMetadata)
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-            infoRow("ID") { MonospacedValue(value: network.id, lineLimit: 1) }
+    private var detailsSection: some View {
+        infoSection(title: "Details", systemImage: "info.circle") {
+            ForEach(networkMetadata) { item in
+                LabeledContent(item.label, value: item.value)
+            }
+            infoRow("ID") { MonospacedValue(value: network.id) }
             if let inspect {
                 if inspect.`internal` { infoRow("Internal") { rowText("Yes") } }
                 infoRow("Attachable") { rowText(inspect.attachable ? "Yes" : "No") }
                 infoRow("IPv4") { rowText(inspect.enableIPv4 ? "Enabled" : "Disabled") }
                 infoRow("IPv6") { rowText(inspect.enableIPv6 ? "Enabled" : "Disabled") }
             }
-            cardLink("Topology", systemImage: "point.topleft.down.curvedto.point.bottomright.up") {
+            detailLink("Topology", systemImage: "point.topleft.down.curvedto.point.bottomright.up") {
                 NetworkTopologyView(environmentID: environmentID)
             }
         }
     }
 
     @ViewBuilder
-    private func peersCard(_ inspect: NetworkInspect) -> some View {
+    private func peersSection(_ inspect: NetworkInspect) -> some View {
         if !inspect.peerList.isEmpty {
-            infoCard(title: "Peers", systemImage: "globe", count: inspect.peerList.count) {
-                ForEach(Array(inspect.peerList.enumerated()), id: \.element.name) { index, peer in
-                    if index > 0 { Divider().padding(.leading, 12) }
+            infoSection(title: "Peers", systemImage: "globe", count: inspect.peerList.count) {
+                ForEach(Array(inspect.peerList.enumerated()), id: \.element.name) { _, peer in
                     infoRow(peer.name) { MonospacedValue(value: peer.address) }
                 }
             }
@@ -628,11 +620,10 @@ struct NetworkDetailView: View {
     }
 
     @ViewBuilder
-    private func servicesCard(_ inspect: NetworkInspect) -> some View {
+    private func servicesSection(_ inspect: NetworkInspect) -> some View {
         if !inspect.serviceList.isEmpty {
-            infoCard(title: "Services", systemImage: "square.stack.3d.up", count: inspect.serviceList.count) {
-                ForEach(Array(inspect.serviceList.enumerated()), id: \.element.name) { index, service in
-                    if index > 0 { Divider().padding(.leading, 12) }
+            infoSection(title: "Services", systemImage: "square.stack.3d.up", count: inspect.serviceList.count) {
+                ForEach(Array(inspect.serviceList.enumerated()), id: \.element.name) { _, service in
                     VStack(alignment: .leading, spacing: 5) {
                         MonospacedValue(value: service.name)
                         if let vip = service.vip {
@@ -646,18 +637,17 @@ struct NetworkDetailView: View {
                             .font(.subheadline)
                         }
                     }
-                    .padding(12)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func ipamCard(_ ipam: IPAM) -> some View {
+    private func ipamSection(_ ipam: IPAM) -> some View {
         let hasDriver = ipam.driver.map { !$0.isEmpty } == true
         let hasConfigs = !(ipam.config ?? []).isEmpty
         if hasDriver || hasConfigs {
-            infoCard(title: "IPAM", systemImage: "tablecells") {
+            infoSection(title: "IPAM", systemImage: "tablecells") {
                 // Identity derived from content (offset only disambiguates duplicates)
                 // so rows keep stable identity if the config list reorders.
                 let ipamConfigs = (ipam.config ?? []).enumerated().map { offset, config in
@@ -680,19 +670,18 @@ struct NetworkDetailView: View {
     }
 
     @ViewBuilder
-    private var connectedContainersCard: some View {
+    private var connectedContainersSection: some View {
         let endpoints = inspect?.containersList ?? []
         let rawContainers = inspect?.containers ?? [:]
         if !endpoints.isEmpty {
-            infoCard(title: "Connected Containers", systemImage: "shippingbox.fill", count: endpoints.count) {
+            infoSection(title: "Connected Containers", systemImage: "shippingbox.fill", count: endpoints.count) {
                 ForEach(endpoints, id: \.id) { endpoint in
                     NetworkContainerRow(endpoint: endpoint)
-                        .padding(12)
-                }
+                    }
             }
         } else if !rawContainers.isEmpty {
             let sortedKeys = Array(rawContainers.keys.sorted())
-            infoCard(title: "Connected Containers", systemImage: "shippingbox.fill", count: sortedKeys.count) {
+            infoSection(title: "Connected Containers", systemImage: "shippingbox.fill", count: sortedKeys.count) {
                 ForEach(sortedKeys, id: \.self) { key in
                     if case let .object(obj) = rawContainers[key] {
                         NetworkContainerRow(
@@ -701,15 +690,14 @@ struct NetworkDetailView: View {
                             ipv4: obj["IPv4Address"]?.stringValue ?? "",
                             ipv6: obj["IPv6Address"]?.stringValue ?? ""
                         )
-                        .padding(12)
                     }
                 }
             }
         }
     }
 
-    private func keyValueCard(_ title: String, systemImage: String, pairs: [String: String]) -> some View {
-        infoCard(title: title, systemImage: systemImage) {
+    private func keyValueSection(_ title: String, systemImage: String, pairs: [String: String]) -> some View {
+        infoSection(title: title, systemImage: systemImage) {
             ForEach(pairs.keys.sorted(), id: \.self) { key in
                 infoRow(key) { rowText(pairs[key] ?? "") }
             }
@@ -717,14 +705,7 @@ struct NetworkDetailView: View {
     }
 
     private func infoRow(_ label: String, @ViewBuilder value: () -> some View) -> some View {
-        HStack(alignment: .top) {
-            Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 16)
-            value()
-        }
-        .padding(12)
+        LabeledContent(label) { value().textSelection(.enabled) }
     }
 
     private func rowText(_ value: String) -> some View {
@@ -734,28 +715,14 @@ struct NetworkDetailView: View {
     }
 
 
-    private func cardLink<Destination: View>(
+    private func detailLink<Destination: View>(
         _ title: String,
         systemImage: String,
         @ViewBuilder destination: () -> Destination
     ) -> some View {
         NavigationLink(destination: destination()) {
-            HStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary.opacity(0.5))
-            }
-            .padding(12)
-            .contentShape(.rect)
+            Label(title, systemImage: systemImage)
         }
-        .cardRowLinkStyle()
     }
 
     private var networkMetadata: [ResourceMetadataItem] {

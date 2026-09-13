@@ -22,11 +22,13 @@ struct UsersView: View {
             if isLoading && users.isEmpty {
                 ProgressView("Loading users...").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, users.isEmpty {
-                ContentUnavailableView(
-                    "Couldn't Load Users",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(errorMessage)
-                )
+                ContentUnavailableView {
+                    Label("Couldn't Load Users", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Retry") { Task { await loadUsers(refresh: true) } }
+                }
             } else if users.isEmpty {
                 ContentUnavailableView {
                     Label("No Users", systemImage: "person.slash")
@@ -36,39 +38,24 @@ struct UsersView: View {
                     Button("Add User") { showCreateSheet = true }
                 }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
+                List {
+                    Section {
+                        ForEach(users) { user in userLink(user) }
+                    } header: {
                         ResourceCountSectionHeader(
-                            "Users",
-                            loadedCount: users.count,
-                            totalCount: pagination.totalItems,
-                            hasMore: pagination.hasMore
+                            "Users", loadedCount: users.count,
+                            totalCount: pagination.totalItems, hasMore: pagination.hasMore
                         )
-
-                        ForEach(users) { user in
-                            userLink(user)
-                        }
-
-                        if pagination.hasMore {
-                            if loadMoreError != nil {
-                                Button("Retry loading more") {
-                                    Task { await loadMore() }
-                                }
-                                .frame(maxWidth: .infinity)
-                            } else {
-                                SkeletonListRow()
-                                    .skeletonShimmer()
-                                    .onAppear {
-                                        Task { await loadMore() }
-                                    }
-                            }
-                        }
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
+                    PaginatedListFooter(
+                        hasMore: pagination.hasMore,
+                        loadMoreError: loadMoreError,
+                        onRetry: { Task { await loadMore() } },
+                        onLoadMore: { Task { await loadMore() } }
+                    )
                 }
+                .listStyle(.insetGrouped)
                 .softTopScrollEdgeEffectCompat()
-                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle("Users")
@@ -132,12 +119,7 @@ struct UsersView: View {
     private func userLink(_ user: User) -> some View {
         NavigationLink(destination: UserDetailView(user: user, onUpdate: { await loadUsers() })) {
             UserRow(user: user)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .contentShape(.rect)
         }
-        .cardRowLinkStyle()
-        .dashboardCardBackground(cornerRadius: Radius.standard)
         .contextMenu {
             Button(role: .destructive) {
                 pendingDeleteUser = user
@@ -239,13 +221,12 @@ struct UserRow: View {
             Image(systemName: "person.circle.fill")
                 .font(.title2)
                 .foregroundStyle(user.isAdmin ? .indigo : .blue)
-                .frame(width: 40, height: 40)
-                .glassEffectCompat(in: .circle)
+                .frame(width: 28)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(user.displayUsername).font(.headline)
+                Text(user.displayUsername).font(.body)
                 if let email = user.email {
-                    Text(email).font(.caption).foregroundStyle(.secondary)
+                    Text(email).font(.subheadline).foregroundStyle(.secondary)
                 }
             }
 
@@ -253,10 +234,8 @@ struct UserRow: View {
 
             if user.isAdmin {
                 Text("Admin")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Color.indigo, in: .capsule)
+                    .font(.subheadline)
+                    .foregroundStyle(.indigo)
             }
         }
         .padding(.vertical, 2)

@@ -11,25 +11,11 @@ struct ResourceCountLabel: View {
     }
 
     var body: some View {
-        Label {
-            countText
-                .contentTransition(.numericText())
-                .motionAwareAnimation(Motion.state, value: loadedCount)
-                .motionAwareAnimation(Motion.state, value: totalCount)
-        } icon: {
-            Image(systemName: "list.bullet")
-        }
-        .font(.caption2.weight(.semibold))
-        .monospacedDigit()
-        .textCase(nil)
-        .foregroundStyle(.tint)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(Color.accentColor.opacity(0.12), in: .capsule)
-        .overlay {
-            Capsule()
-                .stroke(Color.accentColor.opacity(0.16), lineWidth: 0.5)
-        }
+        countText
+            .font(.subheadline)
+            .monospacedDigit()
+            .textCase(nil)
+            .foregroundStyle(.secondary)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
     }
@@ -77,7 +63,9 @@ struct ResourceCountSectionHeader: View {
     }
 
     var body: some View {
-        SectionHeader(title) {
+        HStack {
+            Text(title)
+            Spacer()
             ResourceCountLabel(
                 loadedCount: loadedCount,
                 totalCount: totalCount,

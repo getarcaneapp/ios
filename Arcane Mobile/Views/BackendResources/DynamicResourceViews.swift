@@ -46,9 +46,15 @@ struct DynamicResourceListView: View {
     var body: some View {
         Group {
             if isLoading && items.isEmpty {
-                SkeletonListLoadingView(rowCount: 5)
+                ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, items.isEmpty {
-                ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+                ContentUnavailableView {
+                    Label("Couldn't Load \(title)", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") { Task { await load(refresh: true) } }
+                }
             } else if items.isEmpty {
                 ContentUnavailableView(emptyTitle ?? "No \(title)", systemImage: systemImage)
             } else {
@@ -78,20 +84,12 @@ struct DynamicResourceListView: View {
                             }
                         }
 
-                        if pagination.hasMore {
-                            if loadMoreError != nil {
-                                Button("Retry loading more") {
-                                    Task { await loadMore() }
-                                }
-                                .frame(maxWidth: .infinity)
-                            } else {
-                                SkeletonListRow()
-                                    .skeletonShimmer()
-                                    .onAppear {
-                                        Task { await loadMore() }
-                                    }
-                            }
-                        }
+                        PaginatedListFooter(
+                            hasMore: pagination.hasMore,
+                            loadMoreError: loadMoreError,
+                            onRetry: { Task { await loadMore() } },
+                            onLoadMore: { Task { await loadMore() } }
+                        )
                     } header: {
                         ResourceCountSectionHeader(
                             title,
@@ -327,22 +325,18 @@ struct DynamicResourceRow: View {
                 .frame(width: 32, height: 32)
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
-                    .font(.headline)
-                    .lineLimit(1)
+                    .font(.body)
                 Text(item.subtitle)
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
             }
             Spacer()
             if let status = item.statusText {
                 Text(status)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
         }
-        .padding(.vertical, 2)
     }
 }
 
@@ -373,6 +367,7 @@ struct DynamicResourceDetailView: View {
                 }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle(title)
         .toolbar {
             if !actions.isEmpty {

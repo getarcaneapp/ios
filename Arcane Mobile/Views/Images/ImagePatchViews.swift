@@ -4,6 +4,7 @@ import Arcane
 struct ImagePatchTargetsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environmentID: EnvironmentID
+    @State private var loadMoreError: String?
     @State private var targets: [ImagePatchTarget] = []
     @State private var search = ""
     @State private var error: String?
@@ -31,11 +32,16 @@ struct ImagePatchTargetsView: View {
                 }
             }
             if loading { ProgressView() }
-            if hasMore { Button("Load More") { Task { await load(reset: false) } }.disabled(loading) }
+            PaginatedListFooter(
+                hasMore: hasMore, loadMoreError: loadMoreError,
+                onRetry: { Task { await load(reset: false) } },
+                onLoadMore: { Task { await load(reset: false) } }
+            )
             if targets.isEmpty && !loading && error == nil {
                 ContentUnavailableView("No patch targets", systemImage: "shield")
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Patch Images")
         .searchable(text: $search)
         .task(id: scope) {
@@ -51,16 +57,16 @@ struct ImagePatchTargetsView: View {
         let generation = requestGeneration
         let expected = scope
         loading = true; error = nil
-        if reset { targets = [] }
+        loadMoreError = nil
         defer { if expected == scope, generation == requestGeneration { loading = false } }
         do {
             let result = try await client.images.patchTargets(envID: environmentID,
                 query: .init(search: search.isEmpty ? nil : search, start: reset ? 0 : targets.count, limit: 30))
             guard !Task.isCancelled, expected == scope, generation == requestGeneration else { return }
-            targets.append(contentsOf: result.data); hasMore = result.data.count == 30
+            targets = reset ? result.data : targets + result.data; hasMore = result.data.count == 30
         } catch is CancellationError { }
         catch ArcaneError.notFound { if expected == scope { error = "Image patching is not available on this server." } }
-        catch { if expected == scope { self.error = error.localizedDescription } }
+        catch { if expected == scope { if reset { self.error = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) } } }
     }
 }
 

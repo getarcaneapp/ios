@@ -23,18 +23,11 @@ struct WebhooksView: View {
                     Button("Create Webhook") { showCreateSheet = true }
                 }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ResourceCountSectionHeader(
-                            "Webhooks",
-                            loadedCount: webhooks.count
-                        )
+                List {
+                    Section {
 
                         ForEach(webhooks) { webhook in
                             WebhookRow(webhook: webhook)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .dashboardCardBackground(cornerRadius: Radius.standard)
                                 .contextMenu {
                                     Button {
                                         Task { await toggleWebhook(webhook) }
@@ -55,12 +48,12 @@ struct WebhooksView: View {
                                          .environment(manager)
                                  }
                         }
+                    } header: {
+                        ResourceCountSectionHeader("Webhooks", loadedCount: webhooks.count)
                     }
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
                 }
+                .listStyle(.insetGrouped)
                 .softTopScrollEdgeEffectCompat()
-                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
         .navigationTitle("Webhooks")

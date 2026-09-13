@@ -20,9 +20,9 @@ struct SettingsRow: View {
                     .foregroundStyle(titleColor)
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(nil)
                         .truncationMode(.middle)
                 }
             }

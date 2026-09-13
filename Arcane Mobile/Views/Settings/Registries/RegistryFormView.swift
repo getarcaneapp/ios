@@ -157,7 +157,7 @@ struct RegistryFormView: View {
                                     Image(systemName: "minus.circle.fill")
                                         .foregroundStyle(.red)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.borderless)
                                 .accessibilityLabel("Remove repository name")
                             }
                         }

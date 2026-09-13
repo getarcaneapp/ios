@@ -6,6 +6,7 @@ struct VolumeBackupsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environmentID: EnvironmentID
     let volumeName: String
+    @State private var loadMoreError: String?
     @State private var backups: [BackupEntry] = []
     @State private var warnings: [String] = []
     @State private var destinations: [S3Destination] = []
@@ -61,9 +62,14 @@ struct VolumeBackupsView: View {
                     if canBackup { Button("Delete backup", role: .destructive) { deleteTarget = backup } }
                 }
             }
-            if hasMore { Button("Load more") { Task { await load(more: true) } } }
+            PaginatedListFooter(
+                hasMore: hasMore, loadMoreError: loadMoreError,
+                onRetry: { Task { await load(more: true) } },
+                onLoadMore: { Task { await load(more: true) } }
+            )
             if busy { ProgressView() }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Backups")
         .modifier(BackupSessionScope())
         .disabled(busy)
@@ -108,15 +114,16 @@ struct VolumeBackupsView: View {
     }
 
     private func load(more: Bool = false) async {
+        guard !busy else { return }
+        loadMoreError = nil
         let scope = BackupRequestScope(manager)
         guard let client = manager.client else { return }
         busy = true; errorMessage = nil
-        if !more { backups = []; warnings = []; destinations = [] }
         defer { busy = false }
         do {
-            let page = try await client.volumes.listBackupsWithWarnings(envID: environmentID, name: volumeName, query: .init(start: backups.count, limit: 50))
+            let page = try await client.volumes.listBackupsWithWarnings(envID: environmentID, name: volumeName, query: .init(start: more ? backups.count : 0, limit: 50))
             try scope.check(manager)
-            backups += page.data; warnings = page.warnings ?? []; hasMore = backups.count < page.pagination.totalItems
+            backups = more ? backups + page.data : page.data; warnings = page.warnings ?? []; hasMore = backups.count < page.pagination.totalItems
             if !more {
                 do {
                     _ = try await client.volumes.backupPolicies(envID: environmentID, name: volumeName)
@@ -128,7 +135,7 @@ struct VolumeBackupsView: View {
                     try scope.check(manager); destinations = options
                 }
             }
-        } catch is CancellationError {} catch { errorMessage = friendlyErrorMessage(error) }
+        } catch is CancellationError {} catch { if more { loadMoreError = friendlyErrorMessage(error) } else { errorMessage = friendlyErrorMessage(error) } }
     }
 
     private func create() async {

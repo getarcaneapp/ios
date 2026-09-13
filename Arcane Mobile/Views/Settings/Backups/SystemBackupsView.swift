@@ -3,6 +3,11 @@ import Arcane
 
 struct SystemBackupsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @State private var loadedIdentity = ""
+    @State private var loadingIdentity: String?
+    @State private var requestID = UUID()
+    @State private var loadMoreError: String?
+    private var listIdentity: String { "\(manager.clientGeneration):\(search)" }
     @State private var entries: [BackupHistoryEntry] = []
     @State private var errorMessage: String?
     @State private var busy = false
@@ -19,20 +24,29 @@ struct SystemBackupsView: View {
             if !canRead { ContentUnavailableView("Administrator Access Required", systemImage: "lock") }
             else {
                 List {
-                    if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
+                    if let errorMessage {
+                Text(errorMessage).foregroundStyle(.red)
+                Button("Retry") { Task { await load() } }
+            }
                     Section("History") {
                         ForEach(entries) { entry in
                             NavigationLink { SystemBackupDetailView(entry: entry) } label: {
-                                VStack(alignment: .leading) {
-                                    Text(entry.resourceName)
-                                    Text(entry.createdAt, style: .date)
-                                    Text("\(entry.status) · \(entry.destination) · \(ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file))")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
+                                Label {
+                                    VStack(alignment: .leading) {
+                                        Text(entry.resourceName)
+                                        Text(entry.createdAt, style: .date).font(.subheadline).foregroundStyle(.secondary)
+                                        Text("\(entry.status) · \(entry.destination) · \(ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file))")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                } icon: { Image(systemName: "externaldrive.badge.timemachine") }
                             }
                         }
-                        if hasMore { Button("Load more") { Task { await load(more: true) } }.disabled(busy) }
-                        if busy { ProgressView().frame(maxWidth: .infinity) }
+                        PaginatedListFooter(
+                hasMore: hasMore, loadMoreError: loadMoreError,
+                onRetry: { Task { await load(more: true) } },
+                onLoadMore: { Task { await load(more: true) } }
+            ).id(entries.count)
+                        if busy && entries.isEmpty { ProgressView("Loading…").frame(maxWidth: .infinity) }
                         if entries.isEmpty && !busy && errorMessage == nil {
                             ContentUnavailableView(
                                 search.isEmpty ? "No Backups" : "No Matching Backups",
@@ -43,10 +57,12 @@ struct SystemBackupsView: View {
                         }
                     }
                 }
+                .listStyle(.insetGrouped)
                 .searchable(text: $search)
                 .refreshable { await load() }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Backups")
         .modifier(BackupSessionScope())
         .toolbar {
@@ -69,7 +85,7 @@ struct SystemBackupsView: View {
                         ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Create Backup", systemImage: "plus") { showCreate = true }
+                        Button("Create Backup", systemImage: "plus") { showCreate = true }.labelStyle(.iconOnly)
                     }
                 }
             }
@@ -102,12 +118,33 @@ struct SystemBackupsView: View {
     private func load(more: Bool = false) async {
         let scope = BackupRequestScope(manager)
         guard canRead, let client = manager.client else { return }
-        busy = true; errorMessage = nil; defer { busy = false }
-        if !more { entries = [] }
+        let key = listIdentity
+        guard loadingIdentity != key else { return }
+        let request = UUID()
+        requestID = request
+        loadingIdentity = key
+        if loadedIdentity != key { entries = []; hasMore = false; loadedIdentity = key }
+        busy = true; errorMessage = nil; loadMoreError = nil
+
+        defer { if requestID == request { busy = false; loadingIdentity = nil } }
         do {
-            let page = try await client.systemBackups.history(query: .init(search: search, start: entries.count, limit: 50, sortBy: "createdAt", sortOrder: .descending))
-            try scope.check(manager); supported = true; entries += page.data; hasMore = entries.count < page.pagination.totalItems
-        } catch is CancellationError {} catch ArcaneError.notFound { supported = false; errorMessage = "System backups are not available on this server." } catch is CancellationError {} catch { errorMessage = friendlyErrorMessage(error) }
+            let page = try await client.systemBackups.history(query: .init(search: search, start: more ? entries.count : 0, limit: 50, sortBy: "createdAt", sortOrder: .descending))
+            try scope.check(manager)
+            guard key == listIdentity, requestID == request else { return }
+            supported = true
+            if !more { entries = [] }
+            entries += page.data
+            hasMore = entries.count < page.pagination.totalItems
+        } catch is CancellationError {
+        } catch ArcaneError.notFound {
+            guard key == listIdentity, requestID == request else { return }
+            supported = false
+            errorMessage = "System backups are not available on this server."
+        } catch {
+            guard key == listIdentity, requestID == request else { return }
+            if more { loadMoreError = friendlyErrorMessage(error) }
+            else { errorMessage = friendlyErrorMessage(error) }
+        }
     }
 }
 
@@ -125,7 +162,7 @@ struct SystemBackupCreateView: View {
         Form {
             if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
             if !discover {
-                Picker("Storage", selection: $destination) {
+                FormPicker(title: "Storage", selection: $destination) {
                     Text("Local").tag("local"); Text("S3").tag("s3"); Text("Local and S3").tag("local_s3")
                 }
             }
@@ -139,17 +176,24 @@ struct SystemBackupCreateView: View {
                 BackupDestinationPicker(selection: $s3ID, destinations: destinations)
             }
             Section {
-                SecureField("Recovery key", text: $recoveryKey).privacySensitive().textInputAutocapitalization(.never).autocorrectionDisabled()
+                FormSecureField(title: "Recovery key", placeholder: "", text: $recoveryKey).privacySensitive().textInputAutocapitalization(.never).autocorrectionDisabled()
             } footer: { Text("Enter the recovery key for remote backups, or leave it empty to use the server's stored key.") }
         }
         .navigationTitle(discover ? "Discover System Backups" : "Create Backup")
         .modifier(BackupSessionScope())
         .disabled(busy)
-        .toolbar { Button(discover ? "Discover" : "Create") { Task { await submit() } }.disabled(busy || ((discover || destination != "local") && s3ID.isEmpty)) }
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(discover ? "Discover" : "Create") { Task { await submit() } }.disabled(busy || ((discover || destination != "local") && s3ID.isEmpty)) } }
         .task(id: manager.clientGeneration) {
             let scope = BackupRequestScope(manager)
             guard let client = manager.client, manager.permissions.has("s3-destinations:list", in: nil) else { return }
-            do { let result = try await client.s3Destinations.options(); try scope.check(manager); destinations = result } catch is CancellationError {} catch { errorMessage = friendlyErrorMessage(error) }
+            do {
+                let result = try await client.s3Destinations.options()
+                try scope.check(manager)
+                destinations = result
+            } catch is CancellationError {
+            } catch {
+                errorMessage = friendlyErrorMessage(error)
+            }
         }
         .onDisappear { recoveryKey = "" }
     }
@@ -177,7 +221,7 @@ struct BackupRecoveryKeyView: View {
     @State private var message: String?
     var body: some View {
         Form {
-            SecureField("Recovery key", text: $key).privacySensitive().textInputAutocapitalization(.never).autocorrectionDisabled()
+            FormSecureField(title: "Recovery key", placeholder: "", text: $key).privacySensitive().textInputAutocapitalization(.never).autocorrectionDisabled()
             Button("Generate key") { Task { await generate() } }
             if !key.isEmpty {
                 Button("Copy recovery key") { UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic: key]], options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(60)]); showToast(.copied("Recovery key copied")) }
@@ -222,11 +266,11 @@ struct SystemVolumeRunView: View {
     var body: some View {
         Form {
             if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
-            Picker("Storage", selection: $destination) { Text("Local").tag("local"); Text("S3").tag("s3"); Text("Local and S3").tag("local_s3") }
+            FormPicker(title: "Storage", selection: $destination) { Text("Local").tag("local"); Text("S3").tag("s3"); Text("Local and S3").tag("local_s3") }
             if destination != "local" { BackupDestinationPicker(selection: $s3ID, destinations: destinations) }
             Toggle("Stop containers during backup", isOn: $stopContainers)
             Toggle("Ignore anonymous volumes", isOn: $ignoreAnonymous)
-            Picker("Volumes", selection: $selectionMode) { Text("All").tag("all"); Text("Only selected").tag("allowlist"); Text("Except selected").tag("blocklist") }
+            FormPicker(title: "Volumes", selection: $selectionMode) { Text("All").tag("all"); Text("Only selected").tag("allowlist"); Text("Except selected").tag("blocklist") }
             if selectionMode != "all" {
                 ForEach(options, id: \.name) { option in
                     Toggle(option.name, isOn: Binding(get: { selected.contains(option.name) }, set: { if $0 { selected.insert(option.name) } else { selected.remove(option.name) } })).disabled(!option.available)
@@ -235,7 +279,7 @@ struct SystemVolumeRunView: View {
         }
         .navigationTitle("Back Up Volumes").disabled(busy)
         .modifier(BackupSessionScope())
-        .toolbar { Button("Run") { Task { await run() } }.disabled(busy || (destination != "local" && s3ID.isEmpty) || (selectionMode == "allowlist" && selected.isEmpty)) }
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Run") { Task { await run() } }.disabled(busy || (destination != "local" && s3ID.isEmpty) || (selectionMode == "allowlist" && selected.isEmpty)) } }
         .task(id: manager.clientGeneration) {
             let scope = BackupRequestScope(manager)
             guard let client = manager.client else { return }

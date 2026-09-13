@@ -8,6 +8,7 @@ struct ImageVulnerabilitiesView: View {
     let environmentID: EnvironmentID
     var embedded = false
 
+    @State private var loadMoreError: String?
     @State private var status: ScannerStatus?
     @State private var summary: ScanSummary?
     @State private var vulnerabilities: [VulnerabilityRecord] = []
@@ -85,16 +86,14 @@ struct ImageVulnerabilitiesView: View {
     }
 
     private var scanList: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
+        List {
                 if let summary {
                     VStack(alignment: .leading, spacing: 10) {
                         SectionHeader("Summary", systemImage: "chart.bar.doc.horizontal")
                         SeveritySummaryRow(summary: summary.summary, scanTime: summary.scanTime, status: summary.status, error: summary.error)
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .dashboardCardBackground(cornerRadius: Radius.standard)
-                    }
+                                }
                 }
 
                 severityFilterChips
@@ -111,9 +110,7 @@ struct ImageVulnerabilitiesView: View {
                     .padding(14)
                     .contentShape(.rect)
                 }
-                .cardRowLinkStyle()
                 .disabled(isScanning)
-                .dashboardCardBackground(cornerRadius: Radius.standard)
 
                 if displayedVulnerabilities.isEmpty && !isLoading {
                     ContentUnavailableView(
@@ -132,33 +129,15 @@ struct ImageVulnerabilitiesView: View {
                         vulnerabilityLink(vuln)
                     }
 
-                    if hasMore {
-                        Button {
-                            Task { await loadMore() }
-                        } label: {
-                            HStack {
-                                Spacer()
-                                if isLoading {
-                                    ProgressView()
-                                } else {
-                                    Label("Load More", systemImage: "arrow.down.circle")
-                                        .font(.subheadline.weight(.semibold))
-                                }
-                                Spacer()
-                            }
-                            .padding(12)
-                            .contentShape(.rect)
-                        }
-                        .cardRowLinkStyle()
-                        .dashboardCardBackground(cornerRadius: Radius.standard)
-                    }
+            PaginatedListFooter(
+                hasMore: hasMore, loadMoreError: loadMoreError,
+                onRetry: { Task { await loadMore() } },
+                onLoadMore: { Task { await loadMore() } }
+            )
                 }
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 16)
         }
+        .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
-        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     /// Severity chips + ignored toggle. Every chip reflects the severity's own
@@ -213,7 +192,6 @@ struct ImageVulnerabilitiesView: View {
                     .strokeBorder((showIgnored ? Color.accentColor : Color.secondary).opacity(showIgnored ? 0.4 : 0.2), lineWidth: 0.75)
             }
         }
-        .cardRowLinkStyle()
         .accessibilityLabel(showIgnored ? "Showing ignored vulnerabilities" : "Ignoring hidden vulnerabilities")
         .accessibilityAddTraits(showIgnored ? .isSelected : [])
     }
@@ -230,12 +208,7 @@ struct ImageVulnerabilitiesView: View {
     private func vulnerabilityLink(_ vuln: VulnerabilityRecord) -> some View {
         NavigationLink(destination: VulnerabilityDetailView(record: vuln, ignoreInfo: ignoredById[ignoreKey(vuln)])) {
             VulnerabilityRow(record: vuln, isIgnored: ignoredById[ignoreKey(vuln)] != nil)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .contentShape(.rect)
         }
-        .cardRowLinkStyle()
-        .dashboardCardBackground(cornerRadius: Radius.standard)
         .contextMenu {
             if isAdmin {
                 if let ignore = ignoredById[ignoreKey(vuln)] {
@@ -275,7 +248,6 @@ struct ImageVulnerabilitiesView: View {
 
     private func reload() async {
         page = 1
-        vulnerabilities = []
         displayedVulnerabilities = []
         await loadSummary()
         await loadVulnerabilities()
@@ -305,6 +277,7 @@ struct ImageVulnerabilitiesView: View {
 
     private func loadVulnerabilities() async {
         guard let client = manager.client else { return }
+        loadMoreError = nil
         isLoading = true
         defer { isLoading = false }
         do {
@@ -318,11 +291,11 @@ struct ImageVulnerabilitiesView: View {
                 query.append(URLQueryItem(name: "severity", value: sev))
             }
             let items: [VulnerabilityRecord] = try await client.rest.get(path, query: query)
-            vulnerabilities.append(contentsOf: items)
+            vulnerabilities = page == 1 ? items : vulnerabilities + items
             rebuildDisplayedVulnerabilities()
             hasMore = items.count == 50
         } catch {
-            // Empty list / not yet scanned — silent.
+            if page > 1 { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 
@@ -330,6 +303,7 @@ struct ImageVulnerabilitiesView: View {
         guard hasMore, !isLoading else { return }
         page += 1
         await loadVulnerabilities()
+        if loadMoreError != nil { page -= 1 }
     }
 
     private func runScan() async {
@@ -467,7 +441,6 @@ struct SeverityFilterChip: View {
                     .strokeBorder((isActive ? color : Color.secondary).opacity(isActive ? 0.4 : 0.2), lineWidth: 0.75)
             }
         }
-        .cardRowLinkStyle()
         .accessibilityLabel(severity.displayLabel)
         .accessibilityAddTraits(isActive ? .isSelected : [])
         .accessibilityHint(isActive ? "Currently shown. Tap to hide." : "Currently hidden. Tap to show.")

@@ -25,12 +25,13 @@ struct ImagesView: View {
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
+    @State private var loadMoreError: String?
     @State private var loadGeneration = 0
     @State private var showFilterSheet = false
     @State private var tagsFilter = ImageTagsFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ImageRowModel>] = []
-    @State private var hasCompletedInitialReflow = false
+
     @State private var isSelecting = false
     @State private var selection = Set<String>()
     @State private var isBulkRunning = false
@@ -106,7 +107,7 @@ struct ImagesView: View {
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove animates too.
-    private var sectionCounts: [Int] { sections.map(\.items.count) }
+
 
     private var selectedImageIDs: [String] {
         images.filter { selection.contains($0.id) }.map(\.id)
@@ -129,7 +130,7 @@ struct ImagesView: View {
             showSkeleton: isLoading && images.isEmpty,
             animatesTransition: false
         ) {
-            SkeletonListLoadingView()
+            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = errorMessage, images.isEmpty {
                 ContentUnavailableView {
@@ -163,20 +164,16 @@ struct ImagesView: View {
                         imageLink(image)
                     }
 
-                    if hasMore {
-                        SkeletonListRow()
-                            .skeletonShimmer()
-                            .onAppear {
-                                Task { await loadMore() }
-                            }
-                    }
+                    PaginatedListFooter(
+                        hasMore: hasMore,
+                        loadMoreError: loadMoreError,
+                        onRetry: { Task { await loadMore() } },
+                        onLoadMore: { Task { await loadMore() } }
+                    )
                 }
                 .listStyle(.insetGrouped)
                 .environment(\.editMode, .constant(isSelecting ? EditMode.active : EditMode.inactive))
-                .motionAwareAnimation(hasCompletedInitialReflow ? Motion.reflow : nil, value: sectionCounts)
-                .onChange(of: sectionCounts) { _, counts in
-                    if !counts.isEmpty { hasCompletedInitialReflow = true }
-                }
+
             }
         }
         .navigationTitle("Images")
@@ -465,6 +462,7 @@ struct ImagesView: View {
         let start = max(0, (requestedPage - 1) * Self.pageSize)
         if images.isEmpty { isLoading = true }
         errorMessage = nil
+        loadMoreError = nil
         defer {
             if loadGeneration == generation {
                 isLoading = false
@@ -481,7 +479,8 @@ struct ImagesView: View {
             await loadUpdateInfo(for: response.data)
         } catch {
             guard loadGeneration == generation else { return }
-            errorMessage = friendlyErrorMessage(error)
+            if reset { errorMessage = friendlyErrorMessage(error) }
+            else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 
@@ -618,18 +617,18 @@ struct ImageRow: View {
         HStack(spacing: 12) {
             Image(systemName: "photo.stack.fill")
                 .font(.title3)
-                .foregroundStyle(.white)
+                .foregroundStyle(.tint)
                 .frame(width: 36, height: 36)
-                .background(iconTint, in: .circle)
+
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(row.displayName)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
+                    .font(.body)
+                    .lineLimit(nil)
                 HStack(spacing: 6) {
                     Text(row.sizeText)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                     UpdateStateBadge(state: row.updateState)
                 }
@@ -637,7 +636,7 @@ struct ImageRow: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 2)
+
         .accessibilityElement(children: .combine)
     }
 }

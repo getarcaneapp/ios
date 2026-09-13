@@ -3,28 +3,64 @@ import Arcane
 
 struct S3DestinationsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @State private var loadedIdentity = ""
+    @State private var loadingIdentity: String?
+    @State private var requestID = UUID()
+    @State private var loadMoreError: String?
+    private var listIdentity: String { "\(manager.clientGeneration)" }
     @State private var destinations: [S3Destination] = []
     @State private var errorMessage: String?
     @State private var deleteTarget: S3Destination?
+    @State private var creating = false
     @State private var hasMore = false
     @State private var busy = false
     var body: some View {
         List {
-            if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
-            if manager.permissions.has("s3-destinations:create", in: nil) { NavigationLink("Add S3 destination") { S3DestinationEditor() } }
+            if busy && destinations.isEmpty { ProgressView("Loading…").frame(maxWidth: .infinity) }
+            if let errorMessage {
+                Text(errorMessage).foregroundStyle(.red)
+                Button("Retry") { Task { await load() } }
+            }
             ForEach(destinations) { destination in
-                Section {
-                    NavigationLink(destination.name) { S3DestinationEditor(destination: destination) }
-                    LabeledContent("Bucket", value: destination.bucket)
-                    LabeledContent("Region", value: destination.region)
+                NavigationLink { S3DestinationEditor(destination: destination) } label: {
+                    Label {
+                        VStack(alignment: .leading) {
+                            Text(destination.name)
+                            Text(destination.bucket).font(.subheadline).foregroundStyle(.secondary)
+                            Text(destination.region).font(.caption).foregroundStyle(.secondary)
+                        }
+                    } icon: { Image(systemName: "externaldrive.connected.to.line.below") }
+                }
+                .swipeActions(allowsFullSwipe: false) {
                     if manager.permissions.has("s3-destinations:delete", in: nil) {
-                        Button("Delete", role: .destructive) { deleteTarget = destination }
+                        Button("Delete", systemImage: "trash", role: .destructive) { deleteTarget = destination }
                     }
                 }
             }
-            if hasMore { Button("Load more") { Task { await load(more: true) } }.disabled(busy) }
+            if destinations.isEmpty && !busy && errorMessage == nil {
+                ContentUnavailableView("No S3 Destinations", systemImage: "externaldrive.connected.to.line.below")
+            }
+            PaginatedListFooter(
+                hasMore: hasMore, loadMoreError: loadMoreError,
+                onRetry: { Task { await load(more: true) } },
+                onLoadMore: { Task { await load(more: true) } }
+            ).id(destinations.count)
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("S3 Destinations")
+        .toolbar {
+            if manager.permissions.has("s3-destinations:create", in: nil) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Add S3 Destination", systemImage: "plus") { creating = true }.labelStyle(.iconOnly)
+                }
+            }
+        }
+        .sheet(isPresented: $creating, onDismiss: { Task { await load() } }) {
+            NavigationStack {
+                S3DestinationEditor()
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { creating = false } } }
+            }
+        }
         .modifier(BackupSessionScope())
         .task(id: manager.clientGeneration) { await load() }
         .refreshable { await load() }
@@ -35,12 +71,27 @@ struct S3DestinationsView: View {
     private func load(more: Bool = false) async {
         let scope = BackupRequestScope(manager)
         guard let client = manager.client else { return }
-        busy = true; defer { busy = false }; errorMessage = nil
-        if !more { destinations = [] }
+        let key = listIdentity
+        guard loadingIdentity != key else { return }
+        let request = UUID()
+        requestID = request
+        loadingIdentity = key
+        if loadedIdentity != key { destinations = []; hasMore = false; loadedIdentity = key }
+        busy = true; errorMessage = nil; loadMoreError = nil
+
+        defer { if requestID == request { busy = false; loadingIdentity = nil } }
         do {
-            let page = try await client.s3Destinations.list(query: .init(start: destinations.count, limit: 50))
-            try scope.check(manager); destinations += page.data; hasMore = destinations.count < page.pagination.totalItems
-        } catch is CancellationError {} catch { errorMessage = friendlyErrorMessage(error) }
+            let page = try await client.s3Destinations.list(query: .init(start: more ? destinations.count : 0, limit: 50))
+            try scope.check(manager)
+            guard key == listIdentity, requestID == request else { return }
+            if !more { destinations = [] }
+            destinations += page.data
+            hasMore = destinations.count < page.pagination.totalItems
+        } catch is CancellationError {} catch {
+            guard key == listIdentity, requestID == request else { return }
+            if more { loadMoreError = friendlyErrorMessage(error) }
+            else { errorMessage = friendlyErrorMessage(error) }
+        }
     }
     private func delete(_ destination: S3Destination) async {
         let scope = BackupRequestScope(manager)
@@ -82,17 +133,17 @@ struct S3DestinationEditor: View {
         Form {
             if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
             Section("Destination") {
-                TextField("Name", text: $name)
-                TextField("Endpoint", text: $endpoint)
-                TextField("Bucket", text: $bucket)
-                TextField("Region", text: $region)
-                TextField("Prefix", text: $prefix)
+                FormTextField(title: "Name", placeholder: "", text: $name, autocapitalization: .never, autocorrectionDisabled: true)
+                FormTextField(title: "Endpoint", placeholder: "", text: $endpoint, keyboardType: .URL, autocapitalization: .never, autocorrectionDisabled: true)
+                FormTextField(title: "Bucket", placeholder: "", text: $bucket, autocapitalization: .never, autocorrectionDisabled: true)
+                FormTextField(title: "Region", placeholder: "", text: $region, autocapitalization: .never, autocorrectionDisabled: true)
+                FormTextField(title: "Prefix", placeholder: "", text: $prefix, autocapitalization: .never, autocorrectionDisabled: true, layout: .stacked)
                 Toggle("Use SSL", isOn: $useSSL)
                 Toggle("Force path style", isOn: $forcePathStyle)
             }
             Section {
-                TextField("Access key ID", text: $accessKeyID).privacySensitive()
-                SecureField("Secret access key", text: $secret).privacySensitive()
+                FormTextField(title: "Access key ID", placeholder: "", text: $accessKeyID, autocapitalization: .never, autocorrectionDisabled: true).privacySensitive()
+                FormSecureField(title: "Secret access key", placeholder: "", text: $secret).privacySensitive()
             } footer: { if destination != nil { Text("Leave the secret empty to keep the stored credential.") } }
             if manager.permissions.has("s3-destinations:test", in: nil) { Button("Test connection") { Task { await test() } }.disabled(!valid) }
         }
@@ -100,7 +151,13 @@ struct S3DestinationEditor: View {
         .navigationTitle(destination?.name ?? "S3 Destination")
         .modifier(BackupSessionScope())
         .disabled(busy)
-        .toolbar { if canSave { Button("Save") { Task { await save() } }.disabled(!valid || busy) } }
+        .toolbar {
+            if canSave {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(destination == nil ? "Create" : "Save") { Task { await save() } }.disabled(!valid || busy)
+                }
+            }
+        }
         .onAppear {
             if let d = destination {
                 name = d.name; endpoint = d.endpoint ?? ""; bucket = d.bucket; region = d.region
