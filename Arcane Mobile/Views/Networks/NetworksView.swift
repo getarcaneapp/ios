@@ -777,6 +777,9 @@ struct CreateNetworkView: View {
     @State private var name = ""
     @State private var driver = "bridge"
     @State private var isInternal = false
+    @State private var subnet = ""
+    @State private var gateway = ""
+    @State private var ipRange = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
 
@@ -805,6 +808,30 @@ struct CreateNetworkView: View {
                     }
                     Toggle("Internal", isOn: $isInternal)
                 }
+                Section("IPAM (Optional)") {
+                    FormTextField(
+                        title: "Subnet",
+                        placeholder: "10.0.0.0/24",
+                        text: $subnet,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true
+                    )
+                    FormTextField(
+                        title: "Gateway",
+                        placeholder: "10.0.0.1",
+                        text: $gateway,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true
+                    )
+                    FormTextField(
+                        title: "IP Range",
+                        placeholder: "10.0.0.128/25",
+                        text: $ipRange,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true,
+                        helper: "Optional sub-range carved from the subnet."
+                    )
+                }
                 Section {} footer: {
                     Text(isInternal ? "Internal networks block external connectivity for attached containers." : "Bridge is the standard single-host Docker network driver.")
                 }
@@ -829,11 +856,21 @@ struct CreateNetworkView: View {
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do {
-            let body: [String: AnyCodable] = [
+            var body: [String: AnyCodable] = [
                 "name": AnyCodable(name),
                 "driver": AnyCodable(driver),
                 "internal": AnyCodable(isInternal)
             ]
+            let trimmedSubnet = subnet.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedGateway = gateway.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedRange = ipRange.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedSubnet.isEmpty || !trimmedGateway.isEmpty || !trimmedRange.isEmpty {
+                var config: [String: AnyCodable] = [:]
+                if !trimmedSubnet.isEmpty { config["subnet"] = AnyCodable(trimmedSubnet) }
+                if !trimmedGateway.isEmpty { config["gateway"] = AnyCodable(trimmedGateway) }
+                if !trimmedRange.isEmpty { config["ipRange"] = AnyCodable(trimmedRange) }
+                body["ipam"] = AnyCodable(["config": AnyCodable([AnyCodable(config)])])
+            }
             let path = client.rest.environmentPath(environmentID, "networks")
             let _: NetworkSummary = try await client.rest.post(path, body: body)
             if let cached = manager.cached {

@@ -44,8 +44,12 @@ extension DeployActivityAttributes {
         case "pull": "Pull Images"
         case "build": "Build Images"
         case "imagePull": "Pull"
-        case "containerUpdate": "Update"
-        default: "Redeploy"
+        case "containerUpdate", "auto_update": "Update"
+        case "containerRedeploy": "Redeploy"
+        case "system_prune": "Prune"
+        case "vulnerability_scan": "Scan"
+        case "job_run": "Job"
+        default: "Activity"
         }
     }
 
@@ -54,8 +58,12 @@ extension DeployActivityAttributes {
         case "up": "shippingbox.fill"
         case "pull", "imagePull": "arrow.down"
         case "build": "hammer.fill"
-        case "containerUpdate": "arrow.up.circle.fill"
-        default: "arrow.triangle.2.circlepath"
+        case "containerUpdate", "auto_update": "arrow.up.circle.fill"
+        case "containerRedeploy": "arrow.triangle.2.circlepath"
+        case "system_prune": "trash"
+        case "vulnerability_scan": "shield.fill"
+        case "job_run": "clock.badge"
+        default: "gearshape.fill"
         }
     }
 

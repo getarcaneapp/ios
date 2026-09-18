@@ -7,8 +7,6 @@ struct SettingsView: View {
     @State private var loadingVolumeSize = false
     @State private var navPath = NavigationPath()
     var excludedTabs: Set<AppTab> = []
-    var showsSidebarButton = false
-    var onOpenSidebar: () -> Void = {}
     var onNavigationRootChange: (Bool) -> Void = { _ in }
 
     var body: some View {
@@ -96,7 +94,6 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .sidebarNavigationToolbar(isVisible: showsSidebarButton && navPath.isEmpty, action: onOpenSidebar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink {

@@ -51,7 +51,63 @@ final class DeployLiveActivityController {
             actionKind: operation.kind.rawValue,
             environmentName: operation.environmentName
         )
-        let initialState = Self.contentState(for: operation)
+        begin(attributes: attributes, initialState: Self.contentState(for: operation))
+    }
+
+    /// Non-nil while a Live Activity pump is alive.
+    var hasActiveActivity: Bool { commands != nil }
+
+    /// Starts a Live Activity for server-observed work (automated/system
+    /// activities surfaced by the activity monitor). Returns false when Live
+    /// Activities are disabled.
+    @discardableResult
+    func startServerActivity(
+        targetName: String,
+        actionKind: String,
+        environmentName: String,
+        phase: String,
+        progress: Double?,
+        detail: String?
+    ) -> Bool {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return false }
+        endCurrent()
+
+        let attributes = DeployActivityAttributes(
+            targetName: targetName,
+            actionKind: actionKind,
+            environmentName: environmentName
+        )
+        begin(
+            attributes: attributes,
+            initialState: .init(phase: phase, progress: progress, state: .running, detail: detail)
+        )
+        return true
+    }
+
+    /// Progress update for a server-observed Live Activity.
+    func updateServerActivity(phase: String, progress: Double?, detail: String?) {
+        deliver(.init(phase: phase, progress: progress, state: .running, detail: detail),
+                immediate: false)
+    }
+
+    /// Terminal update for a server-observed Live Activity.
+    func endServerActivity(success: Bool, phase: String) {
+        guard commands != nil else { return }
+        cancelPendingFlush()
+        let state = DeployActivityAttributes.ContentState(
+            phase: phase,
+            progress: success ? 1 : nil,
+            state: success ? .success : .failure,
+            detail: nil
+        )
+        commands?.yield(.end(state, linger: success ? 4 : 8))
+        finishPump()
+    }
+
+    private func begin(
+        attributes: DeployActivityAttributes,
+        initialState: DeployActivityAttributes.ContentState
+    ) {
         let (stream, continuation) = AsyncStream.makeStream(of: Command.self)
         commands = continuation
         lastFlush = .now
@@ -83,8 +139,14 @@ final class DeployLiveActivityController {
     }
 
     func update(for operation: DeploymentOperation, immediate: Bool) {
+        deliver(Self.contentState(for: operation), immediate: immediate)
+    }
+
+    private func deliver(
+        _ state: DeployActivityAttributes.ContentState,
+        immediate: Bool
+    ) {
         guard commands != nil else { return }
-        let state = Self.contentState(for: operation)
         if immediate || Date.now.timeIntervalSince(lastFlush) >= Self.minUpdateInterval {
             flush(state)
         } else {

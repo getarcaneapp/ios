@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Arcane
 
 struct ContainerDetailView: View {
@@ -26,6 +27,13 @@ struct ContainerDetailView: View {
     @State private var showInspect = false
     @State private var runningActionID: String?
     @State private var selectedTab: DetailTab = .overview
+    @State private var logDownload: LogDownloadFile?
+    @State private var isDownloadingLogs = false
+
+    private struct LogDownloadFile: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
 
     private enum DetailTab: String, CaseIterable, Identifiable {
         case overview, stats, logs
@@ -170,6 +178,9 @@ struct ContainerDetailView: View {
             RenameContainerSheet(currentName: displayedName) { newName in
                 await renameContainer(newName: newName)
             }
+        }
+        .sheet(item: $logDownload) { file in
+            LogDownloadShareSheet(url: file.url)
         }
         .alert(
             "Error",
@@ -329,6 +340,9 @@ struct ContainerDetailView: View {
         var items: [ActionButtonItem] = [
             ActionButtonItem(id: "inspect", title: "Inspect", systemImage: "doc.text.magnifyingglass", tint: .accentColor) {
                 showInspect = true
+            },
+            ActionButtonItem(id: "download-logs", title: "Download Logs", systemImage: "square.and.arrow.down", tint: .accentColor) {
+                Task { await downloadLogs() }
             }
         ]
         if manager.serverCapabilities?.mode == .rbac {
@@ -572,6 +586,20 @@ struct ContainerDetailView: View {
         }
     }
 
+    private func downloadLogs() async {
+        guard let client = manager.client else { return }
+        isDownloadingLogs = true
+        defer { isDownloadingLogs = false }
+        do {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("container-\(String(container.id.prefix(12)))-logs.log")
+            try await client.containers.downloadLogs(envID: environmentID, id: container.id, to: url)
+            logDownload = LogDownloadFile(url: url)
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
     private func renameContainer(newName: String) async -> Result<Void, Error> {
         guard let client = manager.client else {
             return .failure(ArcaneError.transport("No client"))
@@ -802,4 +830,14 @@ private extension String {
     var formattedDate: String {
         ArcaneDateFormatting.formattedISO8601(self, date: .abbreviated, time: .shortened)
     }
+}
+
+private struct LogDownloadShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

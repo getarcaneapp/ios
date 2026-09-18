@@ -171,21 +171,41 @@ final class PushNotificationCoordinator {
             var creds = try await ensureInstallation(relayURL: status.relayUrl, deviceToken: token)
 
             let pairing = try await client.mobilePush.pairingToken()
-            let paired: PairResponse = try await relayRequest(
+            var paired: PairResponse = try await relayRequest(
                 creds, "POST", "/v1/pair",
                 body: ["pairingToken": pairing.token],
                 authorized: true
             )
-            let device = try await client.mobilePush.registerDevice(
-                MobilePushRegisterDevice(recipientId: paired.recipientId, label: UIDevice.current.name)
-            )
-            creds.bindings[origin] = ServerBinding(recipientId: paired.recipientId, channelId: paired.channelId, deviceId: device.id)
+            let device: MobilePushDevice
+            do {
+                device = try await client.mobilePush.registerDevice(
+                    MobilePushRegisterDevice(recipientId: paired.recipientId, label: UIDevice.current.name)
+                )
+            } catch let arcane as ArcaneError {
+                // Stale relay pairing owned by another user (e.g. account
+                // switch on a shared device). Unpair it, pair fresh, retry once.
+                guard case .conflict = arcane else { throw arcane }
+                _ = try? await relayRequestVoid(
+                    creds, "POST", "/v1/unpair", body: ["recipientId": paired.recipientId])
+                // Pairing tokens are single-use — fetch a fresh one.
+                let retryPairing = try await client.mobilePush.pairingToken()
+                paired = try await relayRequest(
+                    creds, "POST", "/v1/pair",
+                    body: ["pairingToken": retryPairing.token],
+                    authorized: true
+                )
+                device = try await client.mobilePush.registerDevice(
+                    MobilePushRegisterDevice(recipientId: paired.recipientId, label: UIDevice.current.name)
+                )
+            }
+            creds.bindings[origin] = ServerBinding(
+                recipientId: paired.recipientId, channelId: paired.channelId, deviceId: device.id)
             credentials = creds
             persist()
             serverStatus = try? await client.mobilePush.status()
             showToast(.success("Push notifications enabled"))
         } catch {
-            let message = (error as? ArcaneError).map { "Arcane: \($0)" } ?? error.localizedDescription
+            let message = friendlyErrorMessage(error)
             errorMessage = message
             showToast(.error(message))
         }

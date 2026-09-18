@@ -5,18 +5,14 @@ import Arcane
 
 struct MainTabView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @SwiftUI.Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedTab: String = AppTab.dashboard.id
     @State private var swapTarget: AppTab? = nil
-    @State private var isSidebarPresented = false
-    @State private var sidebarResetToken = 0
     @State private var store = NavTabsStore.shared
     @State private var router = QuickActionRouter.shared
     @State private var morphStore = TabBarMorphStore.shared
     @State private var fleetStore = FleetStore()
     @State private var bottomBarScrollStore = BottomBarScrollStore()
     @AppStorage("accentColorHex") private var accentColorHex = ""
-    @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
     @AppStorage(TabIndicatorMotion.storageKey) private var tabIndicatorMotion: TabIndicatorMotion = .straight
 
     init() {
@@ -54,22 +50,8 @@ struct MainTabView: View {
         store.visibleTabs(availableTabs: availableTabSet)
     }
 
-    /// Sidebar mode is not constrained by dock eligibility: every standalone
-    /// destination the current user and backend can access is available as a
-    /// top-level row. Nested destinations remain reachable from their parent.
-    private var sidebarTabs: [AppTab] {
-        availableTabs
-    }
-
     private var allowedDestinationIDs: [String] {
-        if sidebarNavigationEnabled {
-            return sidebarTabs.map(\.id) + [
-                SidebarUtilityDestination.profile.rawValue,
-                SidebarUtilityDestination.appSettings.rawValue
-            ]
-        }
-
-        return visibleTabs.map(\.id) + [AppTab.settings.id]
+        visibleTabs.map(\.id) + [AppTab.settings.id]
     }
 
     /// Tabs for the morphing bar: the visible set plus the locked Settings slot.
@@ -91,29 +73,14 @@ struct MainTabView: View {
         ]
     }
 
-    private var sidebarDestinationIdentity: String {
-        let environmentSuffix: String
-        if let tab = AppTab(rawValue: selectedTab), tab.isEnvironmentScoped {
-            environmentSuffix = manager.activeEnvironmentID.rawValue
-        } else {
-            environmentSuffix = "global"
-        }
-        return "\(selectedTab)#\(sidebarResetToken)#\(environmentSuffix)"
-    }
-
     private var dockContentClearance: CGFloat {
-        guard !sidebarNavigationEnabled else { return 0 }
         return morphStore.isMorphed
             ? FloatingBottomBarMetrics.detailContentClearance
             : FloatingBottomBarMetrics.rootContentClearance
     }
 
-    private var isBottomBarCompact: Bool {
-        !sidebarNavigationEnabled
-            && !morphStore.isMorphed
-            && swapTarget == nil
-            && bottomBarScrollStore.isCompact
-    }
+    /// Scroll-driven compacting was removed — the bar stays expanded.
+    private var isBottomBarCompact: Bool { false }
 
     @ViewBuilder
     private var coreTabView: some View {
@@ -206,11 +173,7 @@ struct MainTabView: View {
 
     @ViewBuilder
     private var navigationContent: some View {
-        if sidebarNavigationEnabled {
-            sidebarModeView
-        } else {
-            dockModeView
-        }
+        dockModeView
     }
 
     private var dockModeView: some View {
@@ -218,49 +181,6 @@ struct MainTabView: View {
             .overlay(alignment: .bottom) {
                 bottomBarOverlay
             }
-    }
-
-    @ViewBuilder
-    private var sidebarModeView: some View {
-        if horizontalSizeClass == .regular {
-            NavigationSplitView {
-                appSidebar
-            } detail: {
-                sidebarDestination
-            }
-        } else {
-            sidebarDestination
-                .sheet(isPresented: $isSidebarPresented) {
-                    NavigationStack {
-                        appSidebar
-                            .toolbar {
-                                ToolbarItem(placement: .cancellationAction) {
-                                    Button("Done") { isSidebarPresented = false }
-                                }
-                            }
-                    }
-                }
-        }
-    }
-
-    private var appSidebar: some View {
-        AppSidebar(
-            tabs: sidebarTabs,
-            selectedID: selectedTab,
-            onSelect: navigateToSidebarDestination
-        )
-    }
-
-    private var sidebarDestination: some View {
-        SidebarDestinationContainer(
-            selectedID: $selectedTab,
-            manager: manager,
-            morphStore: morphStore,
-            accentColor: accentColor,
-            showsMenuButton: horizontalSizeClass != .regular,
-            openSidebar: { isSidebarPresented = true }
-        )
-        .id(sidebarDestinationIdentity)
     }
 
     var body: some View {
@@ -303,18 +223,13 @@ struct MainTabView: View {
             // SwiftUI syncs its bindings the same way it does for the
             // interactive swipe-back.
             .onChange(of: morphStore.popToRootToken) { _, _ in
-                guard !sidebarNavigationEnabled else { return }
                 guard let tabID = morphStore.popToRootTabID, tabID == selectedTab || tabID == "settings" else { return }
                 bottomBarScrollStore.reset()
                 popVisibleNavigationStacksToRoot()
                 morphStore.clearTab(tabID)
             }
-            .onChange(of: selectedTab) { oldValue, newValue in
+            .onChange(of: selectedTab) { _, newValue in
                 bottomBarScrollStore.reset()
-                if sidebarNavigationEnabled {
-                    morphStore.clearTab(oldValue)
-                    isSidebarPresented = false
-                }
                 morphStore.activeTabID = newValue
                 UserDefaults.standard.set(newValue, forKey: "arcane.lastSelectedTabID")
             }
@@ -331,21 +246,6 @@ struct MainTabView: View {
             .onChange(of: allowedDestinationIDs) { _, _ in
                 ensureSelectedTabVisible()
             }
-            .onChange(of: horizontalSizeClass) { _, _ in
-                isSidebarPresented = false
-            }
-            .onChange(of: sidebarNavigationEnabled) { _, _ in
-                bottomBarScrollStore.reset()
-                swapTarget = nil
-                isSidebarPresented = false
-                sidebarResetToken &+= 1
-                morphStore.clearTab(selectedTab)
-                if sidebarNavigationEnabled {
-                    clearDockSafeAreaInset()
-                }
-                ensureSelectedTabVisible()
-                morphStore.activeTabID = selectedTab
-            }
             .onAppear {
                 bottomBarScrollStore.reset()
                 if let target = router.pendingTabID {
@@ -354,9 +254,6 @@ struct MainTabView: View {
                 }
                 ensureSelectedTabVisible()
                 morphStore.activeTabID = selectedTab
-                if sidebarNavigationEnabled {
-                    clearDockSafeAreaInset()
-                }
             }
 
     }
@@ -387,35 +284,16 @@ struct MainTabView: View {
         performSwap(current: current, replacement: replacement)
     }
 
-    private func navigateToSidebarDestination(_ destinationID: String) {
-        morphStore.clearTab(selectedTab)
-        sidebarResetToken &+= 1
-        isSidebarPresented = false
-        selectedTab = destinationID
-        ensureSelectedTabVisible()
-    }
-
     private func routeToDestination(_ destinationID: String) {
-        if sidebarNavigationEnabled {
-            morphStore.clearTab(selectedTab)
-            sidebarResetToken &+= 1
-            isSidebarPresented = false
-        }
         selectedTab = destinationID
         ensureSelectedTabVisible()
-    }
-
-    private func clearDockSafeAreaInset() {
-        let windows = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-        for window in windows {
-            findTabBarController(window.rootViewController)?.additionalSafeAreaInsets.bottom = 0
-        }
     }
 
     private func ensureSelectedTabVisible() {
-        selectedTab = SidebarNavigation.validSelection(selectedTab, allowedIDs: allowedDestinationIDs)
+        let allowedIDs = allowedDestinationIDs
+        if !allowedIDs.contains(selectedTab) {
+            selectedTab = allowedIDs.first ?? AppTab.settings.id
+        }
     }
 }
 
@@ -518,120 +396,6 @@ private struct TabNavigationContainer<Content: View>: View {
         .onChange(of: morphStore.popToRootToken) { _, _ in
             if morphStore.popToRootTabID == tabID, !path.isEmpty {
                 path = NavigationPath()
-            }
-        }
-    }
-}
-
-// MARK: - Sidebar destination container
-
-/// Hosts one selected sidebar destination. Unlike dock mode, only the active
-/// destination exists, so changing (or reselecting) a sidebar row naturally
-/// returns to that page's root without retaining dozens of hidden stacks.
-private struct SidebarDestinationContainer: View {
-    @Binding var selectedID: String
-    let manager: ArcaneClientManager
-    let morphStore: TabBarMorphStore
-    let accentColor: Color
-    let showsMenuButton: Bool
-    let openSidebar: () -> Void
-
-    @State private var path = NavigationPath()
-
-    private var selectedTab: AppTab? {
-        AppTab(rawValue: selectedID)
-    }
-
-    private var showsBottomActions: Bool {
-        morphStore.isMorphed || !morphStore.activeRootActions.isEmpty
-    }
-
-    private var showsRootBottomActions: Bool {
-        !morphStore.isMorphed && !morphStore.activeRootActions.isEmpty
-    }
-
-    var body: some View {
-        GeometryReader { proxy in
-            destination
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .environment(\.currentTabID, selectedID)
-                .environment(
-                    \.sidebarDetailBottomInset,
-                    max(0, FloatingBottomBarMetrics.detailContentClearance - proxy.safeAreaInsets.bottom)
-                )
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if showsRootBottomActions {
-                        Color.clear
-                            .frame(
-                                height: max(
-                                    0,
-                                    FloatingBottomBarMetrics.rootContentClearance - proxy.safeAreaInsets.bottom
-                                )
-                            )
-                            .accessibilityHidden(true)
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    if showsBottomActions {
-                        MorphingTabBar(
-                            tabs: [],
-                            selectedID: $selectedID,
-                            store: morphStore,
-                            onLongPressTab: { _ in },
-                            accentColor: accentColor,
-                            showsNavigationTabs: false
-                        )
-                        .padding(.bottom, 18)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                        .ignoresSafeArea()
-                    }
-                }
-        }
-    }
-
-    @ViewBuilder
-    private var destination: some View {
-        if selectedID == SidebarUtilityDestination.profile.rawValue {
-            NavigationStack(path: $path) {
-                ProfileView()
-                    .sidebarNavigationToolbar(isVisible: showsMenuButton && path.isEmpty, action: openSidebar)
-            }
-            .onChange(of: path.isEmpty, initial: true) { _, isRoot in
-                if isRoot { morphStore.clearTab(selectedID) }
-            }
-        } else if selectedID == SidebarUtilityDestination.appSettings.rawValue {
-            NavigationStack(path: $path) {
-                AppSettingsView()
-                    .sidebarNavigationToolbar(isVisible: showsMenuButton && path.isEmpty, action: openSidebar)
-            }
-            .onChange(of: path.isEmpty, initial: true) { _, isRoot in
-                if isRoot { morphStore.clearTab(selectedID) }
-            }
-        } else if selectedID == AppTab.settings.id {
-            SettingsView(
-                showsSidebarButton: showsMenuButton,
-                onOpenSidebar: openSidebar
-            )
-        } else if selectedTab == .dashboard {
-            // Dashboard owns its NavigationStack and mounts the combined
-            // menu-first toolbar directly on its root content.
-            DashboardView(
-                selectedTab: $selectedID,
-                showsSidebarButton: showsMenuButton,
-                onOpenSidebar: openSidebar
-            )
-        } else if let selectedTab {
-            NavigationStack(path: $path) {
-                appTabDestination(selectedTab, manager: manager, selectedTab: $selectedID)
-                    .sidebarNavigationToolbar(isVisible: showsMenuButton && path.isEmpty, action: openSidebar)
-            }
-            .onChange(of: path.isEmpty, initial: true) { _, isRoot in
-                if isRoot { morphStore.clearTab(selectedID) }
-            }
-        } else {
-            NavigationStack {
-                ContentUnavailableView("Page Unavailable", systemImage: "sidebar.left")
-                    .sidebarNavigationToolbar(isVisible: showsMenuButton, action: openSidebar)
             }
         }
     }

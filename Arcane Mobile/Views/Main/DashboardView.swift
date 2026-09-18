@@ -111,8 +111,6 @@ struct DashboardView: View {
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selectedTab: String
-    var showsSidebarButton = false
-    var onOpenSidebar: () -> Void = {}
     var onNavigationRootChange: (Bool) -> Void = { _ in }
 
     @State private var allEnvironments: [Arcane.Environment] = []
@@ -138,6 +136,7 @@ struct DashboardView: View {
     @State private var showAttentionSummary = false
     /// Full Attention Center sheet.
     @State private var showAttentionCenter = false
+    @State private var pendingAttentionAction: (() -> Void)?
     @State private var quickActionRouter = QuickActionRouter.shared
     /// Guards the scenePhase handler — hidden tab pages also receive scene
     /// phase changes and must not start their own stream.
@@ -244,16 +243,6 @@ struct DashboardView: View {
             .navigationBarTitleDisplayMode(.large)
             .modifier(DashboardDateSubtitle())
             .toolbar {
-                if showsSidebarButton, isNavigationRoot {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button(action: onOpenSidebar) {
-                            Image(systemName: "line.3.horizontal")
-                                .appAccentToolbarSymbol()
-                        }
-                        .accessibilityLabel("Open navigation")
-                    }
-                }
-
                 // Needs Attention lives in the toolbar: the button expands into
                 // a compact summary popover, which opens the full Attention
                 // Center sheet.
@@ -262,17 +251,16 @@ struct DashboardView: View {
                         AttentionToolbarButton(
                             items: needsAttentionItems,
                             isPresented: $showAttentionSummary,
-                            onSelect: { item in performAttentionAction(item.action) },
-                            onOpenCenter: { performAttentionAction { showAttentionCenter = true } }
+                            onSelect: { item in performAttentionAction(item.action, presentsSheet: item.presentsSheet) },
+                            onOpenCenter: { performAttentionAction({ showAttentionCenter = true }, presentsSheet: true) }
                         )
                     }
                 }
 
 
-                // Tab-bar mode has no sidebar hosting the Activity Center, so
-                // the dashboard toolbar is its standing entry point. Sidebar
-                // mode already exposes it next to the sidebar wordmark.
-                if !showsSidebarButton, isNavigationRoot, manager.supportsActivities {
+                // The dashboard toolbar is the standing entry point for the
+                // Activity Center.
+                if isNavigationRoot, manager.supportsActivities {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         DashboardActivityToolbarButton {
                             quickActionRouter.openActivityCenter()
@@ -282,7 +270,7 @@ struct DashboardView: View {
 
                 // Keep Activity Center and Prune as two separate glass
                 // buttons instead of one shared pill.
-                if #available(iOS 26, *), !showsSidebarButton, isNavigationRoot, manager.supportsActivities, canPrune {
+                if #available(iOS 26, *), isNavigationRoot, manager.supportsActivities, canPrune {
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
 
@@ -296,9 +284,12 @@ struct DashboardView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showAttentionCenter) {
+            .sheet(isPresented: $showAttentionCenter, onDismiss: {
+                pendingAttentionAction?()
+                pendingAttentionAction = nil
+            }) {
                 AttentionCenterView(items: needsAttentionItems) { item in
-                    performAttentionAction(item.action)
+                    performAttentionAction(item.action, presentsSheet: item.presentsSheet)
                 }
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
@@ -489,13 +480,21 @@ struct DashboardView: View {
     }
 
     /// Dismisses the summary popover / center before running an item action.
-    /// Presenting a sheet or pushing a route while another presentation is
-    /// still animating out gets dropped by UIKit, hence the short wait.
-    private func performAttentionAction(_ action: @escaping () -> Void) {
+    /// Pushes and tab switches run immediately; sheet presentations chain
+    /// through dismissal (the center sheet's `onDismiss`, or a short settle
+    /// for the popover) because presenting mid-dismiss gets dropped by UIKit.
+    private func performAttentionAction(_ action: @escaping () -> Void, presentsSheet: Bool = false) {
         showAttentionSummary = false
-        showAttentionCenter = false
-        Task {
-            try? await Task.sleep(for: .milliseconds(400))
+        if showAttentionCenter {
+            pendingAttentionAction = action
+            showAttentionCenter = false
+        } else if presentsSheet {
+            Task {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                action()
+            }
+        } else {
             action()
         }
     }
@@ -762,7 +761,8 @@ struct DashboardView: View {
                 icon: "arrow.triangle.2.circlepath",
                 title: "Image updates available",
                 count: imageUpdates,
-                action: { showImageUpdates = true }
+                action: { showImageUpdates = true },
+                presentsSheet: true
             ))
         }
         if expiringKeys > 0 {
@@ -784,7 +784,8 @@ struct DashboardView: View {
                 icon: "exclamationmark.triangle.fill",
                 title: "Failed activities",
                 count: failedActivities.count,
-                action: { quickActionRouter.openActivityCenter() }
+                action: { quickActionRouter.openActivityCenter() },
+                presentsSheet: true
             ))
         }
         return items

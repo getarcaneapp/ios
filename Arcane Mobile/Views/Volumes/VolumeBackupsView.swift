@@ -22,9 +22,56 @@ struct VolumeBackupsView: View {
     @State private var restoreTarget: BackupEntry?
     @State private var deleteTarget: BackupEntry?
     @State private var downloadURL: URL?
+    @State private var discoverID = ""
+    @State private var isDiscovering = false
 
     private var canBackup: Bool { manager.permissions.has("volumes:backup", in: environmentID) }
     private var canUpload: Bool { manager.permissions.has("volumes:upload", in: environmentID) }
+
+    @ViewBuilder
+    private var discoverSection: some View {
+        Section {
+            Picker("Destination", selection: $discoverID) {
+                Text("Select").tag("")
+                ForEach(destinations) { destination in
+                    Text(destination.name).tag(destination.id)
+                }
+            }
+            Button("Discover backups") { Task { await discover() } }
+                .disabled(discoverID.isEmpty || isDiscovering)
+        } header: {
+            Text("Discover S3")
+        } footer: {
+            Text("Import existing volume backups stored on the destination by this or other instances.")
+        }
+    }
+
+    @ViewBuilder
+    private func backupRow(_ backup: BackupEntry) -> some View {
+        Section {
+            LabeledContent(backup.createdAt, value: ByteCountFormatter.string(fromByteCount: backup.size, countStyle: .file))
+            if let status = backup.status { LabeledContent("Status", value: status) }
+            if let destination = backup.destination { LabeledContent("Storage", value: destination) }
+            if let name = backup.s3DestinationName { LabeledContent("S3 destination", value: name) }
+            if let instance = backup.remoteInstanceId, !instance.isEmpty { LabeledContent("Remote instance", value: instance) }
+            if let error = backup.error { Text(error).foregroundStyle(.red) }
+            if backup.status == nil || backup.status == "succeeded" {
+                NavigationLink("Browse files") {
+                    BackupFilesView(backupID: backup.id, environmentID: environmentID, volumeName: volumeName, canRestore: canBackup)
+                }
+                Button("Download archive") { Task { await download(backup) } }
+                if canBackup {
+                    Button("Restore volume", role: .destructive) { restoreTarget = backup }
+                    Menu("Upload to S3") {
+                        ForEach(destinations) { destination in
+                            Button(destination.name) { Task { await upload(backup, to: destination.id) } }
+                        }
+                    }.disabled(destinations.isEmpty)
+                }
+            }
+            if canBackup { Button("Delete backup", role: .destructive) { deleteTarget = backup } }
+        }
+    }
 
     var body: some View {
         List {
@@ -36,31 +83,11 @@ struct VolumeBackupsView: View {
                     if supportsPolicies { NavigationLink("Backup policies") { BackupPolicyEditor(environmentID: environmentID, volumeName: volumeName) } }
                     if canUpload { Button("Import and restore archive") { showImport = true } }
                 }
+                if !destinations.isEmpty { discoverSection }
             }
             if let downloadURL { ShareLink("Share downloaded backup", item: downloadURL) }
             ForEach(backups) { backup in
-                Section {
-                    LabeledContent(backup.createdAt, value: ByteCountFormatter.string(fromByteCount: backup.size, countStyle: .file))
-                    if let status = backup.status { LabeledContent("Status", value: status) }
-                    if let destination = backup.destination { LabeledContent("Storage", value: destination) }
-                    if let name = backup.s3DestinationName { LabeledContent("S3 destination", value: name) }
-                    if let error = backup.error { Text(error).foregroundStyle(.red) }
-                    if backup.status == nil || backup.status == "succeeded" {
-                        NavigationLink("Browse files") {
-                            BackupFilesView(backupID: backup.id, environmentID: environmentID, volumeName: volumeName, canRestore: canBackup)
-                        }
-                        Button("Download archive") { Task { await download(backup) } }
-                        if canBackup {
-                            Button("Restore volume", role: .destructive) { restoreTarget = backup }
-                            Menu("Upload to S3") {
-                                ForEach(destinations) { destination in
-                                    Button(destination.name) { Task { await upload(backup, to: destination.id) } }
-                                }
-                            }.disabled(destinations.isEmpty)
-                        }
-                    }
-                    if canBackup { Button("Delete backup", role: .destructive) { deleteTarget = backup } }
-                }
+                backupRow(backup)
             }
             PaginatedListFooter(
                 hasMore: hasMore, loadMoreError: loadMoreError,
@@ -160,6 +187,22 @@ struct VolumeBackupsView: View {
         let scope = BackupRequestScope(manager)
         guard let client = manager.client, canBackup else { return }
         await perform { _ = try await client.volumes.uploadBackupToS3(envID: environmentID, backupID: backup.id, s3DestinationID: destinationID) }
+    }
+    private func discover() async {
+        guard let client = manager.client, canBackup, !discoverID.isEmpty else { return }
+        isDiscovering = true
+        defer { isDiscovering = false }
+        do {
+            let result = try await client.volumes.discoverBackups(envID: environmentID, s3DestinationId: discoverID)
+            if let errors = result.errors, !errors.isEmpty {
+                showToast(.error("Discovered \(result.count) with \(errors.count) errors"))
+            } else {
+                showToast(.success("Discovered \(result.count) backups"))
+            }
+            await load()
+        } catch {
+            showToast(.error(friendlyErrorMessage(error)))
+        }
     }
     private func download(_ backup: BackupEntry) async {
         let scope = BackupRequestScope(manager)

@@ -267,14 +267,12 @@ extension View {
 private struct ToastHost: View {
     @State private var presenter = ToastPresenter.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
     let reservesTabBarSpace: Bool
 
-    /// Sidebar navigation has no bottom bar, so its toast sits on the bottom safe
-    /// area. Root dock navigation adds its own clearance because that host lives
+    /// Root dock navigation adds its own clearance because that host lives
     /// above the `UITabBarController`; sheet-local hosts do not.
     private var barClearance: CGFloat {
-        guard reservesTabBarSpace, !sidebarNavigationEnabled else { return 0 }
+        guard reservesTabBarSpace else { return 0 }
         if #available(iOS 26, *) { return 60 }
         return 56
     }

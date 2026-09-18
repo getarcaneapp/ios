@@ -11,6 +11,9 @@ struct AllVulnerabilitiesView: View {
     @State private var imageOptions: [String] = []
     @State private var selectedSeverities: Set<VulnerabilitySeverity> = []
     @State private var selectedImage: String?
+    @State private var onlyFixAvailable = false
+    @State private var exportURL: URL?
+    @State private var isExporting = false
     @State private var page = 1
     @State private var hasMore = false
     @State private var isLoading = false
@@ -18,7 +21,7 @@ struct AllVulnerabilitiesView: View {
     @State private var errorMessage: String?
 
     private var filterCount: Int {
-        selectedSeverities.count + (selectedImage == nil ? 0 : 1)
+        selectedSeverities.count + (selectedImage == nil ? 0 : 1) + (onlyFixAvailable ? 1 : 0)
     }
 
     var body: some View {
@@ -27,6 +30,12 @@ struct AllVulnerabilitiesView: View {
                 summaryCard
             } header: {
                 Text("Environment Summary")
+            }
+
+            if let exportURL {
+                Section {
+                    ShareLink("Share exported CSV", item: exportURL)
+                }
             }
 
             if !items.isEmpty {
@@ -74,6 +83,16 @@ struct AllVulnerabilitiesView: View {
                         .appAccentToolbarSymbol()
                 }
                 .accessibilityLabel("Filter vulnerabilities")
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    Task { await exportCSV() }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .appAccentToolbarSymbol()
+                }
+                .accessibilityLabel("Export vulnerabilities as CSV")
+                .disabled(isExporting || items.isEmpty)
             }
         }
         .sheet(isPresented: $showFilterSheet) {
@@ -146,6 +165,9 @@ struct AllVulnerabilitiesView: View {
                         }
                     }
                 }
+                Section("Options") {
+                    Toggle("Only with fix available", isOn: $onlyFixAvailable)
+                }
             }
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
@@ -154,6 +176,7 @@ struct AllVulnerabilitiesView: View {
                     Button("Reset") {
                         selectedSeverities = []
                         selectedImage = nil
+                        onlyFixAvailable = false
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -179,9 +202,14 @@ struct AllVulnerabilitiesView: View {
     }
 
     private func loadInitial() async {
-        await loadSummary()
-        await loadImageOptions()
-        await reload()
+        // Summary, filter options, and findings are independent — fetch them
+        // together so the report paints after one round trip, not three.
+        async let summary: Void = loadSummary()
+        async let options: Void = loadImageOptions()
+        async let items: Void = reload()
+        await summary
+        await options
+        await items
     }
 
     private func reload() async {
@@ -230,6 +258,9 @@ struct AllVulnerabilitiesView: View {
             if let img = selectedImage {
                 query.append(URLQueryItem(name: "imageName", value: img))
             }
+            if onlyFixAvailable {
+                query.append(URLQueryItem(name: "fixAvailable", value: "true"))
+            }
             let newItems: [VulnerabilityWithImage] = try await client.rest.get(path, query: query)
             items = page == 1 ? newItems : items + newItems
             hasMore = newItems.count == 50
@@ -243,6 +274,28 @@ struct AllVulnerabilitiesView: View {
         page += 1
         await loadItems()
         if loadMoreError != nil { page -= 1 }
+    }
+
+    private func exportCSV() async {
+        guard let client = manager.client else { return }
+        isExporting = true
+        defer { isExporting = false }
+        do {
+            let data = try await client.vulnerabilities.exportAll(
+                envID: environmentID,
+                severity: selectedSeverities.isEmpty ? nil : selectedSeverities.map(\.rawValue).joined(separator: ","),
+                imageName: selectedImage,
+                fixAvailable: onlyFixAvailable ? true : nil
+            )
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vulnerabilities-\(environmentID.rawValue)-\(Int(Date().timeIntervalSince1970)).csv")
+            try data.write(to: url, options: .atomic)
+            if let old = exportURL { try? FileManager.default.removeItem(at: old) }
+            exportURL = url
+            showToast(.success("Vulnerabilities exported"))
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
     }
 }
 

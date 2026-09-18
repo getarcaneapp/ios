@@ -14,9 +14,12 @@ final class ActivityToastMonitor {
     private var rememberedActivityOrder: [String] = []
     private var notifiedActivityKeys: Set<String> = []
     private var initializedSnapshotEnvironmentIDs: Set<String> = []
+    private let liveActivity = DeployLiveActivityController()
+    private var liveActivityKey: String?
 
     func reset() {
         dismissTrackedToast()
+        endServerLiveActivity()
         transportIdentity = nil
         activeScope = nil
         clearTracking()
@@ -26,6 +29,7 @@ final class ActivityToastMonitor {
         let identity = ObjectIdentifier(client.transport)
         if transportIdentity != identity || activeScope != scope {
             dismissTrackedToast()
+            endServerLiveActivity()
             transportIdentity = identity
             activeScope = scope
             clearTracking()
@@ -102,8 +106,18 @@ final class ActivityToastMonitor {
             if firstUpdate {
                 guard scope.includes(activity) else { return }
                 notifiedActivityKeys.insert(key)
+                if scope == .all, !ActivityToastScope.userInitiated.includes(activity) {
+                    startServerLiveActivity(key: key, activity: activity, environmentID: environmentID)
+                }
             } else {
                 guard notifiedActivityKeys.contains(key) else { return }
+                if liveActivityKey == key {
+                    liveActivity.updateServerActivity(
+                        phase: livePhase(for: activity),
+                        progress: progress,
+                        detail: liveDetail(for: activity)
+                    )
+                }
             }
             showActivityToast(id: key, title: toastTitle(for: activity), progress: progress)
         case .success:
@@ -158,6 +172,13 @@ final class ActivityToastMonitor {
         state: ToastActivityState,
         progress: Double?
     ) {
+        if liveActivityKey == key {
+            liveActivityKey = nil
+            liveActivity.endServerActivity(
+                success: state == .success,
+                phase: livePhase(for: activity)
+            )
+        }
         guard notifiedActivityKeys.remove(key) != nil else { return }
         finishActivityToast(
             id: key,
@@ -165,6 +186,46 @@ final class ActivityToastMonitor {
             state: state,
             progress: progress
         )
+    }
+
+    // MARK: - Server Live Activities
+
+    /// Starts (latest-wins) a Live Activity for automated/system work observed
+    /// on the stream. User-started work is skipped: the deployment store owns
+    /// its Live Activity for operations this device initiated.
+    private func startServerLiveActivity(key: String, activity: Activity, environmentID: String) {
+        let started = liveActivity.startServerActivity(
+            targetName: serverTargetName(for: activity),
+            actionKind: activity.type.rawValue,
+            environmentName: activity.sourceEnvironmentName ?? environmentID,
+            phase: livePhase(for: activity),
+            progress: activity.progress.map { Double($0) / 100 },
+            detail: liveDetail(for: activity)
+        )
+        liveActivityKey = started ? key : nil
+    }
+
+    private func endServerLiveActivity() {
+        liveActivityKey = nil
+        liveActivity.endCurrent()
+    }
+
+    private func serverTargetName(for activity: Activity) -> String {
+        if let name = activity.resourceName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !name.isEmpty {
+            return name
+        }
+        return activity.type.displayName
+    }
+
+    private func livePhase(for activity: Activity) -> String {
+        let step = activity.step.trimmingCharacters(in: .whitespacesAndNewlines)
+        return step.isEmpty ? "Working" : step
+    }
+
+    private func liveDetail(for activity: Activity) -> String? {
+        let message = activity.latestMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        return message.isEmpty ? nil : String(message.prefix(60))
     }
 }
 

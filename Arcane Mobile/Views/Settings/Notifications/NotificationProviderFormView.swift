@@ -160,9 +160,12 @@ struct NotificationProviderFormView: View {
             valueRows(
                 "Chat IDs",
                 rows: $state.recipients,
-                placeholder: "-1001234567890",
+                placeholder: "-1001234567890[:topic]",
                 addTitle: "Add Chat ID"
             )
+            Text("Append :topicID to target a forum topic, e.g. -1001234567890:42.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .signal:
             Section("Signal Server") {
                 textField("Host", prompt: "Required", text: $state.host)

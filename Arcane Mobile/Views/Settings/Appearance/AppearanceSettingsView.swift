@@ -39,14 +39,27 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
         case .cyan: return "#32D2F0"
         }
     }
+
+    /// Pre-rendered dot for menu rows. Bitmap with always-original rendering
+    /// so menus keep the real color instead of tinting the glyph.
+    private static var dotImages: [String: UIImage] = [:]
+
+    var menuDot: UIImage {
+        if let cached = Self.dotImages[rawValue] { return cached }
+        let diameter: CGFloat = 15
+        let image = UIGraphicsImageRenderer(size: CGSize(width: diameter, height: diameter)).image { _ in
+            UIColor(color).setFill()
+            UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: diameter, height: diameter)).fill()
+        }.withRenderingMode(.alwaysOriginal)
+        Self.dotImages[rawValue] = image
+        return image
+    }
 }
 
 struct AppearanceSettingsView: View {
     @AppStorage("accentColorHex") private var accentColorHex = ""
-    @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
     @AppStorage("arcane.launchAnimationEnabled") private var launchAnimationEnabled = true
     @AppStorage(TabIndicatorMotion.storageKey) private var tabIndicatorMotion: TabIndicatorMotion = .straight
-    @State private var showAccentColorMenu = false
     @State private var showTabBarResetConfirm = false
     @State private var navTabsStore = NavTabsStore.shared
 
@@ -63,19 +76,40 @@ struct AppearanceSettingsView: View {
         selectedOption?.color ?? Color(hex: accentColorHex) ?? .blue
     }
 
+    /// Picker selection never stores empty: empty hex means the blue default.
+    private var accentPickerSelection: Binding<String> {
+        Binding(
+            get: { selectedOption?.hex ?? AccentColorOption.blue.hex },
+            set: { accentColorHex = $0 }
+        )
+    }
+
     var body: some View {
         Form {
             Section {
-                Button {
-                    showAccentColorMenu = true
-                } label: {
-                    HStack(spacing: 12) {
-                        SettingsRow(
-                            title: "Accent Color",
-                            systemImage: "paintpalette.fill",
-                            color: selectedAccentColor
-                        )
-                        Spacer()
+                HStack(spacing: 12) {
+                    SettingsRow(
+                        title: "Accent Color",
+                        systemImage: "paintpalette.fill",
+                        color: selectedAccentColor
+                    )
+                    Spacer()
+                    // The menu wraps only the trailing value so the popup
+                    // anchors to the trailing edge like a native select.
+                    Menu {
+                        Picker(selection: accentPickerSelection) {
+                            ForEach(AccentColorOption.allCases) { option in
+                                Label {
+                                    Text(option.displayName)
+                                } icon: {
+                                    Image(uiImage: option.menuDot)
+                                }
+                                .tag(option.hex)
+                            }
+                        } label: {
+                            EmptyView()
+                        }
+                    } label: {
                         HStack(spacing: 8) {
                             if let selectedOption {
                                 Circle()
@@ -90,17 +124,9 @@ struct AppearanceSettingsView: View {
                         }
                         .font(.subheadline)
                         .fixedSize()
-                        .popover(isPresented: $showAccentColorMenu, arrowEdge: .top) {
-                            AccentColorMenu(selection: selectedOption) { option in
-                                accentColorHex = option.hex
-                                showAccentColorMenu = false
-                            }
-                            .presentationCompactAdaptation(.popover)
-                        }
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
             } footer: {
                 Text("Choose a color to customize the app's appearance.")
             }
@@ -129,20 +155,6 @@ struct AppearanceSettingsView: View {
                 Text("Motion")
             } footer: {
                 Text("Controls the launch animation and how the dock indicator moves between tabs.")
-            }
-
-            Section {
-                Toggle(isOn: $sidebarNavigationEnabled) {
-                    SettingsRow(
-                        title: "Sidebar Navigation",
-                        systemImage: "sidebar.left",
-                        color: .indigo
-                    )
-                }
-            } header: {
-                Text("Navigation")
-            } footer: {
-                Text("Lists all available pages in a sidebar instead of the bottom dock.")
             }
 
             if UIApplication.shared.supportsAlternateIcons {
@@ -203,47 +215,5 @@ struct AppearanceSettingsView: View {
         ) {
             navTabsStore.resetToDefaults()
         }
-    }
-}
-
-private struct AccentColorMenu: View {
-    let selection: AccentColorOption?
-    let onSelect: (AccentColorOption) -> Void
-
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(AccentColorOption.allCases) { option in
-                    Button {
-                        onSelect(option)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Circle()
-                                .fill(option.color)
-                                .frame(width: 12, height: 12)
-                                .overlay {
-                                    Circle()
-                                        .strokeBorder(.primary.opacity(0.12), lineWidth: 0.5)
-                                }
-                            Text(option.displayName)
-                                .foregroundStyle(option.color)
-                            Spacer()
-                            if selection == option {
-                                Image(systemName: "checkmark")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(option.color)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .frame(height: 42)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selection == option ? .isSelected : [])
-                }
-            }
-        }
-        .scrollIndicators(.hidden)
-        .frame(width: 240, height: 478)
     }
 }

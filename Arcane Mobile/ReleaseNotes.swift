@@ -142,6 +142,33 @@ extension ReleaseNote {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.9.0",
+            new: [
+                .init("Bulk container updates from multi-select."),
+                .init("Container log downloads with share."),
+                .init("Vulnerability CSV export with fix-available filter."),
+                .init("Volume S3 backup discovery with remote instance badges."),
+                .init("Network creation with optional subnet, gateway, and IP range."),
+                .init("Telegram topic destinations with chat:topic syntax."),
+                .init("Hidden container visibility toggle with label filtering."),
+                .init("Live Activities for automated and system work when All Activities is selected."),
+                .init("Update option in the container long-press menu when an update is available.")
+            ],
+            changed: [
+                .init("Tab bar stays expanded while scrolling."),
+                .init("Removed sidebar navigation."),
+                .init("Accent color uses a native menu picker.")
+            ],
+            fixed: [
+                .init("Attention Center items open without delay."),
+                .init("Federated credentials empty state matches other lists."),
+                .init("Vulnerability report loads summary, filters, and findings together."),
+                .init("Accent menu shows each color correctly."),
+                .init("Push toggle recovers from already-registered devices."),
+                .init("Push errors show readable text.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.8.3",
             new: [
                 .init("Colored Compose tags with links beneath them in the project header."),

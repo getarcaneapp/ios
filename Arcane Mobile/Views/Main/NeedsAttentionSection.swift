@@ -31,6 +31,29 @@ struct NeedsAttentionItem: Identifiable {
     let title: String
     let count: Int
     let action: () -> Void
+    /// True when the action presents a sheet (needs the popover/sheet to
+    /// finish dismissing first). Pushes and tab switches run immediately.
+    let presentsSheet: Bool
+
+    init(
+        id: String,
+        detail: String,
+        severity: Severity,
+        icon: String,
+        title: String,
+        count: Int,
+        action: @escaping () -> Void,
+        presentsSheet: Bool = false
+    ) {
+        self.id = id
+        self.detail = detail
+        self.severity = severity
+        self.icon = icon
+        self.title = title
+        self.count = count
+        self.action = action
+        self.presentsSheet = presentsSheet
+    }
 }
 
 /// Top-left toolbar entry point. The badge carries the item count and the

@@ -24,6 +24,9 @@ struct ContainersView: View {
     @State private var showFilterSheet = false
     @State private var stateFilter = ContainerStateFilter.all
     @State private var updateFilter = ResourceUpdateFilter.all
+    @State private var showHidden = false
+    @State private var labelFilter = ""
+    @State private var debouncedLabelFilter = ""
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ContainerSummary>] = []
 
@@ -105,6 +108,8 @@ struct ContainersView: View {
     private var activeFilterCount: Int {
         var count = stateFilter != .all ? 1 : 0
         if updateFilter != .all { count += 1 }
+        if showHidden { count += 1 }
+        if !labelFilter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
         return count
     }
 
@@ -124,7 +129,8 @@ struct ContainersView: View {
                 || (stateFilter == .running && container.isRunning)
                 || (stateFilter == .stopped && !container.isRunning)
             let matchesUpdate = updateFilter.matches(hasUpdate: container.hasAvailableUpdate)
-            return matchesSearch && matchesState && matchesUpdate
+            let matchesHidden = showHidden || container.hidden != true
+            return matchesSearch && matchesState && matchesUpdate && matchesHidden
         }
         .sorted {
             sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
@@ -201,6 +207,12 @@ struct ContainersView: View {
     private var bulkOverflowItems: [ActionButtonItem] {
         guard !selectedContainerIDs.isEmpty else { return [] }
         var items: [ActionButtonItem] = []
+        let updatable = selectedContainers.filter(\.hasAvailableUpdate)
+        if !updatable.isEmpty {
+            items.append(ActionButtonItem(id: "bulk-update", title: "Update (\(updatable.count))", systemImage: "arrow.up.circle.fill", tint: .blue) {
+                startBulkUpdate(containers: updatable)
+            })
+        }
         if manager.serverCapabilities?.mode == .rbac, manager.permissions.has(Permission.Containers.read, in: environmentID) {
             items.append(ActionButtonItem(id: "generate-compose", title: "Generate Compose", systemImage: "doc.text", tint: .accentColor) { showCompose = true })
         }
@@ -385,6 +397,12 @@ struct ContainersView: View {
                         .pickerStyle(.inline)
                         .labelsHidden()
                     }
+                    Section("Visibility") {
+                        Toggle("Show hidden", isOn: $showHidden)
+                        TextField("Label (key or key=value)", text: $labelFilter)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
                 }
                 .navigationTitle("Filter")
                 .navigationBarTitleDisplayMode(.inline)
@@ -415,6 +433,7 @@ struct ContainersView: View {
         .task { await loadContainers() }
         .refreshable { await loadContainers(refresh: true) }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+        .debounce(labelFilter, for: .milliseconds(500), into: $debouncedLabelFilter)
         .navigationDestination(for: ContainerSummary.self) { container in
             ContainerDetailView(container: container, environmentID: environmentID)
         }
@@ -432,6 +451,13 @@ struct ContainersView: View {
         }
         .onChange(of: stateFilter) { rebuildSections() }
         .onChange(of: updateFilter) { rebuildSections() }
+        .onChange(of: showHidden) {
+            rebuildSections()
+            Task { await loadContainers(refresh: true) }
+        }
+        .onChange(of: debouncedLabelFilter) {
+            Task { await loadContainers(refresh: true) }
+        }
         .onChange(of: sortOrder) { rebuildSections() }
         .onChange(of: pinnedIDs) { rebuildSections() }
         .morphingActions(
@@ -533,6 +559,14 @@ struct ContainersView: View {
 
     @ViewBuilder
     private func containerMenuActions(for container: ContainerSummary) -> some View {
+        if container.hasAvailableUpdate,
+           manager.permissions.has(Permission.Containers.autoUpdate, in: environmentID) {
+            Button {
+                startBulkUpdate(containers: [container])
+            } label: {
+                Label("Update", systemImage: "arrow.up.circle.fill")
+            }
+        }
         Button {
             logsTarget = container
         } label: {
@@ -649,13 +683,16 @@ struct ContainersView: View {
             }
         }
         do {
+            let trimmedLabel = debouncedLabelFilter.trimmingCharacters(in: .whitespacesAndNewlines)
             let response = try await client.containers.list(
                 envID: environmentID,
                 query: .init(
                     search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
                     start: start,
                     limit: Self.pageSize
-                )
+                ),
+                includeHidden: showHidden ? true : nil,
+                label: trimmedLabel.isEmpty ? nil : trimmedLabel
             )
             applyContainersPage(
                 response,
@@ -681,13 +718,16 @@ struct ContainersView: View {
             }
         }
         do {
+            let trimmedLabel = debouncedLabelFilter.trimmingCharacters(in: .whitespacesAndNewlines)
             let response = try await client.containers.list(
                 envID: environmentID,
                 query: .init(
                     search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
                     start: start,
                     limit: Self.pageSize
-                )
+                ),
+                includeHidden: showHidden ? true : nil,
+                label: trimmedLabel.isEmpty ? nil : trimmedLabel
             )
             applyContainersPage(
                 response,
@@ -804,6 +844,22 @@ struct ContainersView: View {
         })
     }
 
+    private func startBulkUpdate(containers: [ContainerSummary]) {
+        let targets = containers.map { DeploymentOperation.UpdateTarget(id: $0.id, name: $0.displayName) }
+        guard !targets.isEmpty else { return }
+        let started = DeploymentActivityStore.shared.start(
+            kind: .containerUpdate,
+            envID: environmentID,
+            targetID: targets[0].id,
+            targetName: targets.count == 1 ? targets[0].name : "\(targets.count) containers",
+            environmentName: environmentName,
+            manager: manager,
+            mutationStore: mutationStore,
+            updateTargets: targets
+        )
+        if started { exitSelectionMode() }
+    }
+
     private func bulkRemoveContainers(ids: [String]) async {
         guard let client = manager.client else { return }
         isBulkRunning = true
@@ -901,6 +957,12 @@ struct ContainerRow: View {
                             .font(.caption2)
                             .foregroundStyle(.yellow)
                             .accessibilityHidden(true)
+                    }
+                    if container.hidden == true {
+                        Image(systemName: "eye.slash.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Hidden")
                     }
                 }
                 if !statusText.isEmpty || health != nil {

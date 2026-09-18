@@ -19,46 +19,60 @@ struct FederatedCredentialsView: View {
     private var identity: String { "\(manager.clientGeneration)|\(manager.client?.configuration.baseURL.absoluteString ?? "")|\(manager.currentUser?.id ?? "")|\(search)" }
 
     var body: some View {
-        List {
+        Group {
             if unsupported {
                 ContentUnavailableView("Federated Credentials Unavailable", systemImage: "key.slash", description: Text("This server does not support federated credential management."))
-            } else {
-                if let errorMessage {
-                    Text(errorMessage).foregroundStyle(.red)
-                    Button("Retry") { Task { await load(reset: true) } }
+            } else if loading && credentials.isEmpty {
+                ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage, credentials.isEmpty {
+                ContentUnavailableView {
+                    Label("Couldn't Load Credentials", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") { Task { await load(reset: true) } }
                 }
-                ForEach(credentials) { credential in
-                    NavigationLink {
-                        FederatedCredentialDetailView(credential: credential, onSaved: { await load(reset: true) })
-                    } label: {
-                        Label {
-                            VStack(alignment: .leading) {
-                                Text(credential.name)
-                                Text(credential.issuerUrl).font(.subheadline).foregroundStyle(.secondary)
-                                Text(credential.enabled ? "Enabled" : "Disabled").font(.caption).foregroundStyle(.secondary)
-                            }
-                        } icon: { Image(systemName: "key") }
+            } else if credentials.isEmpty {
+                ContentUnavailableView {
+                    Label("No Federated Credentials", systemImage: "key")
+                } description: {
+                    Text("Create a credential or try a different search.")
+                } actions: {
+                    if canManage {
+                        Button("Create Credential") { creating = true }
                     }
-                    .disabled(!manager.permissions.has("federated:read", in: nil))
-                    .swipeActions(allowsFullSwipe: false) {
-                        if canManage {
-                            Button("Delete", systemImage: "trash", role: .destructive) { pendingDelete = credential }
+                }
+            } else {
+                List {
+                    ForEach(credentials) { credential in
+                        NavigationLink {
+                            FederatedCredentialDetailView(credential: credential, onSaved: { await load(reset: true) })
+                        } label: {
+                            Label {
+                                VStack(alignment: .leading) {
+                                    Text(credential.name)
+                                    Text(credential.issuerUrl).font(.subheadline).foregroundStyle(.secondary)
+                                    Text(credential.enabled ? "Enabled" : "Disabled").font(.caption).foregroundStyle(.secondary)
+                                }
+                            } icon: { Image(systemName: "key") }
+                        }
+                        .disabled(!manager.permissions.has("federated:read", in: nil))
+                        .swipeActions(allowsFullSwipe: false) {
+                            if canManage {
+                                Button("Delete", systemImage: "trash", role: .destructive) { pendingDelete = credential }
+                            }
                         }
                     }
+                    PaginatedListFooter(
+                        hasMore: credentials.count < total,
+                        loadMoreError: loadMoreError,
+                        onRetry: { Task { await load(reset: false) } },
+                        onLoadMore: { Task { await load(reset: false) } }
+                    ).id(credentials.count)
                 }
-                if loading && credentials.isEmpty { ProgressView("Loading…").frame(maxWidth: .infinity) }
-                PaginatedListFooter(
-                    hasMore: credentials.count < total,
-                    loadMoreError: loadMoreError,
-                    onRetry: { Task { await load(reset: false) } },
-                    onLoadMore: { Task { await load(reset: false) } }
-                ).id(credentials.count)
-                if credentials.isEmpty && !loading && errorMessage == nil {
-                    ContentUnavailableView("No Federated Credentials", systemImage: "key", description: Text("Create a credential or try a different search."))
-                }
+                .listStyle(.insetGrouped)
             }
         }
-        .listStyle(.insetGrouped)
         .navigationTitle("Federated Credentials")
         .searchable(text: $search)
         .toolbar {

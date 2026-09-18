@@ -50,12 +50,10 @@ private struct DeploymentPillHost: View {
     @State private var store = DeploymentActivityStore.shared
     @State private var toastPresenter = ToastPresenter.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage("arcane.sidebarNavigationEnabled") private var sidebarNavigationEnabled = false
 
     /// Same navigation-aware clearance as ToastHost — the pill sits where a toast
-    /// would, including at the bottom safe area when the sidebar replaces the bar.
+    /// would, above the bottom dock.
     private var barClearance: CGFloat {
-        guard !sidebarNavigationEnabled else { return 0 }
         if #available(iOS 26, *) { return 60 }
         return 56
     }
