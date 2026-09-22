@@ -63,10 +63,10 @@ struct ProjectDetailView: View {
 
     var body: some View {
         workspace
-        .morphingActions(
-            primary: morphPrimary,
-            inline: morphInline,
-            overflow: morphOverflow,
+        .resourceActionsToolbar(
+            primary: actionPrimary,
+            secondary: actionSecondary,
+            overflow: actionOverflow,
             runningItemID: runningActionID,
             isDisabled: isActioning,
             resourceName: currentProject.displayName
@@ -445,7 +445,7 @@ struct ProjectDetailView: View {
     }
 
     /// State-aware centre action: Deploy when stopped, Stop when running.
-    private var morphPrimary: ActionButtonItem {
+    private var actionPrimary: ActionButtonItem {
         if isRunning {
             return ActionButtonItem(id: "stop", title: "Stop", systemImage: "stop.fill", tint: .red, role: .destructive) {
                 Task { await performSimpleAction(suffix: "down", label: "Stopping", actionID: "stop") }
@@ -457,7 +457,7 @@ struct ProjectDetailView: View {
         }
     }
 
-    private var morphInline: [ActionButtonItem] {
+    private var actionSecondary: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
         if isRunning {
             items.append(ActionButtonItem(id: "restart", title: "Restart", systemImage: "arrow.clockwise", tint: .orange) {
@@ -473,7 +473,7 @@ struct ProjectDetailView: View {
         return items
     }
 
-    private var morphOverflow: [ActionButtonItem] {
+    private var actionOverflow: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
         if manager.supportsPost26MobileFeatures {
             items.append(ActionButtonItem(

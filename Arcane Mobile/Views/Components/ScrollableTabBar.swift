@@ -51,7 +51,9 @@ struct ScrollableTabBar<Selection: Hashable>: View {
             .scrollIndicators(.hidden)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 4)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
     }

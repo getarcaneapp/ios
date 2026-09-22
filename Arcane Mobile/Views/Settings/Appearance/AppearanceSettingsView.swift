@@ -59,9 +59,7 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
 struct AppearanceSettingsView: View {
     @AppStorage("accentColorHex") private var accentColorHex = ""
     @AppStorage("arcane.launchAnimationEnabled") private var launchAnimationEnabled = true
-    @AppStorage(TabIndicatorMotion.storageKey) private var tabIndicatorMotion: TabIndicatorMotion = .straight
-    @State private var showTabBarResetConfirm = false
-    @State private var navTabsStore = NavTabsStore.shared
+    @AppStorage("arcane.showTabLabels") private var showTabLabels = false
 
     // Derive the picker selection from the stored hex so the two cannot drift
     // apart. An empty hex represents the blue system default. `nil` preserves
@@ -140,21 +138,24 @@ struct AppearanceSettingsView: View {
                     )
                 }
 
-                Picker(selection: $tabIndicatorMotion) {
-                    ForEach(TabIndicatorMotion.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
-                } label: {
-                    SettingsRow(
-                        title: "Tab Indicator Path",
-                        systemImage: "arrow.left.and.right.circle.fill",
-                        color: .orange
-                    )
-                }
             } header: {
                 Text("Motion")
             } footer: {
-                Text("Controls the launch animation and how the dock indicator moves between tabs.")
+                Text("Controls the launch animation.")
+            }
+
+            Section {
+                Toggle(isOn: $showTabLabels) {
+                    SettingsRow(
+                        title: "Show Tab Labels",
+                        systemImage: "character.cursor.ibeam",
+                        color: .blue
+                    )
+                }
+            } header: {
+                Text("Tab Bar")
+            } footer: {
+                Text("Hide labels for evenly sized tab bar items. Tab names remain available to VoiceOver.")
             }
 
             if UIApplication.shared.supportsAlternateIcons {
@@ -184,20 +185,6 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
-                Button(role: .destructive) {
-                    showTabBarResetConfirm = true
-                } label: {
-                    Text("Reset Dock")
-                }
-                .foregroundStyle(.red)
-                .disabled(navTabsStore.pinnedTabs == AppTab.mainDefaults)
-            } header: {
-                Text("Dock")
-            } footer: {
-                Text("Restores the bottom dock to Dashboard, Containers, Images, and Projects. Long-press a dock item to swap it.")
-            }
-
-            Section {
                 Button("Reset to Default") {
                     accentColorHex = ""
                 }
@@ -206,14 +193,5 @@ struct AppearanceSettingsView: View {
         }
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
-        .deleteConfirmation(
-            isPresented: $showTabBarResetConfirm,
-            title: "Reset Dock",
-            message: "Restores the bottom dock to Dashboard, Containers, Images, and Projects.",
-            icon: "rectangle.3.offgrid",
-            confirmTitle: "Reset"
-        ) {
-            navTabsStore.resetToDefaults()
-        }
     }
 }

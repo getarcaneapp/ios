@@ -6,7 +6,7 @@ final class NavTabsStore {
     static let shared = NavTabsStore()
 
     private static let storageKey = "arcane.navBarTabs"
-    private static let slotCount = 4
+    private nonisolated static let slotCount = 4
 
     private(set) var version: Int = 0
 
@@ -22,14 +22,21 @@ final class NavTabsStore {
             return AppTab.mainDefaults
         }
         let resolved = ids.compactMap { AppTab(rawValue: $0) }
-        return resolved.count == Self.slotCount ? resolved : AppTab.mainDefaults
+        return Self.isValidConfiguration(resolved) ? resolved : AppTab.mainDefaults
     }
 
     /// Drops tabs the authenticated session cannot reach, then fills empty
     /// slots with other available primary destinations. A restricted account
     /// may legitimately have fewer than four reachable destinations.
     func visibleTabs(availableTabs: Set<AppTab>) -> [AppTab] {
-        var visible = pinnedTabs.filter { tab in
+        Self.resolveTabs(pinned: pinnedTabs, availableTabs: availableTabs)
+    }
+
+    nonisolated static func resolveTabs(
+        pinned: [AppTab],
+        availableTabs: Set<AppTab>
+    ) -> [AppTab] {
+        var visible = pinned.filter { tab in
             tab.canPinToBottomBar
                 && availableTabs.contains(tab)
         }
@@ -57,6 +64,19 @@ final class NavTabsStore {
         guard let idx = current.firstIndex(of: pinned) else { return }
         current[idx] = replacement
         save(current)
+    }
+
+    @discardableResult
+    func setPinnedTabs(_ tabs: [AppTab]) -> Bool {
+        guard Self.isValidConfiguration(tabs) else { return false }
+        save(tabs)
+        return true
+    }
+
+    nonisolated static func isValidConfiguration(_ tabs: [AppTab]) -> Bool {
+        tabs.count == slotCount
+            && Set(tabs).count == slotCount
+            && tabs.allSatisfy(\.canPinToBottomBar)
     }
 
     func resetToDefaults() {

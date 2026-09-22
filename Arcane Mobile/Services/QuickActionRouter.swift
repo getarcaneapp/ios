@@ -28,7 +28,7 @@ final class QuickActionRouter {
     var pendingTabID: String? = nil
 
     /// Consumed by the app root. Activity Center presentation deliberately
-    /// lives above tabs and sidebar navigation so it can open from anywhere.
+    /// lives above tab navigation so it can open from anywhere.
     var pendingActivityCenter = false
 
     /// Payload from a widget/intent deep link (`arcane-mobile://open?...`).

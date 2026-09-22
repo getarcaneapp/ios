@@ -284,37 +284,43 @@ struct ContainersView: View {
             prompt: "Search containers"
         )
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    if manager.permissions.has(Permission.Containers.create, in: environmentID) {
-                        Button("Create Container", systemImage: "plus") { showCreateContainer = true }
-                    }
-                    if !isSelecting {
+            if !isSelecting {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        if manager.permissions.has(Permission.Containers.create, in: environmentID) {
+                            Button("Create Container", systemImage: "plus") { showCreateContainer = true }
+                        }
                         Button {
                             enterSelectionMode()
                         } label: {
                             Label("Select", systemImage: "checklist")
                         }
                         Divider()
-                    }
-                    Picker("Sort", selection: $sortOrder) {
-                        ForEach(ListSortOrder.allCases) { order in
-                            Label(order.title, systemImage: order.systemImage).tag(order)
+                        Picker("Sort", selection: $sortOrder) {
+                            ForEach(ListSortOrder.allCases) { order in
+                                Label(order.title, systemImage: order.systemImage).tag(order)
+                            }
                         }
-                    }
-                    Button {
-                        showFilterSheet = true
+                        Button {
+                            showFilterSheet = true
+                        } label: {
+                            Label(
+                                activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
+                                systemImage: "line.3.horizontal.decrease.circle"
+                            )
+                        }
+                        Divider()
+                        Button(role: .destructive) {
+                            pendingDestructive = .prune
+                        } label: {
+                            DestructiveLabel(text: "Prune Stopped Containers")
+                        }
                     } label: {
-                        Label(
-                            activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
-                            systemImage: "line.3.horizontal.decrease.circle"
-                        )
+                        Image(systemName: "ellipsis.circle")
+                            .appAccentToolbarSymbol()
                     }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .appAccentToolbarSymbol()
+                    .accessibilityLabel("More options")
                 }
-                .accessibilityLabel("More options")
             }
             if #available(iOS 26, *) {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
@@ -324,15 +330,6 @@ struct ContainersView: View {
                     Button("Done") {
                         exitSelectionMode()
                     }
-                }
-            }
-            if !isSelecting {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(role: .destructive) { pendingDestructive = .prune } label: {
-                        Image(systemName: "trash")
-                            .foregroundStyle(.red)
-                    }
-                    .accessibilityLabel("Prune stopped containers")
                 }
             }
         }
@@ -460,9 +457,9 @@ struct ContainersView: View {
         }
         .onChange(of: sortOrder) { rebuildSections() }
         .onChange(of: pinnedIDs) { rebuildSections() }
-        .morphingActions(
+        .resourceActionsToolbar(
             primary: bulkPrimaryItem,
-            inline: bulkInlineItems,
+            secondary: bulkInlineItems,
             overflow: bulkOverflowItems,
             runningItemID: bulkRunningActionID,
             isDisabled: isBulkRunning,

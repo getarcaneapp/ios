@@ -155,8 +155,7 @@ enum ReleaseNotes {
                 .init("Update option in the container long-press menu when an update is available.")
             ],
             changed: [
-                .init("Tab bar stays expanded while scrolling."),
-                .init("Removed sidebar navigation."),
+                .init("Updated navigation with a native tab bar, compact environment switching, and streamlined resource detail layouts."),
                 .init("Accent color uses a native menu picker.")
             ],
             fixed: [

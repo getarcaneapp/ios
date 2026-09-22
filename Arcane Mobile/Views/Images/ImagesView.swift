@@ -196,30 +196,28 @@ struct ImagesView: View {
                     }
                 }
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    if !isSelecting {
+            if !isSelecting {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
                         Button {
                             enterSelectionMode()
                         } label: {
                             Label("Select", systemImage: "checklist")
                         }
                         Divider()
-                    }
-                    Picker("Sort", selection: $sortOrder) {
-                        ForEach(ListSortOrder.allCases) { order in
-                            Label(order.title, systemImage: order.systemImage).tag(order)
+                        Picker("Sort", selection: $sortOrder) {
+                            ForEach(ListSortOrder.allCases) { order in
+                                Label(order.title, systemImage: order.systemImage).tag(order)
+                            }
                         }
-                    }
-                    Button {
-                        showFilterSheet = true
-                    } label: {
-                        Label(
-                            activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
-                            systemImage: "line.3.horizontal.decrease.circle"
-                        )
-                    }
-                    if !isSelecting {
+                        Button {
+                            showFilterSheet = true
+                        } label: {
+                            Label(
+                                activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
+                                systemImage: "line.3.horizontal.decrease.circle"
+                            )
+                        }
                         Divider()
                         NavigationLink(destination: ImageUpdatesView(environmentID: environmentID, images: images)) {
                             Label("Updates", systemImage: "arrow.up.arrow.down.circle")
@@ -232,23 +230,34 @@ struct ImagesView: View {
                         } label: {
                             Label("Upload tarball…", systemImage: "square.and.arrow.up")
                         }
+                        Divider()
+                        Button(role: .destructive) {
+                            pendingDestructive = .prune
+                        } label: {
+                            DestructiveLabel(text: "Quick Prune (Dangling)")
+                        }
+                        Button {
+                            showPruneSheet = true
+                        } label: {
+                            Label("Prune Options…", systemImage: "slider.horizontal.3")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .appAccentToolbarSymbol()
                     }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .appAccentToolbarSymbol()
+                    .accessibilityLabel("More options")
                 }
-                .accessibilityLabel("More options")
-            }
-            if #available(iOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
-            if isSelecting {
+            } else {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         exitSelectionMode()
                     }
                 }
             }
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+
             if !isSelecting {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button { showPullSheet = true } label: {
@@ -256,28 +265,6 @@ struct ImagesView: View {
                             .appAccentToolbarSymbol()
                     }
                     .accessibilityLabel("Pull image")
-                }
-                if #available(iOS 26, *) {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button(role: .destructive) {
-                            pendingDestructive = .prune
-                        } label: {
-                            DestructiveLabel(text: "Quick Prune (Dangling)")
-                        }
-                        .tint(.red)
-                        Button {
-                            showPruneSheet = true
-                        } label: {
-                            Label("Prune Options…", systemImage: "slider.horizontal.3")
-                        }
-                    } label: {
-                        Image(systemName: "trash")
-                            .foregroundStyle(.red)
-                    }
-                    .accessibilityLabel("Prune images")
                 }
             }
         }
@@ -372,7 +359,7 @@ struct ImagesView: View {
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: tagsFilter) { rebuildSections() }
         .onChange(of: sortOrder) { rebuildSections() }
-        .morphingActions(
+        .resourceActionsToolbar(
             primary: bulkPrimaryItem,
             runningItemID: bulkRunningActionID,
             isDisabled: isBulkRunning,

@@ -69,7 +69,7 @@ struct ImageDetailView: View {
                 )
             }
         }
-        .morphingActions(
+        .resourceActionsToolbar(
             primary: ActionButtonItem(
                 id: "recheck",
                 title: "Recheck for Updates",
@@ -78,36 +78,20 @@ struct ImageDetailView: View {
             ) {
                 Task { await checkForUpdate() }
             },
-            inline: [
-                ActionButtonItem(
-                    id: "remove",
-                    title: "Remove Image",
-                    systemImage: "trash",
-                    tint: .red,
-                    role: .destructive,
-                    confirmationMessage: "This will remove the image from the host."
-                ) {
-                    Task { await removeImage() }
-                }
-            ],
+            overflow: actionOverflow,
             runningItemID: isCheckingUpdate ? "recheck" : nil,
             isDisabled: isCheckingUpdate
         )
         .navigationTitle("Image Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    if manager.permissions.has("images:tag", in: environmentID) {
-                        Button("Tag image", systemImage: "tag") { showTag = true }
+            if let exportedImage {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(item: exportedImage) {
+                        Image(systemName: "square.and.arrow.up")
                     }
-                    if manager.permissions.has("images:read", in: environmentID) {
-                        Button(exporting ? "Exporting…" : "Export image", systemImage: "square.and.arrow.up") {
-                            exportTask = Task { await exportImage() }
-                        }.disabled(exporting)
-                    }
-                    if let exportedImage { ShareLink("Share image archive", item: exportedImage) }
-                } label: { Image(systemName: "ellipsis.circle") }
+                    .accessibilityLabel("Share image archive")
+                }
             }
         }
         .sheet(isPresented: $showTag) { ImageTagView(environmentID: environmentID, imageID: image.id) }
@@ -128,6 +112,42 @@ struct ImageDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var actionOverflow: [ActionButtonItem] {
+        var items: [ActionButtonItem] = []
+        if manager.permissions.has("images:tag", in: environmentID) {
+            items.append(ActionButtonItem(
+                id: "tag",
+                title: "Tag Image",
+                systemImage: "tag",
+                tint: .accentColor
+            ) {
+                showTag = true
+            })
+        }
+        if manager.permissions.has("images:read", in: environmentID) {
+            items.append(ActionButtonItem(
+                id: "export",
+                title: exporting ? "Exporting…" : "Export Image",
+                systemImage: "square.and.arrow.up",
+                tint: .accentColor
+            ) {
+                guard !exporting else { return }
+                exportTask = Task { await exportImage() }
+            })
+        }
+        items.append(ActionButtonItem(
+            id: "remove",
+            title: "Remove Image",
+            systemImage: "trash",
+            tint: .red,
+            role: .destructive,
+            confirmationMessage: "This will remove the image from the host."
+        ) {
+            Task { await removeImage() }
+        })
+        return items
     }
 
     private func exportImage() async {

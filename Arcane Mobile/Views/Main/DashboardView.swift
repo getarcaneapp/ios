@@ -205,8 +205,7 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        ScrollView {
                 LazyVStack(alignment: .leading, spacing: 36) {
                     if showsSkeleton {
                         skeletonContent
@@ -255,8 +254,13 @@ struct DashboardView: View {
                             onOpenCenter: { performAttentionAction({ showAttentionCenter = true }, presentsSheet: true) }
                         )
                     }
+                    if #available(iOS 26, *) {
+                        ToolbarSpacer(.fixed, placement: .topBarLeading)
+                    }
+                    ToolbarItem(placement: .topBarLeading) {
+                        EnvironmentSwitcherToolbarButton()
+                    }
                 }
-
 
                 // The dashboard toolbar is the standing entry point for the
                 // Activity Center.
@@ -456,7 +460,6 @@ struct DashboardView: View {
                 guard !running, hasLoadedOnce, isDashboardVisible else { return }
                 Task { await refreshDashboard(reconnectStream: false) }
             }
-        }
         .onChange(of: isNavigationRoot, initial: true) { _, isRoot in
             onNavigationRootChange(isRoot)
         }

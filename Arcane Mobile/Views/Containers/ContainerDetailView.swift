@@ -134,10 +134,10 @@ struct ContainerDetailView: View {
         }
         .navigationTitle(displayedName)
         .navigationBarTitleDisplayMode(.inline)
-        .morphingActions(
-            primary: morphPrimary,
-            inline: morphInline,
-            overflow: morphOverflow,
+        .resourceActionsToolbar(
+            primary: actionPrimary,
+            secondary: actionSecondary,
+            overflow: actionOverflow,
             runningItemID: runningActionID,
             isDisabled: isActioning,
             resourceName: displayedName
@@ -264,7 +264,7 @@ struct ContainerDetailView: View {
 
     /// State-aware centre action: Start when stopped, Stop when running,
     /// Unpause when paused.
-    private var morphPrimary: ActionButtonItem {
+    private var actionPrimary: ActionButtonItem {
         if isPaused {
             return ActionButtonItem(id: "unpause", title: "Unpause", systemImage: "play.fill", tint: .green) {
                 Task { await performAction(.unpause, actionID: "unpause") }
@@ -280,7 +280,7 @@ struct ContainerDetailView: View {
         }
     }
 
-    private var morphInline: [ActionButtonItem] {
+    private var actionSecondary: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
         if container.updateInfo?.hasUpdate == true,
            manager.permissions.has(Permission.Containers.autoUpdate, in: environmentID) {
@@ -336,7 +336,7 @@ struct ContainerDetailView: View {
         )
     }
 
-    private var morphOverflow: [ActionButtonItem] {
+    private var actionOverflow: [ActionButtonItem] {
         var items: [ActionButtonItem] = [
             ActionButtonItem(id: "inspect", title: "Inspect", systemImage: "doc.text.magnifyingglass", tint: .accentColor) {
                 showInspect = true

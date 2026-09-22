@@ -1,23 +1,5 @@
 import SwiftUI
 
-enum TabIndicatorMotion: String, CaseIterable, Identifiable {
-    case straight
-    case parabolic
-    case teleport
-
-    static let storageKey = "arcane.tabIndicatorMotion"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .straight: "Straight"
-        case .parabolic: "Parabolic"
-        case .teleport: "Teleport"
-        }
-    }
-}
-
 // MARK: - Motion tokens
 //
 // A single, restrained motion vocabulary for the app. Animation timings used to
@@ -48,11 +30,6 @@ enum Motion {
 
     /// Delete-confirmation card entrance/exit.
     static let overlay: Animation = .interpolatingSpring(duration: 0.3)
-
-    /// Long-press tab-replace: the Liquid Glass picker callout growing out of —
-    /// and shrinking back into — the tab being replaced. A touch of bounce sells
-    /// the "pop" (iOS 26 only).
-    static let morph: Animation = .bouncy(duration: 0.5, extraBounce: 0.05)
 
     /// Toast host entrance/exit.
     static let toast: Animation = .interpolatingSpring(duration: 0.35, bounce: 0)

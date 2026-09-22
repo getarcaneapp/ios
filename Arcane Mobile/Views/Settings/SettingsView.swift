@@ -1,301 +1,277 @@
 import SwiftUI
-import Arcane
 
 struct SettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @State private var volumeSizeBytes: Int64? = nil
-    @State private var loadingVolumeSize = false
-    @State private var navPath = NavigationPath()
-    var excludedTabs: Set<AppTab> = []
-    var onNavigationRootChange: (Bool) -> Void = { _ in }
+
+    let visibleTabs: [AppTab]
+    @Binding var selectedTab: String
+
+    @State private var navPath: [AppTab] = []
+    @State private var search = ""
+
+    init(
+        visibleTabs: [AppTab] = [],
+        selectedTab: Binding<String> = .constant(AppTab.settings.id)
+    ) {
+        self.visibleTabs = visibleTabs
+        _selectedTab = selectedTab
+    }
+
+    private var availableTabs: Set<AppTab> {
+        Set(AppTab.allCases.filter(manager.canAccess))
+    }
+
+    private var visibleTabSet: Set<AppTab> {
+        Set(visibleTabs)
+    }
+
+    private var groups: [MoreDestinationGroup] {
+        [
+            MoreDestinationGroup(
+                title: "Management",
+                tabs: [.dashboard, .updates, .projects]
+            ),
+            MoreDestinationGroup(
+                title: "Resources",
+                tabs: [
+                    .containers, .images, .imageVulnerabilities, .networks,
+                    .ports, .networkTopology, .volumes, .swarm
+                ]
+            ),
+            MoreDestinationGroup(
+                title: "Administration",
+                tabs: [
+                    .events, .activities, .customize, .templateRegistries,
+                    .containerRegistries, .variables, .gitRepositories, .gitOps
+                ]
+            ),
+            MoreDestinationGroup(
+                title: "Server Settings",
+                tabs: [
+                    .apiKeys, .federatedCredentials, .systemBackups, .webhooks,
+                    .authentication, .oidcRoleMappings, .notifications, .jobs,
+                    .users, .roles, .systemSettings
+                ]
+            )
+        ]
+    }
+
+    private var filteredGroups: [MoreDestinationGroup] {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        return groups.compactMap { group in
+            let accessible = group.tabs.filter(availableTabs.contains)
+            let matches = query.isEmpty
+                ? accessible
+                : accessible.filter {
+                    $0.title.localizedCaseInsensitiveContains(query)
+                        || group.title.localizedCaseInsensitiveContains(query)
+                }
+            return matches.isEmpty ? nil : MoreDestinationGroup(title: group.title, tabs: matches)
+        }
+    }
 
     var body: some View {
-        // Manager access-catalog reads happen exactly once per body evaluation.
-        // They must stay inside body (not init or stored props) so @Observable
-        // access tracking re-fires on currentUser / serverCapabilities changes.
-        let availableTabs = Set(
-            AppTab.allCases.filter(manager.canAccess)
-        )
         NavigationStack(path: $navPath) {
             List {
-                Section {
-                    NavigationLink {
-                        ProfileView()
-                    } label: {
-                        UserAccountLabel()
-                    }
-                    .accessibilityHint("Opens profile")
-                }
-
-                SettingsTabSection(
-                    title: "Management",
-                    tabs: Self.visibleTabs(
-                        .management,
-                        excludedTabs: excludedTabs,
-                        availableTabs: availableTabs
-                    ),
-                    availableTabs: availableTabs,
-                    navPath: $navPath
-                )
-                SettingsResourcesSection(
-                    tabs: Self.visibleTabs(
-                        .resources,
-                        excludedTabs: excludedTabs,
-                        availableTabs: availableTabs
-                    ),
-                    availableTabs: availableTabs,
-                    volumeSizeBytes: volumeSizeBytes,
-                    loadingVolumeSize: loadingVolumeSize,
-                    navPath: $navPath
-                )
-                SettingsTabSection(
-                    title: "Swarm",
-                    tabs: Self.visibleTabs(
-                        .swarm,
-                        excludedTabs: excludedTabs,
-                        availableTabs: availableTabs
-                    ),
-                    availableTabs: availableTabs,
-                    navPath: $navPath
-                )
-                SettingsTabSection(
-                    title: "Administration",
-                    tabs: Self.visibleTabs(
-                        .administration,
-                        excludedTabs: excludedTabs,
-                        availableTabs: availableTabs
-                    ),
-                    availableTabs: availableTabs,
-                    navPath: $navPath
-                )
-                SettingsTabSection(
-                    title: "Settings",
-                    tabs: AppTab.settings.children.filter(availableTabs.contains),
-                    availableTabs: availableTabs,
-                    navPath: $navPath
-                )
+                accountSection
+                destinationSections
             }
             .listStyle(.insetGrouped)
-            // Push tab destinations by value so the whole Settings stack is
-            // path-consistent. Object-based pushes here desynced the stack when
-            // the pushed resource view (e.g. VolumesView) did its own value-based
-            // child navigation — the detail landed under the re-rendered list.
+            .navigationTitle("More")
+            .searchable(text: $search, prompt: "Search destinations")
+            .overlay {
+                if filteredGroups.isEmpty {
+                    ContentUnavailableView.search(text: search)
+                }
+            }
             .navigationDestination(for: AppTab.self) { tab in
-                appTabDestination(tab, manager: manager, selectedTab: .constant(""))
+                appTabDestination(tab, manager: manager, selectedTab: $selectedTab)
             }
-            // Drop the morphing-bar controls the instant we pop back out of a
-            // resource detail reached *via Settings*. The tab stacks get this from
-            // `TabNavigationContainer`'s path watcher; the Settings stack needs its
-            // own, otherwise the controls linger until the detail's (zoom-delayed)
-            // `onDisappear`. Settings-pushed details register under the "settings" id.
-            .onChange(of: navPath.count) { oldCount, newCount in
-                if newCount < oldCount {
-                    TabBarMorphStore.shared.clearTab("settings")
-                }
-            }
-            .navigationTitle("Settings")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink {
-                        AppSettingsView()
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .appAccentToolbarSymbol()
-                    }
-                    .accessibilityLabel("App Settings")
-                }
-            }
-            .task {
-                await loadVolumeSize()
-            }
-            .onChange(of: navPath.isEmpty, initial: true) { _, isRoot in
-                onNavigationRootChange(isRoot)
+            .environmentContext(
+                isVisible: navPath.last?.isEnvironmentScoped == true,
+                onSelect: { navPath.removeAll() }
+            )
+        }
+        .onChange(of: manager.activeEnvironmentID) { oldValue, newValue in
+            if oldValue != newValue, navPath.contains(where: \.isEnvironmentScoped) {
+                navPath.removeAll()
             }
         }
     }
 
-    private static func visibleTabs(
-        _ section: AppTab.Section,
-        excludedTabs: Set<AppTab>,
-        availableTabs: Set<AppTab>
-    ) -> [AppTab] {
-        AppTab.allCases.filter { tab in
-            tab.section == section
-                && tab.showsInNavigationMenus
-                && tab != .settings
-                && availableTabs.contains(tab)
-        }.flatMap { tab in
-            if excludedTabs.contains(tab) {
-                return tab.children.filter(availableTabs.contains)
+    private var accountSection: some View {
+        Section {
+            NavigationLink {
+                ProfileView()
+            } label: {
+                UserAccountLabel()
             }
-            return [tab]
-        }
-    }
+            .accessibilityHint("Opens profile")
 
-    private func loadVolumeSize() async {
-        guard manager.canAccess(.volumes),
-              let client = manager.client, let cached = manager.cached,
-              volumeSizeBytes == nil, !loadingVolumeSize else { return }
-        loadingVolumeSize = true
-        defer { loadingVolumeSize = false }
-        do {
-            let path = client.rest.environmentPath(manager.activeEnvironmentID, "volumes/sizes")
-            if let sizes: [VolumeSizeInfo] = try await cached.get(
-                path, as: [VolumeSizeInfo].self, policy: .volumes,
-                envID: manager.activeEnvironmentID,
-                onFresh: { fresh in
-                    volumeSizeBytes = fresh.reduce(Int64(0)) { $0 + $1.size }
-                }
-            ) {
-                volumeSizeBytes = sizes.reduce(Int64(0)) { $0 + $1.size }
+            NavigationLink {
+                AppSettingsView()
+            } label: {
+                SettingsRow(
+                    title: "App Settings",
+                    systemImage: "gearshape.fill",
+                    color: .gray
+                )
             }
-        } catch {
-            // Slow / unsupported on some hosts — leave blank silently.
-        }
-    }
-}
 
-// MARK: - Sections
-
-/// Plain settings section: title + tab rows.
-struct SettingsTabSection: View {
-    let title: String
-    let tabs: [AppTab]
-    let availableTabs: Set<AppTab>
-    @Binding var navPath: NavigationPath
-
-    var body: some View {
-        if !tabs.isEmpty {
-            Section(title) {
-                ForEach(tabs) { tab in
-                    SettingsCatalogRow(
-                        tab: tab,
-                        availableTabs: availableTabs,
-                        navPath: $navPath
-                    )
-                }
-            }
-        }
-    }
-}
-
-/// Resources section: tab rows plus the volumes size badge.
-struct SettingsResourcesSection: View {
-    let tabs: [AppTab]
-    let availableTabs: Set<AppTab>
-    let volumeSizeBytes: Int64?
-    let loadingVolumeSize: Bool
-    @Binding var navPath: NavigationPath
-
-    var body: some View {
-        if !tabs.isEmpty {
-            Section("Resources") {
-                ForEach(tabs) { tab in
-                    SettingsCatalogRow(
-                        tab: tab,
-                        availableTabs: availableTabs,
-                        navPath: $navPath,
-                        trailingValue: tab == .volumes ? volumeTrailingValue : nil,
-                        showsProgress: tab == .volumes && loadingVolumeSize && volumeSizeBytes == nil
-                    )
-                }
+            NavigationLink {
+                EditTabsView(availableTabs: availableTabs)
+            } label: {
+                SettingsRow(
+                    title: "Edit Tabs",
+                    systemImage: "rectangle.3.group.fill",
+                    color: .indigo
+                )
             }
         }
     }
 
-    private var volumeTrailingValue: String? {
-        volumeSizeBytes?.byteString
-    }
-}
-
-/// One shared-catalog row. Parent navigation and child disclosure use separate
-/// buttons so expanding a catalog never consumes the destination tap.
-private struct SettingsCatalogRow: View {
-    let tab: AppTab
-    let availableTabs: Set<AppTab>
-    @Binding var navPath: NavigationPath
-    var trailingValue: String?
-    var showsProgress = false
-    @State private var isExpanded = false
-
-    private var children: [AppTab] {
-        tab.children.filter(availableTabs.contains)
-    }
-
-    var body: some View {
-        if children.isEmpty {
-            destinationButton(tab, trailingValue: trailingValue, showsProgress: showsProgress)
-        } else {
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    destinationButton(
-                        tab,
-                        trailingValue: trailingValue,
-                        showsProgress: showsProgress,
-                        showsChevron: false
-                    )
-
+    @ViewBuilder
+    private var destinationSections: some View {
+        ForEach(filteredGroups) { group in
+            Section(group.title) {
+                ForEach(group.tabs) { tab in
                     Button {
-                        withAnimation(Motion.state) {
-                            isExpanded.toggle()
-                        }
+                        open(tab)
                     } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                            .frame(width: 38)
-                            .contentShape(.rect)
+                        HStack {
+                            SettingsRow(
+                                title: tab.title,
+                                systemImage: tab.systemImage,
+                                color: tab.iconColor
+                            )
+                            Spacer()
+                            if visibleTabSet.contains(tab) {
+                                Text("Tab")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: "arrow.turn.down.left")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .accessibilityHidden(true)
+                            } else {
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(isExpanded ? "Collapse \(tab.title)" : "Expand \(tab.title)")
-                }
-
-                if isExpanded {
-                    ForEach(children) { child in
-                        destinationButton(child)
-                            .padding(.leading, 32)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
+                    .accessibilityHint(visibleTabSet.contains(tab)
+                        ? "Switches to the \(tab.title) tab"
+                        : "Opens \(tab.title)")
                 }
             }
         }
     }
 
-    private func destinationButton(
-        _ destination: AppTab,
-        trailingValue: String? = nil,
-        showsProgress: Bool = false,
-        showsChevron: Bool = true
-    ) -> some View {
-        Button {
-            navPath.append(destination)
-        } label: {
-            HStack {
-                SettingsRow(
-                    title: destination.title,
-                    systemImage: destination.systemImage,
-                    color: destination.iconColor
-                )
-                Spacer()
-                if let trailingValue {
-                    Text(trailingValue)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else if showsProgress {
-                    ProgressView().scaleEffect(0.7)
+    private func open(_ tab: AppTab) {
+        if visibleTabSet.contains(tab) {
+            selectedTab = tab.id
+        } else {
+            navPath.append(tab)
+        }
+    }
+}
+
+private struct MoreDestinationGroup: Identifiable {
+    let title: String
+    let tabs: [AppTab]
+
+    var id: String { title }
+}
+
+private struct EditTabsView: View {
+    let availableTabs: Set<AppTab>
+
+    @State private var store = NavTabsStore.shared
+    @State private var selection: [AppTab]
+
+    init(availableTabs: Set<AppTab>) {
+        self.availableTabs = availableTabs
+        let visible = NavTabsStore.shared.visibleTabs(availableTabs: availableTabs)
+        _selection = State(initialValue: visible)
+    }
+
+    private var candidates: [AppTab] {
+        AppTab.allCases.filter {
+            $0.canPinToBottomBar && availableTabs.contains($0)
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(Array(selection.enumerated()), id: \.element.id) { index, tab in
+                    Menu {
+                        ForEach(replacements(for: tab)) { replacement in
+                            Button {
+                                replaceTab(at: index, with: replacement)
+                            } label: {
+                                Label(replacement.title, systemImage: replacement.systemImage)
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            SettingsRow(
+                                title: tab.title,
+                                systemImage: tab.systemImage,
+                                color: tab.iconColor
+                            )
+                            Spacer()
+                            Text("Tab \(index + 1)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .contentShape(.rect)
+                    }
                 }
-                if showsChevron {
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
+                .onMove(perform: moveTabs)
+            } header: {
+                Text("Tab Bar")
+            } footer: {
+                Text("Choose four unique destinations. More always stays in the fifth position.")
+            }
+
+            Section {
+                Button("Reset to Defaults", systemImage: "arrow.counterclockwise") {
+                    store.resetToDefaults()
+                    selection = store.visibleTabs(availableTabs: availableTabs)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(.rect)
         }
-        .buttonStyle(.plain)
-        .accessibilityHint("Opens \(destination.title)")
+        .navigationTitle("Edit Tabs")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { EditButton() }
+    }
+
+    private func replacements(for current: AppTab) -> [AppTab] {
+        candidates.filter { $0 == current || !selection.contains($0) }
+    }
+
+    private func replaceTab(at index: Int, with replacement: AppTab) {
+        guard selection.indices.contains(index) else { return }
+        selection[index] = replacement
+        save()
+    }
+
+    private func moveTabs(from source: IndexSet, to destination: Int) {
+        selection.move(fromOffsets: source, toOffset: destination)
+        save()
+    }
+
+    private func save() {
+        guard selection.count == 4 else { return }
+        _ = store.setPinnedTabs(selection)
     }
 }

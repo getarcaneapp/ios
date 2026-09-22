@@ -6,13 +6,26 @@ struct ContainerHealthSection: View {
 
     var body: some View {
         Section("Health") {
-            LabeledContent("Status") {
-                Label(health.status.capitalized, systemImage: "heart.fill")
-                    .foregroundStyle(statusColor)
+            HStack(spacing: 12) {
+                Text("Status")
+                Spacer(minLength: 16)
+                Label {
+                    Text(displayStatus)
+                } icon: {
+                    Image(systemName: statusSymbol)
+                }
+                .foregroundStyle(statusColor)
+                .lineLimit(1)
             }
-            LabeledContent("Failing streak") {
-                Text(verbatim: "\(health.failingStreak)").monospacedDigit()
+
+            HStack {
+                Text("Failing streak")
+                Spacer(minLength: 16)
+                Text(verbatim: "\(health.failingStreak)")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
+
             if let log = health.log, !log.isEmpty {
                 NavigationLink(destination: ContainerHealthHistoryView(log: log)) {
                     Label("History (\(log.count))", systemImage: "clock.arrow.circlepath")
@@ -21,8 +34,17 @@ struct ContainerHealthSection: View {
         }
     }
 
+    private var displayStatus: String {
+        let status = health.status.trimmingCharacters(in: .whitespacesAndNewlines)
+        return status.isEmpty ? "Unknown" : status.capitalized
+    }
+
+    private var statusSymbol: String {
+        displayStatus.lowercased() == "unhealthy" ? "heart.slash.fill" : "heart.fill"
+    }
+
     private var statusColor: Color {
-        switch health.status.lowercased() {
+        switch displayStatus.lowercased() {
         case "healthy": return .green
         case "unhealthy": return .red
         case "starting": return .orange

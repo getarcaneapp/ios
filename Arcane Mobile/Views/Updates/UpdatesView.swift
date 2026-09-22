@@ -3,21 +3,12 @@ import Arcane
 
 struct UpdatesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @SwiftUI.Environment(\.currentTabID) private var currentTabID
-
-    @State private var environments: [Arcane.Environment] = []
+    @SwiftUI.Environment(FleetStore.self) private var fleet
     @State private var pickerMode: PickerMode?
     @State private var navTarget: NavTarget?
     @State private var showsUpdaterSheet = false
     @State private var initialUpdaterEnvironmentID: String?
-    @State private var environmentLoadError: String?
-
-    /// True when this page is PUSHED inside another tab's stack (e.g. from
-    /// Settings) — there's a back button, so the bar can fully morph like the
-    /// container/image detail pages. When Updates is itself a pinned root tab
-    /// there is no way back, so the tabs stay and the actions render as
-    /// accessory pills instead.
-    private var isPushedDetail: Bool { currentTabID != AppTab.updates.id }
+    @State private var presentedEnvironments: [Arcane.Environment] = []
 
     private var runUpdaterItem: ActionButtonItem {
         ActionButtonItem(
@@ -44,13 +35,13 @@ struct UpdatesView: View {
             }
             .sheet(isPresented: $showsUpdaterSheet) {
                 UpdaterRunSheet(
-                    environments: environments,
+                    environments: presentedEnvironments,
                     initialEnvironmentID: initialUpdaterEnvironmentID
                 )
             }
             .sheet(item: $pickerMode) { mode in
                 NavigationStack {
-                    EnvironmentPickerSheet(envs: environments, mode: mode) { env in
+                    EnvironmentPickerSheet(envs: presentedEnvironments, mode: mode) { env in
                         navTarget = NavTarget(envID: env.id)
                         pickerMode = nil
                     }
@@ -58,19 +49,20 @@ struct UpdatesView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
             }
-            .modifier(UpdatesBarActions(
-                isPushedDetail: isPushedDetail,
+            .resourceActionsToolbar(
                 primary: runUpdaterItem,
-                secondary: historyItem
-            ))
-            .task { await loadEnvironments() }
+                secondary: [historyItem]
+            )
+            .task { await fleet.load(manager: manager) }
     }
 
     private func launch(_ mode: PickerMode) {
+        let environments = fleet.environments
         guard !environments.isEmpty else {
-            if let environmentLoadError { showToast(.error(environmentLoadError)) }
+            if let errorMessage = fleet.errorMessage { showToast(.error(errorMessage)) }
             return
         }
+        presentedEnvironments = environments
         if mode == .runUpdater {
             initialUpdaterEnvironmentID = environments.count == 1 ? environments.first?.id : nil
             showsUpdaterSheet = true
@@ -80,51 +72,6 @@ struct UpdatesView: View {
             navTarget = NavTarget(envID: only.id)
         } else {
             pickerMode = mode
-        }
-    }
-
-    private func loadEnvironments() async {
-        guard let cached = manager.cached, let client = manager.client else { return }
-        do {
-            let envs: [Arcane.Environment] = try await cached.getAllPagesGlobal(
-                path: "environments", elementType: Arcane.Environment.self,
-                policy: .environments,
-                maximumItems: RemoteDataLimits.maximumEnvironments,
-                refresh: false,
-                onFresh: { fresh in environments = fresh },
-                fetchPage: { start, limit in
-                    let response = try await client.environments.list(
-                        query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
-                    )
-                    return ResourcePage(items: response.data, pagination: response.pagination)
-                }
-            ) ?? []
-            guard envs.count <= RemoteDataLimits.maximumEnvironments else {
-                throw RemoteDataLimitError.collectionTooLarge(
-                    maximumItems: RemoteDataLimits.maximumEnvironments
-                )
-            }
-            environments = envs
-            environmentLoadError = nil
-        } catch {
-            environments = []
-            environmentLoadError = friendlyErrorMessage(error)
-        }
-    }
-}
-
-/// Pushed inside another tab → full morph (identical to detail pages).
-/// Root tab → accessory pills so the tabs stay reachable.
-private struct UpdatesBarActions: ViewModifier {
-    let isPushedDetail: Bool
-    let primary: ActionButtonItem
-    let secondary: ActionButtonItem
-
-    func body(content: Content) -> some View {
-        if isPushedDetail {
-            content.morphingActions(primary: primary, inline: [secondary])
-        } else {
-            content.rootBarActions([primary, secondary])
         }
     }
 }

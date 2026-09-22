@@ -39,10 +39,17 @@ struct VolumeWorkspaceFileView: View {
         .interactiveDismissDisabled(draft.hasChanges)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) { Button(draft.hasChanges ? "Discard" : "Done") { dismiss() } }
-            ToolbarItemGroup(placement: .primaryAction) {
+            ToolbarItem(placement: .primaryAction) {
                 if let downloadURL { ShareLink(item: downloadURL) }
                 else { Button("Download", systemImage: "square.and.arrow.down") { Task { await download() } }.disabled(loading) }
-                if canEdit { Button("Save") { Task { await save() } }.disabled(loading || !draft.hasChanges || draft.conflict) }
+            }
+            if #available(iOS 26, *), canEdit {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            if canEdit {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Save") { Task { await save() } }.disabled(loading || !draft.hasChanges || draft.conflict)
+                }
             }
         }
         .task(id: identity) { await load() }

@@ -69,6 +69,14 @@ struct EnvironmentDashboardCard: View {
                         Text(environment.name ?? environment.id)
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
+                        if isActive {
+                            Text("Active")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tint)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.accentColor.opacity(0.12), in: .capsule)
+                        }
                     }
 
                     versionBadgesRow

@@ -42,7 +42,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .swarm: return "Swarm"
         case .events: return "Events"
         case .customize: return "Customize"
-        case .settings: return "Settings"
+        case .settings: return "More"
         case .templateRegistries: return "Templates"
         case .containerRegistries: return "Container Registries"
         case .variables: return "Variables"
@@ -90,7 +90,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .swarm: return "square.stack.3d.up"
         case .events: return "clock.badge.exclamationmark"
         case .customize: return "paintbrush.pointed.fill"
-        case .settings: return "gearshape.fill"
+        case .settings: return "ellipsis.circle.fill"
         case .templateRegistries: return "doc.text.fill"
         case .containerRegistries: return "shippingbox.fill"
         case .variables: return "curlybraces"
@@ -255,17 +255,6 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
     }
 
     static let mainDefaults: [AppTab] = [.dashboard, .containers, .images, .projects]
-    static var promotable: [AppTab] { allCases.filter { !mainDefaults.contains($0) } }
-
-    static func replacementOptions(
-        current: AppTab,
-        pinned: Set<AppTab>,
-        availableTabs: Set<AppTab>
-    ) -> [AppTab] {
-        allCases.filter { tab in
-            tab.canPinToBottomBar && !pinned.contains(tab) && tab != current && availableTabs.contains(tab)
-        }
-    }
 }
 
 @ViewBuilder

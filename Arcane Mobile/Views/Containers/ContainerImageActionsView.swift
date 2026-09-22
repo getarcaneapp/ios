@@ -110,10 +110,15 @@ struct ContainerComposeView: View {
       .navigationTitle("Generated Compose")
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-        ToolbarItemGroup(placement: .primaryAction) {
-          if !loading && error == nil {
+        if !loading && error == nil {
+          ToolbarItem(placement: .primaryAction) {
             ShareLink(item: content) { Label("Share", systemImage: "square.and.arrow.up") }
-            if manager.permissions.has(Permission.Projects.create, in: environmentID) {
+          }
+          if #available(iOS 26, *), manager.permissions.has(Permission.Projects.create, in: environmentID) {
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+          }
+          if manager.permissions.has(Permission.Projects.create, in: environmentID) {
+            ToolbarItem(placement: .primaryAction) {
               Button("Create Project") { createProject = true }
             }
           }

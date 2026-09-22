@@ -139,24 +139,10 @@ private struct LogViewerSurface: View {
             }
         }
         .toolbar {
-            if embedded {
+            if !embedded {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        isExpanded = true
-                    } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .appAccentToolbarSymbol()
-                    }
-                    .accessibilityLabel("Expand logs")
+                    optionsMenu
                 }
-
-                if #available(iOS 26, *) {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                }
-            }
-
-            ToolbarItem(placement: .navigationBarTrailing) {
-                optionsMenu
             }
         }
         .sheet(item: $shareFile) { file in
@@ -214,6 +200,23 @@ private struct LogViewerSurface: View {
                 .buttonBorderShape(.circle)
                 .controlSize(.small)
                 .accessibilityHint("Reconnects without clearing received logs")
+            }
+
+            if embedded {
+                Button {
+                    isExpanded = true
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.circle)
+                .controlSize(.small)
+                .accessibilityLabel("Expand logs")
+
+                optionsMenu
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.small)
             }
         }
         .padding(.horizontal, 12)
