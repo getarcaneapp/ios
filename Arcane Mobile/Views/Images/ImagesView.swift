@@ -223,7 +223,7 @@ struct ImagesView: View {
                             Label("Updates", systemImage: "arrow.up.arrow.down.circle")
                         }
                         NavigationLink(destination: AllVulnerabilitiesView(environmentID: environmentID)) {
-                            Label("Vulnerabilities", systemImage: "shield")
+                            Label("Security", systemImage: "shield")
                         }
                         Button {
                             showUploadSheet = true

@@ -6,8 +6,10 @@ struct AllVulnerabilitiesView: View {
     let environmentID: EnvironmentID
 
     @State private var loadMoreError: String?
-    @State private var summary: EnvironmentVulnerabilitySummary?
-    @State private var items: [VulnerabilityWithImage] = []
+    @State private var overview: VulnerabilityRiskOverview?
+    @State private var overviewError: String?
+    @State private var summary: Arcane.EnvironmentVulnerabilitySummary?
+    @State private var items: [Arcane.VulnerabilityWithImage] = []
     @State private var imageOptions: [String] = []
     @State private var selectedSeverities: Set<VulnerabilitySeverity> = []
     @State private var selectedImage: String?
@@ -19,46 +21,110 @@ struct AllVulnerabilitiesView: View {
     @State private var isLoading = false
     @State private var showFilterSheet = false
     @State private var errorMessage: String?
+    @State private var focusedVulnerabilityID: String?
+    @State private var selectedSection: SecuritySection = .overview
+
+    private enum SecuritySection: String, CaseIterable {
+        case overview = "Overview"
+        case findings = "Findings"
+
+        var systemImage: String {
+            switch self {
+            case .overview: "shield.lefthalf.filled"
+            case .findings: "list.bullet"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .overview: .accentColor
+            case .findings: .orange
+            }
+        }
+    }
 
     private var filterCount: Int {
         selectedSeverities.count + (selectedImage == nil ? 0 : 1) + (onlyFixAvailable ? 1 : 0)
     }
 
     var body: some View {
-        List {
-            Section {
-                summaryCard
-            } header: {
-                Text("Environment Summary")
-            }
+        VStack(spacing: 0) {
+            ScrollableTabBar(
+                selection: $selectedSection,
+                options: SecuritySection.allCases.map {
+                    ScrollableTabOption(
+                        $0,
+                        title: $0.rawValue,
+                        systemImage: $0.systemImage,
+                        tint: $0.tint
+                    )
+                },
+                accessibilityLabel: "Security sections"
+            )
 
-            if let exportURL {
-                Section {
-                    ShareLink("Share exported CSV", item: exportURL)
-                }
-            }
-
-            if !items.isEmpty {
-                Section("Findings") {
-                    ForEach(items) { item in
-                        NavigationLink(destination: VulnerabilityWithImageDetailView(record: item)) {
-                            VulnerabilityWithImageRow(item: item)
+            List {
+                if selectedSection == .overview {
+                    if let overview {
+                        SecurityOverviewView(
+                            overview: overview,
+                            environmentID: environmentID,
+                            selectVulnerability: showVulnerability
+                        )
+                    } else {
+                        Section("Environment summary") {
+                            summaryCard
+                            if let overviewError {
+                                Text(overviewError)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-            PaginatedListFooter(
-                hasMore: hasMore, loadMoreError: loadMoreError,
-                onRetry: { Task { await loadMore() } },
-                onLoadMore: { Task { await loadMore() } }
-            )
+                } else {
+                    if let focusedVulnerabilityID {
+                        Section {
+                            HStack {
+                                Text("Showing \(focusedVulnerabilityID)")
+                                Spacer()
+                                Button("Clear") {
+                                    self.focusedVulnerabilityID = nil
+                                    items = []
+                                    Task { await reload() }
+                                }
+                            }
+                        }
+                    }
+
+                    if let exportURL {
+                        Section {
+                            ShareLink("Share exported CSV", item: exportURL)
+                        }
+                    }
+
+                    if !items.isEmpty {
+                        Section("Findings") {
+                            ForEach(items, id: \.self) { item in
+                                NavigationLink(destination: VulnerabilityWithImageDetailView(record: item)) {
+                                    VulnerabilityWithImageRow(item: item)
+                                }
+                            }
+                            PaginatedListFooter(
+                                hasMore: hasMore, loadMoreError: loadMoreError,
+                                onRetry: { Task { await loadMore() } },
+                                onLoadMore: { Task { await loadMore() } }
+                            )
+                        }
+                    } else if !isLoading {
+                        ContentUnavailableView("No vulnerabilities", systemImage: "checkmark.shield",
+                                               description: Text("Either no images have been scanned, or all findings have been filtered out."))
+                        .listRowBackground(Color.clear)
+                    }
                 }
-            } else if !isLoading {
-                ContentUnavailableView("No vulnerabilities", systemImage: "checkmark.shield",
-                                       description: Text("Either no images have been scanned, or all findings have been filtered out."))
-                .listRowBackground(Color.clear)
             }
+            .listStyle(.insetGrouped)
+            .refreshable { await loadInitial() }
         }
-        .listStyle(.insetGrouped)
-        .navigationTitle("All Vulnerabilities")
+        .navigationTitle("Security")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if manager.permissions.has("vulnerabilities:read", in: environmentID), manager.supportsActivities {
@@ -75,33 +141,38 @@ struct AllVulnerabilitiesView: View {
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showFilterSheet = true
-                } label: {
-                    Image(systemName: filterCount > 0 ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                        .appAccentToolbarSymbol()
+            if selectedSection == .findings {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showFilterSheet = true
+                    } label: {
+                        Image(systemName: filterCount > 0 ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Filter vulnerabilities")
                 }
-                .accessibilityLabel("Filter vulnerabilities")
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    Task { await exportCSV() }
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .appAccentToolbarSymbol()
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        Task { await exportCSV() }
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Export vulnerabilities as CSV")
+                    .disabled(isExporting || items.isEmpty)
                 }
-                .accessibilityLabel("Export vulnerabilities as CSV")
-                .disabled(isExporting || items.isEmpty)
             }
         }
         .sheet(isPresented: $showFilterSheet) {
             filterSheet
         }
-        .task {
+        .task(id: environmentID) {
+            overview = nil
+            summary = nil
+            items = []
+            focusedVulnerabilityID = nil
             await loadInitial()
         }
-        .refreshable { await reload() }
         .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK") { errorMessage = nil }
         } message: {
@@ -202,14 +273,25 @@ struct AllVulnerabilitiesView: View {
     }
 
     private func loadInitial() async {
-        // Summary, filter options, and findings are independent — fetch them
-        // together so the report paints after one round trip, not three.
+        // Overview, summary, filter options, and findings are independent.
+        async let overview: Void = loadOverview()
         async let summary: Void = loadSummary()
         async let options: Void = loadImageOptions()
         async let items: Void = reload()
+        await overview
         await summary
         await options
         await items
+    }
+
+    private func showVulnerability(_ id: String) {
+        selectedSeverities = []
+        selectedImage = nil
+        onlyFixAvailable = false
+        focusedVulnerabilityID = id
+        items = []
+        selectedSection = .findings
+        Task { await reload() }
     }
 
     private func reload() async {
@@ -217,11 +299,24 @@ struct AllVulnerabilitiesView: View {
         await loadItems()
     }
 
+    private func loadOverview() async {
+        guard manager.supportsActivities, let client = manager.client else { return }
+        do {
+            overview = try await client.vulnerabilities.riskOverview(envID: environmentID)
+            overviewError = nil
+        } catch ArcaneError.notFound {
+            overview = nil
+            overviewError = nil
+        } catch {
+            overview = nil
+            overviewError = "Risk overview unavailable: \(friendlyErrorMessage(error))"
+        }
+    }
+
     private func loadSummary() async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "vulnerabilities/summary")
-            summary = try await client.rest.get(path)
+            summary = try await client.vulnerabilities.environmentSummary(envID: environmentID)
         } catch {
             // Best effort.
         }
@@ -230,12 +325,10 @@ struct AllVulnerabilitiesView: View {
     private func loadImageOptions() async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "vulnerabilities/image-options")
-            var query: [URLQueryItem] = []
-            if !selectedSeverities.isEmpty {
-                query.append(URLQueryItem(name: "severity", value: selectedSeverities.map(\.rawValue).joined(separator: ",")))
-            }
-            imageOptions = try await client.rest.get(path, query: query)
+            imageOptions = try await client.vulnerabilities.imageOptions(
+                envID: environmentID,
+                severity: selectedSeverities.isEmpty ? nil : selectedSeverities.map(\.rawValue).joined(separator: ",")
+            )
         } catch {
             imageOptions = []
         }
@@ -247,23 +340,15 @@ struct AllVulnerabilitiesView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let path = client.rest.environmentPath(environmentID, "vulnerabilities/all")
-            var query: [URLQueryItem] = [
-                URLQueryItem(name: "page", value: "\(page)"),
-                URLQueryItem(name: "limit", value: "50")
-            ]
-            if !selectedSeverities.isEmpty {
-                query.append(URLQueryItem(name: "severity", value: selectedSeverities.map(\.rawValue).joined(separator: ",")))
-            }
-            if let img = selectedImage {
-                query.append(URLQueryItem(name: "imageName", value: img))
-            }
-            if onlyFixAvailable {
-                query.append(URLQueryItem(name: "fixAvailable", value: "true"))
-            }
-            let newItems: [VulnerabilityWithImage] = try await client.rest.get(path, query: query)
-            items = page == 1 ? newItems : items + newItems
-            hasMore = newItems.count == 50
+            let response = try await client.vulnerabilities.listAll(
+                envID: environmentID,
+                query: SearchPaginationSort(search: focusedVulnerabilityID, start: (page - 1) * 50, limit: 50),
+                severity: selectedSeverities.isEmpty ? nil : selectedSeverities.map(\.rawValue).joined(separator: ","),
+                imageName: selectedImage,
+                fixAvailable: onlyFixAvailable ? true : nil
+            )
+            items = page == 1 ? response.data : items + response.data
+            hasMore = Int64(page * 50) < response.pagination.totalItems
         } catch {
             if page > 1 { loadMoreError = friendlyErrorMessage(error) } else { errorMessage = friendlyErrorMessage(error) }
         }
@@ -283,6 +368,7 @@ struct AllVulnerabilitiesView: View {
         do {
             let data = try await client.vulnerabilities.exportAll(
                 envID: environmentID,
+                search: focusedVulnerabilityID,
                 severity: selectedSeverities.isEmpty ? nil : selectedSeverities.map(\.rawValue).joined(separator: ","),
                 imageName: selectedImage,
                 fixAvailable: onlyFixAvailable ? true : nil
@@ -300,19 +386,19 @@ struct AllVulnerabilitiesView: View {
 }
 
 struct VulnerabilityWithImageRow: View {
-    let item: VulnerabilityWithImage
+    let item: Arcane.VulnerabilityWithImage
 
     var body: some View {
         HStack(spacing: 12) {
-            SeverityBadge(severity: item.severityValue)
+            SeverityBadge(severity: item.mobileSeverity)
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.vulnerabilityId).font(.subheadline.bold())
                 Text(item.imageName).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-                Text(item.pkgName + (item.installedVersion.map { " · \($0)" } ?? ""))
+                Text(item.pkgName + (item.installedVersion.isEmpty ? "" : " · \(item.installedVersion)"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if let cvss = item.cvss?.preferredScore {
+            if let cvss = item.preferredCVSS {
                 Text(String(format: "%.1f", cvss)).font(.caption.monospaced()).foregroundStyle(.secondary)
             }
         }
@@ -321,7 +407,7 @@ struct VulnerabilityWithImageRow: View {
 }
 
 struct VulnerabilityWithImageDetailView: View {
-    let record: VulnerabilityWithImage
+    let record: Arcane.VulnerabilityWithImage
 
     var body: some View {
         List {
@@ -337,13 +423,13 @@ struct VulnerabilityWithImageDetailView: View {
 
             Section {
                 LabeledContent("ID", value: record.vulnerabilityId)
-                LabeledContent("Severity", value: record.severityValue.displayLabel)
+                LabeledContent("Severity", value: record.mobileSeverity.displayLabel)
                 LabeledContent("Package", value: record.pkgName)
-                if let v = record.installedVersion { LabeledContent("Installed", value: v) }
+                if !record.installedVersion.isEmpty { LabeledContent("Installed", value: record.installedVersion) }
                 if let v = record.fixedVersion, !v.isEmpty { LabeledContent("Fixed in", value: v) }
-                if let cvss = record.cvss?.preferredScore { LabeledContent("CVSS", value: String(format: "%.1f", cvss)) }
-                if let date = record.publishedDate { LabeledContent("Published", value: date) }
-                if let date = record.lastModifiedDate { LabeledContent("Modified", value: date) }
+                if let cvss = record.preferredCVSS { LabeledContent("CVSS", value: String(format: "%.1f", cvss)) }
+                if let date = record.publishedDate { LabeledContent("Published", value: date.formatted(date: .abbreviated, time: .omitted)) }
+                if let date = record.lastModifiedDate { LabeledContent("Modified", value: date.formatted(date: .abbreviated, time: .omitted)) }
             }
 
             if let title = record.title, !title.isEmpty {
@@ -363,5 +449,15 @@ struct VulnerabilityWithImageDetailView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(record.vulnerabilityId)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private extension Arcane.VulnerabilityWithImage {
+    var mobileSeverity: VulnerabilitySeverity {
+        VulnerabilitySeverity(rawValue: severity.rawValue) ?? .unknown
+    }
+
+    var preferredCVSS: Double? {
+        cvss?.v3Score ?? cvss?.v2Score
     }
 }

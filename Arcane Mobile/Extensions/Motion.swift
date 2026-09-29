@@ -41,6 +41,9 @@ enum Motion {
     /// than `gauge` so the fill is legible as motion, not a snap.
     static let gaugeReveal: Animation = .spring(response: 0.9, dampingFraction: 0.8)
 
+    /// Count-up and ring sweep for the security risk score.
+    static let riskScoreReveal: Animation = .timingCurve(0.22, 1, 0.36, 1, duration: 1.1)
+
     /// Per-item delay for staggered entrances (cards, popover rows).
     static let stagger: TimeInterval = 0.045
 

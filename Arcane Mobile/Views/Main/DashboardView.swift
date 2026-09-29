@@ -141,6 +141,9 @@ struct DashboardView: View {
     /// Guards the scenePhase handler — hidden tab pages also receive scene
     /// phase changes and must not start their own stream.
     @State private var isDashboardVisible = false
+    /// A prior dashboard instance can disappear after its replacement appears
+    /// during launch. Its teardown must not remove the replacement's streams.
+    @State private var streamConsumerID = UUID().uuidString
 
     @State private var isLoading = false
     @State private var hasLoadedOnce = false
@@ -369,15 +372,19 @@ struct DashboardView: View {
             // latches into silent legacy mode.
             .task(id: manager.client.map { ObjectIdentifier($0.transport) }) {
                 fleet.configure(client: manager.client)
-                fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
             }
             .onAppear {
                 isDashboardVisible = true
+                // Cold launch can mount this view while the scene is still
+                // inactive. Start now rather than depending on a later active
+                // transition that may have already been delivered.
+                if scenePhase != .background {
+                    fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
+                }
                 // Tab switches stop the fleet streams (see onDisappear) and
                 // the auto-refresh guards skip while hidden — without this the
                 // toolbar badge and tiles stay frozen after coming back.
                 if hasLoadedOnce {
-                    fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
                     Task { await refreshDashboard(reconnectStream: false) }
                 }
             }
@@ -387,7 +394,7 @@ struct DashboardView: View {
                 liveCountsRefreshTask = nil
                 mutationRefreshTask?.cancel()
                 mutationRefreshTask = nil
-                fleet.setVisible(false, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
+                fleet.setVisible(false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
             }
             .onChange(of: streamStore.aggregate) { previous, current in
                 publishWidgetSnapshot()
@@ -410,12 +417,12 @@ struct DashboardView: View {
                     liveCountsRefreshTask = nil
                     mutationRefreshTask?.cancel()
                     mutationRefreshTask = nil
-                    fleet.setVisible(false, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
+                    fleet.setVisible(false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
                     publishWidgetSnapshot()
                     WidgetSnapshotPublisher.shared.flush()
                 case .active:
                     if isDashboardVisible {
-                        fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: manager.supportsActivities)
+                        fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
                         // Returning from background (or relaunch-adjacent
                         // foreground) must show fresh counts — the stream
                         // replays snapshots but volumes/updates/history don't.
@@ -434,7 +441,7 @@ struct DashboardView: View {
             // once the server is known to be v2.
             .onChange(of: manager.supportsActivities) { _, supported in
                 if supported, isDashboardVisible {
-                    fleet.setVisible(true, consumer: "dashboard", supportsDashboardStream: true)
+                    fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: true)
                 }
             }
             .onChange(of: historyMutationStore.latestClear) { _, event in

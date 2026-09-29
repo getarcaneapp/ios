@@ -188,6 +188,7 @@ struct EnvironmentSwitcherToolbarButton: View {
                 showsPicker = true
             } label: {
                 Image(systemName: "server.rack")
+                    .appAccentToolbarSymbol()
                     .overlay(alignment: .bottomTrailing) {
                         Circle()
                             .fill(statusTint)

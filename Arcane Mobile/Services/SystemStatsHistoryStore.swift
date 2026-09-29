@@ -175,7 +175,13 @@ final class SystemStatsHistoryStore {
                     append(frame, environmentID: environmentID)
                 }
             } catch is CancellationError {
-                return
+                // The SDK also reports a cancelled URLSession request as
+                // CancellationError. On cold launch the request can be
+                // cancelled while the task is still active; retry it instead
+                // of leaving this environment without a stats stream until
+                // the dashboard is shown again.
+                guard generation == self.generation, !Task.isCancelled else { return }
+                setError(environmentID: environmentID, "Live stats unavailable: Connection interrupted")
             } catch {
                 guard generation == self.generation, !Task.isCancelled else { return }
                 // Keep the last-known series; just flag the error while we

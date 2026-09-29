@@ -34,7 +34,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .projects: return "Projects"
         case .containers: return "Containers"
         case .images: return "Images"
-        case .imageVulnerabilities: return "Vulnerabilities"
+        case .imageVulnerabilities: return "Security"
         case .networks: return "Networks"
         case .ports: return "Ports"
         case .networkTopology: return "Topology"

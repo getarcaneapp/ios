@@ -45,6 +45,7 @@ final class FleetStore {
         dockerInformationRevision &+= 1
         hasLoaded = false
         errorMessage = nil
+        updateStreams()
     }
 
     func setVisible(_ visible: Bool, consumer: String, supportsDashboardStream: Bool) {
@@ -60,7 +61,11 @@ final class FleetStore {
             dashboardStreamConsumers.remove(consumer)
         }
 
-        if visibleConsumers.isEmpty {
+        updateStreams()
+    }
+
+    private func updateStreams() {
+        if visibleConsumers.isEmpty || clientIdentity == nil {
             dashboardStream.stop()
             statsHistory.stop()
         } else {

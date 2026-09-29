@@ -142,6 +142,22 @@ extension ReleaseNote {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.9.1",
+            new: [
+                .init("Security overview with patch priority, risk trend, exposure, and priority findings.")
+            ],
+            changed: [
+                .init("Security findings and image patch actions share the redesigned security view."),
+                .init("Risk score and trend share a switchable card with an animated score."),
+                .init("Security overview and findings use the app's detail tabs.")
+            ],
+            fixed: [
+                .init("Security findings load the next page without repeating earlier results."),
+                .init("Dashboard live stats connect on cold launch."),
+                .init("Dashboard environment switcher uses the app accent color.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.9.0",
             new: [
                 .init("Bulk container updates from multi-select."),

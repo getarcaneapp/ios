@@ -256,8 +256,8 @@ struct ImageVulnerabilitiesView: View {
     private func loadStatus() async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "vulnerabilities/scanner-status")
-            status = try await client.rest.get(path)
+            let result = try await client.vulnerabilities.scannerStatus(envID: environmentID)
+            status = ScannerStatus(available: result.available, version: result.version)
         } catch {
             // Treat as unavailable.
             status = ScannerStatus(available: false, version: nil)
@@ -267,8 +267,8 @@ struct ImageVulnerabilitiesView: View {
     private func loadSummary() async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "images/\(imageID)/vulnerabilities/summary")
-            summary = try await client.rest.get(path)
+            summary = ScanSummary(try await client.vulnerabilities.scanSummary(
+                envID: environmentID, imageId: imageID))
         } catch {
             // Likely 404 (no scan yet) — leave summary nil.
             summary = nil
@@ -281,19 +281,16 @@ struct ImageVulnerabilitiesView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let path = client.rest.environmentPath(environmentID, "images/\(imageID)/vulnerabilities/list")
-            var query: [URLQueryItem] = [
-                URLQueryItem(name: "page", value: "\(page)"),
-                URLQueryItem(name: "limit", value: "50")
-            ]
-            if !selectedSeverities.isEmpty {
-                let sev = selectedSeverities.map(\.rawValue).joined(separator: ",")
-                query.append(URLQueryItem(name: "severity", value: sev))
-            }
-            let items: [VulnerabilityRecord] = try await client.rest.get(path, query: query)
+            let response = try await client.vulnerabilities.listForImage(
+                envID: environmentID,
+                imageId: imageID,
+                query: SearchPaginationSort(start: (page - 1) * 50, limit: 50),
+                severity: selectedSeverities.isEmpty ? nil : selectedSeverities.map(\.rawValue).joined(separator: ",")
+            )
+            let items = response.data.map(VulnerabilityRecord.init)
             vulnerabilities = page == 1 ? items : vulnerabilities + items
             rebuildDisplayedVulnerabilities()
-            hasMore = items.count == 50
+            hasMore = Int64(page * 50) < response.pagination.totalItems
         } catch {
             if page > 1 { loadMoreError = friendlyErrorMessage(error) }
         }
@@ -311,8 +308,7 @@ struct ImageVulnerabilitiesView: View {
         isScanning = true
         defer { isScanning = false }
         do {
-            let path = client.rest.environmentPath(environmentID, "images/\(imageID)/vulnerabilities/scan")
-            let _: ScanResult = try await client.rest.post(path, body: String?.none)
+            let _ = try await client.vulnerabilities.scanImage(envID: environmentID, imageId: imageID)
             await reload()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -322,8 +318,7 @@ struct ImageVulnerabilitiesView: View {
     private func unignore(ignoreId: String, key: String) async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "vulnerabilities/ignore/\(ignoreId)")
-            let _: AnyDecodableMessage = try await client.rest.delete(path)
+            try await client.vulnerabilities.unignore(envID: environmentID, ignoreId: ignoreId)
             ignoredById.removeValue(forKey: key)
             rebuildDisplayedVulnerabilities()
         } catch {
@@ -585,7 +580,7 @@ private struct IgnoreVulnerabilitySheet: View {
         guard let client = manager.client else { return }
         isSaving = true
         defer { isSaving = false }
-        let body = IgnoreVulnerabilityRequest(
+        let body = VulnerabilityIgnorePayload(
             imageId: imageID,
             vulnerabilityId: vulnerability.vulnerabilityId,
             pkgName: vulnerability.pkgName,
@@ -593,17 +588,11 @@ private struct IgnoreVulnerabilitySheet: View {
             reason: reason.isEmpty ? nil : reason
         )
         do {
-            let path = client.rest.environmentPath(environmentID, "vulnerabilities/ignore")
-            let result: IgnoredVulnerability = try await client.rest.post(path, body: body)
-            onIgnored(result)
+            let result = try await client.vulnerabilities.ignore(envID: environmentID, payload: body)
+            onIgnored(IgnoredVulnerability(result))
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
     }
-}
-
-// Empty-message decoder used for endpoints that return `{success: true}` with no useful data.
-nonisolated struct AnyDecodableMessage: Decodable, Sendable {
-    init(from decoder: any Decoder) throws {}
 }

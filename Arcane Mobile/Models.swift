@@ -683,26 +683,19 @@ nonisolated struct VulnerabilityRecord: Codable, Sendable, Identifiable {
     var severityValue: VulnerabilitySeverity {
         VulnerabilitySeverity(rawValue: severity.uppercased()) ?? .unknown
     }
-}
 
-nonisolated struct VulnerabilityWithImage: Codable, Sendable, Identifiable {
-    let vulnerabilityId: String
-    let pkgName: String
-    let installedVersion: String?
-    let fixedVersion: String?
-    let severity: String
-    let title: String?
-    let description: String?
-    let references: [String]?
-    let cvss: CVSSInfo?
-    let publishedDate: String?
-    let lastModifiedDate: String?
-    let imageId: String
-    let imageName: String
-
-    var id: String { "\(imageId)|\(vulnerabilityId)|\(pkgName)" }
-    var severityValue: VulnerabilitySeverity {
-        VulnerabilitySeverity(rawValue: severity.uppercased()) ?? .unknown
+    init(_ value: Arcane.Vulnerability) {
+        vulnerabilityId = value.vulnerabilityId
+        pkgName = value.pkgName
+        installedVersion = value.installedVersion
+        fixedVersion = value.fixedVersion
+        severity = value.severity.rawValue
+        title = value.title
+        description = value.description
+        references = value.references
+        cvss = value.cvss.map(CVSSInfo.init)
+        publishedDate = value.publishedDate?.formatted(date: .abbreviated, time: .omitted)
+        lastModifiedDate = value.lastModifiedDate?.formatted(date: .abbreviated, time: .omitted)
     }
 }
 
@@ -713,6 +706,13 @@ nonisolated struct CVSSInfo: Codable, Sendable {
     let v3Vector: String?
 
     var preferredScore: Double? { v3Score ?? v2Score }
+
+    init(_ value: Arcane.CVSSInfo) {
+        v2Score = value.v2Score
+        v3Score = value.v3Score
+        v2Vector = value.v2Vector
+        v3Vector = value.v3Vector
+    }
 }
 
 nonisolated struct SeveritySummary: Codable, Sendable {
@@ -722,6 +722,15 @@ nonisolated struct SeveritySummary: Codable, Sendable {
     let low: Int
     let unknown: Int
     let total: Int
+
+    init(_ value: Arcane.VulnerabilitySeveritySummary) {
+        critical = value.critical
+        high = value.high
+        medium = value.medium
+        low = value.low
+        unknown = value.unknown
+        total = value.total
+    }
 }
 
 nonisolated struct ScanSummary: Codable, Sendable {
@@ -731,46 +740,20 @@ nonisolated struct ScanSummary: Codable, Sendable {
     let scanPhase: String?
     let summary: SeveritySummary?
     let error: String?
-}
 
-nonisolated struct ScanResult: Codable, Sendable {
-    let imageId: String
-    let imageName: String
-    let scanTime: String?
-    let status: String
-    let scanPhase: String?
-    let summary: SeveritySummary?
-    let vulnerabilities: [VulnerabilityRecord]?
-    let error: String?
-    let duration: Int64?
-    let scannerVersion: String?
+    init(_ value: Arcane.VulnerabilityScanSummary) {
+        imageId = value.imageId
+        scanTime = value.scanTime.formatted(date: .abbreviated, time: .shortened)
+        status = value.status.rawValue
+        scanPhase = value.scanPhase?.rawValue
+        summary = value.summary.map(SeveritySummary.init)
+        error = value.error
+    }
 }
 
 nonisolated struct ScannerStatus: Codable, Sendable {
     let available: Bool
     let version: String?
-}
-
-nonisolated struct ScanSummariesRequest: Encodable, Sendable {
-    let imageIds: [String]
-}
-
-nonisolated struct ScanSummariesResponse: Codable, Sendable {
-    let summaries: [String: ScanSummary]
-}
-
-nonisolated struct EnvironmentVulnerabilitySummary: Codable, Sendable {
-    let totalImages: Int
-    let scannedImages: Int
-    let summary: SeveritySummary?
-}
-
-nonisolated struct IgnoreVulnerabilityRequest: Encodable, Sendable {
-    let imageId: String
-    let vulnerabilityId: String
-    let pkgName: String
-    let installedVersion: String?
-    let reason: String?
 }
 
 nonisolated struct IgnoredVulnerability: Codable, Sendable, Identifiable {
@@ -783,4 +766,16 @@ nonisolated struct IgnoredVulnerability: Codable, Sendable, Identifiable {
     let reason: String?
     let createdBy: String?
     let createdAt: String?
+
+    init(_ value: Arcane.IgnoredVulnerability) {
+        id = value.id
+        environmentId = value.environmentId
+        imageId = value.imageId
+        vulnerabilityId = value.vulnerabilityId
+        pkgName = value.pkgName
+        installedVersion = value.installedVersion
+        reason = value.reason
+        createdBy = value.createdBy
+        createdAt = value.createdAt.formatted(date: .abbreviated, time: .shortened)
+    }
 }
