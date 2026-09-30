@@ -118,7 +118,7 @@ struct RolesView: View {
         }
         .toolbar {
             if manager.canAccess(.oidcRoleMappings) {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink {
                         OIDCRoleMappingsView()
                     } label: {
@@ -134,7 +134,7 @@ struct RolesView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             if rbacAvailable && manager.permissions.canManageRoles {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Create Role")
                 }
             }
@@ -409,7 +409,7 @@ struct RoleDetailView: View {
         )
         .toolbar {
             if mode == .create {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
             }

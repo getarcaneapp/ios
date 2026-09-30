@@ -42,7 +42,7 @@ private struct ResourceActionToolbarModifier: ViewModifier {
             .toolbar {
                 if active {
                     if let primary {
-                        ToolbarItem(placement: .topBarTrailing) {
+                        AppToolbarItem(placement: .topBarTrailing) {
                             primaryButton(primary)
                         }
                     }
@@ -52,7 +52,7 @@ private struct ResourceActionToolbarModifier: ViewModifier {
                     }
 
                     if !menuItems.isEmpty {
-                        ToolbarItem(placement: .topBarTrailing) {
+                        AppToolbarItem(placement: .topBarTrailing) {
                             Menu {
                                 ForEach(menuItems) { item in
                                     Button(role: menuRole(item)) {

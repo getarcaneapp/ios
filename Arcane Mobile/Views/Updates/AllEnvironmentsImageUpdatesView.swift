@@ -496,7 +496,7 @@ struct AllEnvironmentsImageUpdatesView: View {
         .navigationTitle(item.repoDisplayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
+            AppToolbarItem(placement: .confirmationAction) {
                 Button("Done") { detailTarget = nil }
             }
         }
@@ -526,7 +526,7 @@ struct AllEnvironmentsImageUpdatesView: View {
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
+            AppToolbarItem(placement: .confirmationAction) {
                 Button("Done") { detailTarget = nil }
             }
         }

@@ -120,8 +120,8 @@ struct VolumeBackupsView: View {
                 .navigationTitle("Create Backup")
         .modifier(BackupSessionScope())
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showCreate = false } }
-                    ToolbarItem(placement: .confirmationAction) { Button("Create") { Task { await create() } }.disabled(destination != "local" && s3ID.isEmpty) }
+                    AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { showCreate = false } }
+                    AppToolbarItem(placement: .confirmationAction) { Button("Create") { Task { await create() } }.disabled(destination != "local" && s3ID.isEmpty) }
                 }
             }
         }

@@ -193,7 +193,7 @@ struct EnvironmentDashboardCard: View {
             NavigationStack {
                 SystemUpgradeView(environmentID: envID)
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
+                        AppToolbarItem(placement: .cancellationAction) {
                             Button("Done") { showUpgradeSheet = false }
                         }
                     }

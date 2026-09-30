@@ -88,7 +88,7 @@ struct ContainerTerminalView: View {
             .navigationTitle(container.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                AppToolbarItem(placement: .topBarLeading) {
                     Button("Close") {
                         Task {
                             await teardown()
@@ -96,7 +96,7 @@ struct ContainerTerminalView: View {
                         }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                AppToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Picker("Shell", selection: $shell) {
                             Text("/bin/sh").tag("/bin/sh")

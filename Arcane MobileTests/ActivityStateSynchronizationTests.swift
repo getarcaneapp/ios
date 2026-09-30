@@ -7,6 +7,36 @@ import Testing
 @Suite("Activity state synchronization")
 struct ActivityStateSynchronizationTests {
     @Test
+    func progressPreservesMeasuredValuesAndLeavesUnmeasuredWorkIndeterminate() {
+        var running = activity(id: "running", environmentID: "one", status: .running)
+        #expect(running.displayProgress == nil)
+        running.progress = 45
+        #expect(running.displayProgress == 45)
+        running.progress = -5
+        #expect(running.displayProgress == 0)
+        running.progress = 150
+        #expect(running.displayProgress == 100)
+        running.status = .failed
+        running.progress = 45
+        #expect(running.displayProgress == 45)
+        running.progress = nil
+        #expect(running.displayProgress == nil)
+        running.status = .success
+        #expect(running.displayProgress == 100)
+    }
+
+    @Test
+    func batchProgressRequiresMeasuredProgressForEveryUnfinishedMember() {
+        let completed = activity(id: "done", environmentID: "one", status: .success)
+        var running = activity(id: "running", environmentID: "one", status: .running)
+        #expect(ActivityBatchSummary(id: "batch", activities: [completed, running]).progress == nil)
+        running.progress = 40
+        #expect(ActivityBatchSummary(id: "batch", activities: [completed, running]).progress == 70)
+        running.status = .failed
+        #expect(ActivityBatchSummary(id: "batch", activities: [completed, running]).progress == 70)
+    }
+
+    @Test
     func allActivitiesPresentsRunningInitialSnapshotItems() {
         #expect(
             ActivityToastInitialSnapshotPolicy.shouldPresent(

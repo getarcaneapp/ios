@@ -69,7 +69,7 @@ struct UsersView: View {
             Task { await loadUsers(refresh: true) }
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink {
                     UserSettingsView()
                 } label: {
@@ -80,7 +80,7 @@ struct UsersView: View {
             if #available(iOS 26, *) {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add User")
             }
         }

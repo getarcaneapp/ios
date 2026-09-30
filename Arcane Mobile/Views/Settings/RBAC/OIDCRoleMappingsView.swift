@@ -86,7 +86,7 @@ struct OIDCRoleMappingsView: View {
         .navigationTitle("OIDC Role Mappings")
         .toolbar {
             if rbacAvailable && manager.permissions.canManageOIDCMappings {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Role Mapping")
                 }
             }
@@ -327,7 +327,7 @@ private struct OIDCMappingFormSheet: View {
                 onRevert: revertChanges
             )
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
         }
     }

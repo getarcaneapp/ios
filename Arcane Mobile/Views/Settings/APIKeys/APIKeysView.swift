@@ -140,7 +140,7 @@ struct APIKeysView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
+        AppToolbarItem(placement: .navigationBarTrailing) {
             Menu {
                 Picker("Sort By", selection: $sortField) {
                     ForEach(APIKeySortField.allCases) { field in
@@ -162,7 +162,7 @@ struct APIKeysView: View {
         }
 
         if canCreate {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: {
                     Image(systemName: "plus")
                 }

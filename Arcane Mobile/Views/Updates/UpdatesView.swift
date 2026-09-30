@@ -132,7 +132,7 @@ private struct EnvironmentPickerSheet: View {
         .navigationTitle(mode.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
+            AppToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
             }
         }

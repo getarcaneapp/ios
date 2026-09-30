@@ -32,49 +32,13 @@ struct CachedClient: Sendable {
                "ResponseCache must not be used for stream paths: \(path)")
         #endif
 
-        let key = CacheKey(
-            serverIdentity: serverIdentity,
-            userID: userID,
-            sessionIdentity: sessionIdentity,
-            envID: envID.rawValue,
-            pathWithQuery: path
-        )
-
-        if !refresh,
-           let hit = await ResponseCache.shared.getEntry(key, as: T.self, ttl: policy.ttl) {
-            // Background revalidate — but only when the entry is old enough to
-            // be worth the round-trip; fresh hits (rapid tab switches) are
-            // served as-is. Errors don't propagate — we have a usable value.
-            if hit.age >= policy.revalidateAfter {
-                let captured = client
-                let onFreshCopy = onFresh
-                Task.detached(priority: .utility) {
-                    let fresh: T?
-                    do {
-                        fresh = try await ResponseCache.shared.coalesce(key) {
-                            try await captured.rest.get(path) as T
-                        }
-                    } catch {
-                        fresh = nil
-                    }
-                    if let fresh {
-                        await ResponseCache.shared.set(key, value: fresh)
-                        if let onFreshCopy {
-                            await MainActor.run { onFreshCopy(fresh) }
-                        }
-                    }
-                }
-            }
-            return hit.value
-        }
-
-        // Miss or forced refresh. Fetch through coalesce so two concurrent callers share.
         let captured = client
-        let fresh: T = try await ResponseCache.shared.coalesce(key) {
+        return try await getCustom(
+            path: path, as: type, policy: policy, envID: envID,
+            refresh: refresh, onFresh: onFresh
+        ) {
             try await captured.rest.get(path) as T
         }
-        await ResponseCache.shared.set(key, value: fresh)
-        return fresh
     }
 
     /// Same as `get(...)`, but for global (non-env-scoped) resources like
@@ -243,46 +207,58 @@ struct CachedClient: Sendable {
             sessionIdentity: sessionIdentity,
             envID: envID.rawValue, pathWithQuery: path
         )
+        let generation = await ResponseCache.shared.generation(for: key)
         if !refresh,
-           let hit = await ResponseCache.shared.getEntry(key, as: T.self, ttl: policy.ttl) {
+           let hit = await ResponseCache.shared.getEntry(
+               key, as: T.self, ttl: policy.ttl, generation: generation
+           ) {
             if hit.age >= policy.revalidateAfter {
                 let onFreshCopy = onFresh
                 Task.detached(priority: .utility) {
                     let fresh: T?
                     do {
-                        fresh = try await ResponseCache.shared.coalesce(key, work: fetcher)
+                        fresh = try await ResponseCache.shared.coalesce(key, generation: generation, work: fetcher)
                     } catch {
                         fresh = nil
                     }
                     if let fresh {
-                        await ResponseCache.shared.set(key, value: fresh)
                         if let onFreshCopy {
-                            await MainActor.run { onFreshCopy(fresh) }
+                            await MainActor.run {
+                                guard generation.isValid else { return }
+                                onFreshCopy(fresh)
+                            }
                         }
                     }
                 }
             }
             return hit.value
         }
-        let fresh: T = try await ResponseCache.shared.coalesce(key, work: fetcher)
-        await ResponseCache.shared.set(key, value: fresh)
-        return fresh
+        return try await ResponseCache.shared.coalesce(key, generation: generation, work: fetcher)
     }
 
     /// Invalidate cache entries by matching env + glob-style path patterns.
     /// Pattern matching: literal equality, or a trailing `*` matches a prefix.
     func invalidate(envID: EnvironmentID, paths: [String]) async {
         let env = envID.rawValue
+        let server = serverIdentity
+        let user = userID
+        let session = sessionIdentity
         await ResponseCache.shared.invalidate { key in
-            guard key.envID == env else { return false }
+            guard key.serverIdentity == server, key.userID == user,
+                  key.sessionIdentity == session, key.envID == env else { return false }
             return paths.contains { Self.matches(pattern: $0, path: key.pathWithQuery) }
         }
     }
 
     /// Invalidate non-environment-scoped paths (settings, webhooks, users, api-keys, etc.).
     func invalidateGlobal(paths: [String]) async {
+        let server = serverIdentity
+        let user = userID
+        let session = sessionIdentity
         await ResponseCache.shared.invalidate { key in
-            paths.contains { Self.matches(pattern: $0, path: key.pathWithQuery) }
+            guard key.serverIdentity == server, key.userID == user,
+                  key.sessionIdentity == session else { return false }
+            return paths.contains { Self.matches(pattern: $0, path: key.pathWithQuery) }
         }
     }
 

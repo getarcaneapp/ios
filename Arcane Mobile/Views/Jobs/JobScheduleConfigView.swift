@@ -80,7 +80,7 @@ struct JobScheduleConfigView: View {
         .navigationTitle("Schedules")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -90,7 +90,7 @@ struct JobScheduleConfigView: View {
             if #available(iOS 26, *) {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
-            ToolbarItem(placement: .confirmationAction) {
+            AppToolbarItem(placement: .confirmationAction) {
                 Button {
                     Task { await save() }
                 } label: {

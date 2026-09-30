@@ -76,7 +76,7 @@ struct UploadImageView: View {
             .navigationTitle("Upload Image")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button(isUploading ? "Stop" : "Cancel") {
                         if isUploading {
                             uploadTask?.cancel()
@@ -85,7 +85,7 @@ struct UploadImageView: View {
                         }
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     if output != nil {
                         Button("Done") { dismiss() }
                     } else {

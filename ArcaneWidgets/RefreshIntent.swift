@@ -14,6 +14,9 @@ struct RefreshDashboardIntent: AppIntent {
     private static let maxConcurrentFetches = 4
 
     func perform() async throws -> some IntentResult {
+        let origin = IntentClientFactory.serverOrigin
+        let session = AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity)
+        let activeEnvironmentID = IntentClientFactory.activeEnvironmentID.rawValue
         let client = try IntentClientFactory.makeClient()
         var environments: [Arcane.Environment] = []
         var inspectedEnvironmentCount = 0
@@ -44,13 +47,17 @@ struct RefreshDashboardIntent: AppIntent {
             client: client,
             previousByID: previousByID
         )
+        guard !Task.isCancelled,
+              origin == IntentClientFactory.serverOrigin,
+              session == AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity),
+              SharedKeychain.credentialOrigin == origin else { return .result() }
         WidgetSnapshotStore.saveAndReloadIfChanged(WidgetSnapshot(
             generatedAt: Date(),
             serverConfigured: true,
-            serverOrigin: IntentClientFactory.serverOrigin,
+            serverOrigin: origin,
             isDemo: previous?.isDemo ?? false,
             accentHex: AppGroup.defaults?.string(forKey: AppGroup.Keys.accentColorHex),
-            activeEnvironmentID: IntentClientFactory.activeEnvironmentID.rawValue,
+            activeEnvironmentID: activeEnvironmentID,
             environments: summaries,
             suggestedContainers: previous?.suggestedContainers ?? []
         ))

@@ -128,7 +128,7 @@ struct AllVulnerabilitiesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if manager.permissions.has("vulnerabilities:read", in: environmentID), manager.supportsActivities {
-                ToolbarItem(placement: .topBarTrailing) {
+                AppToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         ImagePatchTargetsView(environmentID: environmentID)
                     } label: {
@@ -142,7 +142,7 @@ struct AllVulnerabilitiesView: View {
                 }
             }
             if selectedSection == .findings {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showFilterSheet = true
                     } label: {
@@ -151,7 +151,7 @@ struct AllVulnerabilitiesView: View {
                     }
                     .accessibilityLabel("Filter vulnerabilities")
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         Task { await exportCSV() }
                     } label: {
@@ -243,14 +243,14 @@ struct AllVulnerabilitiesView: View {
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Reset") {
                         selectedSeverities = []
                         selectedImage = nil
                         onlyFixAvailable = false
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         showFilterSheet = false
                         Task { await reload() }

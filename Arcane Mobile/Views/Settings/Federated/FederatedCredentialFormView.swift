@@ -63,8 +63,8 @@ struct FederatedCredentialFormView: View {
             .disabled(saving)
             .navigationTitle(credential == nil ? "Create Credential" : "Edit Credential")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button(credential == nil ? "Create" : "Save") { Task { await save() } }.disabled(saving || form.validationMessage != nil || manager.currentUser?.isGlobalAdmin != true) }
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .confirmationAction) { Button(credential == nil ? "Create" : "Save") { Task { await save() } }.disabled(saving || form.validationMessage != nil || manager.currentUser?.isGlobalAdmin != true) }
             }
             .task {
                 guard let client = manager.client else { return }

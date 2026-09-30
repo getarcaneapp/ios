@@ -110,7 +110,7 @@ struct DynamicResourceListView: View {
             Task { await load(refresh: true) }
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -121,7 +121,7 @@ struct DynamicResourceListView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             if let managementDestination {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink {
                         appTabDestination(
                             managementDestination,
@@ -141,7 +141,7 @@ struct DynamicResourceListView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             if createPath != nil, !createFields.isEmpty {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: {
                         Image(systemName: "plus")
                     }
@@ -153,7 +153,7 @@ struct DynamicResourceListView: View {
                 if #available(iOS 26, *) {
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         ForEach(globalActions) { action in
                             Button(role: action.destructive ? .destructive : nil) {
@@ -371,7 +371,7 @@ struct DynamicResourceDetailView: View {
         .navigationTitle(title)
         .toolbar {
             if !actions.isEmpty {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         ForEach(actions) { action in
                             Button(role: action.destructive ? .destructive : nil) {
@@ -480,10 +480,10 @@ struct DynamicCreateFormView: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button(isSaving ? "Saving..." : "Save") {
                         Task { await save() }
                     }

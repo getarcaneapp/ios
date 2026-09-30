@@ -67,7 +67,7 @@ struct SystemBackupsView: View {
         .modifier(BackupSessionScope())
         .toolbar {
             if canRead && supported {
-                ToolbarItem(placement: .topBarTrailing) {
+                AppToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if canManage {
                             Button("Back Up Volumes", systemImage: "externaldrive.badge.plus") {
@@ -84,7 +84,7 @@ struct SystemBackupsView: View {
                     if #available(iOS 26, *) {
                         ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
+                    AppToolbarItem(placement: .topBarTrailing) {
                         Button("Create Backup", systemImage: "plus") { showCreate = true }.labelStyle(.iconOnly)
                     }
                 }
@@ -95,7 +95,7 @@ struct SystemBackupsView: View {
             NavigationStack {
                 SystemBackupCreateView()
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showCreate = false } }
+                        AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { showCreate = false } }
                     }
             }
         }
@@ -103,7 +103,7 @@ struct SystemBackupsView: View {
             NavigationStack {
                 SystemVolumeRunView()
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showVolumeBackup = false } }
+                        AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { showVolumeBackup = false } }
                     }
             }
         }
@@ -182,7 +182,7 @@ struct SystemBackupCreateView: View {
         .navigationTitle(discover ? "Discover System Backups" : "Create Backup")
         .modifier(BackupSessionScope())
         .disabled(busy)
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(discover ? "Discover" : "Create") { Task { await submit() } }.disabled(busy || ((discover || destination != "local") && s3ID.isEmpty)) } }
+        .toolbar { AppToolbarItem(placement: .confirmationAction) { Button(discover ? "Discover" : "Create") { Task { await submit() } }.disabled(busy || ((discover || destination != "local") && s3ID.isEmpty)) } }
         .task(id: manager.clientGeneration) {
             let scope = BackupRequestScope(manager)
             guard let client = manager.client, manager.permissions.has("s3-destinations:list", in: nil) else { return }
@@ -279,7 +279,7 @@ struct SystemVolumeRunView: View {
         }
         .navigationTitle("Back Up Volumes").disabled(busy)
         .modifier(BackupSessionScope())
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Run") { Task { await run() } }.disabled(busy || (destination != "local" && s3ID.isEmpty) || (selectionMode == "allowlist" && selected.isEmpty)) } }
+        .toolbar { AppToolbarItem(placement: .confirmationAction) { Button("Run") { Task { await run() } }.disabled(busy || (destination != "local" && s3ID.isEmpty) || (selectionMode == "allowlist" && selected.isEmpty)) } }
         .task(id: manager.clientGeneration) {
             let scope = BackupRequestScope(manager)
             guard let client = manager.client else { return }

@@ -52,7 +52,13 @@ actor ResponseCache {
     private var hot: [CacheKey: HotEntry] = [:]
     private let hotCapacity = 128
     private var accessTick: UInt64 = 0
-    private var inFlight: [CacheKey: Task<any Sendable, Error>] = [:]
+    private struct InFlight {
+        let id: UUID
+        let generation: CacheGeneration
+        let task: Task<any Sendable, Error>
+    }
+    private var inFlight: [CacheKey: InFlight] = [:]
+    private var generations: [CacheKey: CacheGeneration] = [:]
     // Disk tier bounds — trimmed lazily on first use per launch (LRU by mtime).
     private let diskByteCap = 50 * 1024 * 1024        // 50 MB
     private let maximumEntryBytes = RemoteDataLimits.maximumResponseBytes
@@ -60,16 +66,19 @@ actor ResponseCache {
     private var didTrim = false
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
-    private let ioQueue = DispatchQueue(label: "com.arcane.response-cache.io", qos: .utility)
+    private let ioQueue: DispatchQueue
 
-    private init() {
+    init(directory: URL? = nil, ioQueue: DispatchQueue? = nil) {
+        self.ioQueue = ioQueue ?? DispatchQueue(label: "com.arcane.response-cache.io", qos: .utility)
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let legacyDirectories = ["ResponseCache", "ResponseCache-v2"]
             .map { caches.appendingPathComponent($0, isDirectory: true) }
-        diskDirectory = caches.appendingPathComponent("ResponseCache-v3", isDirectory: true)
-        for legacyDirectory in legacyDirectories {
-            try? FileManager.default.removeItem(at: legacyDirectory)
+        diskDirectory = directory ?? caches.appendingPathComponent("ResponseCache-v3", isDirectory: true)
+        if directory == nil {
+            for legacyDirectory in legacyDirectories {
+                try? FileManager.default.removeItem(at: legacyDirectory)
+            }
         }
         try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
         let enc = JSONEncoder()
@@ -108,26 +117,6 @@ actor ResponseCache {
         }
     }
 
-    private func deleteDisk(at url: URL) async {
-        await withCheckedContinuation { continuation in
-            ioQueue.async {
-                try? FileManager.default.removeItem(at: url)
-                continuation.resume()
-            }
-        }
-    }
-
-    private func listDiskDirectory() async -> [URL] {
-        await withCheckedContinuation { continuation in
-            ioQueue.async {
-                let urls = (try? FileManager.default.contentsOfDirectory(
-                    at: self.diskDirectory, includingPropertiesForKeys: nil
-                )) ?? []
-                continuation.resume(returning: urls)
-            }
-        }
-    }
-
     // MARK: - Hot Cache (LRU-bounded)
 
     private func nextTick() -> UInt64 {
@@ -152,8 +141,10 @@ actor ResponseCache {
     /// Like `get`, but also reports the entry's age so callers can decide
     /// whether a background revalidation is worth the network round-trip.
     func getEntry<T: Codable & Sendable>(
-        _ key: CacheKey, as type: T.Type, ttl: TimeInterval
+        _ key: CacheKey, as type: T.Type, ttl: TimeInterval, generation: CacheGeneration? = nil
     ) async -> (value: T, age: TimeInterval)? {
+        let generation = generation ?? self.generation(for: key)
+        guard generation.isValid else { return nil }
         trimDiskIfNeeded()
         let now = Date()
         if let entry = hot[key] {
@@ -165,7 +156,7 @@ actor ResponseCache {
         }
         guard key.allowsDiskPersistence else { return nil }
         let url = diskURL(for: key)
-        guard let data = await readDisk(at: url) else { return nil }
+        guard let data = await readDisk(at: url), generation.isValid else { return nil }
         // Cheap header parse first to avoid decoding the full payload on collision/expiry.
         guard let header = try? decoder.decode(EnvelopeHeader.self, from: data),
               header.key == key else { return nil }
@@ -225,29 +216,58 @@ actor ResponseCache {
 
     // MARK: - Write
 
-    func set<T: Codable & Sendable>(_ key: CacheKey, value: T) async {
+    @discardableResult
+    func set<T: Codable & Sendable>(
+        _ key: CacheKey, value: T, generation: CacheGeneration? = nil
+    ) async -> Bool {
+        let generation = generation ?? self.generation(for: key)
+        guard generation.isValid else { return false }
         let storedAt = Date()
         insertHot(key, value: value, storedAt: storedAt)
-        guard key.allowsDiskPersistence else { return }
+        guard key.allowsDiskPersistence else { return true }
         let env = ValueEnvelope(key: key, storedAt: storedAt, value: value)
-        guard let data = try? encoder.encode(env) else { return }
+        guard let data = try? encoder.encode(env) else { return generation.isValid }
         let url = diskURL(for: key)
         await writeDisk(data, to: url)
+        return generation.isValid
     }
 
     // MARK: - Invalidation
 
-    func invalidate(matching predicate: @Sendable (CacheKey) -> Bool) async {
-        for k in hot.keys where predicate(k) { hot.removeValue(forKey: k) }
-        let entries = await listDiskDirectory()
-        for url in entries {
-            guard let data = await readDisk(at: url),
-                  let header = try? decoder.decode(EnvelopeHeader.self, from: data) else {
-                await deleteDisk(at: url)
-                continue
-            }
-            if predicate(header.key) {
-                await deleteDisk(at: url)
+    func generation(for key: CacheKey) -> CacheGeneration {
+        if let generation = generations[key] { return generation }
+        let generation = CacheGeneration()
+        generations[key] = generation
+        return generation
+    }
+
+    func invalidate(matching predicate: @Sendable @escaping (CacheKey) -> Bool) async {
+        // Retire reads and fetches before the first suspension. A replacement
+        // fetch gets its own generation and cannot join a retired request.
+        for key in Array(generations.keys) where predicate(key) {
+            generations.removeValue(forKey: key)?.invalidate()
+            inFlight.removeValue(forKey: key)?.task.cancel()
+            hot.removeValue(forKey: key)
+        }
+        let directory = diskDirectory
+        // Keep enumeration and deletion in one serial IO operation. Otherwise
+        // invalidation can read an old file and later delete a replacement write.
+        await withCheckedContinuation { continuation in
+            ioQueue.async {
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                let entries = (try? FileManager.default.contentsOfDirectory(
+                    at: directory, includingPropertiesForKeys: nil
+                )) ?? []
+                for url in entries {
+                    guard let data = try? Data(contentsOf: url),
+                          let header = try? decoder.decode(EnvelopeHeader.self, from: data) else {
+                        try? FileManager.default.removeItem(at: url)
+                        continue
+                    }
+                    if predicate(header.key) { try? FileManager.default.removeItem(at: url) }
+                }
+                continuation.resume()
             }
         }
     }
@@ -257,29 +277,38 @@ actor ResponseCache {
     }
 
     func invalidateAll() async {
-        hot.removeAll()
-        let entries = await listDiskDirectory()
-        for url in entries {
-            await deleteDisk(at: url)
-        }
+        await invalidate(matching: { _ in true })
     }
 
     // MARK: - Dedup
 
     func coalesce<T: Codable & Sendable>(
         _ key: CacheKey,
+        generation: CacheGeneration? = nil,
         work: @Sendable @escaping () async throws -> T
     ) async throws -> T {
-        if let existing = inFlight[key] {
-            let any: any Sendable = try await existing.value
-            guard let typed = any as? T else { throw ResponseCacheError.typeMismatch }
-            return typed
+        let generation = generation ?? self.generation(for: key)
+        guard generation.isValid else { throw CancellationError() }
+        let request: InFlight
+        if let existing = inFlight[key], existing.generation === generation {
+            request = existing
+        } else {
+            request = InFlight(
+                id: UUID(), generation: generation,
+                task: Task { try await work() as any Sendable }
+            )
+            inFlight[key] = request
         }
-        let task: Task<any Sendable, Error> = Task { try await work() as any Sendable }
-        inFlight[key] = task
-        defer { inFlight.removeValue(forKey: key) }
-        let any: any Sendable = try await task.value
+        defer {
+            if inFlight[key]?.id == request.id { inFlight.removeValue(forKey: key) }
+        }
+        let any = try await request.task.value
+        try Task.checkCancellation()
+        guard generation.isValid else { throw CancellationError() }
         guard let typed = any as? T else { throw ResponseCacheError.typeMismatch }
+        guard await set(key, value: typed, generation: generation) else {
+            throw CancellationError()
+        }
         return typed
     }
 
@@ -314,5 +343,20 @@ actor ResponseCache {
                 continuation.resume(returning: total)
             }
         }
+    }
+}
+
+/// A shared validity lease also lets MainActor callbacks check freshness without
+/// suspending between the check and applying the result.
+nonisolated final class CacheGeneration: @unchecked Sendable {
+    private let lock = NSLock()
+    private var valid = true
+
+    var isValid: Bool {
+        lock.withLock { valid }
+    }
+
+    func invalidate() {
+        lock.withLock { valid = false }
     }
 }

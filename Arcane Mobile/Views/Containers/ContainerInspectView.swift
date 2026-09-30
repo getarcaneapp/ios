@@ -45,7 +45,7 @@ struct ContainerInspectView: View {
         .navigationTitle("Inspect")
         .searchable(text: $searchText, prompt: "Filter lines")
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            AppToolbarItem(placement: .topBarTrailing) {
                 Button {
                     UIPasteboard.general.string = rawJSON
                     showToast(.copied("Inspect JSON copied"))

@@ -71,7 +71,7 @@ struct ImageAttestationsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if predicateTypes.count > 1 {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Picker("Predicate Type", selection: $selectedPredicateType) {
                             Text("All Types").tag(String?.none)
@@ -256,7 +256,7 @@ private struct ImageAttestationDetailView: View {
         .navigationTitle("Attestation")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
+            AppToolbarItem(placement: .cancellationAction) {
                 Button("Done") { dismiss() }
             }
         }

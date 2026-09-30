@@ -69,7 +69,7 @@ struct TemplatePreviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if displayedTemplate.isRemote, canDownload {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         Task { await downloadTemplate() }
                     } label: {
@@ -92,7 +92,7 @@ struct TemplatePreviewView: View {
             }
 
             if canDeploy {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         guard let content else { return }
                         deployment = TemplateDeployment(template: displayedTemplate, content: content)

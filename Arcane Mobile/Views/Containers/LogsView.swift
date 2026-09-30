@@ -93,7 +93,7 @@ private struct LogViewerDedicatedView: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
             }
@@ -140,7 +140,7 @@ private struct LogViewerSurface: View {
         }
         .toolbar {
             if !embedded {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     optionsMenu
                 }
             }
@@ -404,11 +404,25 @@ struct LogConsole: View {
             .scrollTargetLayout()
         }
         .scrollPosition($position)
-        .onScrollPhaseChange { _, newPhase in
+        .defaultScrollAnchor(store.isFollowing ? .bottom : nil, for: .sizeChanges)
+        .onScrollPhaseChange { _, newPhase, context in
             switch newPhase {
             case .tracking, .interacting, .decelerating:
                 userIsScrolling = true
-            case .idle, .animating:
+            case .idle:
+                if userIsScrolling {
+                    if context.geometry.visibleRect.maxY >= context.geometry.contentSize.height - 28 {
+                        store.resumeFollowing()
+                    } else {
+                        store.pauseFollowing()
+                    }
+                } else if store.isFollowing {
+                    // Wrapped rows can change the measured height during a jump.
+                    // Re-anchor against the final layout when the animation ends.
+                    scrollToBottom(animated: false)
+                }
+                userIsScrolling = false
+            case .animating:
                 userIsScrolling = false
             @unknown default:
                 userIsScrolling = false
@@ -417,10 +431,17 @@ struct LogConsole: View {
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.visibleRect.maxY >= geometry.contentSize.height - 28
         } action: { _, newValue in
+            guard userIsScrolling else { return }
             if newValue {
                 store.resumeFollowing()
-            } else if userIsScrolling {
+            } else {
                 store.pauseFollowing()
+            }
+        }
+        .onChange(of: store.isFollowing) { _, isFollowing in
+            if !isFollowing {
+                // Retire the last programmatic bottom request when pausing.
+                position = ScrollPosition(idType: LogScrollTarget.self)
             }
         }
         .onChange(of: store.lines.last?.id) { _, lastID in
@@ -432,6 +453,7 @@ struct LogConsole: View {
             scrollToBottom(animated: false)
         }
         .onChange(of: jumpToLatestRequest) { _, _ in
+            store.resumeFollowing()
             scrollToBottom(animated: true)
         }
         .background(Color(.systemBackground))
@@ -441,14 +463,14 @@ struct LogConsole: View {
         guard !store.lines.isEmpty else { return }
 
         if animated {
-            withAnimation(Motion.reduced(Motion.state, reduceMotion: reduceMotion)) {
-                position.scrollTo(id: LogScrollTarget.bottom, anchor: .bottom)
+            withAnimation(Motion.reduced(Motion.follow, reduceMotion: reduceMotion)) {
+                position.scrollTo(edge: .bottom)
             }
         } else {
             var transaction = Transaction()
             transaction.animation = nil
             withTransaction(transaction) {
-                position.scrollTo(id: LogScrollTarget.bottom, anchor: .bottom)
+                position.scrollTo(edge: .bottom)
             }
         }
     }

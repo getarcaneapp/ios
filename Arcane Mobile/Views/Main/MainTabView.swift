@@ -7,6 +7,7 @@ struct MainTabView: View {
     @State private var store = NavTabsStore.shared
     @State private var router = QuickActionRouter.shared
     @State private var fleetStore = FleetStore()
+    @State private var moreDestination: AppTab?
     @AppStorage("arcane.showTabLabels") private var showTabLabels = false
 
     init() {
@@ -80,6 +81,9 @@ struct MainTabView: View {
         .onChange(of: allowedDestinationIDs) { _, _ in
             ensureSelectedTabVisible()
         }
+        .onDisappear {
+            fleetStore.configure(client: nil)
+        }
         .onAppear {
             if let target = router.pendingTabID {
                 routeToDestination(target)
@@ -90,8 +94,25 @@ struct MainTabView: View {
     }
 
     private func routeToDestination(_ destinationID: String) {
-        selectedTab = destinationID
-        ensureSelectedTabVisible()
+        guard let destination = Self.resolveDestination(
+            destinationID, visibleTabs: Set(visibleTabs), availableTabs: availableTabSet
+        ) else { return }
+        moreDestination = destination.moreDestination
+        selectedTab = destination.selectedTab.id
+    }
+
+    /// External navigation uses the same authorized destinations as More;
+    /// the user's four pinned tabs only determine where the view is hosted.
+    nonisolated static func resolveDestination(
+        _ destinationID: String,
+        visibleTabs: Set<AppTab>,
+        availableTabs: Set<AppTab>
+    ) -> (selectedTab: AppTab, moreDestination: AppTab?)? {
+        guard let destination = AppTab(rawValue: destinationID) else { return nil }
+        if destination == .settings { return (.settings, nil) }
+        guard availableTabs.contains(destination) else { return nil }
+        if visibleTabs.contains(destination) { return (destination, nil) }
+        return (.settings, destination)
     }
 
     private func ensureSelectedTabVisible() {
@@ -116,7 +137,8 @@ struct MainTabView: View {
     private var moreRoot: some View {
         SettingsView(
             visibleTabs: visibleTabs,
-            selectedTab: $selectedTab
+            selectedTab: $selectedTab,
+            pendingDestination: $moreDestination
         )
     }
 

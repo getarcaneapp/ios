@@ -39,7 +39,7 @@ struct BackupPolicyEditor: View {
         }
         .navigationTitle("Backup Policies")
         .modifier(BackupSessionScope())
-        .toolbar { ToolbarItem(placement: .confirmationAction) {
+        .toolbar { AppToolbarItem(placement: .confirmationAction) {
             Button("Save") { Task { await save() } }.disabled(!loaded || busy || !policies.allSatisfy(\.isValid))
         } }
         .disabled(busy)

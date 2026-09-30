@@ -283,6 +283,57 @@ struct LogViewerTests {
         #expect(abs(scrollView.contentOffset.y - maximumOffset) < 2)
     }
 
+    @Test
+    func pausedViewportSurvivesNewLinesAndJumpResumesFollowing() async throws {
+        let store = LogViewerStore(logStream: { nil })
+        let state = LogConsoleTestState()
+        let fixture = LogConsoleTestHarness(store: store, state: state)
+            .frame(width: 390, height: 500)
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 500)
+        let host = UIHostingController(rootView: fixture)
+        let window = UIWindow(frame: bounds)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.frame = bounds
+
+        store.receive(try (0..<80).map { index in
+            try makeLine(message: longMessage(prefix: "initial", index: index))
+        })
+        try await settle(host)
+        let scrollView = try #require(
+            descendants(of: UIScrollView.self, in: window)
+                .first { $0.contentSize.height > $0.bounds.height }
+        )
+        store.pauseFollowing()
+        try await settle(host)
+        #expect(!store.isFollowing)
+        scrollView.setContentOffset(CGPoint(x: 0, y: 120), animated: false)
+        try await settle(host)
+        let pausedOffset = scrollView.contentOffset.y
+        #expect(!store.isFollowing)
+        #expect(pausedOffset < scrollView.contentSize.height - scrollView.bounds.height - 100)
+
+        store.receive(try (80..<100).map { index in
+            try makeLine(message: longMessage(prefix: "new", index: index))
+        })
+        try await settle(host)
+        #expect(!store.isFollowing)
+        #expect(store.newLinesWhilePaused == 20)
+        #expect(abs(scrollView.contentOffset.y - pausedOffset) < 2)
+
+        state.jumpToLatestRequest += 1
+        try await Task.sleep(for: .milliseconds(300))
+        try await settle(host)
+        #expect(store.isFollowing)
+        #expect(store.newLinesWhilePaused == 0)
+        let maximumOffset = max(
+            -scrollView.adjustedContentInset.top,
+            scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom
+        )
+        #expect(abs(scrollView.contentOffset.y - maximumOffset) < 2)
+    }
+
     private func makeLine(
         message: String,
         level: String? = nil,
@@ -344,4 +395,26 @@ private struct RenderConfiguration {
     let wrapsLines: Bool
     let colorScheme: ColorScheme
     let dynamicTypeSize: DynamicTypeSize
+}
+
+@Observable
+@MainActor
+private final class LogConsoleTestState {
+    var jumpToLatestRequest = 0
+}
+
+@MainActor
+private struct LogConsoleTestHarness: View {
+    let store: LogViewerStore
+    let state: LogConsoleTestState
+
+    var body: some View {
+        LogConsole(
+            store: store,
+            showTimestamps: false,
+            wrapLines: true,
+            metadataLayout: .compact,
+            jumpToLatestRequest: state.jumpToLatestRequest
+        )
+    }
 }

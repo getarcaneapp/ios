@@ -4,6 +4,7 @@ import Arcane
 struct ActivitiesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ActivityHistoryMutationStore.self) private var historyMutationStore
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
 
     @State private var store = ActivityCenterStore()
     @State private var showClearConfirm = false
@@ -11,7 +12,7 @@ struct ActivitiesView: View {
 
     private var taskID: String {
         let transportID = manager.client.map { ObjectIdentifier($0.transport).hashValue } ?? 0
-        return "\(manager.supportsActivities)-\(transportID)"
+        return "\(manager.supportsActivities)-\(transportID)-\(scenePhase == .active)"
     }
 
     private var clearableEnvironmentIDs: Set<String> {
@@ -119,13 +120,13 @@ struct ActivitiesView: View {
         )
         .toolbar {
             if manager.supportsActivities {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     filterMenu
                 }
                 if #available(iOS 26, *) {
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button { Task { await store.retryLiveUpdates() } } label: {
                         Image(systemName: "arrow.clockwise")
                     }
@@ -136,7 +137,7 @@ struct ActivitiesView: View {
                     if #available(iOS 26, *) {
                         ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     }
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    AppToolbarItem(placement: .navigationBarTrailing) {
                         Button(role: .destructive) { showClearConfirm = true } label: {
                             Image(systemName: "trash")
                                 .foregroundStyle(.red)
@@ -149,7 +150,10 @@ struct ActivitiesView: View {
         }
         .task(id: taskID) {
             store.configure(client: manager.supportsActivities ? manager.client : nil)
-            guard manager.supportsActivities else { return }
+            guard manager.supportsActivities, scenePhase == .active else {
+                store.stopStream()
+                return
+            }
             await store.retryLiveUpdates()
         }
         .onDisappear {
@@ -307,8 +311,8 @@ private struct ActivityBatchRow: View {
                         .foregroundStyle(.red)
                 }
 
-                ProgressView(value: Double(batch.progress), total: 100)
-                    .tint(batch.status.activityTint)
+                ActivityProgressView(progress: batch.progress, isActive: batch.isActive,
+                    tint: batch.status.activityTint)
 
                 HStack(spacing: 6) {
                     Text(batch.startedAt, format: .relative(presentation: .named))
@@ -344,6 +348,11 @@ private struct ActivityBatchMemberRow: View {
                 Text(activity.subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+
+                if activity.isCancellable {
+                    ActivityProgressView(progress: activity.displayProgress, isActive: true,
+                        tint: activity.statusTint)
+                }
 
                 if let source = activity.sourceEnvironmentName, !source.isEmpty {
                     Text(source)
@@ -390,9 +399,9 @@ private struct ActivityRow: View {
 
                 }
 
-                if let progress = activity.progress, activity.isCancellable {
-                    ProgressView(value: Double(progress), total: 100)
-                        .tint(activity.statusTint)
+                if activity.isCancellable {
+                    ActivityProgressView(progress: activity.displayProgress, isActive: true,
+                        tint: activity.statusTint)
                 }
 
                 HStack(spacing: 6) {
@@ -427,16 +436,30 @@ private struct ActivityIcon: View {
 
 struct ActivityDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
 
-    @State private var activity: Activity
-    @State private var messages: [ActivityMessage] = []
+    let initialActivity: Activity
+    @State private var store = ActivityCenterStore()
     @State private var isLoading = false
     @State private var isCancelling = false
     @State private var errorMessage: String?
     @State private var showCancelConfirm = false
 
     init(activity: Activity) {
-        _activity = State(initialValue: activity)
+        initialActivity = activity
+    }
+
+    private var activity: Activity {
+        store.detail(for: initialActivity)?.activity ?? initialActivity
+    }
+
+    private var messages: [ActivityMessage] {
+        store.detail(for: initialActivity)?.messages ?? []
+    }
+
+    private var taskID: String {
+        let transportID = manager.client.map { ObjectIdentifier($0.transport).hashValue } ?? 0
+        return "\(manager.supportsActivities)-\(transportID)-\(scenePhase == .active)"
     }
 
     private var environmentID: EnvironmentID {
@@ -450,6 +473,16 @@ struct ActivityDetailView: View {
 
     var body: some View {
         List {
+            if let streamError = store.streamErrorMessage {
+                Section {
+                    ErrorBanner(message: streamError, severity: .warning, retry: {
+                        Task {
+                            store.startStream()
+                            await loadDetail()
+                        }
+                    })
+                }
+            }
             Section {
                 HStack(spacing: 14) {
                     ActivityIcon(activity: activity)
@@ -465,14 +498,8 @@ struct ActivityDetailView: View {
                 }
                 .padding(.vertical, 4)
 
-                if let progress = activity.progress {
-                    ProgressView(value: Double(progress), total: 100) {
-                        Text("Progress")
-                    } currentValueLabel: {
-                        Text("\(progress)%")
-                    }
-                    .tint(activity.statusTint)
-                }
+                ActivityProgressView(progress: activity.displayProgress, isActive: activity.isCancellable,
+                    tint: activity.statusTint, showsPercentage: true)
 
                 if let error = activity.error, !error.isEmpty {
                     Text(error)
@@ -513,8 +540,9 @@ struct ActivityDetailView: View {
         }
         .navigationTitle("Activity")
         .navigationBarTitleDisplayMode(.inline)
+        .appAccentNavigationBar()
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 if canCancel {
                     Button(role: .destructive) {
                         showCancelConfirm = true
@@ -531,8 +559,20 @@ struct ActivityDetailView: View {
                 }
             }
         }
-        .task { await loadDetail() }
-        .refreshable { await loadDetail() }
+        .task(id: taskID) {
+            store.configure(client: manager.supportsActivities ? manager.client : nil)
+            guard manager.supportsActivities, scenePhase == .active else {
+                store.stopStream()
+                return
+            }
+            store.startStream()
+            await loadDetail()
+        }
+        .onDisappear { store.stopStream() }
+        .refreshable {
+            store.startStream()
+            await loadDetail()
+        }
         .deleteConfirmation(isPresented: $showCancelConfirm, config: DeleteConfirmationConfig(
             title: "Cancel Activity?",
             message: "Arcane will request cancellation. Work that already finished cannot be undone.",
@@ -562,39 +602,28 @@ struct ActivityDetailView: View {
     }
 
     private func loadDetail() async {
-        guard let client = manager.client else { return }
+        guard manager.client != nil else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let detail = try await client.activities.detail(
-                envID: environmentID,
-                activityID: activity.id,
-                limit: 500
-            )
-            activity = detail.activity
-            messages = detail.messages.sorted { $0.createdAt < $1.createdAt }
+            try await store.loadDetail(initialActivity)
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = friendlyErrorMessage(error)
         }
     }
 
     private func cancelActivity() async {
-        guard let client = manager.client else { return }
+        guard manager.client != nil else { return }
         isCancelling = true
         errorMessage = nil
         defer { isCancelling = false }
-        do {
-            let requestedBy = manager.currentUser?.displayName ?? manager.currentUser?.username
-            let updated = try await client.activities.cancel(
-                envID: environmentID,
-                activityID: activity.id,
-                requestedBy: requestedBy
-            )
-            activity = updated
+        let requestedBy = manager.currentUser?.displayName ?? manager.currentUser?.username
+        if await store.cancel(activity, requestedBy: requestedBy) {
             HapticsManager.warning()
-        } catch {
-            errorMessage = friendlyErrorMessage(error)
+        } else {
+            errorMessage = store.errorMessage
         }
     }
 

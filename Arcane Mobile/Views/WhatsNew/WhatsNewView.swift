@@ -48,7 +48,7 @@ struct WhatsNewPresentationView: View {
             WhatsNewReleaseContent(whatsNew: whatsNew)
                 .toolbar {
                     if let secondaryAction = whatsNew.secondaryAction {
-                        ToolbarItem(placement: .topBarLeading) {
+                        AppToolbarItem(placement: .topBarLeading) {
                             Button {
                                 secondaryAction.hapticFeedback?()
                                 showsArchive = true
@@ -58,7 +58,7 @@ struct WhatsNewPresentationView: View {
                         }
                     }
 
-                    ToolbarItem(placement: .confirmationAction) {
+                    AppToolbarItem(placement: .confirmationAction) {
                         Button {
                             whatsNew.primaryAction.hapticFeedback?()
                             dismiss()
@@ -166,7 +166,7 @@ struct WhatsNewArchiveView: View {
             .navigationTitle("Previous Releases")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         dismiss()
                     }

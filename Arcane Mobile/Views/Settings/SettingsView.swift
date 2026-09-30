@@ -1,3 +1,4 @@
+import Arcane
 import SwiftUI
 
 struct SettingsView: View {
@@ -5,16 +6,20 @@ struct SettingsView: View {
 
     let visibleTabs: [AppTab]
     @Binding var selectedTab: String
+    @Binding var pendingDestination: AppTab?
 
     @State private var navPath: [AppTab] = []
+    @State private var navigationEnvironmentID: String?
     @State private var search = ""
 
     init(
         visibleTabs: [AppTab] = [],
-        selectedTab: Binding<String> = .constant(AppTab.settings.id)
+        selectedTab: Binding<String> = .constant(AppTab.settings.id),
+        pendingDestination: Binding<AppTab?> = .constant(nil)
     ) {
         self.visibleTabs = visibleTabs
         _selectedTab = selectedTab
+        _pendingDestination = pendingDestination
     }
 
     private var availableTabs: Set<AppTab> {
@@ -92,10 +97,21 @@ struct SettingsView: View {
                 onSelect: { navPath.removeAll() }
             )
         }
+        .onChange(of: pendingDestination, initial: true) { _, destination in
+            guard let destination else { return }
+            pendingDestination = nil
+            open(destination, replacingPath: true)
+        }
+        .onChange(of: availableTabs) { _, available in
+            if !navPath.allSatisfy(available.contains) { navPath.removeAll() }
+        }
         .onChange(of: manager.activeEnvironmentID) { oldValue, newValue in
-            if oldValue != newValue, navPath.contains(where: \.isEnvironmentScoped) {
+            if oldValue != newValue,
+               navigationEnvironmentID != newValue.rawValue,
+               navPath.contains(where: \.isEnvironmentScoped) {
                 navPath.removeAll()
             }
+            navigationEnvironmentID = newValue.rawValue
         }
     }
 
@@ -172,11 +188,17 @@ struct SettingsView: View {
         }
     }
 
-    private func open(_ tab: AppTab) {
-        if visibleTabSet.contains(tab) {
-            selectedTab = tab.id
+    private func open(_ tab: AppTab, replacingPath: Bool = false) {
+        guard let destination = MainTabView.resolveDestination(
+            tab.id, visibleTabs: visibleTabSet, availableTabs: availableTabs
+        ) else { return }
+        if let nested = destination.moreDestination {
+            navigationEnvironmentID = manager.activeEnvironmentID.rawValue
+            if replacingPath { navPath = [nested] }
+            else { navPath.append(nested) }
         } else {
-            navPath.append(tab)
+            if replacingPath { navPath.removeAll() }
+            selectedTab = destination.selectedTab.id
         }
     }
 }

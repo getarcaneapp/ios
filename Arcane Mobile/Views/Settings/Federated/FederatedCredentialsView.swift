@@ -77,7 +77,7 @@ struct FederatedCredentialsView: View {
         .searchable(text: $search)
         .toolbar {
             if canManage && !unsupported {
-                ToolbarItem(placement: .topBarTrailing) {
+                AppToolbarItem(placement: .topBarTrailing) {
                     Button("Create Credential", systemImage: "plus") { creating = true }.labelStyle(.iconOnly)
                 }
             }
@@ -155,7 +155,7 @@ struct FederatedCredentialDetailView: View {
         .onChange(of: manager.clientGeneration) { dismiss() }
         .toolbar {
             if manager.currentUser?.isGlobalAdmin == true {
-                ToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } }
+                AppToolbarItem(placement: .topBarTrailing) { Button("Edit") { editing = true } }
             }
         }
         .sheet(isPresented: $editing) {

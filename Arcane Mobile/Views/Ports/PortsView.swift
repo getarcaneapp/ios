@@ -117,7 +117,7 @@ struct PortsView: View {
             Task { await load(refresh: true) }
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
                     Image(systemName: "arrow.clockwise")
                 }

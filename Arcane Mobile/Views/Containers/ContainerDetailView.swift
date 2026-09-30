@@ -11,8 +11,9 @@ struct ContainerDetailView: View {
     @State private var container: ContainerSummary
     let environmentID: EnvironmentID
 
-    init(container: ContainerSummary, environmentID: EnvironmentID) {
+    init(container: ContainerSummary, environmentID: EnvironmentID, initialDetails: ContainerDetails? = nil) {
         _container = State(initialValue: container)
+        _details = State(initialValue: initialDetails)
         self.environmentID = environmentID
     }
 
@@ -153,7 +154,7 @@ struct ContainerDetailView: View {
                     .navigationTitle("Inspect")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
+                        AppToolbarItem(placement: .navigationBarLeading) {
                             Button("Done") { showInspect = false }
                         }
                     }
@@ -211,9 +212,9 @@ struct ContainerDetailView: View {
                         }
                     }
                 }
-                configSection(details.config)
+                configSection(details)
                 stateSection(details.state)
-                hostConfigSection(details.hostConfig)
+                hostConfigSection(details.hostConfig, mounts: details.mounts)
                 if !details.ports.isEmpty { ContainerPortsSection(ports: details.ports) }
                 if let health = details.state.health { ContainerHealthSection(health: health) }
                 let networks = details.networkSettings.networks
@@ -245,7 +246,7 @@ struct ContainerDetailView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayedName)
                     .font(.title3.bold())
-                Text(container.image)
+                Text(nonEmptyResourceValue(details?.image) ?? container.image)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 StatusBadge(status: statusString)
@@ -404,10 +405,11 @@ struct ContainerDetailView: View {
         case link(String, String)
     }
 
-    private func configSection(_ config: ContainerConfig) -> some View {
+    private func configSection(_ details: ContainerDetails) -> some View {
+        let config = details.config
         var rows: [ConfigRow] = []
-        if let img = config.image, !img.isEmpty {
-            rows.append(.monospaced("Image", img))
+        if !details.image.isEmpty {
+            rows.append(.monospaced("Image", details.image))
         }
         if let cmd = config.cmd, !cmd.isEmpty {
             rows.append(.monospaced("Command", cmd.joined(separator: " ")))
@@ -421,7 +423,7 @@ struct ContainerDetailView: View {
         if let env = config.env, !env.isEmpty {
             rows.append(.link("Environment (\(env.count))", "list.bullet.rectangle"))
         }
-        if let labels = config.labels, !labels.isEmpty {
+        if let labels = details.labels, !labels.isEmpty {
             rows.append(.link("Labels (\(labels.count))", "tag"))
         }
 
@@ -439,7 +441,7 @@ struct ContainerDetailView: View {
                     case .link(let title, let systemImage):
                         if title.hasPrefix("Labels") {
                             linkRow(title, systemImage: systemImage) {
-                                LabelsView(labels: config.labels ?? [:])
+                                LabelsView(labels: details.labels ?? [:])
                             }
                         } else {
                             linkRow(title, systemImage: systemImage) {
@@ -472,10 +474,10 @@ struct ContainerDetailView: View {
     }
 
     @ViewBuilder
-    private func hostConfigSection(_ hostConfig: ContainerHostConfig) -> some View {
+    private func hostConfigSection(_ hostConfig: ContainerHostConfig, mounts: [ContainerMount]) -> some View {
         let hasRows = hostConfig.networkMode != nil || hostConfig.restartPolicy != nil ||
             (hostConfig.memory ?? 0) > 0 || hostConfig.privileged == true ||
-            !(hostConfig.binds ?? []).isEmpty
+            !mounts.isEmpty
         if hasRows {
             detailSection(title: "Host Config", systemImage: "server.rack") {
                 if let mode = hostConfig.networkMode {
@@ -490,9 +492,9 @@ struct ContainerDetailView: View {
                 if let privileged = hostConfig.privileged, privileged {
                     row("Privileged") { Text("Yes").font(.subheadline) }
                 }
-                if let binds = hostConfig.binds, !binds.isEmpty {
-                    linkRow("Mounts (\(binds.count))", systemImage: "externaldrive") {
-                        BindsView(binds: binds)
+                if !mounts.isEmpty {
+                    linkRow("Mounts (\(mounts.count))", systemImage: "externaldrive") {
+                        BindsView(mounts: mounts)
                     }
                 }
             }
@@ -809,14 +811,38 @@ struct LabelsView: View {
 }
 
 struct BindsView: View {
-    let binds: [String]
+    let mounts: [ContainerMount]
 
     var body: some View {
         List {
-            ForEach(Array(binds.enumerated()), id: \.offset) { _, bind in
-                Text(verbatim: bind)
-                    .font(.body.monospaced())
-                    .textSelection(.enabled)
+            ForEach(Array(mounts.enumerated()), id: \.offset) { _, mount in
+                Section {
+                    LabeledContent("Type", value: mount.type)
+                    if let name = mount.name, !name.isEmpty {
+                        LabeledContent("Name", value: name)
+                    }
+                    if let source = mount.source, !source.isEmpty {
+                        LabeledContent("Source") {
+                            Text(verbatim: source).font(.body.monospaced())
+                        }
+                    }
+                    LabeledContent("Destination") {
+                        Text(verbatim: mount.destination).font(.body.monospaced())
+                    }
+                    if let writable = mount.rw {
+                        LabeledContent("Access", value: writable ? "Read and write" : "Read only")
+                    }
+                    if let mode = mount.mode, !mode.isEmpty {
+                        LabeledContent("Mode", value: mode)
+                    }
+                    if let driver = mount.driver, !driver.isEmpty {
+                        LabeledContent("Driver", value: driver)
+                    }
+                    if let propagation = mount.propagation, !propagation.isEmpty {
+                        LabeledContent("Propagation", value: propagation)
+                    }
+                }
+                .textSelection(.enabled)
             }
         }
         .listStyle(.insetGrouped)

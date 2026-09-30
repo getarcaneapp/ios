@@ -13,6 +13,8 @@ struct ContainersView: View {
 
     @State private var containers: [ContainerSummary] = []
     @State private var routedContainer: ContainerSummary?
+    @State private var routedDetails: ContainerDetails?
+    @State private var routeGeneration = 0
     @State private var router = QuickActionRouter.shared
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -285,7 +287,7 @@ struct ContainersView: View {
         )
         .toolbar {
             if !isSelecting {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         if manager.permissions.has(Permission.Containers.create, in: environmentID) {
                             Button("Create Container", systemImage: "plus") { showCreateContainer = true }
@@ -326,7 +328,7 @@ struct ContainersView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             if isSelecting {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         exitSelectionMode()
                     }
@@ -367,6 +369,7 @@ struct ContainersView: View {
         }
         .sheet(isPresented: $showCreateContainer) {
             ContainerConfigurationView(environmentID: environmentID) { id in
+                routedDetails = nil
                 routedContainer = ContainerSummary(id: id, image: "", imageId: "", state: "", status: "")
             }
         }
@@ -404,7 +407,7 @@ struct ContainersView: View {
                 .navigationTitle("Filter")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
+                    AppToolbarItem(placement: .confirmationAction) {
                         Button("Done") { showFilterSheet = false }
                     }
                 }
@@ -435,7 +438,7 @@ struct ContainersView: View {
             ContainerDetailView(container: container, environmentID: environmentID)
         }
         .navigationDestination(item: $routedContainer) { container in
-            ContainerDetailView(container: container, environmentID: environmentID)
+            ContainerDetailView(container: container, environmentID: environmentID, initialDetails: routedDetails)
         }
         .onChange(of: router.pendingRoute, initial: true) { _, _ in
             Task { await consumeContainerRoute() }
@@ -1002,19 +1005,38 @@ struct ContainerRow: View {
 }
 
 private extension ContainersView {
-    /// Opens the container named by a push-notification route once the list
-    /// for its environment is loaded; unknown ids land on the list with a toast.
+    /// Resolves the destination independently of the paginated and filtered list.
     func consumeContainerRoute() async {
-        guard case .container(let envID, let id)? = router.pendingRoute, envID == environmentID.rawValue else { return }
+        guard case .authenticated = manager.authState,
+              case .container(let envID, let id)? = router.pendingRoute,
+              envID == environmentID.rawValue,
+              let client = manager.client else { return }
+        routeGeneration += 1
+        let generation = routeGeneration
+        let routerGeneration = router.routeGeneration
+        let session = manager.cacheSessionIdentity
         router.pendingRoute = nil
-        router.pendingDeepLink = nil
-        if containers.isEmpty {
-            await loadContainers(refresh: true)
+        do {
+            let details = try await RemoteDataLimits.boundedContainerInspect(
+                client: client,
+                environmentID: environmentID,
+                containerID: id
+            )
+            try Task.checkCancellation()
+            guard generation == routeGeneration,
+                  routerGeneration == router.routeGeneration,
+                  session == manager.cacheSessionIdentity,
+                  client.transport === manager.client?.transport,
+                  manager.activeEnvironmentID == environmentID else { return }
+            routedDetails = details
+            routedContainer = details.navigationSummary
+        } catch {
+            guard generation == routeGeneration,
+                  routerGeneration == router.routeGeneration,
+                  session == manager.cacheSessionIdentity,
+                  client.transport === manager.client?.transport,
+                  manager.activeEnvironmentID == environmentID else { return }
+            showToast(.error(friendlyErrorMessage(error)))
         }
-        guard let match = containers.first(where: { $0.id == id || $0.id.hasPrefix(id) }) else {
-            showToast(.info("That container is no longer available"))
-            return
-        }
-        routedContainer = match
     }
 }

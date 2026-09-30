@@ -85,6 +85,8 @@ struct Toast: Identifiable {
     var tapAction: (@MainActor () -> Void)? = nil
     /// Optional trailing button. Returns `true` to dismiss the toast.
     var action: (@MainActor () -> Bool)? = nil
+
+    var height: CGFloat { activityState == nil ? 50 : 62 }
 }
 
 // MARK: - Factories (one-liner call sites)
@@ -139,22 +141,28 @@ extension Toast {
 @Observable
 final class ToastPresenter {
     static let shared = ToastPresenter()
-    private init() {}
+    init() {}
 
     private(set) var activeToast: Toast?
+    @ObservationIgnored private var pendingToast: Toast?
     @ObservationIgnored private var dismissTask: Task<Void, Never>?
+
+    var currentToast: Toast? { activeToast ?? pendingToast }
 
     func show(_ toast: Toast) {
         dismissTask?.cancel()
+        pendingToast = nil
 
         if activeToast != nil {
             // Fade the current toast out first, then present the new one — matches
             // LGToast's ~0.17s hand-off so two toasts don't pile up mid-transition.
             activeToast = nil
+            pendingToast = toast
             dismissTask = Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(170))
-                guard !Task.isCancelled else { return }
-                present(toast)
+                guard !Task.isCancelled, let pendingToast else { return }
+                self.pendingToast = nil
+                present(pendingToast)
             }
         } else {
             present(toast)
@@ -163,32 +171,41 @@ final class ToastPresenter {
 
     func showActivity(id: String, title: String, progress: Double?) {
         let normalizedProgress = progress.map { min(max($0, 0), 1) }
-        guard var toast = activeToast, toast.activityID == id else {
+        guard var toast = currentToast, toast.activityID == id else {
             show(.activity(id: id, title: title, progress: normalizedProgress))
             return
         }
 
-        dismissTask?.cancel()
-        dismissTask = nil
         toast.title = title
         toast.symbol = "clock.arrow.circlepath"
         toast.symbolTint = .blue
         toast.activityProgress = normalizedProgress
         toast.activityState = .running
         toast.isPersistent = true
-        activeToast = toast
+        if pendingToast != nil {
+            pendingToast = toast
+        } else {
+            dismissTask?.cancel()
+            dismissTask = nil
+            activeToast = toast
+        }
     }
 
     func finishActivity(id: String, title: String, state: ToastActivityState, progress: Double?) {
-        guard var toast = activeToast, toast.activityID == id else { return }
+        guard var toast = currentToast, toast.activityID == id else { return }
 
-        dismissTask?.cancel()
         toast.title = terminalTitle(title, state: state)
         toast.symbol = terminalSymbol(state)
         toast.symbolTint = state.tint
         toast.activityProgress = state == .success ? 1 : progress.map { min(max($0, 0), 1) }
         toast.activityState = state
         toast.isPersistent = false
+        toast.duration = state == .failure ? 5 : 2.5
+        if pendingToast != nil {
+            pendingToast = toast
+            return
+        }
+        dismissTask?.cancel()
         activeToast = toast
 
         UIAccessibility.post(notification: .announcement, argument: toast.title)
@@ -234,6 +251,7 @@ final class ToastPresenter {
     func dismiss() {
         dismissTask?.cancel()
         dismissTask = nil
+        pendingToast = nil
         activeToast = nil
     }
 }
@@ -372,13 +390,15 @@ private struct ToastCapsule: View {
             }
 
             if let state = toast.activityState {
-                ProgressView(value: toast.activityProgress ?? 0)
-                    .progressViewStyle(.linear)
-                    .tint(state.tint)
+                ActivityProgressView(
+                    progress: toast.activityProgress.map { Int(($0 * 100).rounded()) },
+                    isActive: state == .running,
+                    tint: state.tint
+                )
             }
         }
         .padding(.horizontal, 18)
-        .frame(height: toast.activityState == nil ? 50 : 62)
+        .frame(height: toast.height)
     }
 
     private var activityAccessibilityValue: String {

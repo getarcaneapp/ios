@@ -78,7 +78,7 @@ struct UpdateAllEnvironmentsView: View {
         .navigationTitle("Update All")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
+            AppToolbarItem(placement: .cancellationAction) {
                 Button(doneTitle) { dismiss() }
             }
         }

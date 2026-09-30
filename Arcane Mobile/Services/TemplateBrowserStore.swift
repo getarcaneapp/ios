@@ -52,6 +52,7 @@ final class TemplateBrowserStore {
 
     private var client: ArcaneClient?
     private var clientTransportIdentity: ObjectIdentifier?
+    private var pagination = ProgressivePaginationState()
 
     var queryKey: String {
         "\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))|\(source.rawValue)"
@@ -66,6 +67,9 @@ final class TemplateBrowserStore {
 
         self.client = client
         clientTransportIdentity = nextIdentity
+        _ = pagination.reset()
+        isLoading = false
+        isLoadingMore = false
         templates = []
         hasMore = false
         totalItemCount = nil
@@ -76,11 +80,15 @@ final class TemplateBrowserStore {
     func reload(clearExisting: Bool = false) async {
         guard let client else { return }
         let requestedQuery = queryKey
+        let generation = pagination.reset()
+        isLoadingMore = false
+        hasMore = false
+        totalItemCount = nil
         if clearExisting { templates = [] }
         isLoading = true
         errorMessage = nil
         loadMoreError = nil
-        defer { isLoading = false }
+        defer { if pagination.accepts(generation) { isLoading = false } }
 
         do {
             let response = try await client.templates.listPaginated(
@@ -92,18 +100,20 @@ final class TemplateBrowserStore {
                 source: source.sdkFilter
             )
             try Task.checkCancellation()
-            guard requestedQuery == queryKey else { return }
-            templates = response.data
-            hasMore = Int64(response.data.count) < response.pagination.totalItems
-            totalItemCount = response.pagination.totalItems >= 0
-                ? response.pagination.totalItems
-                : nil
+            guard pagination.accepts(generation), requestedQuery == queryKey else { return }
+            templates = PaginationLoader.merge(current: [], incoming: response.data, reset: true)
+            pagination.receive(
+                pagination: response.pagination, itemCount: response.data.count,
+                requestedStart: 0, requestedLimit: Self.pageSize, generation: generation
+            )
+            hasMore = pagination.hasMore
+            totalItemCount = pagination.totalItems
             errorMessage = nil
             loadMoreError = nil
         } catch is CancellationError {
             return
         } catch {
-            guard requestedQuery == queryKey else { return }
+            guard pagination.accepts(generation), requestedQuery == queryKey else { return }
             errorMessage = friendlyErrorMessage(error)
         }
     }
@@ -111,33 +121,36 @@ final class TemplateBrowserStore {
     func loadMore() async {
         guard let client, hasMore, !isLoading, !isLoadingMore else { return }
         let requestedQuery = queryKey
+        let generation = pagination.generation
+        let start = pagination.nextStart
         loadMoreError = nil
         isLoadingMore = true
-        defer { isLoadingMore = false }
+        defer { if pagination.accepts(generation) { isLoadingMore = false } }
 
         do {
             let response = try await client.templates.listPaginated(
                 search: normalizedSearch,
                 sort: "name",
                 order: .ascending,
-                start: templates.count,
+                start: start,
                 limit: Self.pageSize,
                 source: source.sdkFilter
             )
             try Task.checkCancellation()
-            guard requestedQuery == queryKey else { return }
+            guard pagination.accepts(generation), requestedQuery == queryKey else { return }
 
-            let existingIDs = Set(templates.map(\.id))
-            templates.append(contentsOf: response.data.filter { !existingIDs.contains($0.id) })
-            hasMore = Int64(templates.count) < response.pagination.totalItems
-            if response.pagination.totalItems >= 0 {
-                totalItemCount = response.pagination.totalItems
-            }
+            templates = PaginationLoader.merge(current: templates, incoming: response.data, reset: false)
+            pagination.receive(
+                pagination: response.pagination, itemCount: response.data.count,
+                requestedStart: start, requestedLimit: Self.pageSize, generation: generation
+            )
+            hasMore = pagination.hasMore
+            totalItemCount = pagination.totalItems
             loadMoreError = nil
         } catch is CancellationError {
             return
         } catch {
-            guard requestedQuery == queryKey else { return }
+            guard pagination.accepts(generation), requestedQuery == queryKey else { return }
             loadMoreError = friendlyErrorMessage(error)
         }
     }

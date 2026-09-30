@@ -109,7 +109,7 @@ struct ProjectFilesWorkspaceView: View {
         // drill-downs keep the NavigationStack's automatic back button; this
         // leading item shows only on the workspace root.
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+            AppToolbarItem(placement: .topBarLeading) {
                 Button("Done") { dismiss() }
             }
         }
@@ -213,26 +213,26 @@ struct ProjectFilesWorkspaceView: View {
 
     @ToolbarContentBuilder
     private func browserToolbar(folderPath: String) -> some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
+        AppToolbarItem(placement: .navigationBarTrailing) {
             projectFileMenu(folderPath: folderPath)
         }
         if #available(iOS 26, *) {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
         }
-        ToolbarItem(placement: .navigationBarTrailing) {
+        AppToolbarItem(placement: .navigationBarTrailing) {
             saveButton
         }
     }
 
     @ToolbarContentBuilder
     private func editorToolbar(folderPath: String) -> some ToolbarContent {
-        ToolbarItem(placement: .navigationBarTrailing) {
+        AppToolbarItem(placement: .navigationBarTrailing) {
             projectFileMenu(folderPath: folderPath)
         }
         if #available(iOS 26, *) {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
         }
-        ToolbarItem(placement: .navigationBarTrailing) {
+        AppToolbarItem(placement: .navigationBarTrailing) {
             saveButton
         }
     }
@@ -965,10 +965,10 @@ private struct ProjectFileDialogView: View {
             .navigationTitle(dialog.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button(dialog.actionTitle) {
                         submit()
                     }

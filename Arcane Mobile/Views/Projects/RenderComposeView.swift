@@ -32,10 +32,10 @@ struct RenderComposeView: View {
             .navigationTitle(showPreview ? "Resolved YAML" : "Resolve Variables")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     if showPreview {
                         Button("Edit") { showPreview = false }
                     } else if !variableOrder.isEmpty {
@@ -48,7 +48,7 @@ struct RenderComposeView: View {
                 if #available(iOS 26, *), !variableOrder.isEmpty {
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Use Resolved") {
                         let final = substitute(in: initialCompose)
                         onApply(final)

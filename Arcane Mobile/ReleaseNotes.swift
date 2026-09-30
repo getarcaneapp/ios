@@ -152,6 +152,21 @@ enum ReleaseNotes {
                 .init("Security overview and findings use the app's detail tabs.")
             ],
             fixed: [
+                .init("Deployment updates avoid duplicate activity toasts and Live Activities."),
+                .init("Activity toasts retain completion during transitions and show unmeasured progress."),
+                .init("Activity progress distinguishes measured percentages from unmeasured work."),
+                .init("Activity detail Back buttons use the selected app accent color."),
+                .init("Activity status updates stay live in lists and details."),
+                .init("Navigation bar controls use the selected app accent color."),
+                .init("Sign-in and background responses stay with their active server and account."),
+                .init("Project deletion preserves files when removal is disabled."),
+                .init("Large resource numbers display without crashes."),
+                .init("Activity history keeps loaded entries through live updates and retries failed environments."),
+                .init("Resource lists follow server pagination limits and retry failed pages."),
+                .init("Refreshes discard invalidated requests and cached responses."),
+                .init("Widget links and Shortcuts open containers and projects beyond the first page."),
+                .init("Container details show images, labels, and mounts."),
+                .init("Live logs follow wrapped output to the bottom."),
                 .init("Security findings load the next page without repeating earlier results."),
                 .init("Dashboard live stats connect on cold launch."),
                 .init("Dashboard environment switcher uses the app accent color.")

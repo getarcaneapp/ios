@@ -29,7 +29,29 @@ import Arcane
 @Observable
 final class DeploymentActivityStore {
     static let shared = DeploymentActivityStore()
-    private init() {}
+    init() {}
+
+    // Keep recent request identities after the pill clears so a delayed stream
+    // update cannot announce the same operation a second time.
+    @ObservationIgnored private var ownedActivityBatchIDs: Set<String> = []
+    @ObservationIgnored private var ownedActivityBatchOrder: [String] = []
+
+    func rememberActivityBatch(_ batchID: String) {
+        guard ownedActivityBatchIDs.insert(batchID).inserted else { return }
+        ownedActivityBatchOrder.append(batchID)
+        if ownedActivityBatchOrder.count > 500 {
+            ownedActivityBatchIDs.remove(ownedActivityBatchOrder.removeFirst())
+        }
+    }
+
+    func ownsActivity(_ activity: Activity, environmentID: String) -> Bool {
+        if let batchID = activity.batchID, ownedActivityBatchIDs.contains(batchID) {
+            return true
+        }
+        // Older v2 servers may omit batch IDs but still return an activity ID.
+        return operation?.envID.rawValue == environmentID
+            && operation?.serverActivityID == activity.id
+    }
 
     /// The active or just-finished operation. Terminal operations linger until
     /// acknowledged (Done button) or auto-cleared shortly after finishing with
@@ -97,7 +119,11 @@ final class DeploymentActivityStore {
         guard let baseClient = manager.client else { return false }
         let client: ArcaneClient
         do {
-            client = try ActivityBatchID.scopedClient(baseClient)
+            let options = try ActivityBatchID.requestOptions()
+            client = baseClient.withRequestOptions(options)
+            if let batchID = options.activityBatchID {
+                rememberActivityBatch(batchID)
+            }
         } catch {
             showToast(.error("Couldn't start operation"))
             return false

@@ -14,8 +14,8 @@ nonisolated enum SharedKeychain {
 
     /// The shared-group store — what intents/widgets read, and what the app
     /// migrates into.
-    static func sharedStore(for origin: String) -> KeychainTokenStore {
-        KeychainTokenStore(service: originService(origin), accessGroup: accessGroup)
+    static func sharedStore(for origin: String, validating: @escaping @Sendable () -> Bool = { true }) -> KeychainTokenStore {
+        KeychainTokenStore(service: originService(origin), accessGroup: accessGroup, validating: validating)
     }
 
     /// The app's original private-keychain item (pre-App-Group builds).

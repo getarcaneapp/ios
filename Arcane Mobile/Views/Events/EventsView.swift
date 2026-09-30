@@ -143,7 +143,7 @@ struct EventsView: View {
             prompt: "Search events"
         )
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     isLive.toggle()
                 } label: {

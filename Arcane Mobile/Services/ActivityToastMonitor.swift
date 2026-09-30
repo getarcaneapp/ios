@@ -16,6 +16,16 @@ final class ActivityToastMonitor {
     private var initializedSnapshotEnvironmentIDs: Set<String> = []
     private let liveActivity = DeployLiveActivityController()
     private var liveActivityKey: String?
+    private let presenter: ToastPresenter
+    private let ownsActivity: (Activity, String) -> Bool
+
+    init(presenter: ToastPresenter = .shared,
+         ownsActivity: @escaping (Activity, String) -> Bool = {
+             DeploymentActivityStore.shared.ownsActivity($0, environmentID: $1)
+         }) {
+        self.presenter = presenter
+        self.ownsActivity = ownsActivity
+    }
 
     func reset() {
         dismissTrackedToast()
@@ -62,7 +72,7 @@ final class ActivityToastMonitor {
         }
     }
 
-    private func handle(_ event: ActivityStreamEvent, scope: ActivityToastScope) {
+    func handle(_ event: ActivityStreamEvent, scope: ActivityToastScope) {
         switch event.type {
         case .activity:
             guard let activity = event.activity else { return }
@@ -98,7 +108,18 @@ final class ActivityToastMonitor {
 
     private func handle(_ activity: Activity, environmentID: String, scope: ActivityToastScope) {
         let key = key(for: activity, environmentID: environmentID)
-        let progress = activity.progress.map { Double($0) / 100 }
+        if ownsActivity(activity, environmentID) {
+            _ = remember(key)
+            notifiedActivityKeys.remove(key)
+            if presenter.currentToast?.activityID == key {
+                presenter.dismiss()
+            }
+            if liveActivityKey == key {
+                endServerLiveActivity()
+            }
+            return
+        }
+        let progress = activity.displayProgress.map { Double($0) / 100 }
 
         switch activity.status {
         case .queued, .running:
@@ -119,7 +140,7 @@ final class ActivityToastMonitor {
                     )
                 }
             }
-            showActivityToast(id: key, title: toastTitle(for: activity), progress: progress)
+            presenter.showActivity(id: key, title: toastTitle(for: activity), progress: progress)
         case .success:
             finish(key: key, activity: activity, state: .success, progress: progress)
         case .failed:
@@ -150,9 +171,9 @@ final class ActivityToastMonitor {
     }
 
     private func dismissTrackedToast() {
-        guard let activityID = ToastPresenter.shared.activeToast?.activityID,
+        guard let activityID = presenter.currentToast?.activityID,
               notifiedActivityKeys.contains(activityID) else { return }
-        dismissToast()
+        presenter.dismiss()
     }
 
     private func clearTracking() {
@@ -180,7 +201,7 @@ final class ActivityToastMonitor {
             )
         }
         guard notifiedActivityKeys.remove(key) != nil else { return }
-        finishActivityToast(
+        presenter.finishActivity(
             id: key,
             title: toastTitle(for: activity),
             state: state,

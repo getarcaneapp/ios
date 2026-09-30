@@ -146,7 +146,7 @@ private struct EnvironmentContextPicker: View {
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $search, prompt: "Search environments")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
             }

@@ -143,7 +143,16 @@ final class ArcaneClientManager {
     // MARK: - Client
     private(set) var client: ArcaneClient?
     private(set) var clientGeneration = 0
-    private(set) var cacheSessionIdentity = UUID().uuidString
+    private(set) var authenticationGeneration = 0
+    private var credentialLease = CredentialLease()
+    private let credentialPersistence = CredentialPersistenceCoordinator()
+    private var bootstrapSessions: [UUID: URLSession] = [:]
+    private var authenticationRetirementTask: Task<Void, Never>?
+    private var bootstrapCancellations: [UUID: @Sendable () -> Void] = [:]
+    private var bootstrapAuthManagers: [UUID: AuthManager] = [:]
+    private(set) var cacheSessionIdentity = UUID().uuidString {
+        didSet { AppGroup.defaults?.set(cacheSessionIdentity, forKey: AppGroup.Keys.sessionIdentity) }
+    }
     private var clientSession: URLSession?
     /// URL the current `client`/`clientSession` were built for; lets
     /// `configureClient` skip needless session rebuilds.
@@ -153,9 +162,14 @@ final class ArcaneClientManager {
     private var lastBootstrapDNSAddresses: [String] = []
     private static let bootstrapTimeout: TimeInterval = 20
 
+    private let sessionFactory: ((Bool) -> URLSession)?
+    private let tokenStoreFactory: ((String) -> any TokenStore)?
+
     // MARK: - Init
-    init() {
-        let saved = UserDefaults.standard.string(forKey: "arcane.serverURL") ?? ""
+    init(serverURL initialURL: String? = nil, sessionFactory: ((Bool) -> URLSession)? = nil, tokenStoreFactory: ((String) -> any TokenStore)? = nil) {
+        self.sessionFactory = sessionFactory
+        self.tokenStoreFactory = tokenStoreFactory
+        let saved = initialURL ?? UserDefaults.standard.string(forKey: "arcane.serverURL") ?? ""
         serverURL = saved
         if !saved.isEmpty, let url = URL(string: saved) {
             parsedServerURL = url
@@ -179,6 +193,7 @@ final class ArcaneClientManager {
             UserDefaults.standard.set(EnvironmentID.localDocker.rawValue, forKey: "arcane.activeEnvironmentID")
             UserDefaults.standard.set("Local Docker", forKey: "arcane.activeEnvironmentName")
         }
+        mirrorToAppGroup()
     }
 
     // MARK: - Server setup
@@ -205,6 +220,8 @@ final class ArcaneClientManager {
             SharedKeychain.unbindCredentials(matching: previousOrigin)
             signOutLocally()
         }
+        retireAuthentication()
+        credentialLease = CredentialLease()
         needsConnectionBootstrapRetry = false
         isRetryingConnectionBootstrap = false
         serverURL = normalized
@@ -218,7 +235,12 @@ final class ArcaneClientManager {
         currentUserAvatarData = nil
         avatarFetchKey = nil
         lastBootstrapDNSAddresses = []
-        Task { lastBootstrapDNSAddresses = await Self.resolveAddressesDetached(for: parsed) }
+        let generation = authenticationGeneration
+        Task {
+            let addresses = await Self.resolveAddressesDetached(for: parsed)
+            guard generation == authenticationGeneration else { return }
+            lastBootstrapDNSAddresses = addresses
+        }
         // Explicit (re)configuration — always rebuild, even for the same URL.
         cacheSessionIdentity = UUID().uuidString
         configureClient(for: parsed, force: true)
@@ -240,11 +262,11 @@ final class ArcaneClientManager {
             loginCapabilities = nil
             return
         }
-        let generation = clientGeneration
+        let generation = authenticationGeneration
 
         let nextCapabilities = await fetchLoginCapabilitiesIfAvailable(using: capturedClient)
 
-        guard generation == clientGeneration else { return }
+        guard isCurrentAuthentication(generation) else { return }
         loginCapabilities = nextCapabilities
     }
 
@@ -255,10 +277,13 @@ final class ArcaneClientManager {
             return
         }
 
+        let generation = authenticationGeneration
         isRetryingConnectionBootstrap = true
-        defer { isRetryingConnectionBootstrap = false }
+        defer { if generation == authenticationGeneration { isRetryingConnectionBootstrap = false } }
 
-        if (try? await client.authManager.hasRefreshCredential()) == true {
+        let hasCredential = (try? await client.authManager.hasRefreshCredential()) == true
+        guard isCurrentAuthentication(generation) else { return }
+        if hasCredential {
             await checkExistingAuth()
         } else {
             await refreshLoginCapabilities()
@@ -315,23 +340,25 @@ final class ArcaneClientManager {
 
     // MARK: - Auth
     func login(username: String, password: String) async {
-        guard let client else {
+        guard client != nil else {
             errorMessage = "No server configured"
             return
         }
-        let configuredServer = serverURL
+        let generation = beginAuthentication()
+        guard let client = self.client else { return }
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { if generation == authenticationGeneration { isLoading = false } }
         do {
             let result = try await withNetworkSessionRefreshRetry { client in
                 try await client.auth.authenticate(username: username, password: password)
             }
-            guard configuredServer == serverURL else { return }
-            await applyAuthenticationResult(result, client: self.client ?? client)
+            guard isCurrentAuthentication(generation) else { return }
+            await applyAuthenticationResult(result, client: self.client ?? client, generation: generation)
+            guard isCurrentAuthentication(generation) else { return }
             needsConnectionBootstrapRetry = false
         } catch {
-            guard configuredServer == serverURL else { return }
+            guard isCurrentAuthentication(generation) else { return }
             needsConnectionBootstrapRetry = shouldRefreshNetworkSession(after: error)
             errorMessage = connectionAwareErrorMessage(error, passwordLogin: true)
         }
@@ -343,10 +370,11 @@ final class ArcaneClientManager {
             errorMessage = "No server configured"
             return
         }
-        let generation = clientGeneration
+        let generation = beginAuthentication()
+        guard let client = self.client else { return }
         errorMessage = nil
         isOIDCSigningIn = true
-        defer { isOIDCSigningIn = false }
+        defer { if generation == authenticationGeneration { isOIDCSigningIn = false } }
         do {
             let authenticator = OIDCAuthenticator(client: client)
             let result = try await authenticator.signIn(
@@ -354,13 +382,14 @@ final class ArcaneClientManager {
                 redirectURI: ArcaneMobileOIDC.redirectURI,
                 presenting: anchor
             )
-            guard generation == clientGeneration else { return }
+            guard isCurrentAuthentication(generation) else { return }
             let capabilities = await client.serverCapabilities()
-            guard generation == clientGeneration else { return }
-            await completeAuthenticatedBootstrap(user: result.user, capabilities: capabilities, client: client)
+            guard isCurrentAuthentication(generation) else { return }
+            await completeAuthenticatedBootstrap(user: result.user, capabilities: capabilities, client: client, generation: generation)
+            guard isCurrentAuthentication(generation) else { return }
             needsConnectionBootstrapRetry = false
         } catch let error as MFARequiredError {
-            guard generation == clientGeneration else { return }
+            guard isCurrentAuthentication(generation) else { return }
             pendingMFAChallenge = error.challenge
             authState = .login
         } catch is CancellationError {
@@ -370,7 +399,7 @@ final class ArcaneClientManager {
             // User cancelled the system sheet — no error message needed.
             return
         } catch {
-            guard generation == clientGeneration else { return }
+            guard isCurrentAuthentication(generation) else { return }
             errorMessage = loginErrorMessage(error)
         }
     }
@@ -381,7 +410,8 @@ final class ArcaneClientManager {
             errorMessage = "No server configured"
             return
         }
-        let generation = clientGeneration
+        let generation = beginAuthentication()
+        guard let client = self.client else { return }
         let authenticator = ArcanePasskeyAuthenticator(client: client)
         passkeyAuthenticator = authenticator
         isPasskeySigningIn = true
@@ -395,8 +425,8 @@ final class ArcaneClientManager {
 
         do {
             let result = try await authenticator.authenticateLogin(presenting: anchor)
-            guard generation == clientGeneration else { return }
-            await applyAuthenticationResult(result, client: client)
+            guard isCurrentAuthentication(generation) else { return }
+            await applyAuthenticationResult(result, client: client, generation: generation)
         } catch is CancellationError {
             return
         } catch ArcanePasskeyAuthenticator.CeremonyError.cancelled {
@@ -404,7 +434,7 @@ final class ArcaneClientManager {
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             return
         } catch {
-            guard generation == clientGeneration else { return }
+            guard isCurrentAuthentication(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
     }
@@ -412,7 +442,8 @@ final class ArcaneClientManager {
     @MainActor
     func completePendingMFAWithPasskey(anchor: ASPresentationAnchor) async {
         guard let client, let challenge = pendingMFAChallenge else { return }
-        let generation = clientGeneration
+        let generation = beginAuthentication(preservingMFAChallenge: challenge)
+        guard let client = self.client else { return }
         let authenticator = ArcanePasskeyAuthenticator(client: client)
         passkeyAuthenticator = authenticator
         isPasskeySigningIn = true
@@ -429,14 +460,15 @@ final class ArcaneClientManager {
                 transactionId: challenge.transactionId,
                 presenting: anchor
             )
-            guard generation == clientGeneration else { return }
+            guard isCurrentAuthentication(generation) else { return }
             pendingMFAChallenge = nil
             await completeAuthenticatedBootstrap(
                 user: response.user,
                 capabilities: ServerCapabilities(
                     mode: ServerCapabilities.detect(from: response.user)
                 ),
-                client: client
+                client: client,
+                generation: generation
             )
         } catch is CancellationError {
             return
@@ -445,32 +477,34 @@ final class ArcaneClientManager {
         } catch let error as ASWebAuthenticationSessionError where error.code == .canceledLogin {
             return
         } catch {
-            guard generation == clientGeneration else { return }
+            guard isCurrentAuthentication(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
     }
 
     func completePendingMFAWithRecoveryCode(_ code: String) async {
         guard let client, let challenge = pendingMFAChallenge else { return }
-        let generation = clientGeneration
+        let generation = beginAuthentication(preservingMFAChallenge: challenge)
+        guard let client = self.client else { return }
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { if generation == authenticationGeneration { isLoading = false } }
 
         do {
             let result = try await client.passkeys.finishRecovery(
                 transactionId: challenge.transactionId,
                 code: code.trimmingCharacters(in: .whitespacesAndNewlines)
             )
-            guard generation == clientGeneration else { return }
-            await applyAuthenticationResult(result, client: client)
+            guard isCurrentAuthentication(generation) else { return }
+            await applyAuthenticationResult(result, client: client, generation: generation)
         } catch {
-            guard generation == clientGeneration else { return }
+            guard isCurrentAuthentication(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
     }
 
     func cancelPendingMFA() {
+        retireAuthentication()
         passkeyAuthenticator?.cancel()
         passkeyAuthenticator = nil
         pendingMFAChallenge = nil
@@ -488,11 +522,16 @@ final class ArcaneClientManager {
             signOutLocally()
             return
         }
+        retireAuthentication(allowCredentialClear: true)
+        let generation = authenticationGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == authenticationGeneration { isLoading = false } }
 
+        await authenticationRetirementTask?.value
+        guard isCurrentAuthentication(generation) else { return }
         await PushNotificationCoordinator.shared.tearDown(client: client, origin: serverOrigin)
 
+        guard isCurrentAuthentication(generation) else { return }
         var logoutError: Error?
         do {
             try await client.auth.logout()
@@ -500,6 +539,7 @@ final class ArcaneClientManager {
             logoutError = error
         }
 
+        guard isCurrentAuthentication(generation) else { return }
         let credentialRemains: Bool
         do {
             credentialRemains = try await client.authManager.hasRefreshCredential()
@@ -508,6 +548,7 @@ final class ArcaneClientManager {
             return
         }
 
+        guard isCurrentAuthentication(generation) else { return }
         guard !credentialRemains else {
             errorMessage = logoutError.map(friendlyErrorMessage)
                 ?? "Couldn't remove local sign-in credentials."
@@ -526,6 +567,7 @@ final class ArcaneClientManager {
     /// UserDefaults.standard). No-op until the App Groups capability exists.
     func mirrorToAppGroup() {
         guard let shared = AppGroup.defaults else { return }
+        shared.set(cacheSessionIdentity, forKey: AppGroup.Keys.sessionIdentity)
         shared.set(serverURL, forKey: AppGroup.Keys.serverURL)
         shared.set(activeEnvironmentID.rawValue, forKey: AppGroup.Keys.activeEnvironmentID)
         shared.set(activeEnvironmentName, forKey: AppGroup.Keys.activeEnvironmentName)
@@ -542,17 +584,24 @@ final class ArcaneClientManager {
     }
 
     func startDemo() async {
+        var generation = beginAuthentication()
         isLoading = true
         isStartingDemo = true
         errorMessage = nil
         demoExpiredMessage = nil
         defer {
-            isLoading = false
-            isStartingDemo = false
+            if generation == authenticationGeneration {
+                isLoading = false
+                isStartingDemo = false
+            }
         }
         do {
             let session = try await DemoService.shared.startInstance()
+            guard isCurrentAuthentication(generation) else { return }
             configure(serverURL: DemoService.demoBaseURL.absoluteString)
+            generation = authenticationGeneration
+            isLoading = true
+            isStartingDemo = true
 
             guard let client else {
                 errorMessage = "Failed to configure demo client"
@@ -561,25 +610,32 @@ final class ArcaneClientManager {
 
             do {
                 let response = try await client.auth.login(username: session.username, password: session.password)
+                guard isCurrentAuthentication(generation) else { return }
                 let capabilities = await client.serverCapabilities()
-                await completeAuthenticatedBootstrap(user: response.user, capabilities: capabilities, client: client)
+                await completeAuthenticatedBootstrap(user: response.user, capabilities: capabilities, client: client, generation: generation)
+                guard isCurrentAuthentication(generation) else { return }
                 needsConnectionBootstrapRetry = false
                 isDemoActive = true
                 demoEndsAt = session.endsAt
                 DemoService.shared.startHeartbeat()
                 scheduleDemoExpiry(at: session.endsAt)
             } catch {
+                guard isCurrentAuthentication(generation) else { return }
                 errorMessage = loginErrorMessage(error)
                 await DemoService.shared.endSession()
             }
         } catch let error as DemoError {
+            guard isCurrentAuthentication(generation) else { return }
             errorMessage = error.errorDescription
         } catch {
+            guard isCurrentAuthentication(generation) else { return }
             errorMessage = friendlyErrorMessage(error)
         }
     }
 
     func endDemo(reason: DemoEndReason) async {
+        retireAuthentication(allowCredentialClear: true)
+        let retirementTask = authenticationRetirementTask
         demoExpiryTask?.cancel()
         demoExpiryTask = nil
 
@@ -615,6 +671,7 @@ final class ArcaneClientManager {
         }
 
         await DemoService.shared.endSession()
+        await retirementTask?.value
         try? await endingClient?.auth.logout()
         await ResponseCache.shared.invalidateAll()
     }
@@ -634,6 +691,7 @@ final class ArcaneClientManager {
     }
 
     func checkExistingAuth() async {
+        let generation = authenticationGeneration
         guard let client else {
             if authState == .authenticating { authState = .login }
             return
@@ -649,6 +707,7 @@ final class ArcaneClientManager {
             hasCredential = true
         }
 
+        guard isCurrentAuthentication(generation) else { return }
         guard hasCredential else {
             // No stored credential at all — the user is genuinely signed out.
             signOutLocally()
@@ -663,10 +722,13 @@ final class ArcaneClientManager {
             await completeAuthenticatedBootstrap(
                 user: user,
                 capabilities: ServerCapabilities(mode: ServerCapabilities.detect(from: user)),
-                client: self.client ?? client
+                client: self.client ?? client,
+                generation: generation
             )
+            guard isCurrentAuthentication(generation) else { return }
             needsConnectionBootstrapRetry = false
         } catch let error as ArcaneError {
+            guard isCurrentAuthentication(generation) else { return }
             switch error {
             case .unauthorized, .forbidden:
                 // The server explicitly rejected the stored credential
@@ -677,18 +739,20 @@ final class ArcaneClientManager {
             default:
                 // Transient bootstrap failures keep credentials intact but fall
                 // back to login until a real user payload can be loaded.
-                await keepSignedInIfCredentialPresent(client, after: error)
+                await keepSignedInIfCredentialPresent(client, after: error, generation: generation)
             }
         } catch {
             // Non-ArcaneError (URLError, cancellation, etc.) is also transient.
-            await keepSignedInIfCredentialPresent(client, after: error)
+            await keepSignedInIfCredentialPresent(client, after: error, generation: generation)
         }
     }
 
     /// Preserve stored credentials after transient bootstrap failures without
     /// showing the signed-in UI until `auth/me` loads a real user.
-    private func keepSignedInIfCredentialPresent(_ client: ArcaneClient, after error: Error) async {
-        guard (try? await client.authManager.hasRefreshCredential()) == true else {
+    private func keepSignedInIfCredentialPresent(_ client: ArcaneClient, after error: Error, generation: Int) async {
+        let hasCredential = (try? await client.authManager.hasRefreshCredential()) == true
+        guard isCurrentAuthentication(generation) else { return }
+        guard hasCredential else {
             signOutLocally()
             await refreshOIDCStatus()
             return
@@ -710,6 +774,7 @@ final class ArcaneClientManager {
     }
 
     private func signOutLocally() {
+        retireAuthentication()
         authState = .login
         cacheSessionIdentity = UUID().uuidString
         currentUser = nil
@@ -734,17 +799,23 @@ final class ArcaneClientManager {
     private func completeAuthenticatedBootstrap(
         user: User,
         capabilities: ServerCapabilities,
-        client: ArcaneClient
+        client: ArcaneClient,
+        generation: Int
     ) async {
+        guard isCurrentAuthentication(generation) else { return }
         cacheSessionIdentity = UUID().uuidString
         currentUser = user
         serverCapabilities = capabilities
         if capabilities.mode == .rbac {
-            permissionsManifest = try? await client.roles.availablePermissions()
+            let manifest = try? await client.roles.availablePermissions()
+            guard isCurrentAuthentication(generation) else { return }
+            permissionsManifest = manifest
         } else {
             permissionsManifest = nil
         }
+        guard isCurrentAuthentication(generation) else { return }
         let versionInfo = try? await client.version.appVersion()
+        guard isCurrentAuthentication(generation) else { return }
         supportsPost26MobileFeatures = versionInfo?.supportsPost26MobileFeatures == true
         supportsMobilePush = versionInfo?.supportsMobilePush == true
         pendingMFAChallenge = nil
@@ -776,32 +847,41 @@ final class ArcaneClientManager {
             avatarFetchKey = nil
             return
         }
-        let key = "\(user.id)|\(user.updatedAt ?? "")"
+        let generation = authenticationGeneration
+        let key = "\(cacheSessionIdentity)|\(user.id)|\(user.updatedAt ?? "")"
         guard force || key != avatarFetchKey else { return }
         avatarFetchKey = key
         let avatarPath = "users/\(ArcaneAPIHelpers.escapedPathComponent(user.id))/avatar"
         do {
-            currentUserAvatarData = try await RemoteDataLimits.boundedData(
+            let data = try await RemoteDataLimits.boundedData(
                 client: client,
                 path: avatarPath,
                 maximumBytes: RemoteDataLimits.maximumImageBytes,
                 accept: "image/*"
             )
+            guard isCurrentAuthentication(generation), avatarFetchKey == key else { return }
+            currentUserAvatarData = data
             return
         } catch RemoteDataLimitError.httpStatus(404) {
             // No uploaded avatar; continue to the optional Gravatar fallback.
         } catch {
+            guard isCurrentAuthentication(generation), avatarFetchKey == key else { return }
             currentUserAvatarData = nil
+            avatarFetchKey = nil
+            return
         }
-        currentUserAvatarData = await fetchGravatar(for: user, using: client)
+        let fallback = await fetchGravatar(for: user, using: client, generation: generation)
+        guard isCurrentAuthentication(generation), avatarFetchKey == key else { return }
+        currentUserAvatarData = fallback
     }
 
-    private func fetchGravatar(for user: User, using client: ArcaneClient) async -> Data? {
+    private func fetchGravatar(for user: User, using client: ArcaneClient, generation: Int) async -> Data? {
         guard let email = user.email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !email.isEmpty else { return nil }
         // Only reach out to Gravatar when the server has it enabled, like
         // the web UI — don't leak email hashes to a third party otherwise.
         guard let settings = try? await client.settings.getSettings(envID: .localDocker),
+              isCurrentAuthentication(generation),
               settings.first(where: { $0.key == "enableGravatar" })?.value.lowercased() == "true"
         else { return nil }
         let hash = SHA256.hash(data: Data(email.utf8))
@@ -864,6 +944,46 @@ final class ArcaneClientManager {
     }
 
     // MARK: - Private
+    func isCurrentAuthentication(_ generation: Int) -> Bool {
+        generation == authenticationGeneration && !Task.isCancelled
+    }
+
+    private func requireCurrentAuthentication(_ generation: Int) throws {
+        guard isCurrentAuthentication(generation) else { throw CancellationError() }
+    }
+
+    private func retireAuthentication(allowCredentialClear: Bool = false) {
+        authenticationGeneration &+= 1
+        cacheSessionIdentity = UUID().uuidString
+        PushNotificationCoordinator.shared.sessionDidChange()
+        credentialLease.retire(allowClear: allowCredentialClear)
+        let authManagers = Array(bootstrapAuthManagers.values) + (client.map { [$0.authManager] } ?? [])
+        authenticationRetirementTask = Task {
+            for authManager in authManagers { await authManager.retirePendingAuthenticationOperations() }
+        }
+        for cancel in bootstrapCancellations.values { cancel() }
+        for session in bootstrapSessions.values {
+            session.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
+        }
+        bootstrapSessions.removeAll()
+        bootstrapAuthManagers.removeAll()
+        bootstrapCancellations.removeAll()
+        clientSession?.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
+        clearPendingAuthentication()
+        isLoading = false
+        isStartingDemo = false
+        isOIDCSigningIn = false
+    }
+
+    @discardableResult
+    private func beginAuthentication(preservingMFAChallenge challenge: MFAChallenge? = nil) -> Int {
+        retireAuthentication()
+        credentialLease = CredentialLease()
+        if let url = parsedServerURL { configureClient(for: url, force: true) }
+        pendingMFAChallenge = challenge
+        return authenticationGeneration
+    }
+
     private func configureClient(
         for url: URL,
         force: Bool = false,
@@ -874,10 +994,14 @@ final class ArcaneClientManager {
         // tear the session down and rebuild it, killing in-flight streams.
         if !force, client != nil, configuredClientURL == url { return }
         clearPendingAuthentication()
-        clientSession?.finishTasksAndInvalidate()
+        clientSession?.getAllTasks { tasks in tasks.forEach { $0.cancel() } }
         let bundle = Self.makeClient(
             url: url,
-            allowsLegacyTokenMigration: allowsLegacyTokenMigration
+            allowsLegacyTokenMigration: allowsLegacyTokenMigration,
+            credentialLease: credentialLease,
+            credentialPersistence: credentialPersistence,
+            session: sessionFactory?(false),
+            originStore: tokenStoreFactory?(AppGroup.canonicalServerOrigin(for: url) ?? url.absoluteString)
         )
         client = bundle.client
         clientGeneration &+= 1
@@ -896,8 +1020,10 @@ final class ArcaneClientManager {
 
     private func applyAuthenticationResult(
         _ result: AuthenticationResult,
-        client: ArcaneClient
+        client: ArcaneClient,
+        generation: Int
     ) async {
+        guard isCurrentAuthentication(generation) else { return }
         switch result {
         case .authenticated(let response):
             pendingMFAChallenge = nil
@@ -906,7 +1032,8 @@ final class ArcaneClientManager {
                 capabilities: ServerCapabilities(
                     mode: ServerCapabilities.detect(from: response.user)
                 ),
-                client: client
+                client: client,
+                generation: generation
             )
         case .mfaRequired(let challenge):
             pendingMFAChallenge = challenge
@@ -928,19 +1055,26 @@ final class ArcaneClientManager {
             throw ArcaneError.transport("No client")
         }
 
-        lastBootstrapDNSAddresses = await Self.resolveAddressesDetached(for: parsedServerURL)
+        let generation = authenticationGeneration
+        let addresses = await Self.resolveAddressesDetached(for: parsedServerURL)
+        try requireCurrentAuthentication(generation)
+        lastBootstrapDNSAddresses = addresses
         do {
             let result = try await runBootstrapOperation(for: parsedServerURL, operation)
+            try requireCurrentAuthentication(generation)
             configureClient(for: parsedServerURL)
             return result
         } catch {
+            try requireCurrentAuthentication(generation)
             guard shouldRefreshNetworkSession(after: error) else {
                 throw error
             }
             // The transient failure may be a wedged session — force a rebuild.
             configureClient(for: parsedServerURL, force: true)
-            try? await Task.sleep(for: .milliseconds(500))
+            try await Task.sleep(for: .milliseconds(500))
+            try requireCurrentAuthentication(generation)
             let result = try await runBootstrapOperation(for: parsedServerURL, operation)
+            try requireCurrentAuthentication(generation)
             configureClient(for: parsedServerURL)
             return result
         }
@@ -950,9 +1084,21 @@ final class ArcaneClientManager {
         for url: URL,
         _ operation: @escaping @Sendable (ArcaneClient) async throws -> T
     ) async throws -> T {
-        let bundle = Self.makeClient(url: url, bootstrap: true)
-        defer { bundle.session.invalidateAndCancel() }
-        return try await operation(bundle.client)
+        let bundle = Self.makeClient(url: url, bootstrap: true, credentialLease: credentialLease, credentialPersistence: credentialPersistence, session: sessionFactory?(true), originStore: tokenStoreFactory?(AppGroup.canonicalServerOrigin(for: url) ?? url.absoluteString))
+        let id = UUID()
+        bootstrapSessions[id] = bundle.session
+        bootstrapAuthManagers[id] = bundle.client.authManager
+        let task = Task { try await operation(bundle.client) }
+        bootstrapCancellations[id] = { task.cancel() }
+        defer {
+            bootstrapSessions.removeValue(forKey: id)
+            bootstrapAuthManagers.removeValue(forKey: id)
+            bootstrapCancellations.removeValue(forKey: id)
+            bundle.session.invalidateAndCancel()
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: { task.cancel() }
     }
 
     /// Blocking `getaddrinfo` — never call on the main actor; use
@@ -1171,20 +1317,27 @@ final class ArcaneClientManager {
     private static func makeClient(
         url: URL,
         bootstrap: Bool = false,
-        allowsLegacyTokenMigration: Bool = false
+        allowsLegacyTokenMigration: Bool = false,
+        credentialLease: CredentialLease,
+        credentialPersistence: CredentialPersistenceCoordinator,
+        session: URLSession? = nil,
+        originStore: (any TokenStore)? = nil
     ) -> ClientBundle {
-        let session = makeURLSession(bootstrap: bootstrap)
+        let session = session ?? makeURLSession(bootstrap: bootstrap)
         let origin = AppGroup.canonicalServerOrigin(for: url) ?? url.absoluteString
+        let tokenStore: MigratingTokenStore
+        if let originStore {
+            tokenStore = MigratingTokenStore(origin: origin, originStore: originStore, legacy: InMemoryTokenStore(), legacyAppGroup: InMemoryTokenStore(), lease: credentialLease, persistence: credentialPersistence, credentialOrigin: { origin })
+        } else {
+            tokenStore = MigratingTokenStore(origin: origin, allowsLegacyMigration: allowsLegacyTokenMigration, lease: credentialLease, persistence: credentialPersistence)
+        }
         let client = ArcaneClient(configuration: .init(
             baseURL: url,
             // Migrates the session into the shared keychain group so widget
             // buttons and Shortcuts intents can authenticate. Falls back to
             // (and keeps writing) the original private item — see
             // MigratingTokenStore for the sign-out-safety invariants.
-            tokenStore: MigratingTokenStore(
-                origin: origin,
-                allowsLegacyMigration: allowsLegacyTokenMigration
-            ),
+            tokenStore: tokenStore,
             defaultEnvironmentID: .localDocker,
             urlSession: session,
             retryPolicy: bootstrap

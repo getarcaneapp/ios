@@ -90,7 +90,7 @@ struct ContainerRegistriesView: View {
         }
         .toolbar {
             if manager.currentUser?.isAdmin == true {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateRegistrySheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Registry")
                 }
             }

@@ -58,8 +58,8 @@ struct CreateUserView: View {
             .navigationTitle("Create User")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Create") { Task { await createUser() } }
                         .disabled(!canCreate)
                 }

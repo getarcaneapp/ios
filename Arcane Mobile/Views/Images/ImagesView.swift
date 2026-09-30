@@ -21,7 +21,7 @@ struct ImagesView: View {
     @State private var pendingDestructive: ImageDestructive?
     @State private var showPruneSheet = false
     @State private var showUploadSheet = false
-    @State private var currentPage = 1
+    @State private var pagination = ProgressivePaginationState()
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
@@ -181,7 +181,7 @@ struct ImagesView: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search images")
         .toolbar {
             if isAdmin {
-                ToolbarItem(placement: .navigationBarLeading) {
+                AppToolbarItem(placement: .navigationBarLeading) {
                     NavigationLink(destination: ContainerRegistriesView()) {
                         // `key.shield` is an SF Symbols 7 (iOS 26) glyph; fall back
                         // to `lock.shield` (iOS 13+) so iOS 18 doesn't render blank.
@@ -197,7 +197,7 @@ struct ImagesView: View {
                 }
             }
             if !isSelecting {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
                             enterSelectionMode()
@@ -248,7 +248,7 @@ struct ImagesView: View {
                     .accessibilityLabel("More options")
                 }
             } else {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         exitSelectionMode()
                     }
@@ -259,7 +259,7 @@ struct ImagesView: View {
             }
 
             if !isSelecting {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button { showPullSheet = true } label: {
                         Image(systemName: "arrow.down.circle")
                             .appAccentToolbarSymbol()
@@ -329,7 +329,7 @@ struct ImagesView: View {
                 .navigationTitle("Filter")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
+                    AppToolbarItem(placement: .confirmationAction) {
                         Button("Done") { showFilterSheet = false }
                     }
                 }
@@ -445,8 +445,12 @@ struct ImagesView: View {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
-        let requestedPage = reset ? 1 : currentPage + 1
-        let start = max(0, (requestedPage - 1) * Self.pageSize)
+        if reset {
+            _ = pagination.reset()
+            hasMore = false
+            totalItemCount = nil
+        }
+        let start = pagination.nextStart
         if images.isEmpty { isLoading = true }
         errorMessage = nil
         loadMoreError = nil
@@ -462,7 +466,8 @@ struct ImagesView: View {
             // current.
             let query = SearchPaginationSort(start: start, limit: Self.pageSize)
             let response = try await client.images.list(envID: environmentID, query: query)
-            applyImagesPage(response, reset: reset, generation: generation)
+            guard loadGeneration == generation, !Task.isCancelled else { return }
+            applyImagesPage(response, reset: reset, start: start, generation: generation)
             await loadUpdateInfo(for: response.data)
         } catch {
             guard loadGeneration == generation else { return }
@@ -471,22 +476,17 @@ struct ImagesView: View {
         }
     }
 
-    private func applyImagesPage(_ response: ImageListResponse, reset: Bool, generation: Int) {
+    private func applyImagesPage(_ response: ImageListResponse, reset: Bool, start: Int, generation: Int) {
         guard loadGeneration == generation else { return }
-        if reset {
-            images = response.data
-            updateInfo = [:]
-        } else {
-            let existing = Set(images.map(\.id))
-            images.append(contentsOf: response.data.filter { !existing.contains($0.id) })
-        }
-        currentPage = max(Int(response.pagination.currentPage), 1)
-        hasMore = response.pagination.currentPage < response.pagination.totalPages
-        if response.pagination.totalItems >= 0 {
-            totalItemCount = response.pagination.totalItems
-        } else if reset {
-            totalItemCount = nil
-        }
+        images = PaginationLoader.merge(current: images, incoming: response.data, reset: reset)
+        if reset { updateInfo = [:] }
+        pagination.receive(
+            pagination: response.pagination, itemCount: response.data.count,
+            requestedStart: start, requestedLimit: Self.pageSize,
+            generation: pagination.generation
+        )
+        hasMore = pagination.hasMore
+        totalItemCount = pagination.totalItems
         rebuildSections()
     }
 
@@ -704,10 +704,10 @@ struct PullImageView: View {
             .navigationTitle("Pull Image")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Pull") { startPull() }
                         .disabled(imageName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }

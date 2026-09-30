@@ -135,7 +135,7 @@ struct ProfileView: View {
             onRevert: revertChanges
         )
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            AppToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button(role: .destructive) {
                         pendingSignOut = .signOut

@@ -68,17 +68,7 @@ struct Arcane_MobileApp: App {
                         Task { await clientManager.endDemo(reason: .userInitiated) }
                         return
                     }
-                    if QuickActionRouter.shared.handle(url: url) {
-                        // Widget deep links can carry a target environment —
-                        // switch the active context before the tab shows.
-                        if let envID = QuickActionRouter.shared.pendingDeepLink?.environmentID,
-                           envID != clientManager.activeEnvironmentID.rawValue {
-                            clientManager.setActiveEnvironment(
-                                id: EnvironmentID(rawValue: envID),
-                                name: envID
-                            )
-                        }
-                    }
+                    _ = QuickActionRouter.shared.handle(url: url)
                 }
                 .onChange(of: accentColorHex) { _, newValue in
                     AppGroup.defaults?.set(newValue, forKey: AppGroup.Keys.accentColorHex)

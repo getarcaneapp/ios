@@ -148,7 +148,7 @@ struct APIKeyDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !actionItems.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) {
+                AppToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         ForEach(actionItems) { item in
                             Button(role: item.role) {

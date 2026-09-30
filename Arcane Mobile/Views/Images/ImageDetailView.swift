@@ -86,7 +86,7 @@ struct ImageDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let exportedImage {
-                ToolbarItem(placement: .topBarTrailing) {
+                AppToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: exportedImage) {
                         Image(systemName: "square.and.arrow.up")
                     }

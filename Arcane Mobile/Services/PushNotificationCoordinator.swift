@@ -54,19 +54,37 @@ final class PushNotificationCoordinator {
     private(set) var errorMessage: String?
     private(set) var credentials: Credentials?
 
+    private var operationID = UUID()
+
+    func sessionDidChange() {
+        operationID = UUID()
+        isBusy = false
+        serverStatus = nil
+        errorMessage = nil
+    }
+
     private var latestDeviceToken: String?
     private var registrationError: Error?
-    private let relaySession: URLSession = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.httpCookieStorage = nil
-        configuration.httpShouldSetCookies = false
-        configuration.urlCache = nil
-        configuration.timeoutIntervalForRequest = 20
-        return URLSession(configuration: configuration)
-    }()
+    private let relaySession: URLSession
+    private let persistCredentials: (Credentials?) -> Void
 
-    private init() {
-        credentials = PushKeychain.load()
+    init(
+        credentials: Credentials? = PushKeychain.load(),
+        relaySession: URLSession? = nil,
+        persistCredentials: @escaping (Credentials?) -> Void = PushKeychain.save
+    ) {
+        self.credentials = credentials
+        self.persistCredentials = persistCredentials
+        if let relaySession {
+            self.relaySession = relaySession
+        } else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.httpCookieStorage = nil
+            configuration.httpShouldSetCookies = false
+            configuration.urlCache = nil
+            configuration.timeoutIntervalForRequest = 20
+            self.relaySession = URLSession(configuration: configuration)
+        }
     }
 
     // MARK: - State
@@ -99,10 +117,14 @@ final class PushNotificationCoordinator {
             serverStatus = nil
             return
         }
-        serverStatus = try? await client.mobilePush.status()
+        let generation = manager.authenticationGeneration
+        let origin = manager.serverOrigin
+        let status = try? await client.mobilePush.status()
+        guard manager.isCurrentAuthentication(generation) else { return }
+        serverStatus = status
         // The server forgot this device (admin disabled push, or it was pruned)
         // — drop the stale local binding so the toggle reads correctly.
-        if let status = serverStatus, let origin = manager.serverOrigin,
+        if let status = serverStatus, let origin,
            let binding = binding(for: origin),
            !status.enabled || !status.devices.contains(where: { $0.id == binding.deviceId }) {
             credentials?.bindings.removeValue(forKey: origin)
@@ -124,9 +146,12 @@ final class PushNotificationCoordinator {
         Task {
             do {
                 try await updateRelayToken(updated)
-                credentials = updated
+                guard latestDeviceToken == token, credentials?.installationId == updated.installationId else { return }
+                credentials?.deviceToken = token
+                credentials?.apnsEnvironment = environment
                 persist()
             } catch {
+                guard latestDeviceToken == token, credentials?.installationId == updated.installationId else { return }
                 errorMessage = error.localizedDescription
             }
         }
@@ -154,57 +179,79 @@ final class PushNotificationCoordinator {
 
     func enable(manager: ArcaneClientManager) async {
         guard !isBusy else { return }
+        let id = UUID()
+        operationID = id
+        let generation = manager.authenticationGeneration
         isBusy = true
         errorMessage = nil
-        defer { isBusy = false }
+        defer { if operationID == id { isBusy = false } }
+        func checkSession() throws {
+            guard operationID == id, manager.isCurrentAuthentication(generation) else { throw CancellationError() }
+        }
         do {
             guard let client = manager.client, let origin = manager.serverOrigin else { throw PushError.notSignedIn }
             let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+            try checkSession()
             await refreshAuthorizationStatus()
+            try checkSession()
             guard granted else { throw PushError.notAuthorized }
 
             let status = try await client.mobilePush.status()
+            try checkSession()
             serverStatus = status
             guard status.enabled else { throw PushError.serverDisabled }
 
             let token = try await awaitDeviceToken()
-            var creds = try await ensureInstallation(relayURL: status.relayUrl, deviceToken: token)
+            try checkSession()
+            let creds = try await ensureInstallation(relayURL: status.relayUrl, deviceToken: token, checkSession: checkSession)
+            try checkSession()
 
             let pairing = try await client.mobilePush.pairingToken()
+            try checkSession()
             var paired: PairResponse = try await relayRequest(
                 creds, "POST", "/v1/pair",
                 body: ["pairingToken": pairing.token],
                 authorized: true
             )
+            try checkSession()
             let device: MobilePushDevice
             do {
+                try checkSession()
                 device = try await client.mobilePush.registerDevice(
                     MobilePushRegisterDevice(recipientId: paired.recipientId, label: UIDevice.current.name)
                 )
             } catch let arcane as ArcaneError {
+                try checkSession()
                 // Stale relay pairing owned by another user (e.g. account
                 // switch on a shared device). Unpair it, pair fresh, retry once.
                 guard case .conflict = arcane else { throw arcane }
                 _ = try? await relayRequestVoid(
                     creds, "POST", "/v1/unpair", body: ["recipientId": paired.recipientId])
+                try checkSession()
                 // Pairing tokens are single-use — fetch a fresh one.
                 let retryPairing = try await client.mobilePush.pairingToken()
+                try checkSession()
                 paired = try await relayRequest(
                     creds, "POST", "/v1/pair",
                     body: ["pairingToken": retryPairing.token],
                     authorized: true
                 )
+                try checkSession()
                 device = try await client.mobilePush.registerDevice(
                     MobilePushRegisterDevice(recipientId: paired.recipientId, label: UIDevice.current.name)
                 )
             }
-            creds.bindings[origin] = ServerBinding(
+            try checkSession()
+            guard credentials?.installationId == creds.installationId else { throw CancellationError() }
+            credentials?.bindings[origin] = ServerBinding(
                 recipientId: paired.recipientId, channelId: paired.channelId, deviceId: device.id)
-            credentials = creds
             persist()
-            serverStatus = try? await client.mobilePush.status()
+            let updatedStatus = try? await client.mobilePush.status()
+            try checkSession()
+            serverStatus = updatedStatus
             showToast(.success("Push notifications enabled"))
         } catch {
+            guard operationID == id, manager.isCurrentAuthentication(generation), !(error is CancellationError) else { return }
             let message = friendlyErrorMessage(error)
             errorMessage = message
             showToast(.error(message))
@@ -213,11 +260,18 @@ final class PushNotificationCoordinator {
 
     func disable(manager: ArcaneClientManager) async {
         guard !isBusy else { return }
+        let id = UUID()
+        operationID = id
+        let generation = manager.authenticationGeneration
         isBusy = true
         errorMessage = nil
-        defer { isBusy = false }
-        await tearDown(client: manager.client, origin: manager.serverOrigin)
-        serverStatus = try? await manager.client?.mobilePush.status()
+        defer { if operationID == id { isBusy = false } }
+        let client = manager.client
+        await tearDown(client: client, origin: manager.serverOrigin)
+        guard operationID == id, manager.isCurrentAuthentication(generation) else { return }
+        let status = try? await client?.mobilePush.status()
+        guard operationID == id, manager.isCurrentAuthentication(generation) else { return }
+        serverStatus = status
         showToast(.info("Push notifications disabled"))
     }
 
@@ -256,7 +310,7 @@ final class PushNotificationCoordinator {
     private struct PairResponse: Decodable { let recipientId: String; let channelId: String }
     private struct RelayError: Decodable { struct Body: Decodable { let code: String; let message: String }; let error: Body }
 
-    private func ensureInstallation(relayURL: String, deviceToken: String) async throws -> Credentials {
+    private func ensureInstallation(relayURL: String, deviceToken: String, checkSession: () throws -> Void) async throws -> Credentials {
         let environment = Self.detectAPNSEnvironment()
         if let creds = credentials, creds.relayURL == relayURL {
             if creds.deviceToken != deviceToken || creds.apnsEnvironment != environment {
@@ -264,9 +318,12 @@ final class PushNotificationCoordinator {
                 updated.deviceToken = deviceToken
                 updated.apnsEnvironment = environment
                 try await updateRelayToken(updated)
-                credentials = updated
+                try checkSession()
+                guard credentials?.installationId == updated.installationId else { throw CancellationError() }
+                credentials?.deviceToken = updated.deviceToken
+                credentials?.apnsEnvironment = updated.apnsEnvironment
                 persist()
-                return updated
+                return credentials!
             }
             return creds
         }
@@ -282,6 +339,7 @@ final class PushNotificationCoordinator {
             authorized: false
         )
         let creds = Credentials(relayURL: relayURL, installationId: created.installationId, installationSecret: created.installationSecret, deviceToken: deviceToken, apnsEnvironment: environment)
+        try checkSession()
         credentials = creds
         persist()
         return creds
@@ -326,7 +384,7 @@ final class PushNotificationCoordinator {
     }
 
     private func persist() {
-        PushKeychain.save(credentials)
+        persistCredentials(credentials)
     }
 
     nonisolated static func detectAPNSEnvironment() -> String {

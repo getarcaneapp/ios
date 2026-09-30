@@ -54,7 +54,7 @@ struct ImageVulnerabilitiesView: View {
                         ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                AppToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         ImagePatchView(environmentID: environmentID, imageID: imageID, imageName: imageDisplayName)
                     } label: {
@@ -564,12 +564,13 @@ private struct IgnoreVulnerabilitySheet: View {
             .navigationTitle("Ignore CVE")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .confirmationAction) {
                     if isSaving {
                         ProgressView().scaleEffect(0.8)
                     } else {
                         Button("Ignore", role: .destructive) { Task { await save() } }
+                            .foregroundStyle(.red)
                     }
                 }
             }

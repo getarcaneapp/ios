@@ -57,6 +57,11 @@ nonisolated enum ActivityStatusFilter: String, CaseIterable, Identifiable, Senda
 }
 
 extension Activity {
+    nonisolated var displayProgress: Int? {
+        if status == .success { return 100 }
+        return progress.map { min(max($0, 0), 100) }
+    }
+
     nonisolated var isCancellable: Bool {
         status == .queued || status == .running
     }

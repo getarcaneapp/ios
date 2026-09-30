@@ -107,12 +107,12 @@ struct TemplateBrowserView: View {
         )
         .toolbar {
             if !embedded {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
             }
             if embedded && canManageRegistries {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink {
                         TemplateRegistriesView()
                     } label: {

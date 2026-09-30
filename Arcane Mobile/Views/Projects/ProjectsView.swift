@@ -13,6 +13,9 @@ struct ProjectsView: View {
 
 
     @State private var projects: [ProjectDetails] = []
+    @State private var routedProject: ProjectDetails?
+    @State private var routeGeneration = 0
+    @State private var router = QuickActionRouter.shared
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
@@ -22,7 +25,7 @@ struct ProjectsView: View {
     @State private var showFilterSheet = false
     @State private var pendingDeleteProject: ProjectDetails?
     @State private var loadGeneration = 0
-    @State private var currentPage = 1
+    @State private var pagination = ProgressivePaginationState()
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
@@ -173,7 +176,7 @@ struct ProjectsView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if canBrowseTemplates {
-            ToolbarItem(placement: .navigationBarLeading) {
+            AppToolbarItem(placement: .navigationBarLeading) {
                 // Straight into the template browser; registry management is
                 // behind its Settings (gear) button.
                 NavigationLink(destination: TemplateBrowserView(embedded: true)) {
@@ -183,13 +186,13 @@ struct ProjectsView: View {
                 .accessibilityLabel("Browse Templates")
             }
         }
-        ToolbarItem(placement: .navigationBarTrailing) {
+        AppToolbarItem(placement: .navigationBarTrailing) {
             moreOptionsMenu
         }
         if #available(iOS 26, *) {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
         }
-        ToolbarItem(placement: .navigationBarTrailing) {
+        AppToolbarItem(placement: .navigationBarTrailing) {
             Button { showCreateSheet = true } label: {
                 Image(systemName: "plus")
                     .appAccentToolbarSymbol()
@@ -249,7 +252,7 @@ struct ProjectsView: View {
             .navigationTitle("Filter")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Done") { showFilterSheet = false }
                 }
             }
@@ -283,6 +286,12 @@ struct ProjectsView: View {
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showFilterSheet) { filterSheetContent }
+        .navigationDestination(item: $routedProject) { project in
+            ProjectDetailView(project: project, environmentID: environmentID)
+        }
+        .onChange(of: router.pendingRoute, initial: true) { _, _ in
+            Task { await consumeProjectRoute() }
+        }
         .onChange(of: mutationVersion) { _, _ in
             Task { await loadProjects(reset: true, refresh: true) }
         }
@@ -320,8 +329,12 @@ struct ProjectsView: View {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
-        let requestedPage = reset ? 1 : currentPage + 1
-        let start = max(0, (requestedPage - 1) * Self.pageSize)
+        if reset {
+            _ = pagination.reset()
+            hasMore = false
+            totalItemCount = nil
+        }
+        let start = pagination.nextStart
         if projects.isEmpty { isLoading = true }
         errorMessage = nil
         loadMoreError = nil
@@ -336,7 +349,7 @@ struct ProjectsView: View {
             // service call is fast enough that this is fine.
             let query = SearchPaginationSort(start: start, limit: Self.pageSize)
             let response = try await client.projects.list(envID: environmentID, query: query)
-            applyProjectsPage(response, reset: reset, generation: generation)
+            applyProjectsPage(response, reset: reset, start: start, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
             if reset { errorMessage = friendlyErrorMessage(error) }
@@ -344,21 +357,16 @@ struct ProjectsView: View {
         }
     }
 
-    private func applyProjectsPage(_ response: PaginatedResponse<ProjectDetails>, reset: Bool, generation: Int) {
+    private func applyProjectsPage(_ response: PaginatedResponse<ProjectDetails>, reset: Bool, start: Int, generation: Int) {
         guard loadGeneration == generation else { return }
-        if reset {
-            projects = response.data
-        } else {
-            let existing = Set(projects.map(\.id))
-            projects.append(contentsOf: response.data.filter { !existing.contains($0.id) })
-        }
-        currentPage = max(Int(response.pagination.currentPage), 1)
-        hasMore = response.pagination.currentPage < response.pagination.totalPages
-        if response.pagination.totalItems >= 0 {
-            totalItemCount = response.pagination.totalItems
-        } else if reset {
-            totalItemCount = nil
-        }
+        projects = PaginationLoader.merge(current: projects, incoming: response.data, reset: reset)
+        pagination.receive(
+            pagination: response.pagination, itemCount: response.data.count,
+            requestedStart: start, requestedLimit: Self.pageSize,
+            generation: pagination.generation
+        )
+        hasMore = pagination.hasMore
+        totalItemCount = pagination.totalItems
         rebuildSections()
     }
 
@@ -459,9 +467,11 @@ struct ProjectsView: View {
         guard let client = manager.client else { return }
         pendingDeleteProject = nil
         do {
-            let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/destroy")
-            let request = DestroyProjectRequest(removeFiles: removeFiles, removeVolumes: false)
-            let _: DataResponse<String> = try await client.transport.request(path, method: "DELETE", body: request)
+            _ = try await client.projects.destroy(
+                envID: environmentID,
+                projectID: project.id,
+                options: DestroyProject(removeFiles: removeFiles, removeVolumes: false)
+            )
             withAnimation {
                 projects.removeAll { $0.id == project.id }
                 rebuildSections()
@@ -548,5 +558,36 @@ struct ProjectRow: View {
         parts.append(project.status)
         parts.append("\(count) service\(count == 1 ? "" : "s")")
         return parts.joined(separator: ", ")
+    }
+}
+
+private extension ProjectsView {
+    func consumeProjectRoute() async {
+        guard case .authenticated = manager.authState,
+              case .project(let envID, let id)? = router.pendingRoute,
+              envID == environmentID.rawValue,
+              let client = manager.client else { return }
+        routeGeneration += 1
+        let generation = routeGeneration
+        let routerGeneration = router.routeGeneration
+        let session = manager.cacheSessionIdentity
+        router.pendingRoute = nil
+        do {
+            let project = try await client.projects.get(envID: environmentID, projectID: id)
+            try Task.checkCancellation()
+            guard generation == routeGeneration,
+                  routerGeneration == router.routeGeneration,
+                  session == manager.cacheSessionIdentity,
+                  client.transport === manager.client?.transport,
+                  manager.activeEnvironmentID == environmentID else { return }
+            routedProject = project
+        } catch {
+            guard generation == routeGeneration,
+                  routerGeneration == router.routeGeneration,
+                  session == manager.cacheSessionIdentity,
+                  client.transport === manager.client?.transport,
+                  manager.activeEnvironmentID == environmentID else { return }
+            showToast(.error(friendlyErrorMessage(error)))
+        }
     }
 }

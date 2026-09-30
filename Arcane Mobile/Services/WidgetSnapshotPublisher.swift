@@ -10,6 +10,7 @@ final class WidgetSnapshotPublisher {
     static let shared = WidgetSnapshotPublisher()
 
     private var latest: WidgetSnapshot?
+    private var sessionIdentity: String?
     private var pendingTask: Task<Void, Never>?
     private static let debounce: Duration = .seconds(6)
 
@@ -18,6 +19,7 @@ final class WidgetSnapshotPublisher {
     /// Queue a snapshot for writing; coalesces bursts from the live stream.
     func schedule(_ snapshot: WidgetSnapshot) {
         latest = snapshot
+        sessionIdentity = AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity)
         guard pendingTask == nil else { return }
         pendingTask = Task { [weak self] in
             try? await Task.sleep(for: Self.debounce)
@@ -32,6 +34,9 @@ final class WidgetSnapshotPublisher {
         pendingTask = nil
         guard let latest else { return }
         self.latest = nil
+        guard sessionIdentity == AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity),
+              latest.serverOrigin == IntentClientFactory.serverOrigin,
+              latest.isDemo || SharedKeychain.credentialOrigin == latest.serverOrigin else { return }
         WidgetSnapshotStore.saveAndReloadIfChanged(latest)
     }
 

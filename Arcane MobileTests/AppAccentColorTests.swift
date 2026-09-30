@@ -1,10 +1,11 @@
+import Arcane
 import SwiftUI
 import Testing
 import UIKit
 
 @testable import Arcane_Mobile
 
-@Suite("App accent color")
+@Suite("App accent color", .serialized)
 struct AppAccentColorTests {
     @MainActor
     @Test
@@ -77,6 +78,157 @@ struct AppAccentColorTests {
         #expect(pixels.purplePixelCount(in: iconRange) == 0)
     }
 
+    @MainActor
+    @Test
+    func activityProgressBarRendersIntermediateFractions() async throws {
+        let orange = try #require(Color(hex: "#FF9500"))
+        let scene = try #require(UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive })
+        for progress in [25, 75] {
+            let fixture = ActivityProgressView(progress: progress, isActive: true, tint: orange)
+                .frame(width: 200, height: 20)
+                .background(.white)
+            let host = UIHostingController(rootView: fixture)
+            let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+            let window = UIWindow(windowScene: scene)
+            let bounds = CGRect(x: 0, y: 0, width: 390, height: 844)
+            window.frame = bounds
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true; previousKeyWindow?.makeKey() }
+            try await Task.sleep(for: .milliseconds(100))
+            host.view.layoutIfNeeded()
+            let bar = try #require(accentTestDescendants(of: UIProgressView.self, in: host.view).first)
+            #expect(abs(bar.progress - Float(progress) / 100) < 0.001)
+            let renderer = UIGraphicsImageRenderer(bounds: bounds, format: {
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                return format
+            }())
+            var rendered = false
+            let screenshot = renderer.image { _ in
+                rendered = window.drawHierarchy(in: bounds, afterScreenUpdates: true)
+            }
+            try #require(rendered)
+            let image = UIImage(cgImage: try #require(screenshot.cgImage?.cropping(to: bar.convert(bar.bounds, to: window).integral)))
+            let pixels = try RGBAImage(image)
+            #expect(pixels.saturatedPixelCount(in: 0..<40) > 5)
+            if progress == 25 {
+                #expect(pixels.saturatedPixelCount(in: 120..<140) == 0)
+            } else {
+                #expect(pixels.saturatedPixelCount(in: 120..<140) > 5)
+            }
+            Attachment.record(image, named: "activity-progress-\(progress)", as: .png)
+        }
+    }
+
+    @MainActor
+    @Test
+    func activityDetailNativeBackButtonUsesCustomAccent() async throws {
+        let orange = try #require(Color(hex: "#FF9500"))
+        let manager = ArcaneClientManager()
+        let activity = Activity(id: "detail", environmentID: "one", type: .imagePull,
+            status: .running, progress: 45, startedAt: .now, createdAt: .now)
+        let fixture = NavigationStack(path: .constant(["detail"])) {
+            Text("Activities")
+                .navigationTitle("Activities")
+                .navigationDestination(for: String.self) { _ in
+                    ActivityDetailView(activity: activity)
+                }
+        }
+        .environment(manager)
+        .appAccentColor(orange)
+        let scene = try #require(UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive })
+        let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let bounds = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.frame = bounds
+        let host = UIHostingController(rootView: fixture)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; previousKeyWindow?.makeKey() }
+        try await Task.sleep(for: .milliseconds(400))
+        host.view.layoutIfNeeded()
+        let bar = try #require(accentTestDescendants(of: UINavigationBar.self, in: window)
+            .last { !$0.isHidden && $0.alpha > 0 && $0.bounds.height > 0 })
+        #expect(bar.topItem?.title == "Activity")
+        let renderer = UIGraphicsImageRenderer(bounds: bounds, format: {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            return format
+        }())
+        var rendered = false
+        let screenshot = renderer.image { _ in
+            rendered = window.drawHierarchy(in: bounds, afterScreenUpdates: true)
+        }
+        try #require(rendered)
+        let image = UIImage(cgImage: try #require(screenshot.cgImage?.cropping(to: bar.convert(bar.bounds, to: window).integral)))
+        let pixels = try RGBAImage(image)
+        #expect(pixels.orangePixelCount(in: 0..<min(100, pixels.pixelWidth)) > 5)
+        Attachment.record(image, named: "activity-detail-back-accent", as: .png)
+    }
+
+    @MainActor
+    @Test
+    func navigationAndPresentedToolbarsUseAccentAndPreserveSemanticColors() async throws {
+        let orange = try #require(Color(hex: "#FF9500"))
+        for presentsSheet in [false, true] {
+            let fixture = NavigationStack {
+                AccentToolbarFixture()
+            }
+            .sheet(isPresented: .constant(presentsSheet)) {
+                NavigationStack {
+                    AccentToolbarFixture()
+                }
+            }
+            .appAccentColor(orange)
+            let bounds = CGRect(x: 0, y: 0, width: 390, height: 844)
+            let host = UIHostingController(rootView: fixture)
+            let scene = try #require(
+                UIApplication.shared.connectedScenes
+                    .compactMap { $0 as? UIWindowScene }
+                    .first { $0.activationState == .foregroundActive }
+            )
+            let previousKeyWindow = scene.windows.first(where: \.isKeyWindow)
+            let window = UIWindow(windowScene: scene)
+            window.frame = bounds
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            defer {
+                window.isHidden = true
+                previousKeyWindow?.makeKey()
+            }
+            host.view.frame = bounds
+            host.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(400))
+            host.view.layoutIfNeeded()
+
+            let navigationBar = try #require(
+                accentTestDescendants(of: UINavigationBar.self, in: window)
+                    .last { !$0.isHidden && $0.alpha > 0 && $0.bounds.height > 0 }
+            )
+            let barFrame = navigationBar.convert(navigationBar.bounds, to: window).integral
+            let renderer = UIGraphicsImageRenderer(bounds: bounds, format: {
+                let format = UIGraphicsImageRendererFormat()
+                format.scale = 1
+                return format
+            }())
+            var renderedHierarchy = false
+            let screenshot = renderer.image { _ in
+                renderedHierarchy = window.drawHierarchy(in: bounds, afterScreenUpdates: true)
+            }
+            try #require(renderedHierarchy)
+            let image = UIImage(cgImage: try #require(screenshot.cgImage?.cropping(to: barFrame)))
+            let pixels = try RGBAImage(image)
+            let width = 0..<pixels.pixelWidth
+            #expect(pixels.orangePixelCount(in: width) > 5)
+            #expect(pixels.redPixelCount(in: width) > 5)
+            #expect(pixels.greenPixelCount(in: width) > 5)
+            Attachment.record(image, named: presentsSheet ? "sheet-navigation-accent" : "navigation-accent", as: .png)
+        }
+    }
+
 }
 
 private struct RGBAImage {
@@ -136,6 +288,28 @@ private struct RGBAImage {
         }
     }
 
+    func orangePixelCount(in xRange: Range<Int>) -> Int {
+        pixelCount(in: xRange) { pixel in
+            pixel.alpha > 80 && pixel.red > 200
+                && pixel.green > 80 && pixel.green < 190 && pixel.blue < 70
+        }
+    }
+
+    func saturatedPixelCount(in xRange: Range<Int>) -> Int {
+        pixelCount(in: xRange) { pixel in
+            pixel.alpha > 80
+                && Int(max(pixel.red, pixel.green, pixel.blue)) - Int(min(pixel.red, pixel.green, pixel.blue)) > 100
+        }
+    }
+
+    func greenPixelCount(in xRange: Range<Int>) -> Int {
+        pixelCount(in: xRange) { pixel in
+            pixel.alpha > 80 && pixel.green > 100
+                && Int(pixel.green) > Int(pixel.red) + 40
+                && Int(pixel.green) > Int(pixel.blue) + 40
+        }
+    }
+
     func purplePixelCount(in xRange: Range<Int>) -> Int {
         pixelCount(in: xRange) { pixel in
             pixel.alpha > 80
@@ -163,4 +337,39 @@ private struct RGBAImage {
         return count
     }
 
+}
+
+@MainActor
+private struct AccentToolbarFixture: View {
+    var body: some View {
+        Color.white
+            .navigationTitle("Accent")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                AppToolbarItem(id: "accent", placement: .topBarLeading) {
+                    Button {} label: {
+                        Image(systemName: "circle.fill")
+                    }
+                }
+                AppToolbarItem(placement: .topBarTrailing) {
+                    Button {} label: {
+                        Image(systemName: "circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+                AppToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .destructive) {} label: {
+                        DestructiveLabel(text: "Remove")
+                    }
+                }
+            }
+    }
+}
+
+@MainActor
+private func accentTestDescendants<ViewType: UIView>(of type: ViewType.Type, in view: UIView) -> [ViewType] {
+    view.subviews.flatMap { child in
+        let matches = (child as? ViewType).map { [$0] } ?? []
+        return matches + accentTestDescendants(of: type, in: child)
+    }
 }

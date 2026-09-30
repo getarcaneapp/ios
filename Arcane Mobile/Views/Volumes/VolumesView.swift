@@ -23,7 +23,7 @@ struct VolumesView: View {
     @State private var showFilterSheet = false
     @State private var scopeFilter = VolumeScopeFilter.all
     @State private var sortOrder = ListSortOrder.ascending
-    @State private var currentPage = 1
+    @State private var pagination = ProgressivePaginationState()
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
@@ -183,7 +183,7 @@ struct VolumesView: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search volumes")
         .toolbar {
             if !isSelecting {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
                             enterSelectionMode()
@@ -217,7 +217,7 @@ struct VolumesView: View {
                     .accessibilityLabel("More options")
                 }
             } else {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         exitSelectionMode()
                     }
@@ -228,7 +228,7 @@ struct VolumesView: View {
             }
 
             if !isSelecting {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: {
                         Image(systemName: "plus")
                             .appAccentToolbarSymbol()
@@ -307,7 +307,7 @@ struct VolumesView: View {
                 .navigationTitle("Filter")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
+                    AppToolbarItem(placement: .confirmationAction) {
                         Button("Done") { showFilterSheet = false }
                     }
                 }
@@ -436,8 +436,12 @@ struct VolumesView: View {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
-        let requestedPage = reset ? 1 : currentPage + 1
-        let start = max(0, (requestedPage - 1) * Self.pageSize)
+        if reset {
+            _ = pagination.reset()
+            hasMore = false
+            totalItemCount = nil
+        }
+        let start = pagination.nextStart
         if volumes.isEmpty { isLoading = true }
         errorMessage = nil
         loadMoreError = nil
@@ -454,32 +458,28 @@ struct VolumesView: View {
                 envID: environmentID,
                 query: .init(start: start, limit: Self.pageSize)
             )
-            applyVolumesPage(response, reset: reset, generation: generation)
+            applyVolumesPage(response, reset: reset, start: start, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
             if reset { errorMessage = friendlyErrorMessage(error) }
             else { loadMoreError = friendlyErrorMessage(error) }
         }
+        guard loadGeneration == generation, !Task.isCancelled else { return }
         if reset || sizes.isEmpty {
             await loadSizes(refresh: refresh)
         }
     }
 
-    private func applyVolumesPage(_ response: PaginatedResponse<Volume>, reset: Bool, generation: Int) {
+    private func applyVolumesPage(_ response: PaginatedResponse<Volume>, reset: Bool, start: Int, generation: Int) {
         guard loadGeneration == generation else { return }
-        if reset {
-            volumes = response.data
-        } else {
-            let existing = Set(volumes.map(\.id))
-            volumes.append(contentsOf: response.data.filter { !existing.contains($0.id) })
-        }
-        currentPage = max(Int(response.pagination.currentPage), 1)
-        hasMore = response.pagination.currentPage < response.pagination.totalPages
-        if response.pagination.totalItems >= 0 {
-            totalItemCount = response.pagination.totalItems
-        } else if reset {
-            totalItemCount = nil
-        }
+        volumes = PaginationLoader.merge(current: volumes, incoming: response.data, reset: reset)
+        pagination.receive(
+            pagination: response.pagination, itemCount: response.data.count,
+            requestedStart: start, requestedLimit: Self.pageSize,
+            generation: pagination.generation
+        )
+        hasMore = pagination.hasMore
+        totalItemCount = pagination.totalItems
         rebuildSections()
     }
 
@@ -992,8 +992,8 @@ struct CreateVolumeView: View {
             .navigationTitle("Create Volume")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Create") { Task { await createVolume() } }
                         .disabled(!canCreate)
                 }

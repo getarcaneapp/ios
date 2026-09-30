@@ -50,7 +50,7 @@ struct ContentView: View {
             NavigationStack {
                 ActivitiesView()
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
+                        AppToolbarItem(placement: .cancellationAction) {
                             Button("Done") {
                                 showActivityCenter = false
                             }
@@ -84,7 +84,7 @@ struct ContentView: View {
 }
 
 private extension ContentView {
-    /// Push-notification routes wait for an authenticated session so the tab
+    /// External routes wait for an authenticated session so the tab
     /// and environment switch land on a bootstrapped client.
     func consumePendingRoute() {
         guard let route = QuickActionRouter.shared.pendingRoute else { return }
@@ -94,12 +94,13 @@ private extension ContentView {
             manager.setActiveEnvironment(id: EnvironmentID(rawValue: envID), name: envID)
         }
         switch route {
-        case .tab(let id):
+        case .tab(let id, _):
             router.pendingTabID = id
             router.pendingRoute = nil
-        case .container(let env, let id):
-            router.pendingDeepLink = QuickActionRouter.DeepLink(tabID: AppTab.containers.id, environmentID: env, containerID: id)
+        case .container:
             router.pendingTabID = AppTab.containers.id
+        case .project:
+            router.pendingTabID = AppTab.projects.id
         case .image:
             router.pendingTabID = AppTab.images.id
             router.pendingRoute = nil

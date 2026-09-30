@@ -60,12 +60,12 @@ struct ContainerConfigurationView: View {
       .navigationTitle(containerID == nil ? "Create Container" : "Edit Container")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
+        AppToolbarItem(placement: .cancellationAction) {
           Button(review ? "Back" : "Cancel") {
             if review { review = false } else { dismiss() }
           }.disabled(busy)
         }
-        ToolbarItem(placement: .confirmationAction) {
+        AppToolbarItem(placement: .confirmationAction) {
           Button(containerID == nil ? "Create" : (review ? "Recreate" : "Review")) {
             if containerID != nil && !review {
               do {

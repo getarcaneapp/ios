@@ -72,7 +72,7 @@ struct SystemUpgradeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if isAdmin, case .ready = phase {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button { Task { await checkUpgrade() } } label: {
                         Image(systemName: "arrow.clockwise")
                     }

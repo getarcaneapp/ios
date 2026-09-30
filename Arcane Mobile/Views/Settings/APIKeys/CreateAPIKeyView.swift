@@ -60,7 +60,7 @@ struct NewAPIKeyView: View {
             .navigationTitle(presentation.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
@@ -115,11 +115,11 @@ struct CreateAPIKeyView: View {
             .navigationTitle("Create API Key")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .disabled(isLoading)
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Create") { Task { await createKey() } }
                         .disabled(!canCreate)
                 }
@@ -337,7 +337,7 @@ struct EditAPIKeyView: View {
                 onRevert: revertChanges
             )
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .disabled(isSaving)
                 }

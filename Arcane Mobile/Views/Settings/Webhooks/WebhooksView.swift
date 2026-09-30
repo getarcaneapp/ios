@@ -58,7 +58,7 @@ struct WebhooksView: View {
         }
         .navigationTitle("Webhooks")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Webhook")
             }
         }
@@ -297,7 +297,7 @@ struct NewWebhookTokenView: View {
             .navigationTitle("Webhook Created")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
@@ -380,8 +380,8 @@ struct CreateWebhookView: View {
             .navigationTitle("Create Webhook")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Create") { Task { await createWebhook() } }
                         .disabled(name.isEmpty || isLoading || (needsTargetId && targetId.isEmpty))
                 }

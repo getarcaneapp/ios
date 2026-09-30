@@ -55,11 +55,11 @@ struct RenameContainerSheet: View {
             .navigationTitle("Rename Container")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                AppToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
                         .disabled(isSubmitting)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                AppToolbarItem(placement: .topBarTrailing) {
                     Button("Save") {
                         Task { await submit() }
                     }

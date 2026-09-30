@@ -249,7 +249,7 @@ struct DashboardView: View {
                 // a compact summary popover, which opens the full Attention
                 // Center sheet.
                 if isNavigationRoot {
-                    ToolbarItem(placement: .topBarLeading) {
+                    AppToolbarItem(placement: .topBarLeading) {
                         AttentionToolbarButton(
                             items: needsAttentionItems,
                             isPresented: $showAttentionSummary,
@@ -260,7 +260,7 @@ struct DashboardView: View {
                     if #available(iOS 26, *) {
                         ToolbarSpacer(.fixed, placement: .topBarLeading)
                     }
-                    ToolbarItem(placement: .topBarLeading) {
+                    AppToolbarItem(placement: .topBarLeading) {
                         EnvironmentSwitcherToolbarButton()
                     }
                 }
@@ -268,7 +268,7 @@ struct DashboardView: View {
                 // The dashboard toolbar is the standing entry point for the
                 // Activity Center.
                 if isNavigationRoot, manager.supportsActivities {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    AppToolbarItem(placement: .navigationBarTrailing) {
                         DashboardActivityToolbarButton {
                             quickActionRouter.openActivityCenter()
                         }
@@ -282,7 +282,7 @@ struct DashboardView: View {
                 }
 
                 if canPrune {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    AppToolbarItem(placement: .navigationBarTrailing) {
                         Button { showPruneSheet = true } label: {
                             Image(systemName: "trash")
                                 .foregroundStyle(.red)
@@ -1819,10 +1819,10 @@ struct SystemPruneView: View {
             .navigationTitle("System Prune")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     if isPruning {
                         ProgressView().scaleEffect(0.8)
                     } else {

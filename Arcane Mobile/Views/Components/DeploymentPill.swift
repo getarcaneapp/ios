@@ -61,7 +61,7 @@ private struct DeploymentPillHost: View {
     /// When a toast is visible the pill steps up one slot so they stack
     /// (toast above the tab bar, pill above the toast).
     private var toastClearance: CGFloat {
-        toastPresenter.activeToast != nil ? 58 : 0
+        toastPresenter.activeToast.map { $0.height + 8 } ?? 0
     }
 
     private var isPillVisible: Bool {

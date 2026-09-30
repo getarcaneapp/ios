@@ -20,6 +20,7 @@ final class FleetStore {
     let dashboardStream = DashboardStreamStore()
     let statsHistory = SystemStatsHistoryStore()
 
+    private var loadGeneration = 0
     private var clientIdentity: ObjectIdentifier?
     private var dockerInformationTask: Task<Void, Never>?
     private var actionItemsTask: Task<Void, Never>?
@@ -34,6 +35,11 @@ final class FleetStore {
         dockerInformationTask = nil
         actionItemsTask?.cancel()
         actionItemsTask = nil
+        loadGeneration &+= 1
+        isLoading = false
+        let waiters = loadWaiters
+        loadWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
         clientIdentity = identity
         dashboardStream.configure(client: client)
         statsHistory.configure(client: client)
@@ -88,16 +94,18 @@ final class FleetStore {
             }
             return
         }
+        let generation = loadGeneration
+        let session = manager.cacheSessionIdentity
         let activeEnvironmentID = manager.activeEnvironmentID.rawValue
 
         isLoading = true
         if !hasLoaded { errorMessage = nil }
         defer {
-            isLoading = false
-            let waiters = loadWaiters
-            loadWaiters.removeAll()
-            for waiter in waiters {
-                waiter.resume()
+            if generation == loadGeneration {
+                isLoading = false
+                let waiters = loadWaiters
+                loadWaiters.removeAll()
+                for waiter in waiters { waiter.resume() }
             }
         }
 
@@ -108,7 +116,8 @@ final class FleetStore {
                 policy: .environments,
                 refresh: refresh,
                 onFresh: { [weak self] fresh in
-                    self?.apply(
+                    guard let self, generation == self.loadGeneration, session == manager.cacheSessionIdentity else { return }
+                    self.apply(
                         environments: fresh,
                         activeEnvironmentID: activeEnvironmentID
                     )
@@ -120,6 +129,7 @@ final class FleetStore {
                     return ResourcePage(items: response.data, pagination: response.pagination)
                 }
             )
+            guard !Task.isCancelled, generation == loadGeneration, session == manager.cacheSessionIdentity else { return }
             if let loaded {
                 apply(
                     environments: loaded,
@@ -134,12 +144,16 @@ final class FleetStore {
         } catch is CancellationError {
             return
         } catch {
+            guard generation == loadGeneration, session == manager.cacheSessionIdentity else { return }
             if !hasLoaded { errorMessage = friendlyErrorMessage(error) }
         }
     }
 
     func refreshDockerInformation(for environmentID: String, client: ArcaneClient?) async {
         guard let client else { return }
+        let generation = loadGeneration
+        let identity = ObjectIdentifier(client.transport)
+        guard identity == clientIdentity else { return }
         let id = EnvironmentID(rawValue: environmentID)
         async let dockerInfo: DockerInfo? = try? await RemoteDataLimits.boundedDockerInfo(
             client: client,
@@ -148,6 +162,7 @@ final class FleetStore {
         async let actionItems: ActionItems? = try? await client.dashboard.snapshot(envID: id).actionItems
         let (loadedDockerInfo, loadedActionItems) = await (dockerInfo, actionItems)
 
+        guard !Task.isCancelled, generation == loadGeneration, identity == clientIdentity else { return }
         if let loadedDockerInfo {
             dockerInfoByEnvironmentID[environmentID] = loadedDockerInfo
             unavailableEnvironmentIDs.remove(environmentID)

@@ -119,7 +119,7 @@ struct TemplateRegistriesView: View {
         }
         .toolbar {
             if canCreateRegistries {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Template Registry")
                 }
             }

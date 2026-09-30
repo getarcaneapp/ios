@@ -38,8 +38,8 @@ struct VolumeWorkspaceFileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .interactiveDismissDisabled(draft.hasChanges)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button(draft.hasChanges ? "Discard" : "Done") { dismiss() } }
-            ToolbarItem(placement: .primaryAction) {
+            AppToolbarItem(placement: .cancellationAction) { Button(draft.hasChanges ? "Discard" : "Done") { dismiss() } }
+            AppToolbarItem(placement: .primaryAction) {
                 if let downloadURL { ShareLink(item: downloadURL) }
                 else { Button("Download", systemImage: "square.and.arrow.down") { Task { await download() } }.disabled(loading) }
             }
@@ -47,7 +47,7 @@ struct VolumeWorkspaceFileView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             if canEdit {
-                ToolbarItem(placement: .primaryAction) {
+                AppToolbarItem(placement: .primaryAction) {
                     Button("Save") { Task { await save() } }.disabled(loading || !draft.hasChanges || draft.conflict)
                 }
             }
@@ -58,8 +58,8 @@ struct VolumeWorkspaceFileView: View {
                 ScrollView { Text(latestContent?.content ?? "No text content").font(.body.monospaced()).textSelection(.enabled).padding() }
                     .navigationTitle("Server version")
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { reviewing = false } }
-                        ToolbarItem(placement: .confirmationAction) {
+                        AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { reviewing = false } }
+                        AppToolbarItem(placement: .confirmationAction) {
                             Button("Keep my draft") {
                                 if let latestContent, let latestRevision {
                                     content = latestContent

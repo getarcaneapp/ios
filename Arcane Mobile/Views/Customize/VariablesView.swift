@@ -93,7 +93,7 @@ struct VariablesView: View {
         .toolbar {
             if canRead, !store.isUnsupported {
                 if canSync {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    AppToolbarItem(placement: .navigationBarTrailing) {
                         Button {
                             Task { await syncVariables() }
                         } label: {
@@ -113,7 +113,7 @@ struct VariablesView: View {
                 }
 
                 if canCreate {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    AppToolbarItem(placement: .navigationBarTrailing) {
                         Button { editorRoute = .create } label: {
                             Image(systemName: "plus")
                         }
@@ -445,14 +445,15 @@ private struct DeleteVariableView: View {
             .navigationTitle("Delete Variable")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .disabled(isDeleting)
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Delete", role: .destructive) {
                         Task { await delete() }
                     }
+                    .foregroundStyle(.red)
                     .disabled(isDeleting)
                 }
             }
@@ -622,11 +623,11 @@ private struct VariableEditorView: View {
             .navigationTitle(isEditing ? "Edit Variable" : "New Variable")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                         .disabled(isSaving)
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await save() }
                     } label: {

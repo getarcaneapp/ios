@@ -19,6 +19,7 @@ nonisolated enum AppGroup {
     /// side can read them without the app's sandbox.
     enum Keys {
         static let serverURL = "arcane.serverURL"
+        static let sessionIdentity = "arcane.sessionIdentity"
         static let credentialOrigin = "arcane.credentialOrigin"
         static let activeEnvironmentID = "arcane.activeEnvironmentID"
         static let activeEnvironmentName = "arcane.activeEnvironmentName"

@@ -86,7 +86,7 @@ struct VolumeBrowserView: View {
             breadcrumbBar
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     if manager.serverCapabilities?.supportsRoleManagement == true,
                        manager.permissions.has(Permission.Volumes.read, in: environmentID) {

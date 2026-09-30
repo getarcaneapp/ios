@@ -36,10 +36,10 @@ struct ContainerCommitView: View {
       .textInputAutocapitalization(.never).autocorrectionDisabled()
       .navigationTitle("Commit to Image")
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
+        AppToolbarItem(placement: .cancellationAction) {
           Button("Cancel") { dismiss() }.disabled(busy)
         }
-        ToolbarItem(placement: .confirmationAction) {
+        AppToolbarItem(placement: .confirmationAction) {
           Button("Commit") { operation = Task { await commit() } }
             .disabled(
               busy || repository.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -109,16 +109,16 @@ struct ContainerComposeView: View {
       }
       .navigationTitle("Generated Compose")
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+        AppToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
         if !loading && error == nil {
-          ToolbarItem(placement: .primaryAction) {
+          AppToolbarItem(placement: .primaryAction) {
             ShareLink(item: content) { Label("Share", systemImage: "square.and.arrow.up") }
           }
           if #available(iOS 26, *), manager.permissions.has(Permission.Projects.create, in: environmentID) {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
           }
           if manager.permissions.has(Permission.Projects.create, in: environmentID) {
-            ToolbarItem(placement: .primaryAction) {
+            AppToolbarItem(placement: .primaryAction) {
               Button("Create Project") { createProject = true }
             }
           }

@@ -42,7 +42,7 @@ struct UserRoleAssignmentsView: View {
         .navigationTitle("Role Assignments")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button { showAddSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Role Assignment")
                     .disabled(availableRoles.isEmpty)
             }
@@ -278,8 +278,8 @@ struct AddRoleAssignmentSheet: View {
             .navigationTitle("Add Assignment")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Add") { Task { await save() } }
                         .disabled(!canSave)
                 }

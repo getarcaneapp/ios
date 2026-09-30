@@ -33,7 +33,7 @@ struct OpenArcaneTabIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        QuickActionRouter.shared.pendingTabID = tab.tabID
+        QuickActionRouter.shared.pendingRoute = .tab(tab.tabID)
         return .result()
     }
 }
@@ -75,11 +75,22 @@ nonisolated struct ContainerEntity: AppEntity {
 
 nonisolated struct ContainerEntityQuery: EntityStringQuery {
     func entities(for identifiers: [String]) async throws -> [ContainerEntity] {
-        let all = try await listContainers()
-        return identifiers.compactMap { id in
-            all.first(where: { $0.id == id })
-                ?? ContainerEntity(compositeID: id, name: String(id.split(separator: "|").last ?? ""))
+        let client = try IntentClientFactory.makeClient()
+        var entities: [ContainerEntity] = []
+        for identifier in identifiers {
+            guard let entity = ContainerEntity(compositeID: identifier, name: "") else { continue }
+            let details = try await RemoteDataLimits.boundedContainerInspect(
+                client: client,
+                environmentID: EnvironmentID(rawValue: entity.environmentID),
+                containerID: entity.containerID
+            )
+            entities.append(ContainerEntity(
+                environmentID: entity.environmentID,
+                containerID: details.id,
+                name: details.name.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            ))
         }
+        return entities
     }
 
     func entities(matching string: String) async throws -> [ContainerEntity] {
@@ -125,8 +136,14 @@ nonisolated struct ProjectEntity: AppEntity {
 
 nonisolated struct ProjectEntityQuery: EntityStringQuery {
     func entities(for identifiers: [String]) async throws -> [ProjectEntity] {
-        let all = try await listProjects()
-        return all.filter { identifiers.contains($0.id) }
+        let client = try IntentClientFactory.makeClient()
+        let envID = IntentClientFactory.activeEnvironmentID
+        var entities: [ProjectEntity] = []
+        for identifier in identifiers {
+            let project = try await client.projects.get(envID: envID, projectID: identifier)
+            entities.append(ProjectEntity(id: project.id, name: project.name, environmentID: envID.rawValue))
+        }
+        return entities
     }
 
     func entities(matching string: String) async throws -> [ProjectEntity] {
@@ -164,12 +181,10 @@ struct OpenContainerIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        QuickActionRouter.shared.pendingDeepLink = .init(
-            tabID: AppTab.containers.id,
+        QuickActionRouter.shared.pendingRoute = .container(
             environmentID: container.environmentID,
-            containerID: container.containerID
+            id: container.containerID
         )
-        QuickActionRouter.shared.pendingTabID = AppTab.containers.id
         return .result()
     }
 }
@@ -184,12 +199,10 @@ struct OpenProjectIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        QuickActionRouter.shared.pendingDeepLink = .init(
-            tabID: AppTab.projects.id,
+        QuickActionRouter.shared.pendingRoute = .project(
             environmentID: project.environmentID,
-            containerID: nil
+            id: project.id
         )
-        QuickActionRouter.shared.pendingTabID = AppTab.projects.id
         return .result()
     }
 }

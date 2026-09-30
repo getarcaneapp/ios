@@ -21,7 +21,7 @@ struct NetworksView: View {
     @State private var showFilterSheet = false
     @State private var typeFilter = NetworkTypeFilter.all
     @State private var sortOrder = ListSortOrder.ascending
-    @State private var currentPage = 1
+    @State private var pagination = ProgressivePaginationState()
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var isLoadingMore = false
@@ -193,7 +193,7 @@ struct NetworksView: View {
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search networks")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Picker("Sort", selection: $sortOrder) {
                         ForEach(ListSortOrder.allCases) { order in
@@ -214,7 +214,7 @@ struct NetworksView: View {
             if #available(iOS 26, *) {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button { showCreateSheet = true } label: {
                     Image(systemName: "plus")
                         .appAccentToolbarSymbol()
@@ -224,7 +224,7 @@ struct NetworksView: View {
             if #available(iOS 26, *) {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button(role: .destructive) { pendingDestructive = .prune } label: {
                     Image(systemName: "trash")
                         .foregroundStyle(.red)
@@ -292,7 +292,7 @@ struct NetworksView: View {
                 .navigationTitle("Filter")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
+                    AppToolbarItem(placement: .confirmationAction) {
                         Button("Done") { showFilterSheet = false }
                     }
                 }
@@ -339,8 +339,12 @@ struct NetworksView: View {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
-        let requestedPage = reset ? 1 : currentPage + 1
-        let start = max(0, (requestedPage - 1) * Self.pageSize)
+        if reset {
+            _ = pagination.reset()
+            hasMore = false
+            totalItemCount = nil
+        }
+        let start = pagination.nextStart
         if networks.isEmpty { isLoading = true }
         errorMessage = nil
         loadMoreError = nil
@@ -356,7 +360,7 @@ struct NetworksView: View {
                 envID: environmentID,
                 query: .init(start: start, limit: Self.pageSize)
             )
-            applyNetworksPage(response, reset: reset, generation: generation)
+            applyNetworksPage(response, reset: reset, start: start, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
             if reset { errorMessage = friendlyErrorMessage(error) }
@@ -364,21 +368,16 @@ struct NetworksView: View {
         }
     }
 
-    private func applyNetworksPage(_ response: PaginatedResponse<NetworkSummary>, reset: Bool, generation: Int) {
+    private func applyNetworksPage(_ response: PaginatedResponse<NetworkSummary>, reset: Bool, start: Int, generation: Int) {
         guard loadGeneration == generation else { return }
-        if reset {
-            networks = response.data
-        } else {
-            let existing = Set(networks.map(\.id))
-            networks.append(contentsOf: response.data.filter { !existing.contains($0.id) })
-        }
-        currentPage = max(Int(response.pagination.currentPage), 1)
-        hasMore = response.pagination.currentPage < response.pagination.totalPages
-        if response.pagination.totalItems >= 0 {
-            totalItemCount = response.pagination.totalItems
-        } else if reset {
-            totalItemCount = nil
-        }
+        networks = PaginationLoader.merge(current: networks, incoming: response.data, reset: reset)
+        pagination.receive(
+            pagination: response.pagination, itemCount: response.data.count,
+            requestedStart: start, requestedLimit: Self.pageSize,
+            generation: pagination.generation
+        )
+        hasMore = pagination.hasMore
+        totalItemCount = pagination.totalItems
         rebuildSections()
     }
 
@@ -530,7 +529,7 @@ struct NetworkDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !isBuiltIn {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
@@ -842,8 +841,8 @@ struct CreateNetworkView: View {
             .navigationTitle("Create Network")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Create") { Task { await createNetwork() } }
                         .disabled(name.isEmpty || isLoading)
                 }

@@ -50,6 +50,7 @@ final class EventsStore {
 
     private var client: ArcaneClient?
     private var clientTransportIdentity: ObjectIdentifier?
+    private var pagination = ProgressivePaginationState()
 
     var queryKey: String {
         let severities = selectedSeverities.map(\.rawValue).sorted().joined(separator: ",")
@@ -65,6 +66,9 @@ final class EventsStore {
 
         self.client = client
         clientTransportIdentity = nextIdentity
+        _ = pagination.reset()
+        isLoading = false
+        isLoadingMore = false
         events = []
         severityCounts = nil
         supportsSeverityCounts = true
@@ -78,11 +82,15 @@ final class EventsStore {
     func reload(clearExisting: Bool = false) async {
         guard let client else { return }
         let requestedQuery = queryKey
+        let generation = pagination.reset()
+        isLoadingMore = false
+        hasMore = false
+        totalItemCount = nil
         if clearExisting { events = [] }
         isLoading = true
         errorMessage = nil
         loadMoreError = nil
-        defer { isLoading = false }
+        defer { if pagination.accepts(generation) { isLoading = false } }
 
         do {
             let response = try await client.events.listPaginated(
@@ -94,17 +102,19 @@ final class EventsStore {
                 severity: encodedSeverities
             )
             try Task.checkCancellation()
-            guard requestedQuery == queryKey else { return }
-            events = response.data
-            hasMore = Int64(response.data.count) < response.pagination.totalItems
-            totalItemCount = response.pagination.totalItems >= 0
-                ? response.pagination.totalItems
-                : nil
+            guard pagination.accepts(generation), requestedQuery == queryKey else { return }
+            events = PaginationLoader.merge(current: [], incoming: response.data, reset: true)
+            pagination.receive(
+                pagination: response.pagination, itemCount: response.data.count,
+                requestedStart: 0, requestedLimit: Self.pageSize, generation: generation
+            )
+            hasMore = pagination.hasMore
+            totalItemCount = pagination.totalItems
             errorMessage = nil
         } catch is CancellationError {
             return
         } catch {
-            guard requestedQuery == queryKey else { return }
+            guard pagination.accepts(generation), requestedQuery == queryKey else { return }
             errorMessage = friendlyErrorMessage(error)
         }
     }
@@ -112,42 +122,49 @@ final class EventsStore {
     func loadMore() async {
         guard let client, hasMore, !isLoading, !isLoadingMore else { return }
         let requestedQuery = queryKey
+        let generation = pagination.generation
+        let start = pagination.nextStart
         isLoadingMore = true
         loadMoreError = nil
-        defer { isLoadingMore = false }
+        defer { if pagination.accepts(generation) { isLoadingMore = false } }
 
         do {
             let response = try await client.events.listPaginated(
                 search: normalizedSearch,
                 sort: "timestamp",
                 order: .descending,
-                start: events.count,
+                start: start,
                 limit: Self.pageSize,
                 severity: encodedSeverities
             )
             try Task.checkCancellation()
-            guard requestedQuery == queryKey else { return }
+            guard pagination.accepts(generation), requestedQuery == queryKey else { return }
 
-            let existingIDs = Set(events.map(\.id))
-            events.append(contentsOf: response.data.filter { !existingIDs.contains($0.id) })
-            hasMore = Int64(events.count) < response.pagination.totalItems
-            if response.pagination.totalItems >= 0 {
-                totalItemCount = response.pagination.totalItems
-            }
+            events = PaginationLoader.merge(current: events, incoming: response.data, reset: false)
+            pagination.receive(
+                pagination: response.pagination, itemCount: response.data.count,
+                requestedStart: start, requestedLimit: Self.pageSize, generation: generation
+            )
+            hasMore = pagination.hasMore
+            totalItemCount = pagination.totalItems
             loadMoreError = nil
         } catch is CancellationError {
             return
         } catch {
-            guard requestedQuery == queryKey else { return }
+            guard pagination.accepts(generation), requestedQuery == queryKey else { return }
             loadMoreError = friendlyErrorMessage(error)
         }
     }
 
     func loadSeverityCounts() async {
         guard supportsSeverityCounts, let client else { return }
+        let identity = clientTransportIdentity
         do {
-            severityCounts = try await client.events.stats()
+            let counts = try await client.events.stats()
+            guard identity == clientTransportIdentity else { return }
+            severityCounts = counts
         } catch ArcaneError.notFound {
+            guard identity == clientTransportIdentity else { return }
             supportsSeverityCounts = false
             severityCounts = nil
         } catch {
@@ -158,6 +175,7 @@ final class EventsStore {
     func poll() async {
         guard let client, !isLoading, !isLoadingMore else { return }
         let requestedQuery = queryKey
+        let generation = pagination.generation
         do {
             let response = try await client.events.listPaginated(
                 search: normalizedSearch,
@@ -168,20 +186,21 @@ final class EventsStore {
                 severity: encodedSeverities
             )
             try Task.checkCancellation()
-            guard requestedQuery == queryKey, !isLoading, !isLoadingMore else { return }
+            guard pagination.accepts(generation), requestedQuery == queryKey, !isLoading, !isLoadingMore else { return }
             events = EventHistory.merged(
                 current: events,
                 incoming: response.data,
                 limit: max(Self.pageSize, events.count)
             )
-            hasMore = Int64(events.count) < response.pagination.totalItems
-            totalItemCount = response.pagination.totalItems >= 0
-                ? response.pagination.totalItems
-                : nil
+            if response.pagination.totalItems >= 0 {
+                hasMore = Int64(pagination.nextStart) < response.pagination.totalItems
+                totalItemCount = response.pagination.totalItems
+            }
             errorMessage = nil
         } catch is CancellationError {
             return
         } catch {
+            guard pagination.accepts(generation), requestedQuery == queryKey else { return }
             if events.isEmpty { errorMessage = friendlyErrorMessage(error) }
         }
     }

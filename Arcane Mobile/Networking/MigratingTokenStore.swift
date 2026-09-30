@@ -6,6 +6,8 @@ import Security
 /// are consulted only during the one-time upgrade migration, then removed so
 /// credentials can never follow a user to a differently configured server.
 nonisolated struct MigratingTokenStore: TokenStore {
+    private let lease: CredentialLease
+    private let persistence: CredentialPersistenceCoordinator
     private let origin: String
     private let originStore: any TokenStore
     private let legacy: any TokenStore
@@ -13,9 +15,11 @@ nonisolated struct MigratingTokenStore: TokenStore {
     private let allowsLegacyMigration: Bool
     private let credentialOrigin: @Sendable () -> String?
 
-    init(origin: String, allowsLegacyMigration: Bool = false) {
+    init(origin: String, allowsLegacyMigration: Bool = false, lease: CredentialLease = CredentialLease(), persistence: CredentialPersistenceCoordinator = CredentialPersistenceCoordinator()) {
+        self.lease = lease
+        self.persistence = persistence
         self.origin = origin
-        originStore = SharedKeychain.sharedStore(for: origin)
+        originStore = SharedKeychain.sharedStore(for: origin, validating: { lease.isActive || lease.canClear })
         legacy = SharedKeychain.legacyStore
         legacyAppGroup = SharedKeychain.legacyAppGroupStore
         self.allowsLegacyMigration = allowsLegacyMigration
@@ -28,8 +32,12 @@ nonisolated struct MigratingTokenStore: TokenStore {
         legacy: any TokenStore,
         legacyAppGroup: any TokenStore,
         allowsLegacyMigration: Bool = false,
+        lease: CredentialLease = CredentialLease(),
+        persistence: CredentialPersistenceCoordinator = CredentialPersistenceCoordinator(),
         credentialOrigin: @escaping @Sendable () -> String? = { SharedKeychain.credentialOrigin }
     ) {
+        self.lease = lease
+        self.persistence = persistence
         self.origin = origin
         self.originStore = originStore
         self.legacy = legacy
@@ -39,8 +47,9 @@ nonisolated struct MigratingTokenStore: TokenStore {
     }
 
     func loadTokens() async throws -> TokenPair? {
-        guard credentialOrigin() == origin else { return nil }
+        guard (lease.isActive || lease.canClear), credentialOrigin() == origin else { return nil }
         if let tokens = try await originStore.loadTokens() {
+            guard lease.isActive || lease.canClear else { throw CancellationError() }
             return tokens
         }
         guard allowsLegacyMigration else { return nil }
@@ -71,27 +80,21 @@ nonisolated struct MigratingTokenStore: TokenStore {
         guard let selected = (nonExpired.isEmpty ? candidates : nonExpired)
             .max(by: { $0.expiresAt < $1.expiresAt }) else { return nil }
 
-        try await originStore.saveTokens(selected)
+        try await persistence.save(selected, to: originStore, lease: lease, bind: {})
         try? await legacy.clearTokens()
         try? await legacyAppGroup.clearTokens()
         return selected
     }
 
     func saveTokens(_ tokens: TokenPair) async throws {
-        try await originStore.saveTokens(tokens)
-        SharedKeychain.bindCredentials(to: origin)
+        try await persistence.save(tokens, to: originStore, lease: lease) { [origin] in
+            SharedKeychain.bindCredentials(to: origin)
+        }
     }
 
     func clearTokens() async throws {
-        var firstError: Error?
-        for store in [originStore, legacy, legacyAppGroup] {
-            do {
-                try await store.clearTokens()
-            } catch {
-                if firstError == nil { firstError = error }
-            }
+        try await persistence.clear(stores: [originStore, legacy, legacyAppGroup], lease: lease) { [origin] in
+            SharedKeychain.unbindCredentials(matching: origin)
         }
-        SharedKeychain.unbindCredentials(matching: origin)
-        if let firstError { throw firstError }
     }
 }

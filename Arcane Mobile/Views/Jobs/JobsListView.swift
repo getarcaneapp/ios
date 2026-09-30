@@ -139,7 +139,7 @@ struct JobsListView: View {
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) { rebuildGroups() }
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button { Task { await load(refresh: true) } } label: {
                     Image(systemName: "arrow.clockwise")
                 }

@@ -50,7 +50,7 @@ struct S3DestinationsView: View {
         .navigationTitle("S3 Destinations")
         .toolbar {
             if manager.permissions.has("s3-destinations:create", in: nil) {
-                ToolbarItem(placement: .topBarTrailing) {
+                AppToolbarItem(placement: .topBarTrailing) {
                     Button("Add S3 Destination", systemImage: "plus") { creating = true }.labelStyle(.iconOnly)
                 }
             }
@@ -58,7 +58,7 @@ struct S3DestinationsView: View {
         .sheet(isPresented: $creating, onDismiss: { Task { await load() } }) {
             NavigationStack {
                 S3DestinationEditor()
-                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { creating = false } } }
+                    .toolbar { AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { creating = false } } }
             }
         }
         .modifier(BackupSessionScope())
@@ -153,7 +153,7 @@ struct S3DestinationEditor: View {
         .disabled(busy)
         .toolbar {
             if canSave {
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button(destination == nil ? "Create" : "Save") { Task { await save() } }.disabled(!valid || busy)
                 }
             }

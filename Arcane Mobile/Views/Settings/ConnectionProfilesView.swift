@@ -105,11 +105,11 @@ struct ConnectionProfilesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if isSelecting {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
             }
-            ToolbarItem(placement: .primaryAction) {
+            AppToolbarItem(placement: .primaryAction) {
                 Button {
                     editorTarget = EditorTarget(
                         profile: nil,
@@ -379,10 +379,10 @@ private struct ConnectionProfileEditorView: View {
         .navigationTitle(profile == nil ? "New Profile" : "Edit Profile")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
+            AppToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
             }
-            ToolbarItem(placement: .confirmationAction) {
+            AppToolbarItem(placement: .confirmationAction) {
                 Button("Save", action: save)
                     .disabled(
                         serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

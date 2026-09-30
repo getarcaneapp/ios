@@ -55,7 +55,7 @@ struct PasskeysMFAView: View {
         .navigationTitle("Passkeys & MFA")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            AppToolbarItem(placement: .topBarTrailing) {
                 Button {
                     newPasskeyName = ""
                     showsAddPrompt = true
@@ -499,14 +499,14 @@ private struct StepUpAuthenticationSheet: View {
             .navigationTitle("Confirm Identity")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         cancel()
                         dismiss()
                     }
                 }
                 if isLoading {
-                    ToolbarItem(placement: .confirmationAction) {
+                    AppToolbarItem(placement: .confirmationAction) {
                         ProgressView()
                     }
                 }

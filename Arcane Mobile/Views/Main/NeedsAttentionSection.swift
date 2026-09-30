@@ -275,7 +275,7 @@ struct AttentionCenterView: View {
             .navigationTitle("Attention Center")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }

@@ -14,7 +14,7 @@ struct ArchivedProjectsView: View {
     @State private var isLoadingMore = false
     @State private var errorMessage: String?
     @State private var unarchivingID: String?
-    @State private var currentPage = 1
+    @State private var pagination = ProgressivePaginationState()
     @State private var hasMore = false
     @State private var totalItemCount: Int64?
     @State private var loadGeneration = 0
@@ -101,8 +101,12 @@ struct ArchivedProjectsView: View {
         if reset { loadMoreError = nil } else { isLoadingMore = true; loadMoreError = nil }
         loadGeneration += 1
         let generation = loadGeneration
-        let requestedPage = reset ? 1 : currentPage + 1
-        let start = max(0, (requestedPage - 1) * Self.pageSize)
+        if reset {
+            _ = pagination.reset()
+            hasMore = false
+            totalItemCount = nil
+        }
+        let start = pagination.nextStart
         if projects.isEmpty { isLoading = true }
         errorMessage = nil
         defer {
@@ -120,28 +124,23 @@ struct ArchivedProjectsView: View {
                 query: query,
                 archived: "true"
             )
-            applyProjectsPage(response, reset: reset, generation: generation)
+            applyProjectsPage(response, reset: reset, start: start, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
             if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 
-    private func applyProjectsPage(_ response: PaginatedResponse<ProjectDetails>, reset: Bool, generation: Int) {
+    private func applyProjectsPage(_ response: PaginatedResponse<ProjectDetails>, reset: Bool, start: Int, generation: Int) {
         guard loadGeneration == generation else { return }
-        if reset {
-            projects = response.data
-        } else {
-            let existing = Set(projects.map(\.id))
-            projects.append(contentsOf: response.data.filter { !existing.contains($0.id) })
-        }
-        currentPage = max(Int(response.pagination.currentPage), 1)
-        hasMore = response.pagination.currentPage < response.pagination.totalPages
-        if response.pagination.totalItems >= 0 {
-            totalItemCount = response.pagination.totalItems
-        } else if reset {
-            totalItemCount = nil
-        }
+        projects = PaginationLoader.merge(current: projects, incoming: response.data, reset: reset)
+        pagination.receive(
+            pagination: response.pagination, itemCount: response.data.count,
+            requestedStart: start, requestedLimit: Self.pageSize,
+            generation: pagination.generation
+        )
+        hasMore = pagination.hasMore
+        totalItemCount = pagination.totalItems
         rebuildDisplayedProjects()
     }
 

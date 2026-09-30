@@ -90,8 +90,8 @@ struct VolumeWorkspaceView: View {
                 }
                 .navigationTitle(action?.rawValue.replacingOccurrences(of: "_", with: " ").capitalized ?? "File")
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { action = nil } }
-                    ToolbarItem(placement: .confirmationAction) { Button("Apply") { Task { await applyAction() } }.disabled(loading || !validInput) }
+                    AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { action = nil } }
+                    AppToolbarItem(placement: .confirmationAction) { Button("Apply") { Task { await applyAction() } }.disabled(loading || !validInput) }
                 }
             }
         }

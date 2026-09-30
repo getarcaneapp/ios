@@ -569,9 +569,11 @@ struct ProjectDetailView: View {
         errorMessage = nil
         defer { isActioning = false }
         do {
-            let path = client.rest.environmentPath(environmentID, "projects/\(project.id)/destroy")
-            let request = DestroyProjectRequest(removeFiles: removeFiles, removeVolumes: false)
-            let _: DataResponse<String> = try await client.transport.request(path, method: "DELETE", body: request)
+            _ = try await client.projects.destroy(
+                envID: environmentID,
+                projectID: project.id,
+                options: DestroyProject(removeFiles: removeFiles, removeVolumes: false)
+            )
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
             dismiss()
@@ -922,10 +924,10 @@ private struct DeployOptionsSheet: View {
             .navigationTitle("Deploy Options")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Deploy") {
                         if draft.recreateVolumes {
                             showsVolumeWarning = true
@@ -1133,8 +1135,8 @@ struct CreateProjectView: View {
             .navigationTitle("Create Project")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .confirmationAction) {
                     if isLoading {
                         ProgressView().scaleEffect(0.8)
                     } else {

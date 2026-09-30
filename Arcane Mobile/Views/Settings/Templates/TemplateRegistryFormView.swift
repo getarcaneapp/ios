@@ -69,7 +69,7 @@ struct TemplateRegistryFormView: View {
                 onRevert: revertChanges
             )
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
             .onAppear { populateFields() }
         }

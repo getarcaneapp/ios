@@ -41,8 +41,8 @@ nonisolated enum AnyJSONValue: Codable, Hashable, Sendable {
         switch self {
         case .string(let value): return value
         case .number(let value):
-            let intValue = Int64(value)
-            return Double(intValue) == value ? "\(intValue)" : "\(value)"
+            if let integer = Int64(exactly: value) { return String(integer) }
+            return String(value)
         case .bool(let value): return value ? "Yes" : "No"
         case .object(let value): return "\(value.count) fields"
         case .array(let value): return "\(value.count) items"

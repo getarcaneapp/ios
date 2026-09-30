@@ -62,7 +62,7 @@ struct BackupFilesView: View {
         .modifier(BackupSessionScope())
         .searchable(text: $search)
         .task(id: "\(manager.clientGeneration):\(path):\(search)") { await load() }
-        .toolbar { if canRestore { ToolbarItem(placement: .topBarTrailing) { Button("Restore") { confirm = true }.disabled(busy || (!selectAll && selected.isEmpty)) } } }
+        .toolbar { if canRestore { AppToolbarItem(placement: .topBarTrailing) { Button("Restore") { confirm = true }.disabled(busy || (!selectAll && selected.isEmpty)) } } }
         .confirmationDialog("Restore files to \(volumeName ?? "the server projects directory")?", isPresented: $confirm, titleVisibility: .visible) {
             Button("Restore \(selectAll ? "all matching files" : String(selected.count) + " selected paths")", role: .destructive) { Task { await restore() } }
         } message: { Text("Existing files at the selected paths may be overwritten.") }

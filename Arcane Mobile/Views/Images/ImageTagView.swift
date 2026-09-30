@@ -21,8 +21,8 @@ struct ImageTagView: View {
             .textInputAutocapitalization(.never).autocorrectionDisabled()
             .navigationTitle("Tag Image")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Save") { saveTask = Task { await save() } }
                         .disabled(saving || repository.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }

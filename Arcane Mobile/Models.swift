@@ -118,15 +118,6 @@ struct DataResponse<T: Codable & Sendable>: Codable, Sendable {
 // computed properties (displayName, isRunning, statusColor, isOnline, etc.)
 // now live as concrete types in `ResilientModels.swift`.
 
-extension ContainerConfig {
-    var image: String? { nil }
-    var labels: [String: String]? { nil }
-}
-
-extension ContainerHostConfig {
-    var binds: [String]? { nil }
-}
-
 nonisolated struct VolumeSizeInfo: Codable, Sendable {
     let name: String
     let size: Int64
@@ -634,10 +625,7 @@ nonisolated struct PullImageRequest: Encodable, Sendable {
 
 // Use `PaginatedResponse<T>` from libarcane-swift via `client.<service>.list(...)`.
 
-nonisolated struct DestroyProjectRequest: Encodable, Sendable {
-    let removeFiles: Bool
-    let removeVolumes: Bool
-}
+
 
 // Image update checks use the SDK's typed API (`client.images.updateSummary`,
 // `checkUpdateByRef`, `checkAllUpdates`, `updateInfoByRefs`) and its

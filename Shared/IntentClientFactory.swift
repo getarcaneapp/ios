@@ -41,6 +41,13 @@ nonisolated enum IntentClientFactory {
             throw IntentClientError.authenticationRequired
         }
 
+        let sessionIdentity = AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity)
+        let tokenStore = SharedKeychain.sharedStore(for: origin, validating: {
+            SharedKeychain.credentialOrigin == origin
+                && IntentClientFactory.serverOrigin == origin
+                && AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity) == sessionIdentity
+        })
+
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
         configuration.timeoutIntervalForResource = 25
@@ -49,7 +56,7 @@ nonisolated enum IntentClientFactory {
 
         return ArcaneClient(configuration: .init(
             baseURL: url,
-            tokenStore: SharedKeychain.sharedStore(for: origin),
+            tokenStore: tokenStore,
             defaultEnvironmentID: activeEnvironmentID,
             urlSession: URLSession(configuration: configuration),
             retryPolicy: .init(maxAttempts: 2, baseBackoff: .milliseconds(300), maxBackoff: .seconds(1))

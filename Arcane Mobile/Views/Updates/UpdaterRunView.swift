@@ -77,7 +77,7 @@ struct UpdaterRunSheet: View {
         .navigationTitle("Run Updater")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
+            AppToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
             }
         }
@@ -123,7 +123,7 @@ struct UpdaterRunView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if showsDismissButton {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button(doneTitle) { dismiss() }
                 }
             }

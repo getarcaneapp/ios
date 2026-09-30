@@ -53,13 +53,11 @@ nonisolated struct ActivityBatchSummary: Identifiable, Hashable, Sendable {
         activities.count(where: { $0.status == .failed })
     }
 
-    var progress: Int {
-        guard !activities.isEmpty else { return 0 }
-        let total = activities.reduce(0) { partial, activity in
-            if let progress = activity.progress { return partial + min(max(progress, 0), 100) }
-            return partial + (activity.isCancellable ? 0 : 100)
-        }
-        return total / activities.count
+    var progress: Int? {
+        guard !activities.isEmpty else { return nil }
+        let values = activities.compactMap(\.displayProgress)
+        guard values.count == activities.count else { return nil }
+        return values.reduce(0, +) / values.count
     }
 
     var sortTime: Date {
@@ -152,8 +150,11 @@ final class ActivityCenterStore {
 
     private var client: ArcaneClient?
     private var clientTransportIdentity: ObjectIdentifier?
-    private var limit = pageSize
+    private var paginationByEnvironment: [String: ProgressivePaginationState] = [:]
+    private var failedPageEnvironmentIDs: Set<String> = []
+    private var loadGeneration = 0
     private var activityBuckets: [String: [Activity]] = [:]
+    private var activityDetails: [String: ActivityDetail] = [:]
     private var environmentNames: [String: String] = [:]
     private var streamTask: Task<Void, Never>?
     private var failedStreamEnvironmentIDs: Set<String> = []
@@ -220,9 +221,14 @@ final class ActivityCenterStore {
         stopStream()
         activities = []
         activityBuckets = [:]
+        activityDetails = [:]
         environmentNames = [:]
         environmentIDs = []
-        limit = Self.pageSize
+        loadGeneration += 1
+        paginationByEnvironment = [:]
+        failedPageEnvironmentIDs = []
+        isLoading = false
+        isLoadingMore = false
         hasMore = false
         errorMessage = nil
         loadMoreError = nil
@@ -232,75 +238,107 @@ final class ActivityCenterStore {
 
     func load(reset: Bool = true, refresh: Bool = false) async {
         guard let client else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
         if reset {
+            isLoadingMore = false
             loadMoreError = nil
-            limit = Self.pageSize
+            paginationByEnvironment = [:]
+            failedPageEnvironmentIDs = []
             hasMore = false
         }
         if activities.isEmpty || refresh { isLoading = true }
         errorMessage = nil
-        defer { isLoading = false }
+        defer { if loadGeneration == generation { isLoading = false } }
 
-        let environments = await resolveEnvironments(client: client)
+        let environments: [ActivityEnvironment]
+        do {
+            environments = try await resolveEnvironments(client: client)
+        } catch {
+            guard loadGeneration == generation, !Task.isCancelled else { return }
+            if reset { errorMessage = friendlyErrorMessage(error) }
+            else { loadMoreError = friendlyErrorMessage(error) }
+            return
+        }
+        guard loadGeneration == generation, !Task.isCancelled else { return }
         environmentIDs = environments.map(\.id.rawValue)
         environmentNames = environments.reduce(into: [:]) { names, environment in
             if names[environment.id.rawValue] == nil {
                 names[environment.id.rawValue] = environment.name
             }
         }
-
-        var buckets: [String: [Activity]] = [:]
-        var anyHasMore = false
-        var failures = 0
-        let pageLimit = limit
-
-        await withTaskGroup(of: (ActivityEnvironment, [Activity]?).self) { group in
-            var iterator = environments.makeIterator()
-            let initialBatch = min(Self.maxConcurrentEnvironmentRequests, environments.count)
-            for _ in 0..<initialBatch {
-                guard let environment = iterator.next() else { break }
-                group.addTask {
-                    let response = try? await client.activities.listPaginated(
-                        envID: environment.id,
-                        order: .descending,
-                        start: 0,
-                        limit: pageLimit
-                    )
-                    return (environment, response?.data)
-                }
+        let requests = environments.compactMap { environment -> (ActivityEnvironment, Int)? in
+            let id = environment.id.rawValue
+            if paginationByEnvironment[id] == nil {
+                var state = ProgressivePaginationState()
+                _ = state.reset()
+                paginationByEnvironment[id] = state
+                failedPageEnvironmentIDs.insert(id)
             }
-
-            for await (environment, data) in group {
-                guard let data else {
-                    failures += 1
-                    continue
-                }
-                let normalized = data.map { normalize($0, environment: environment) }
-                buckets[environment.id.rawValue] = sortActivities(normalized)
-                if data.count >= limit { anyHasMore = true }
-                if let environment = iterator.next() {
-                    group.addTask {
-                        let response = try? await client.activities.listPaginated(
-                            envID: environment.id,
-                            order: .descending,
-                            start: 0,
-                            limit: pageLimit
+            guard reset || paginationByEnvironment[id]?.hasMore == true
+                    || failedPageEnvironmentIDs.contains(id) else { return nil }
+            return (environment, paginationByEnvironment[id]?.nextStart ?? 0)
+        }
+        var failures = 0
+        let pageSize = Self.pageSize
+        await withTaskGroup(of: (ActivityEnvironment, Int, ResourcePage<Activity>?).self) { group in
+            var iterator = requests.makeIterator()
+            func addRequest(_ request: (ActivityEnvironment, Int)) {
+                let (environment, start) = request
+                group.addTask {
+                    do {
+                        let response = try await client.activities.listPaginated(
+                            envID: environment.id, order: .descending,
+                            start: start, limit: pageSize
                         )
-                        return (environment, response?.data)
+                        return (environment, start, ResourcePage(items: response.data, pagination: response.pagination))
+                    } catch {
+                        return (environment, start, nil)
                     }
                 }
             }
+            for _ in 0..<min(Self.maxConcurrentEnvironmentRequests, requests.count) {
+                guard let request = iterator.next() else { break }
+                addRequest(request)
+            }
+            for await (environment, start, page) in group {
+                // Every completion frees a slot, including failed requests.
+                if let request = iterator.next() { addRequest(request) }
+                guard loadGeneration == generation, !Task.isCancelled else {
+                    group.cancelAll()
+                    continue
+                }
+                let id = environment.id.rawValue
+                guard let page else {
+                    failures += 1
+                    failedPageEnvironmentIDs.insert(id)
+                    continue
+                }
+                failedPageEnvironmentIDs.remove(id)
+                var state = paginationByEnvironment[id] ?? ProgressivePaginationState()
+                state.receive(
+                    pagination: page.pagination, itemCount: page.items.count,
+                    requestedStart: start, requestedLimit: Self.pageSize,
+                    generation: state.generation
+                )
+                paginationByEnvironment[id] = state
+                let normalized = page.items.map { normalize($0, environment: environment) }
+                activityBuckets[id] = sortActivities(PaginationLoader.merge(
+                    current: normalized, incoming: reset ? [] : activityBuckets[id] ?? [], reset: false
+                ))
+            }
         }
-
-        if !reset && failures > 0 {
-            loadMoreError = "Couldn't load more activities. Try again."
-            return
-        }
-        activityBuckets = buckets
-        hasMore = anyHasMore
+        guard loadGeneration == generation, !Task.isCancelled else { return }
+        let validIDs = Set(environmentIDs)
+        activityBuckets = activityBuckets.filter { validIDs.contains($0.key) }
+        paginationByEnvironment = paginationByEnvironment.filter { validIDs.contains($0.key) }
+        failedPageEnvironmentIDs.formIntersection(validIDs)
+        hasMore = paginationByEnvironment.values.contains(where: \.hasMore)
+            || !failedPageEnvironmentIDs.isEmpty
         rebuildActivities()
         if failures > 0 {
-            setStreamWarning(.loadPartial)
+            if reset { setStreamWarning(.loadPartial) }
+            else { loadMoreError = "Couldn't load more activities. Try again." }
         }
     }
 
@@ -308,10 +346,40 @@ final class ActivityCenterStore {
         guard !isLoading, !isLoadingMore, hasMore else { return }
         isLoadingMore = true
         loadMoreError = nil
-        defer { isLoadingMore = false }
-        limit += Self.pageSize
+        let generation = loadGeneration + 1
+        defer { if loadGeneration == generation { isLoadingMore = false } }
         await load(reset: false)
-        if loadMoreError != nil { limit -= Self.pageSize }
+    }
+
+    func detail(for activity: Activity) -> ActivityDetail? {
+        activityDetails[ActivityCenterItem.activity(activity).id]
+    }
+
+    func loadDetail(_ activity: Activity) async throws {
+        guard let client else { return }
+        let key = ActivityCenterItem.activity(activity).id
+        if activityDetails[key] == nil {
+            activityDetails[key] = ActivityDetail(activity: activity, messages: [])
+        }
+        let previousActivity = activityDetails[key]?.activity
+        let identity = clientTransportIdentity
+        let response = try await client.activities.detail(
+            envID: EnvironmentID(rawValue: activity.sourceEnvironmentKey),
+            activityID: activity.id, limit: 500
+        )
+        guard identity == clientTransportIdentity, !Task.isCancelled else { return }
+        let environment = environment(for: EnvironmentID(rawValue: activity.sourceEnvironmentKey))
+        var current = activityDetails[key] ?? response
+        // A detail request must not replace a status or progress update that
+        // arrived from the stream while the request was suspended.
+        if current.activity == previousActivity, response.activity.sortTime >= current.activity.sortTime {
+            current.activity = normalize(response.activity, environment: environment)
+            upsert(current.activity)
+        }
+        current.messages = PaginationLoader.merge(
+            current: current.messages, incoming: response.messages, reset: false
+        ).sorted { $0.createdAt < $1.createdAt }
+        activityDetails[key] = current
     }
 
     func startStream() {
@@ -331,6 +399,7 @@ final class ActivityCenterStore {
         stopStream()
         clearStreamWarning()
         await load(refresh: true)
+        guard !Task.isCancelled else { return }
         startStream()
     }
 
@@ -344,15 +413,18 @@ final class ActivityCenterStore {
     func cancel(_ activity: Activity, requestedBy: String?) async -> Bool {
         guard let client else { return false }
         let envID = EnvironmentID(rawValue: activity.sourceEnvironmentKey)
+        let identity = clientTransportIdentity
         do {
             let updated = try await client.activities.cancel(
                 envID: envID,
                 activityID: activity.id,
                 requestedBy: requestedBy
             )
+            guard identity == clientTransportIdentity, !Task.isCancelled else { return false }
             upsert(normalize(updated, environment: environment(for: envID)))
             return true
         } catch {
+            guard identity == clientTransportIdentity, !Task.isCancelled else { return false }
             errorMessage = friendlyErrorMessage(error)
             return false
         }
@@ -362,6 +434,7 @@ final class ActivityCenterStore {
         environmentIDs allowedEnvironmentIDs: Set<String>
     ) async -> ActivityHistoryClearResult? {
         guard let client else { return nil }
+        let identity = clientTransportIdentity
         let targets = environmentIDs.filter { allowedEnvironmentIDs.contains($0) }
         guard !targets.isEmpty else { return nil }
 
@@ -404,6 +477,7 @@ final class ActivityCenterStore {
             }
         }
 
+        guard identity == clientTransportIdentity, !Task.isCancelled else { return nil }
         removeClearedHistory(environmentIDs: clearedEnvironmentIDs)
         return ActivityHistoryClearResult(
             deleted: deleted,
@@ -482,7 +556,7 @@ final class ActivityCenterStore {
             applyActivity(event)
         case .message:
             if let message = event.message {
-                apply(message)
+                apply(message, environmentID: event.environmentID)
             }
         case .missed:
             setStreamWarning(.missed)
@@ -555,29 +629,51 @@ final class ActivityCenterStore {
 
     private func replaceSnapshot(_ snapshot: [Activity], environment: ActivityEnvironment) {
         let normalized = snapshot.map { normalize($0, environment: environment) }
-        activityBuckets[environment.id.rawValue] = sortActivities(normalized)
-        hasMore = activityBuckets.values.contains { $0.count >= Self.pageSize }
+        for activity in normalized {
+            let key = ActivityCenterItem.activity(activity).id
+            activityDetails[key]?.activity = activity
+        }
+        let current = activityBuckets[environment.id.rawValue] ?? []
+        let recentIDs = Set(normalized.map(\.id))
+        let retained = current.filter { !recentIDs.contains($0.id) }
+        activityBuckets[environment.id.rawValue] = Array(
+            sortActivities(normalized + retained).prefix(max(Self.pageSize, current.count))
+        )
         rebuildActivities()
     }
 
     private func upsert(_ activity: Activity) {
+        let key = ActivityCenterItem.activity(activity).id
+        activityDetails[key]?.activity = activity
         let environmentID = activity.sourceEnvironmentKey
         var bucket = activityBuckets[environmentID] ?? []
+        let windowSize = max(Self.pageSize, bucket.count)
         if let index = bucket.firstIndex(where: { $0.id == activity.id }) {
             bucket[index] = activity
         } else {
             bucket.insert(activity, at: 0)
         }
-        activityBuckets[environmentID] = sortActivities(bucket).prefix(Self.pageSize).map { $0 }
+        activityBuckets[environmentID] = sortActivities(bucket).prefix(windowSize).map { $0 }
         rebuildActivities()
     }
 
-    private func apply(_ message: ActivityMessage) {
+    private func apply(_ message: ActivityMessage, environmentID: String?) {
         for key in activityBuckets.keys {
+            guard environmentID == nil || environmentID == key else { continue }
             guard let index = activityBuckets[key]?.firstIndex(where: { $0.id == message.activityID }) else { continue }
             activityBuckets[key]?[index].latestMessage = message.message
             activityBuckets[key]?[index].updatedAt = message.createdAt
             break
+        }
+        for key in activityDetails.keys {
+            guard var detail = activityDetails[key], detail.activity.id == message.activityID,
+                  environmentID == nil || environmentID == detail.activity.sourceEnvironmentKey else { continue }
+            detail.activity.latestMessage = message.message
+            detail.activity.updatedAt = message.createdAt
+            detail.messages = PaginationLoader.merge(
+                current: [message], incoming: detail.messages, reset: false
+            ).sorted { $0.createdAt < $1.createdAt }
+            activityDetails[key] = detail
         }
         rebuildActivities()
     }
@@ -602,15 +698,15 @@ final class ActivityCenterStore {
         }
     }
 
-    private func resolveEnvironments(client: ArcaneClient) async -> [ActivityEnvironment] {
-        let items: [Arcane.Environment] = (try? await PaginationLoader.collect(
+    private func resolveEnvironments(client: ArcaneClient) async throws -> [ActivityEnvironment] {
+        let items: [Arcane.Environment] = try await PaginationLoader.collect(
             maximumItems: RemoteDataLimits.maximumEnvironments
         ) { start, limit in
             let response = try await client.environments.list(
                 query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
             )
             return ResourcePage(items: response.data, pagination: response.pagination)
-        }) ?? []
+        }
         return items.map { environment in
             ActivityEnvironment(
                 id: EnvironmentID(rawValue: environment.id),

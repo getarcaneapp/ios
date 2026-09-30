@@ -57,10 +57,10 @@ struct ImagePruneView: View {
             .navigationTitle("Prune Images")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                AppToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     if isPruning {
                         ProgressView().scaleEffect(0.8)
                     } else {

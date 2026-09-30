@@ -52,7 +52,7 @@ struct NetworkTopologyView: View {
         .navigationTitle("Network Topology")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            AppToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     Task { await loadTopology(refresh: true) }
                 } label: {
@@ -543,7 +543,7 @@ private struct TopologyNodeDetailSheet: View {
             .navigationTitle(node.name.isEmpty ? "Topology Node" : node.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
+                AppToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
             }
