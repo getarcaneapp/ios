@@ -1,0 +1,234 @@
+{
+  "description": "Arcane Compose metadata; derived from backend/pkg/projects/custom_labels.go and frontend compose-schema.ts.",
+  "project": {
+    "type": "object",
+    "description": "Arcane project metadata.",
+    "properties": {
+      "icon": {
+        "description": "Fallback icon URL or catalog slug.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "icons": {
+        "description": "Legacy fallback icon values.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "icon-light": {
+        "description": "Light icon used in dark appearance.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "icon-dark": {
+        "description": "Dark icon used in light appearance.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "hidden": {
+        "type": "boolean",
+        "description": "Hide this project or service in Arcane."
+      },
+      "updater": {
+        "type": "object",
+        "description": "Automatic image update settings.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable automatic image updates."
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "tag",
+              "digest"
+            ],
+            "description": "Image update strategy."
+          },
+          "constraint": {
+            "type": "string",
+            "description": "Version constraint for eligible image updates."
+          },
+          "tag-pattern": {
+            "type": "string",
+            "description": "Pattern for eligible image tags."
+          }
+        }
+      },
+      "urls": {
+        "description": "Project links.",
+        "oneOf": [
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "tags": {
+        "type": "array",
+        "description": "Project tags managed by this Compose file.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Tag name, up to 64 characters."
+            },
+            "color": {
+              "type": "string",
+              "enum": [
+                "gray",
+                "purple",
+                "blue",
+                "green",
+                "yellow",
+                "orange",
+                "red",
+                "pink"
+              ],
+              "description": "Tag color."
+            }
+          },
+          "required": [
+            "name",
+            "color"
+          ]
+        }
+      }
+    }
+  },
+  "service": {
+    "type": "object",
+    "description": "Arcane service metadata.",
+    "properties": {
+      "icon": {
+        "description": "Fallback icon URL or catalog slug.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "icons": {
+        "description": "Legacy fallback icon values.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "icon-light": {
+        "description": "Light icon used in dark appearance.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "icon-dark": {
+        "description": "Dark icon used in light appearance.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "hidden": {
+        "type": "boolean",
+        "description": "Hide this project or service in Arcane."
+      },
+      "updater": {
+        "type": "object",
+        "description": "Automatic image update settings.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable automatic image updates."
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "tag",
+              "digest"
+            ],
+            "description": "Image update strategy."
+          },
+          "constraint": {
+            "type": "string",
+            "description": "Version constraint for eligible image updates."
+          },
+          "tag-pattern": {
+            "type": "string",
+            "description": "Pattern for eligible image tags."
+          }
+        }
+      }
+    }
+  }
+}

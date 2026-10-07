@@ -6,6 +6,7 @@ struct TemplatePreviewView: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     let template: Template
+    var onChange: () async -> Void = {}
 
     @State private var downloadedTemplate: Template?
     @State private var content: TemplateContent?
@@ -16,9 +17,13 @@ struct TemplatePreviewView: View {
     @State private var isDownloading = false
     @State private var errorMessage: String?
     @State private var deployment: TemplateDeployment?
+    @State private var editorMode: TemplateEditorMode?
+    @State private var confirmDelete = false
+    @State private var isDeleting = false
+    @State private var loadedSessionIdentity: String?
 
     private var displayedTemplate: Template {
-        downloadedTemplate ?? content?.template ?? template
+        content?.template ?? downloadedTemplate ?? template
     }
 
     var body: some View {
@@ -58,9 +63,9 @@ struct TemplatePreviewView: View {
                     )
 
                     if selectedTab == 0 {
-                        CodeEditorView(text: $composeContent, language: .yaml)
+                        CodeEditorView(text: $composeContent, language: .yaml, readOnly: true)
                     } else {
-                        CodeEditorView(text: $envContent, language: .env)
+                        CodeEditorView(text: $envContent, language: .env, readOnly: true)
                     }
                 }
             }
@@ -68,6 +73,20 @@ struct TemplatePreviewView: View {
         .navigationTitle(displayedTemplate.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if !displayedTemplate.isRemote && (canEdit || canDelete) {
+                AppToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        if canEdit {
+                            Button("Edit Template", systemImage: "pencil") { editorMode = .edit(displayedTemplate) }
+                        }
+                        if canDelete {
+                            Button("Delete Template", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                        }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                    .disabled(content == nil || isDeleting)
+                    .accessibilityLabel("Template Actions")
+                }
+            }
             if displayedTemplate.isRemote, canDownload {
                 AppToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -103,6 +122,16 @@ struct TemplatePreviewView: View {
                 }
             }
         }
+        .sheet(item: $editorMode) { mode in
+            TemplateEditorView(mode: mode) {
+                await loadContent()
+                await onChange()
+            }
+        }
+        .confirmationDialog("Delete this local template?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete Template", role: .destructive) { Task { await deleteTemplate() } }
+            Button("Cancel", role: .cancel) {}
+        }
         .sheet(item: $deployment) { deployment in
             CreateProjectView(
                 environmentID: manager.activeEnvironmentID,
@@ -117,24 +146,64 @@ struct TemplatePreviewView: View {
                 dismiss()
             }
         }
-        .task(id: template.id) { await loadContent() }
+        .task(id: "\(template.id)|\(manager.cacheSessionIdentity)") { await loadContent() }
+    }
+
+    private var canEdit: Bool {
+        loadedSessionIdentity == manager.cacheSessionIdentity
+            && manager.permissions.has(Permission.Templates.read, in: nil)
+            && manager.permissions.has(Permission.Templates.update, in: nil)
+    }
+
+    private var canDelete: Bool {
+        loadedSessionIdentity == manager.cacheSessionIdentity
+            && manager.permissions.has(Permission.Templates.delete, in: nil)
+    }
+
+    private func deleteTemplate() async {
+        guard let client = manager.client, !displayedTemplate.isRemote, canDelete, !isDeleting else { return }
+        let identity = manager.cacheSessionIdentity
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            try await client.templates.delete(id: displayedTemplate.id)
+            guard identity == manager.cacheSessionIdentity else { return }
+            showToast(.success("Template deleted"))
+            await onChange()
+            dismiss()
+        } catch { showToast(.error(friendlyErrorMessage(error))) }
     }
 
     private var canDownload: Bool {
-        manager.permissions.has(Permission.Templates.read, in: nil)
+        loadedSessionIdentity == manager.cacheSessionIdentity
+            && manager.permissions.has(Permission.Templates.read, in: nil)
     }
 
     private var canDeploy: Bool {
-        manager.permissions.has(Permission.Projects.create, in: manager.activeEnvironmentID)
+        loadedSessionIdentity == manager.cacheSessionIdentity
+            && manager.permissions.has(Permission.Projects.create, in: manager.activeEnvironmentID)
     }
 
     private func loadContent() async {
         guard let client = manager.client else { return }
+        let identity = manager.cacheSessionIdentity
+        if loadedSessionIdentity != identity {
+            content = nil
+            downloadedTemplate = nil
+            composeContent = ""
+            envContent = ""
+        }
+        guard manager.permissions.has(Permission.Templates.read, in: nil) else {
+            errorMessage = "Your role cannot read templates."
+            return
+        }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
             let loaded = try await loadBoundedContent(client: client, id: displayedTemplate.id)
+            guard identity == manager.cacheSessionIdentity else { return }
+            loadedSessionIdentity = identity
             content = loaded
             composeContent = loaded.content
             envContent = loaded.envContent
@@ -144,17 +213,20 @@ struct TemplatePreviewView: View {
     }
 
     private func downloadTemplate() async {
-        guard let client = manager.client, displayedTemplate.isRemote else { return }
+        guard let client = manager.client, displayedTemplate.isRemote, canDownload else { return }
+        let identity = manager.cacheSessionIdentity
         isDownloading = true
         defer { isDownloading = false }
         do {
             let downloaded = try await client.templates.download(id: displayedTemplate.id)
             let loaded = try await loadBoundedContent(client: client, id: downloaded.id)
+            guard identity == manager.cacheSessionIdentity else { return }
             downloadedTemplate = loaded.template
             content = loaded
             composeContent = loaded.content
             envContent = loaded.envContent
             showToast(.success("Template downloaded"))
+            await onChange()
         } catch {
             showToast(.error(friendlyErrorMessage(error)))
         }

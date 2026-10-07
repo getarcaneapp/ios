@@ -1,0 +1,7 @@
+Compose Specification JSON Schema
+Source: https://github.com/compose-spec/compose-spec/blob/914ec15d1fa498969c0df5c1d672306db3256089/schema/compose-spec.json
+Revision: 914ec15d1fa498969c0df5c1d672306db3256089
+Retrieved: 2026-10-06
+Upstream project: https://github.com/compose-spec/compose-spec
+License: Apache License 2.0; full upstream license is included in LICENSE.txt.
+The schema snapshot is unmodified. Refresh deliberately from upstream when updating supported field suggestions.

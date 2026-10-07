@@ -142,6 +142,12 @@ extension ReleaseNote {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.10.0",
+            new: [
+                .init("Native Compose editor Preview for projects and templates.")
+            ]
+        ),
+        ReleaseNote(
             version: "0.9.1",
             new: [
                 .init("Security overview with patch priority, risk trend, exposure, and priority findings.")

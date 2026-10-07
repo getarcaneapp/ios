@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import Arcane
 
 struct ProjectDetailView: View {
@@ -873,7 +874,7 @@ struct ProjectDeployOptionsDraft: Equatable {
     }
 }
 
-private struct DeployOptionsSheet: View {
+struct DeployOptionsSheet: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     let serverOrigin: String
@@ -1021,6 +1022,33 @@ struct CreateProjectView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showRender = false
+    @State private var previewSession = ComposePreviewSession()
+    private var previewEnabled: Bool { previewSession.isEnabled }
+    @State private var showReview = false
+    @State private var reviewedDeploy: Bool?
+    @State private var showCreateDeployOptions = false
+    @State private var requestedDeployOptions: DeployOptions?
+    @State private var showDiscard = false
+    @State private var pendingTemplateID: String?
+    @State private var showReplaceTemplate = false
+    @State private var showImport = false
+    @State private var importedCompose = ""
+    @State private var showReplaceImport = false
+    @State private var showDockerRun = false
+    @State private var dockerRun = ""
+    @State private var sessionIdentity: String?
+    @State private var baselineCompose = ""
+    @State private var baselineEnv = ""
+    @State private var requestedDefaults = false
+    private var draftSnapshot: ProjectDraftSnapshot { .init(compose: composeContent, environment: envContent) }
+    private var baselineSnapshot: ProjectDraftSnapshot { .init(compose: baselineCompose, environment: baselineEnv) }
+
+    private var hasDraftChanges: Bool {
+        name != (prefilledName ?? "") || composeContent != (prefilledCompose ?? Self.defaultCompose) || envContent != (prefilledEnv ?? "")
+    }
+    private var sessionIsCurrent: Bool {
+        sessionIdentity == manager.cacheSessionIdentity && environmentID == manager.activeEnvironmentID
+    }
 
     private static let defaultCompose = "services:\n  app:\n    image: \n    ports:\n      - \"8080:80\"\n"
 
@@ -1085,14 +1113,19 @@ struct CreateProjectView: View {
                             Text("No templates available")
                                 .foregroundStyle(.secondary)
                         } else {
-                            Picker("Use Template", selection: $selectedTemplateID) {
+                            Picker("Use Template", selection: Binding(get: { selectedTemplateID }, set: { value in
+                                if previewEnabled && draftSnapshot != baselineSnapshot {
+                                    pendingTemplateID = value
+                                    showReplaceTemplate = true
+                                } else {
+                                    selectedTemplateID = value
+                                    Task { await applyTemplate(id: value) }
+                                }
+                            })) {
                                 Text("Blank").tag("")
                                 ForEach(templates) { template in
                                     Text(template.name).tag(template.id)
                                 }
-                            }
-                            .onChange(of: selectedTemplateID) { _, newValue in
-                                Task { await applyTemplate(id: newValue) }
                             }
 
                             if let selectedTemplate {
@@ -1104,6 +1137,16 @@ struct CreateProjectView: View {
                     }
                 }
 
+                if previewEnabled {
+                    Section("Compose · Preview") {
+                        NavigationLink("Edit Compose") { ComposePreviewEditor(text: $composeContent) }
+                        NavigationLink("Edit Environment Variables") { EnvPreviewEditor(text: $envContent) }
+                        Button("Import YAML File") { showImport = true }
+                        Button("Convert Docker Run Command") { showDockerRun = true }
+                        Text("Paste YAML in the YAML tab of the editor.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
                 Section {
                     CodeEditorView(text: $composeContent, language: .yaml)
                         .frame(height: 220)
@@ -1128,6 +1171,7 @@ struct CreateProjectView: View {
                         .listRowInsets(EdgeInsets())
                 }
 
+                }
                 if let error = errorMessage {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
@@ -1135,15 +1179,74 @@ struct CreateProjectView: View {
             .navigationTitle("Create Project")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { if previewEnabled && hasDraftChanges { showDiscard = true } else { dismiss() } } }
                 AppToolbarItem(placement: .confirmationAction) {
                     if isLoading {
                         ProgressView().scaleEffect(0.8)
                     } else {
-                        Button("Create") { Task { await createProject() } }
-                            .disabled(name.isEmpty)
+                        Button(previewEnabled ? "Review" : "Create") { if previewEnabled { showReview = true } else { Task { await createProject() } } }
+                            .disabled(name.isEmpty || !sessionIsCurrent || !manager.permissions.has(Permission.Projects.create, in: environmentID))
                     }
                 }
+            }
+            .disabled(isLoading)
+            .interactiveDismissDisabled(previewEnabled && hasDraftChanges)
+            .confirmationDialog("Discard project draft?", isPresented: $showDiscard, titleVisibility: .visible) {
+                Button("Discard", role: .destructive) { dismiss() }
+            }
+            .confirmationDialog("Replace Compose and environment drafts?", isPresented: $showReplaceTemplate, titleVisibility: .visible) {
+                Button("Replace", role: .destructive) {
+                    if let id = pendingTemplateID { selectedTemplateID = id; Task { await applyTemplate(id: id) } }
+                }
+            }
+            .sheet(isPresented: $showReview, onDismiss: {
+                guard let deploy = reviewedDeploy else { return }
+                reviewedDeploy = nil
+                if deploy && manager.supportsPost26MobileFeatures { showCreateDeployOptions = true }
+                else { Task { await createProject(deploy: deploy) } }
+            }) {
+                ProjectDraftReviewView(originalCompose: "", compose: composeContent, environmentChanged: !envContent.isEmpty,
+                    saveTitle: "Create Project", canDeploy: manager.permissions.has(Permission.Projects.deploy, in: environmentID)) { deploy in
+                        reviewedDeploy = deploy
+                    }
+            }
+            .sheet(isPresented: $showCreateDeployOptions) {
+                DeployOptionsSheet(serverOrigin: manager.serverOrigin ?? "", environmentID: environmentID) { options in
+                    requestedDeployOptions = options
+                    Task { await createProject(deploy: true) }
+                }
+            }
+            .sheet(isPresented: $showDockerRun) {
+                NavigationStack {
+                    Form {
+                        Section("Docker Run Command") { TextEditor(text: $dockerRun).frame(minHeight: 180).font(.system(.body, design: .monospaced)) }
+                        Text("Conversion replaces the Compose and environment drafts after you confirm.")
+                        Button("Convert and Replace Draft") { Task { await convertDockerRun() } }.disabled(dockerRun.isEmpty || isLoading)
+                    }
+                    .navigationTitle("Import Command")
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showDockerRun = false } } }
+                }
+            }
+            .fileImporter(isPresented: $showImport, allowedContentTypes: [.item]) { result in
+                guard sessionIsCurrent else { return }
+                do {
+                    let url = try result.get()
+                    let access = url.startAccessingSecurityScopedResource()
+                    defer { if access { url.stopAccessingSecurityScopedResource() } }
+                    let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                    guard size <= RemoteDataLimits.maximumTemplateBytes else {
+                        showToast(.error("The YAML file exceeds the template size limit.")); return
+                    }
+                    let data = try Data(contentsOf: url, options: .mappedIfSafe)
+                    guard data.count <= RemoteDataLimits.maximumTemplateBytes, let text = String(data: data, encoding: .utf8) else {
+                        showToast(.error("Choose a UTF-8 YAML file within the template size limit.")); return
+                    }
+                    importedCompose = text
+                    showReplaceImport = true
+                } catch { showToast(.error(friendlyErrorMessage(error))) }
+            }
+            .confirmationDialog("Replace the Compose draft?", isPresented: $showReplaceImport, titleVisibility: .visible) {
+                Button("Replace", role: .destructive) { if sessionIsCurrent { composeContent = importedCompose } }
             }
             .sheet(isPresented: $showRender) {
                 RenderComposeView(
@@ -1156,11 +1259,33 @@ struct CreateProjectView: View {
                 .presentationDragIndicator(.visible)
             }
             .task {
+                if sessionIdentity == nil {
+                    sessionIdentity = manager.cacheSessionIdentity
+                    baselineCompose = composeContent
+                    baselineEnv = envContent
+                }
                 if !isPrefilled, canBrowseTemplates {
+                    if previewEnabled && !requestedDefaults {
+                        requestedDefaults = true
+                        await loadDefaultTemplate()
+                    }
                     await loadTemplates()
                 }
             }
         }
+    }
+
+    private func loadDefaultTemplate() async {
+        guard sessionIsCurrent, let client = manager.client else { return }
+        let requestedFrom = draftSnapshot
+        let session = manager.cacheSessionIdentity
+        // Optional on older servers; retain the local starter when unavailable.
+        guard let defaults = try? await client.templates.getDefaults(), sessionIsCurrent,
+              draftSnapshot.canApplyLoadedContent(requestedFrom: requestedFrom, session: session, currentSession: manager.cacheSessionIdentity),
+              selectedTemplateID.isEmpty else { return }
+        if !defaults.composeTemplate.isEmpty { composeContent = defaults.composeTemplate }
+        envContent = defaults.envTemplate
+        baselineCompose = composeContent; baselineEnv = envContent
     }
 
     private func loadTemplates() async {
@@ -1168,14 +1293,24 @@ struct CreateProjectView: View {
         isLoadingTemplates = true
         defer { isLoadingTemplates = false }
         do {
-            templates = try await client.templates.listAll()
+            let loaded = try await client.templates.listAll()
+            guard sessionIsCurrent else { return }
+            templates = loaded
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
     }
 
     private func applyTemplate(id: String) async {
-        guard canBrowseTemplates, !id.isEmpty, let client = manager.client else { return }
+        guard sessionIsCurrent else { return }
+        if id.isEmpty {
+            composeContent = Self.defaultCompose; envContent = ""
+            baselineCompose = composeContent; baselineEnv = envContent
+            return
+        }
+        guard canBrowseTemplates, let client = manager.client else { return }
+        isLoading = true
+        defer { isLoading = false }
         do {
             let escapedID = ArcaneAPIHelpers.escapedPathComponent(id)
             let content = try await RemoteDataLimits.boundedAPIResponse(
@@ -1184,8 +1319,10 @@ struct CreateProjectView: View {
                 as: TemplateContent.self,
                 maximumBytes: RemoteDataLimits.maximumTemplateBytes
             )
+            guard sessionIsCurrent else { return }
             composeContent = content.content
             envContent = content.envContent
+            baselineCompose = composeContent; baselineEnv = envContent
             if name.isEmpty {
                 name = content.template.name
                     .lowercased()
@@ -1194,18 +1331,40 @@ struct CreateProjectView: View {
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
-    private func createProject() async {
-        guard let client = manager.client else { return }
+    private func convertDockerRun() async {
+        guard sessionIsCurrent, let client = manager.client else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let result = try await client.system.convertDockerRun(.init(dockerRunCommand: dockerRun), envID: environmentID)
+            guard sessionIsCurrent, result.success else { showToast(.error("Command conversion failed.")); return }
+            composeContent = result.dockerCompose
+            envContent = result.envVars
+            if name.isEmpty { name = result.serviceName }
+            showDockerRun = false
+        } catch { showToast(.error(friendlyErrorMessage(error))) }
+    }
+
+    private func createProject(deploy: Bool = false) async {
+        guard sessionIsCurrent, manager.permissions.has(Permission.Projects.create, in: environmentID), let client = manager.client else { return }
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do {
+            if previewEnabled { try draftSnapshot.validateSyntax() }
             let body: [String: AnyCodable] = [
                 "name": AnyCodable(name),
                 "composeContent": AnyCodable(composeContent),
                 "envContent": AnyCodable(envContent)
             ]
             let path = client.rest.environmentPath(environmentID, "projects")
-            let _: ProjectDetails = try await client.rest.post(path, body: body)
+            let created: ProjectDetails = try await client.rest.post(path, body: body)
+            guard sessionIsCurrent else { return }
+            if deploy && manager.permissions.has(Permission.Projects.deploy, in: environmentID) {
+                let started = DeploymentActivityStore.shared.start(kind: .up, envID: environmentID, targetID: created.id,
+                    targetName: created.displayName, environmentName: manager.activeEnvironmentName,
+                    manager: manager, mutationStore: mutationStore, deployOptions: requestedDeployOptions)
+                if !started { showToast(.info("Project created. Open the project to retry deployment.")) }
+            }
             if let cached = manager.cached {
                 await cached.invalidate(envID: environmentID, paths: [
                     client.rest.environmentPath(environmentID, "projects") + "*",

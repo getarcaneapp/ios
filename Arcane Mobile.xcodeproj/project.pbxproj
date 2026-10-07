@@ -17,6 +17,8 @@
 		FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EA2FAC44530016681B /* Arcane */; };
 		FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5EE2FAC44530016681B /* ArcaneOIDC */; };
 		FD6FF5F02FAC44530016681B /* ArcanePasskeys in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5F12FAC44530016681B /* ArcanePasskeys */; };
+		C01000010000000000000003 /* SwiftTreeSitter in Frameworks */ = {isa = PBXBuildFile; productRef = C01000010000000000000002 /* SwiftTreeSitter */; };
+		C01000020000000000000003 /* TreeSitterYAML in Frameworks */ = {isa = PBXBuildFile; productRef = C01000020000000000000002 /* TreeSitterYAML */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -129,6 +131,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				FD6FF5EB2FAC44530016681B /* Arcane in Frameworks */,
+				C01000020000000000000003 /* TreeSitterYAML in Frameworks */,
+				C01000010000000000000003 /* SwiftTreeSitter in Frameworks */,
 				FD6FF5EF2FAC44530016681B /* ArcaneOIDC in Frameworks */,
 				FD6FF5F02FAC44530016681B /* ArcanePasskeys in Frameworks */,
 				C0DE00012FFF000000000001 /* WhatsNewKit in Frameworks */,
@@ -242,6 +246,8 @@
 			name = "Arcane Mobile";
 			packageProductDependencies = (
 				FD6FF5EA2FAC44530016681B /* Arcane */,
+				C01000020000000000000002 /* TreeSitterYAML */,
+				C01000010000000000000002 /* SwiftTreeSitter */,
 				FD6FF5EE2FAC44530016681B /* ArcaneOIDC */,
 				FD6FF5F12FAC44530016681B /* ArcanePasskeys */,
 				C0DE00042FFF000000000004 /* WhatsNewKit */,
@@ -282,6 +288,8 @@
 			mainGroup = FD6FF5D02FAC434D0016681B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				C01000020000000000000001 /* TreeSitterYAML */,
+				C01000010000000000000001 /* SwiftTreeSitter */,
 				C0DE00032FFF000000000003 /* XCRemoteSwiftPackageReference "WhatsNewKit" */,
 				FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */,
 			);
@@ -428,7 +436,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.9.1;
+				MARKETING_VERSION = 0.10.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile.ArcaneWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -463,7 +471,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.9.1;
+				MARKETING_VERSION = 0.10.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile.ArcaneWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -534,7 +542,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 0.6.2;
+				MARKETING_VERSION = 0.10.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -597,7 +605,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 0.6.2;
+				MARKETING_VERSION = 0.10.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
@@ -640,7 +648,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.9.1;
+				MARKETING_VERSION = 0.10.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -689,7 +697,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.9.1;
+				MARKETING_VERSION = 0.10.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -747,6 +755,10 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		C01000020000000000000001 /* TreeSitterYAML */ = {isa = XCLocalSwiftPackageReference; relativePath = Vendor/TreeSitterYAML; };
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		C0DE00032FFF000000000003 /* XCRemoteSwiftPackageReference "WhatsNewKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -764,6 +776,7 @@
 				kind = branch;
 			};
 		};
+		C01000010000000000000001 /* SwiftTreeSitter */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/tree-sitter/swift-tree-sitter"; requirement = {kind = exactVersion; version = 0.10.0; }; };
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -802,6 +815,8 @@
 			package = FD6FF5E92FAC44530016681B /* XCRemoteSwiftPackageReference "libarcane-swift" */;
 			productName = ArcanePasskeys;
 		};
+		C01000010000000000000002 /* SwiftTreeSitter */ = {isa = XCSwiftPackageProductDependency; package = C01000010000000000000001 /* SwiftTreeSitter */; productName = SwiftTreeSitter; };
+		C01000020000000000000002 /* TreeSitterYAML */ = {isa = XCSwiftPackageProductDependency; package = C01000020000000000000001 /* TreeSitterYAML */; productName = TreeSitterYAML; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = FD6FF5D12FAC434D0016681B /* Project object */;

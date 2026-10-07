@@ -10,6 +10,7 @@ struct TemplateBrowserView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @State private var store = TemplateBrowserStore()
+    @State private var editorMode: TemplateEditorMode?
 
     var body: some View {
         @Bindable var store = store
@@ -105,7 +106,25 @@ struct TemplateBrowserView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search templates"
         )
+        .sheet(item: $editorMode) { mode in
+            TemplateEditorView(mode: mode) { await store.reload() }
+        }
         .toolbar {
+            if manager.permissions.has(Permission.Templates.create, in: nil) || canEditDefaults {
+                AppToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        if manager.permissions.has(Permission.Templates.create, in: nil) {
+                            Button("Create Template", systemImage: "plus") { editorMode = .create }
+                        }
+                        if canEditDefaults {
+                            Button("Default Templates", systemImage: "doc.badge.gearshape") { editorMode = .defaults }
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle").appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Template Actions")
+                }
+            }
             if !embedded {
                 AppToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
@@ -156,7 +175,7 @@ struct TemplateBrowserView: View {
     @ViewBuilder
     private func templateRow(_ template: Template) -> some View {
         if canReadTemplates {
-            NavigationLink(destination: TemplatePreviewView(template: template)) {
+            NavigationLink(destination: TemplatePreviewView(template: template, onChange: { await store.reload() })) {
                 TemplateRow(template: template)
             }
         } else {
@@ -187,6 +206,11 @@ struct TemplateBrowserView: View {
         return groups.keys.sorted().map { key in
             (name: key, templates: groups[key] ?? [])
         }
+    }
+
+    private var canEditDefaults: Bool {
+        manager.permissions.has(Permission.Templates.read, in: nil)
+            && manager.permissions.has(Permission.Templates.update, in: nil)
     }
 
     private var canManageRegistries: Bool {
