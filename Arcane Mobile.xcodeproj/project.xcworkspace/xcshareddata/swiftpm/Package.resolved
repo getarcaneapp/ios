@@ -1,5 +1,5 @@
 {
-  "originHash" : "cc760e50de1afd1df06703d8c189cf78eb5021e47c2c94207d323be3dce1a20c",
+  "originHash" : "510b2001b7def147739a88d5978aefce1e5b0838ad09bd7dd136025fb43d941c",
   "pins" : [
     {
       "identity" : "libarcane-swift",
@@ -35,6 +35,14 @@
       "state" : {
         "revision" : "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
         "version" : "0.25.10"
+      }
+    },
+    {
+      "identity" : "tree-sitter-yaml",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tree-sitter-grammars/tree-sitter-yaml",
+      "state" : {
+        "revision" : "7b03feefd36b5f155465ca736c6304aca983b267"
       }
     },
     {

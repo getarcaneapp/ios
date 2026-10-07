@@ -755,11 +755,8 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		C01000020000000000000001 /* TreeSitterYAML */ = {isa = XCLocalSwiftPackageReference; relativePath = Vendor/TreeSitterYAML; };
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
+        C01000020000000000000001 /* TreeSitterYAML */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/tree-sitter-grammars/tree-sitter-yaml"; requirement = {kind = revision; revision = 7b03feefd36b5f155465ca736c6304aca983b267; }; };
 		C0DE00032FFF000000000003 /* XCRemoteSwiftPackageReference "WhatsNewKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/SvenTiigi/WhatsNewKit.git";
