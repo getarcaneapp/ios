@@ -35,13 +35,7 @@ struct ComposeNativeFieldsForm: View {
 
     private var document: ComposeDocument? { try? ComposeDocument(text) }
     private var current: ComposeNativeField? { document?.nativeField(at: fieldPath, name: title) }
-    private var excludedNames: Set<String> {
-        if schemaPath.count == 2, let first = schemaPath.first,
-           case .key(let root) = first, ["services", "jobs"].contains(root) {
-            return excluding.union(["build", "deploy"])
-        }
-        return excluding
-    }
+    private var excludedNames: Set<String> { excluding }
     private var fields: [ComposeNativeField] {
         (document?.nativeFields(at: fieldPath) ?? []).filter { !excludedNames.contains($0.name) }
     }
@@ -122,27 +116,35 @@ struct ComposeNativeFieldsForm: View {
                 set: { value in mutate { try $0.settingNative(String(value), kind: .boolean, at: field.path) } }
             )).disabled(readOnly)
         default:
-            let choices = ComposeSchema.value(at: schemaPath + field.path.dropFirst(fieldPath.count))?.enumValues ?? []
-            if field.kind == .string, !choices.isEmpty {
+            let options = ComposeFieldOptions(path: schemaPath + field.path.dropFirst(fieldPath.count))
+            if simpleEditing?.id != field.id, (field.kind == .string || field.kind == .number), !options.values.isEmpty {
                 Picker(ComposeDisplayText.title(field.name), selection: Binding(
                     get: { document?.nativeField(at: field.path).value ?? field.value },
-                    set: { value in mutate { try $0.settingNative(value, kind: .string, at: field.path) } }
+                    set: { value in
+                        if value == "__custom__" {
+                            simpleValue = field.value
+                            simpleEditing = field
+                            valueFocused = true
+                        } else { mutate { try $0.settingNative(value, kind: field.kind, at: field.path) } }
+                    }
                 )) {
-                    if !choices.contains(field.value) { Text(field.value).tag(field.value) }
-                    ForEach(choices, id: \.self) { Text(ComposeDisplayText.title($0)).tag($0) }
+                    if !options.values.contains(field.value) { Text(field.value).tag(field.value) }
+                    ForEach(options.values, id: \.self) { Text(options.label($0)).tag($0) }
+                    if options.allowsCustom { Text("Custom value…").tag("__custom__") }
                 }.disabled(readOnly)
             } else if simpleEditing?.id == field.id {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(ComposeDisplayText.title(field.name))
-                        .font(.subheadline).foregroundStyle(.secondary)
-                    TextField("Value", text: $simpleValue, axis: .vertical)
-                        .lineLimit(1...6)
+                    LabeledContent(ComposeDisplayText.title(field.name)) {
+                    TextField("Value", text: $simpleValue)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(field.kind == .number ? .numbersAndPunctuation : .default)
                         .focused($valueFocused)
                         .accessibilityLabel(ComposeDisplayText.title(field.name))
                         .disabled(readOnly)
+                    }
                     HStack {
                         Spacer()
                         Button("Cancel") {
@@ -172,7 +174,7 @@ struct ComposeNativeFieldsForm: View {
                 } label: {
                     LabeledContent(ComposeDisplayText.title(field.name), value: field.kind == .null ? "Empty" : field.value)
                         .lineLimit(3)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.primary)
                 }.disabled(readOnly || simpleEditing != nil)
             }
         }

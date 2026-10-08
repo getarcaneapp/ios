@@ -13,9 +13,8 @@ struct ComposeScalarField: View {
         let nativePath = path.map(ComposeFieldPathComponent.key)
         let field = (try? ComposeDocument(text))?.nativeField(at: nativePath)
         if let field, [.string, .number, .boolean, .null].contains(field.kind) {
-            VStack(alignment: .leading) {
-                Text(title).font(.caption).foregroundStyle(.secondary)
-                TextField(title, text: Binding(
+            let options = ComposeFieldOptions(path: nativePath)
+            let input = Binding<String>(
                     get: {
                         let current = (try? ComposeDocument(text))?.nativeField(at: nativePath)
                         return current?.kind == .null ? "" : current?.value ?? ""
@@ -39,7 +38,16 @@ struct ComposeScalarField: View {
                             error = nil
                         } catch { self.error = error.localizedDescription }
                     }
-                )).disabled(readOnly)
+                )
+            if options.values.isEmpty {
+                LabeledContent(title) {
+                    TextField(title, text: input)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
+                        .disabled(readOnly)
+                }
+            } else {
+                ComposeValuePicker(title: title, options: options, value: input).disabled(readOnly)
             }
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
         } else {
@@ -65,6 +73,7 @@ struct ComposeStringListForm: View {
     private var needsNativeFields: Bool {
         guard let document else { return false }
         let kind = document.nativeField(at: path.map(ComposeFieldPathComponent.key)).kind
+        if kind == .sequence, !ComposeFieldOptions(path: path.map(ComposeFieldPathComponent.key) + [.index(0)]).values.isEmpty { return true }
         return kind != .null && (!document.isEditable(at: path) || document.rawValue(at: path) == nil || (kind == .string && document.scalar(at: path) == nil))
     }
 
@@ -131,9 +140,10 @@ struct ComposeStringListForm: View {
     private var addSheet: some View {
         NavigationStack {
             Form {
-                VStack(alignment: .leading) {
-                    Text("Value").font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Value") {
                     TextField("Value", text: $newValue).focused($focused)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
                 }
                 if let error { Text(error).foregroundStyle(.red) }
             }

@@ -120,6 +120,15 @@ nonisolated extension ComposeDocument {
         throw ComposeDocumentError.unsupported
     }
 
+    func addingService(_ name: String, field: String, value: String, kind: ComposeNativeKind) throws -> String {
+        guard name.range(of: #"^[a-zA-Z0-9._-]+$"#, options: .regularExpression) != nil else {
+            throw ComposeFormError.invalid("Use letters, numbers, dots, underscores or hyphens for the service name.")
+        }
+        guard !field.isEmpty else { throw ComposeFormError.invalid("Enter a field name.") }
+        let added = try addingNative("", kind: .mapping, key: name, at: [.key("services")])
+        return try ComposeDocument(added).addingNative(value, kind: kind, key: field, at: [.key("services"), .key(name)])
+    }
+
     func addingNative(_ value: String, kind: ComposeNativeKind, key: String?, at path: [ComposeFieldPathComponent]) throws -> String {
         let literal = try Self.nativeLiteral(kind: kind, value: value)
         guard let node = try nativeNode(path), let content = Self.content(node) else {

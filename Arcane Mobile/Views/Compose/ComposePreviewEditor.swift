@@ -8,7 +8,6 @@ struct ComposePreviewEditor: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var yaml = false
     @State private var selectedService: String?
-    @State private var addingService = false
     @State private var addingConfiguration = false
     @State private var error: String?
 
@@ -143,7 +142,6 @@ struct ComposePreviewEditor: View {
                 AppToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if !readOnly && !yaml {
-                            Button("Add service", systemImage: "plus") { addingService = true }
                             Button("Add configuration", systemImage: "slider.horizontal.3") { addingConfiguration = true }
                         }
                         if let menuActions { menuActions }
@@ -153,20 +151,7 @@ struct ComposePreviewEditor: View {
             }
         }
         .sheet(isPresented: $addingConfiguration) {
-            ComposeAddFieldsSheet(text: $text, path: [], excluding: ["services", "build", "deploy"])
-        }
-        .sheet(isPresented: $addingService) {
-            ComposeNameSheet(title: "Add service", placeholder: "Service name") { name in
-                do {
-                    let current = try ComposeDocument(text)
-                    guard !current.services.contains(name) else { throw ComposeFormError.duplicate }
-                    let servicePath: [ComposeFieldPathComponent] = [.key("services"), .key(name)]
-                    let added = try current.addingNative("", kind: .mapping, key: name, at: [.key("services")])
-                    text = try ComposeDocument(added).addingNative("", kind: .string, key: "image", at: servicePath)
-                    selectedService = name
-                    return nil
-                } catch { return error.localizedDescription }
-            }
+            ComposeAddFieldsSheet(text: $text, path: [], includesProjectSettings: true, preferredService: selectedService)
         }
     }
 
@@ -214,7 +199,7 @@ struct ComposeServiceForm: View {
     private var existingFields: Set<String> {
         Set((document?.nativeFields(at: path.map(ComposeFieldPathComponent.key)) ?? []).map(\.name))
     }
-    private let primaryFields: Set<String> = ["image", "pull_policy", "ports", "volumes", "networks", "environment", "env_file", "labels", "healthcheck", "restart", "command", "entrypoint", "container_name", "hostname", "domainname", "extra_hosts", "dns", "dns_opt", "dns_search", "build", "deploy"]
+    private let primaryFields: Set<String> = ["image", "pull_policy", "ports", "volumes", "networks", "environment", "env_file", "labels", "healthcheck", "restart", "command", "entrypoint", "container_name", "hostname", "domainname", "extra_hosts", "dns", "dns_opt", "dns_search"]
     private var additionalFields: [String] { existingFields.subtracting(primaryFields).subtracting(["x-arcane"]).sorted() }
     private func has(_ key: String) -> Bool { existingFields.contains(key) }
     private func hasAny(_ keys: Set<String>) -> Bool { !existingFields.isDisjoint(with: keys) }
@@ -229,7 +214,7 @@ struct ComposeServiceForm: View {
                 NavigationLink {
                     Form {
                         Section("Image") { scalar("Image", key: "image") }
-                        if has("pull_policy") { Section { policy("Pull policy", key: "pull_policy", values: ["always", "missing", "never", "daily", "weekly"]) } }
+                        if has("pull_policy") { Section { policy("Pull policy", key: "pull_policy") } }
                         if let error { Text(error).foregroundStyle(.red) }
                     }.navigationTitle("Image settings")
                 } label: {
@@ -278,7 +263,7 @@ struct ComposeServiceForm: View {
                     if hasAny(["restart", "command", "entrypoint"]) {
                     route("Runtime", icon: "terminal", summary: has("restart") ? "Restart: " + (value("restart") ?? "Default") : (has("command") ? "Custom command" : "Custom entrypoint")) {
                         Form {
-                            if has("restart") { Section { policy("Restart policy", key: "restart", values: ["no", "always", "on-failure", "unless-stopped"]) } }
+                            if has("restart") { Section { policy("Restart policy", key: "restart") } }
                             if let error { Text(error).foregroundStyle(.red) }
                             Section {
                                 if has("command") { NavigationLink("Command") { strings("command", title: "Command") } }
@@ -338,12 +323,12 @@ struct ComposeServiceForm: View {
                 }
                 if has("pull_policy"), !has("image") {
                     route("Pull policy", icon: "arrow.down.circle", summary: value("pull_policy") ?? "Default") {
-                        Form { policy("Pull policy", key: "pull_policy", values: ["always", "missing", "never", "daily", "weekly"]) }.navigationTitle("Pull policy")
+                        Form { policy("Pull policy", key: "pull_policy") }.navigationTitle("Pull policy")
                     }
                 }
-                if !existingFields.subtracting(["build", "deploy"]).isEmpty {
+                if !existingFields.isEmpty {
                 route("All service settings", icon: "slider.horizontal.3", summary: "Browse every configuration field") {
-                    ComposeNativeFieldsForm(text: $text, path: path, title: "Service settings", readOnly: readOnly, excluding: ["build", "deploy"])
+                    ComposeNativeFieldsForm(text: $text, path: path, title: "Service settings", readOnly: readOnly)
                 }
                 }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
@@ -364,7 +349,7 @@ struct ComposeServiceForm: View {
             }
         }
         .sheet(isPresented: $addingFields) {
-            ComposeAddFieldsSheet(text: $text, path: path, excluding: ["build", "deploy"])
+            ComposeAddFieldsSheet(text: $text, path: path)
         }
     }
 
@@ -428,7 +413,9 @@ struct ComposeServiceForm: View {
         }.buttonStyle(.plain)
     }
 
-    private func policy(_ title: String, key: String, values: [String]) -> some View {
+    private func policy(_ title: String, key: String) -> some View {
+        let options = ComposeFieldOptions(path: (path + [key]).map(ComposeFieldPathComponent.key))
+        let values = options.values
         let current = value(key) ?? ""
         return Picker(title, selection: Binding(get: { value(key) ?? "" }, set: { selected in
             do {
@@ -445,7 +432,7 @@ struct ComposeServiceForm: View {
             } catch { self.error = error.localizedDescription }
         })) {
             Text("Default").tag("")
-            ForEach(values, id: \.self) { value in Text(value).tag(value) }
+            ForEach(values, id: \.self) { value in Text(options.label(value)).tag(value) }
             if !current.isEmpty, !values.contains(current) { Text("Custom: " + current).tag(current) }
         }.disabled(readOnly)
     }
@@ -607,9 +594,9 @@ private struct ComposeCollectionForm: View {
                         editing = ComposeEntrySelection(index: index, raw: item)
                     } label: {
                         HStack {
-                            Text(kind == .keyValue ? entryName(item) : item).lineLimit(2)
+                            Text(kind == .keyValue ? entryName(item) : item).foregroundStyle(Color.primary).lineLimit(2)
                             Spacer()
-                            Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right").foregroundStyle(Color.secondary)
                         }
                     }.disabled(readOnly)
                     .contextMenu {
@@ -797,9 +784,10 @@ private struct ComposeEntrySheet: View {
     }
 
     private func entryField<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+        LabeledContent(title) {
             content()
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
         }
     }
 

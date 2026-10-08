@@ -86,6 +86,25 @@ struct ComposeEditorLayoutTests {
         try render(nested, size: CGSize(width: 375, height: 667), name: "native-fields-large-text")
     }
 
+    @Test func unifiedConfigurationListRendersExistingAndNewServices() throws {
+        for (name, source) in [("existing", ComposeScreenshotFixture.source), ("new", "services: {}\n")] {
+            let host = UIHostingController(rootView:
+                ComposeAddFieldsSheet(text: .constant(source), path: [], includesProjectSettings: true)
+                    .environment(\.colorScheme, .dark)
+            )
+            try render(host, size: CGSize(width: 375, height: 812), name: "unified-configuration-" + name)
+        }
+    }
+
+    @Test func draftConfigurationSheetsRender() throws {
+        for name in ["annotations", "x-arcane"] {
+            var draft = ComposeSettingDraft(name: name, schemaPath: [.key("services"), .key("web"), .key(name)], included: true)
+            draft.prepareFields()
+            let host = UIHostingController(rootView: ComposeSettingEditor(draft: draft, needsName: false) { _ in nil }.environment(\.colorScheme, .dark))
+            try render(host, size: CGSize(width: 375, height: 812), name: "draft-" + name)
+        }
+    }
+
     private func render<V: View>(_ host: UIHostingController<V>, size: CGSize, name: String) throws {
         let window = UIWindow(frame: CGRect(origin: .zero, size: size))
         window.rootViewController = host

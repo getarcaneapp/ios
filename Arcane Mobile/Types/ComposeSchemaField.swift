@@ -6,8 +6,14 @@ nonisolated struct ComposeSchemaField: Identifiable {
     let kinds: [ComposeNativeKind]
     let enumValues: [String]
     var id: String { name }
-    /// Text retains Compose interpolation for numeric and boolean alternatives.
-    var preferredKind: ComposeNativeKind { kinds.contains(.string) ? .string : (kinds.first ?? .string) }
+    /// Prefer native controls; text remains available for Compose interpolation.
+    var preferredKind: ComposeNativeKind {
+        if kinds == ComposeNativeKind.editableCases { return .string }
+        if !enumValues.isEmpty && kinds.contains(.string) { return .string }
+        if kinds.contains(.boolean) { return .boolean }
+        if kinds.contains(.number) { return .number }
+        return kinds.contains(.string) ? .string : (kinds.first ?? .string)
+    }
 }
 
 /// Immutable JSON nodes allow schema lookup outside the main actor.

@@ -126,7 +126,8 @@ nonisolated enum ComposeSchema {
             }
             if node["properties"] != nil, !kinds.contains(.mapping) { kinds.append(.mapping) }
             if node["items"] != nil, !kinds.contains(.sequence) { kinds.append(.sequence) }
-            for choice in node["enum"]?.array.compactMap(\.literal) ?? [] where !choices.contains(choice) { choices.append(choice) }
+            let literals = (node["enum"]?.array.compactMap(\.literal) ?? []) + (node["const"]?.literal.map { [$0] } ?? [])
+            for choice in literals where !choices.contains(choice) { choices.append(choice) }
         }
         if kinds.isEmpty { kinds = ComposeNativeKind.editableCases }
         return ComposeSchemaField(name: name, description: description, kinds: kinds, enumValues: choices)

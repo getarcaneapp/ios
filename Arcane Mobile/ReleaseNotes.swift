@@ -145,6 +145,14 @@ enum ReleaseNotes {
             version: "0.10.0",
             new: [
                 .init("Native Compose editor Preview for projects and templates.")
+            ],
+            fixed: [
+                .init("Readable text in Compose configuration, mount and metadata lists."),
+                .init("Service creation and project options share one Add configuration list."),
+                .init("Configure Compose settings before adding them in a sheet."),
+                .init("Guided Compose inputs with select lists, toggles and structured fields."),
+                .init("Plain native Compose fields with compact entries and swipe-to-delete."),
+                .init("Expanded fixed-choice selectors in Compose forms.")
             ]
         ),
         ReleaseNote(

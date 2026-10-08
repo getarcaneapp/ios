@@ -2,6 +2,65 @@ import Testing
 @testable import Arcane_Mobile
 
 @Suite struct ComposeNativeFieldsTests {
+    @Test func draftSavesConfiguredDictionaryAndSkipsBlankEntries() throws {
+        let parent: [ComposeFieldPathComponent] = [.key("services"), .key("web")]
+        var draft = ComposeSettingDraft(name: "annotations", schemaPath: parent + [.key("annotations")], included: true)
+        draft.kind = .mapping
+        draft.prepareFields()
+        draft.children[0].name = "owner"
+        draft.children[0].value = "team"
+        draft.appendEntry()
+        let source = "# keep\nservices: {web: {image: nginx}}\n"
+        let result = try draft.adding(to: source, at: parent)
+        let document = try ComposeDocument(result)
+        #expect(document.nativeField(at: parent + [.key("annotations"), .key("owner")]).value == "team")
+        #expect(document.nativeFields(at: parent + [.key("annotations")]).count == 1)
+        #expect(result.contains("# keep"))
+        draft.children[1].name = "owner"
+        draft.children[1].value = "duplicate"
+        #expect(throws: (any Error).self) { try draft.adding(to: source, at: parent) }
+        #expect(try ComposeDocument(source).nativeFields(at: parent).count == 1)
+    }
+
+    @Test func draftCreatesServiceWithConfiguredListAndDefaultBoolean() throws {
+        var draft = ComposeSettingDraft(name: "cap_add", schemaPath: [.key("services"), .key("web"), .key("cap_add")], included: true)
+        draft.prepareFields()
+        draft.children[0].value = "NET_ADMIN"
+        let result = try draft.adding(to: "# keep\nservices: {}\n", at: [], newService: "web")
+        let path: [ComposeFieldPathComponent] = [.key("services"), .key("web")]
+        #expect(try ComposeDocument(result).nativeField(at: path + [.key("cap_add"), .index(0)]).value == "NET_ADMIN")
+        var toggle = ComposeSettingDraft(name: "privileged", schemaPath: path + [.key("privileged")], included: true)
+        toggle.kind = .boolean
+        let updated = try toggle.adding(to: result, at: path)
+        #expect(try ComposeDocument(updated).nativeField(at: path + [.key("privileged")]).value == "false")
+    }
+
+    @Test func createsServiceWithItsFirstSettingAndPreservesProjectFields() throws {
+        for source in ["# keep\nnetworks:\n  shared: {}\n", "# keep\nservices: {existing: {image: alpine}}\nnetworks: {shared: {}}\n"] {
+            let result = try ComposeDocument(source).addingService("worker", field: "image", value: "busybox:latest", kind: .string)
+            let document = try ComposeDocument(result)
+            #expect(document.services.contains("worker"))
+            #expect(document.nativeField(at: [.key("services"), .key("worker"), .key("image")]).value == "busybox:latest")
+            #expect(document.nativeField(at: [.key("networks"), .key("shared")]).kind == .mapping)
+            #expect(result.contains("# keep"))
+            if source.contains("existing") { #expect(document.services.contains("existing")) }
+        }
+    }
+
+    @Test func rejectsDuplicateOrInvalidServiceWithoutChangingSource() throws {
+        let source = "services:\n  web:\n    image: nginx\n"
+        let document = try ComposeDocument(source)
+        for name in ["web", "", "bad name", "bad\nname"] {
+            #expect(throws: (any Error).self) {
+                try document.addingService(name, field: "image", value: "alpine", kind: .string)
+            }
+        }
+        #expect(throws: (any Error).self) {
+            try document.addingService("worker", field: "scale", value: "not a number", kind: .number)
+        }
+        #expect(document.source == source)
+    }
+
     @Test func nestedBlockFieldsPreserveUnrelatedSource() throws {
         let source = "# header\r\nservices:\r\n  web:\r\n    healthcheck:\r\n      retries: 3 # attempts\r\n      test:\r\n        - CMD\r\n        - curl\r\nx-extra: ${KEEP}\r\n"
         let path: [ComposeFieldPathComponent] = [.key("services"), .key("web"), .key("healthcheck"), .key("retries")]

@@ -16,7 +16,7 @@ struct ComposeSchemaTests {
         #expect(names.count == fields.count)
         let retries = try #require(ComposeSchema.value(at: service + [.key("healthcheck"), .key("retries")]))
         #expect(Set(retries.kinds) == [.number, .string])
-        #expect(retries.preferredKind == .string)
+        #expect(retries.preferredKind == .number)
         #expect(!retries.description.isEmpty)
     }
 
@@ -74,6 +74,11 @@ struct ComposeSchemaTests {
                     checked += 1
                     #expect(suggested.contains(name), "Missing schema property: \(path) / \(name)")
                     #expect(ComposeSchema.value(at: path + [.key(name)]) != nil)
+                    if let field = ComposeSchema.value(at: path + [.key(name)]), !field.enumValues.isEmpty {
+                        let options = ComposeFieldOptions(path: path + [.key(name)])
+                        #expect(options.values == field.enumValues)
+                        #expect(!options.allowsCustom)
+                    }
                     visit(child, path: path + [.key(name)], depth: depth + 1)
                 }
                 for (pattern, child) in variant["patternProperties"] as? [String: [String: Any]] ?? [:] {
@@ -88,6 +93,52 @@ struct ComposeSchemaTests {
         }
         visit(root, path: [], depth: 0)
         #expect(checked > 300)
+    }
+
+    @Test func guidedInputsUseSchemaAndScopedPolicyChoices() throws {
+        #expect(ComposeSchema.value(at: service + [.key("privileged")])?.preferredKind == .boolean)
+        let mount = ComposeSettingDraft(name: "Item", schemaPath: service + [.key("volumes"), .index(0)])
+        #expect(mount.kind == .mapping)
+        #expect(ComposeFieldOptions(path: mount.schemaPath + [.key("type")]).values.contains("bind"))
+        #expect(!ComposeFieldOptions(path: mount.schemaPath + [.key("type")]).allowsCustom)
+        let restart = ComposeFieldOptions(path: service + [.key("restart")])
+        #expect(restart.values == ["no", "always", "on-failure", "unless-stopped"])
+        #expect(restart.allowsCustom)
+        #expect(ComposeFieldOptions(path: service + [.key("ports"), .index(0), .key("protocol")]).values == ["tcp", "udp"])
+        #expect(ComposeFieldOptions(path: service + [.key("deploy"), .key("restart_policy"), .key("condition")]).values == ["none", "on-failure", "any"])
+        #expect(ComposeFieldOptions(path: service + [.key("labels"), .key("restart")]).values.isEmpty)
+        var gpu = ComposeSettingDraft(name: "gpus", schemaPath: service + [.key("gpus")], included: true)
+        gpu.kind = .sequence
+        // An enum on the alternative string branch must not reject a list.
+        #expect(throws: Never.self) { try gpu.adding(to: "services: {app: {image: alpine}}\n", at: service) }
+    }
+
+    @Test func fixedChoiceCatalogCoversNestedFieldsAndLeavesTextOpen() {
+        let cases: [([ComposeFieldPathComponent], String)] = [
+            ([.key("deploy"), .key("update_config"), .key("failure_action")], "rollback"),
+            ([.key("deploy"), .key("rollback_config"), .key("failure_action")], "pause"),
+            ([.key("volumes"), .index(0), .key("bind"), .key("propagation")], "rprivate"),
+            ([.key("volumes"), .index(0), .key("consistency")], "cached"),
+            ([.key("isolation")], "hyperv"),
+            ([.key("build"), .key("isolation")], "process"),
+            ([.key("cap_add"), .index(0)], "NET_ADMIN"),
+            ([.key("cap_drop"), .index(0)], "ALL"),
+            ([.key("devices"), .index(0), .key("permissions")], "rw"),
+            ([.key("env_file"), .index(0), .key("format")], "raw")
+        ]
+        for (suffix, value) in cases {
+            let options = ComposeFieldOptions(path: service + suffix)
+            #expect(options.values.contains(value))
+            #expect(!options.allowsCustom)
+        }
+        #expect(ComposeFieldOptions(path: service + [.key("healthcheck"), .key("test"), .index(0)]).values == ["CMD", "CMD-SHELL", "NONE"])
+        #expect(ComposeFieldOptions(path: service + [.key("healthcheck"), .key("test"), .index(1)]).values.isEmpty)
+        #expect(ComposeFieldOptions(path: service + [.key("stop_signal")]).values.contains("SIGTERM"))
+        #expect(ComposeFieldOptions(path: [.key("jobs"), .key("backup"), .key("deploy"), .key("mode")]).values.contains("replicated-job"))
+        for name in ["image", "container_name", "command"] {
+            #expect(ComposeFieldOptions(path: service + [.key(name)]).values.isEmpty)
+        }
+        #expect(ComposeFieldOptions(path: service + [.key("labels"), .key("isolation")]).values.isEmpty)
     }
 
     private func snapshot() throws -> [String: Any] {
