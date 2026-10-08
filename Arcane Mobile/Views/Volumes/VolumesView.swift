@@ -36,9 +36,7 @@ struct VolumesView: View {
     @State private var isBulkRunning = false
     @State private var bulkRunningActionID: String?
 
-    private enum VolumeScopeFilter: String, CaseIterable {
-        case all = "All", local = "Local", global = "Global"
-    }
+
 
     /// Prune and per-volume delete share one `.deleteConfirmation` cover
     /// (one full-screen cover per view).
@@ -604,6 +602,8 @@ struct VolumeRow: View {
         return parts
     }
 
+    var environmentName: String? = nil
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "externaldrive.fill")
@@ -637,6 +637,7 @@ struct VolumeRow: View {
                             .lineLimit(nil)
                     }
                 }
+                FleetEnvironmentLabel(name: environmentName)
             }
         }
 
@@ -653,6 +654,7 @@ struct VolumeRow: View {
             parts.append("unused")
         }
         if !subtitleParts.isEmpty { parts.append(subtitleParts.joined(separator: ", ")) }
+        if let environmentName { parts.append(environmentName) }
         return parts.joined(separator: ", ")
     }
 }

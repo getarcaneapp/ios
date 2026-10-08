@@ -4,7 +4,6 @@ import Arcane
 struct ContentView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
-    @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
     @State private var showActivityCenter = false
     @State private var quickActionRouter = QuickActionRouter.shared
 
@@ -19,12 +18,8 @@ struct ContentView: View {
             case .login:
                 LoginView(mode: .login)
             case .authenticated:
-                if isLaunchSplashPresented {
-                    authenticatedContent
-                } else {
-                    authenticatedContent
-                        .arcaneWhatsNewSheet()
-                }
+                authenticatedContent
+                    .arcaneWhatsNewSheet()
             }
         }
         .task {

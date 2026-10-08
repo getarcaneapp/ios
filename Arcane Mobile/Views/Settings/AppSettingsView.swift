@@ -7,7 +7,6 @@ struct AppSettingsView: View {
     @AppStorage("arcane.rememberLastTab") private var rememberLastTab = true
     @AppStorage("arcane.activityToastScope")
     private var activityToastScopeRawValue = ActivityToastScope.userInitiated.rawValue
-    @AppStorage(ComposePreviewSession.preferenceKey) private var nativeComposeEditor = false
     @State private var pendingDestructive: PendingDestructive?
     @State private var cacheSizeBytes: Int = 0
     @State private var presentedWhatsNew: WhatsNewKit.WhatsNew?
@@ -35,7 +34,6 @@ struct AppSettingsView: View {
     var body: some View {
         List {
             generalSection
-            previewSection
             notificationsSection
             connectionsSection
             supportSection
@@ -84,16 +82,6 @@ struct AppSettingsView: View {
             Toggle(isOn: $rememberLastTab) {
                 SettingsRow(title: "Remember Last Tab", systemImage: "arrow.uturn.backward.square", color: .indigo)
             }
-        }
-    }
-
-    private var previewSection: some View {
-        Section {
-            Toggle("Native Compose Editor", isOn: $nativeComposeEditor)
-        } header: {
-            Text("Preview")
-        } footer: {
-            Text("Edit Compose files with native forms. YAML editing remains available.")
         }
     }
 

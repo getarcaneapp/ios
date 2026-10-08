@@ -34,16 +34,19 @@ struct ReleaseNote: Identifiable, Hashable {
 
     enum Badge: Hashable {
         case premium
+        case preview
 
         var label: String {
             switch self {
             case .premium: return "Premium"
+            case .preview: return "Preview"
             }
         }
 
         var color: Color {
             switch self {
             case .premium: return .purple
+            case .preview: return .blue
             }
         }
     }
@@ -144,15 +147,15 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.10.0",
             new: [
-                .init("Native Compose editor Preview for projects and templates.")
+                .init("View and manage resources across all environments in one place.", badge: .preview),
+                .init("Native Compose editor for projects and templates in Preview Features.", badge: .preview)
+            ],
+            changed: [
+                .init("Preview badges identify experimental features in release notes.")
             ],
             fixed: [
-                .init("Readable text in Compose configuration, mount and metadata lists."),
-                .init("Service creation and project options share one Add configuration list."),
-                .init("Configure Compose settings before adding them in a sheet."),
-                .init("Guided Compose inputs with select lists, toggles and structured fields."),
-                .init("Plain native Compose fields with compact entries and swipe-to-delete."),
-                .init("Expanded fixed-choice selectors in Compose forms.")
+                .init("Saved resource tabs stay visible through launch and refresh."),
+                .init("Dashboard toolbar buttons remain directly accessible.")
             ]
         ),
         ReleaseNote(

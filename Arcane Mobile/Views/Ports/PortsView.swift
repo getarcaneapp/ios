@@ -204,8 +204,10 @@ struct PortsView: View {
     }
 }
 
-private struct PortMappingRow: View {
+struct PortMappingRow: View {
     let port: PortMapping
+
+    var environmentName: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -237,6 +239,7 @@ private struct PortMappingRow: View {
                 Text(port.protocolName.uppercased())
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(protocolTint)
+                FleetEnvironmentLabel(name: environmentName)
             }
 
             Spacer(minLength: 8)
@@ -269,7 +272,7 @@ private struct PortMappingRow: View {
     }
 }
 
-private struct PortMappingDetailView: View {
+struct PortMappingDetailView: View {
     let port: PortMapping
 
     var body: some View {

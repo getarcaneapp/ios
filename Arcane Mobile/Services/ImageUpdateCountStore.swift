@@ -22,6 +22,11 @@ final class ImageUpdateCountStore {
 
     init() {}
 
+    func count(environmentID: String, client: ArcaneClient?, userID: String?) -> Int? {
+        guard scope == Self.scope(client: client, userID: userID) else { return nil }
+        return counts[environmentID]
+    }
+
     func total(
         client: ArcaneClient?,
         userID: String?,

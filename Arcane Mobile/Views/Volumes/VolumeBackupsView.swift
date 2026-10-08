@@ -225,7 +225,7 @@ struct VolumeBackupsView: View {
             if manager.serverCapabilities?.supportsRoleManagement == true {
                 let id = try await client.uploads.uploadFile(envID: environmentID, kind: .volumeBackup, fileURL: url)
                 try scope.check(manager)
-                guard manager.clientGeneration == generation, manager.activeEnvironmentID == environmentID else { throw CancellationError() }
+                guard manager.clientGeneration == generation, manager.acceptsEnvironmentContext(environmentID) else { throw CancellationError() }
                 _ = try await client.volumes.uploadAndRestoreBackup(envID: environmentID, name: volumeName, uploadID: id)
             } else {
                 _ = try await client.volumes.uploadAndRestoreBackup(envID: environmentID, name: volumeName, fileURL: url)

@@ -37,9 +37,7 @@ struct ProjectsView: View {
 
     @State private var selectedProjectID: String?
 
-    private enum ProjectStatusFilter: String, CaseIterable {
-        case all = "All", running = "Running", stopped = "Stopped", partial = "Partial"
-    }
+
 
     private var activeFilterCount: Int {
         var count = statusFilter != .all ? 1 : 0
@@ -518,6 +516,8 @@ struct ProjectRow: View {
         }
     }
 
+    var environmentName: String? = nil
+
     var body: some View {
         HStack(spacing: 12) {
             CachedAsyncImage(url: project.themedIconUrl(for: colorScheme), size: 36) {
@@ -540,6 +540,7 @@ struct ProjectRow: View {
                             .accessibilityHidden(true)
                     }
                 }
+                FleetEnvironmentLabel(name: environmentName)
             }
 
             Spacer()
@@ -557,6 +558,7 @@ struct ProjectRow: View {
         if isPinned { parts.append("pinned") }
         parts.append(project.status)
         parts.append("\(count) service\(count == 1 ? "" : "s")")
+        if let environmentName { parts.append(environmentName) }
         return parts.joined(separator: ", ")
     }
 }
@@ -579,14 +581,14 @@ private extension ProjectsView {
                   routerGeneration == router.routeGeneration,
                   session == manager.cacheSessionIdentity,
                   client.transport === manager.client?.transport,
-                  manager.activeEnvironmentID == environmentID else { return }
+                  manager.acceptsEnvironmentContext(environmentID) else { return }
             routedProject = project
         } catch {
             guard generation == routeGeneration,
                   routerGeneration == router.routeGeneration,
                   session == manager.cacheSessionIdentity,
                   client.transport === manager.client?.transport,
-                  manager.activeEnvironmentID == environmentID else { return }
+                  manager.acceptsEnvironmentContext(environmentID) else { return }
             showToast(.error(friendlyErrorMessage(error)))
         }
     }

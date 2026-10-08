@@ -42,9 +42,7 @@ struct ContainersView: View {
     @State private var isLoadingMore = false
     @State private var loadMoreError: String?
 
-    private enum ContainerStateFilter: String, CaseIterable {
-        case all = "All", running = "Running", stopped = "Stopped"
-    }
+
 
     /// Prune and per-container remove share one `.deleteConfirmation` cover
     /// (one full-screen cover per view).
@@ -930,6 +928,8 @@ struct ContainerRow: View {
         return status.trimmingCharacters(in: .whitespaces)
     }
 
+    var environmentName: String? = nil
+
     var body: some View {
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
@@ -982,6 +982,7 @@ struct ContainerRow: View {
                     }
                 }
                 UpdateStateBadge(state: ImageUpdateState(info: container.updateInfo))
+                FleetEnvironmentLabel(name: environmentName)
             }
 
             Spacer()
@@ -1000,6 +1001,7 @@ struct ContainerRow: View {
         parts.append(container.image)
         parts.append(container.status)
         parts.append(ImageUpdateState(info: container.updateInfo).accessibilityDescription)
+        if let environmentName { parts.append(environmentName) }
         return parts.joined(separator: ", ")
     }
 }
@@ -1027,7 +1029,7 @@ private extension ContainersView {
                   routerGeneration == router.routeGeneration,
                   session == manager.cacheSessionIdentity,
                   client.transport === manager.client?.transport,
-                  manager.activeEnvironmentID == environmentID else { return }
+                  manager.acceptsEnvironmentContext(environmentID) else { return }
             routedDetails = details
             routedContainer = details.navigationSummary
         } catch {
@@ -1035,7 +1037,7 @@ private extension ContainersView {
                   routerGeneration == router.routeGeneration,
                   session == manager.cacheSessionIdentity,
                   client.transport === manager.client?.transport,
-                  manager.activeEnvironmentID == environmentID else { return }
+                  manager.acceptsEnvironmentContext(environmentID) else { return }
             showToast(.error(friendlyErrorMessage(error)))
         }
     }

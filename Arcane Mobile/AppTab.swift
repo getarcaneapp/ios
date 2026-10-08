@@ -263,6 +263,9 @@ func appTabDestination(
     manager: ArcaneClientManager,
     selectedTab: Binding<String>
 ) -> some View {
+    if manager.allEnvironmentsPreview, let kind = FleetResourceKind(tab: tab) {
+        AllEnvironmentsResourcesView(kind: kind)
+    } else {
     switch tab {
     case .dashboard: DashboardView(selectedTab: selectedTab)
     case .updates: UpdatesView()
@@ -307,4 +310,5 @@ func appTabDestination(
     case .federatedCredentials: FederatedCredentialsView()
     case .oidcRoleMappings: OIDCRoleMappingsView()
     }
+}
 }

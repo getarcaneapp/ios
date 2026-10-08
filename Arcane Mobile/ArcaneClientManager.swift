@@ -124,11 +124,20 @@ final class ArcaneClientManager {
     var demoExpiredMessage: String?
     private var demoExpiryTask: Task<Void, Never>?
 
+    var allEnvironmentsPreview = UserDefaults.standard.bool(forKey: "arcane.allEnvironmentsPreview") {
+        didSet { UserDefaults.standard.set(allEnvironmentsPreview, forKey: "arcane.allEnvironmentsPreview") }
+    }
+
+    func acceptsEnvironmentContext(_ id: EnvironmentID) -> Bool {
+        allEnvironmentsPreview || activeEnvironmentID == id
+    }
+
     // MARK: - Active environment
     var activeEnvironmentID: EnvironmentID = .localDocker
     var activeEnvironmentName: String = "Local Docker"
 
     func setActiveEnvironment(id: EnvironmentID, name: String) {
+        guard !allEnvironmentsPreview else { return }
         let previous = activeEnvironmentID
         activeEnvironmentID = id
         activeEnvironmentName = name
@@ -326,13 +335,16 @@ final class ArcaneClientManager {
            let permissionsManifest,
            !permissionsManifest.accessSurfaces.isEmpty,
            !tab.accessSurfaceIDs.isEmpty {
-            return tab.accessSurfaceIDs.contains { surfaceID in
+            let scopes = allEnvironmentsPreview && tab.isEnvironmentScoped
+                ? Array(Set([activeEnvironmentID.rawValue] + Array(user.permissionsByEnv?.keys ?? Dictionary<String, [String]>().keys)))
+                : [activeEnvironmentID.rawValue]
+            return scopes.contains { scope in tab.accessSurfaceIDs.contains { surfaceID in
                 permissionsManifest.canAccessSurface(
                     id: surfaceID,
                     user: user,
-                    selectedEnvironmentID: activeEnvironmentID.rawValue
+                    selectedEnvironmentID: scope
                 )
-            }
+            } }
         }
 
         return user.isAdmin || !tab.requiresAdmin

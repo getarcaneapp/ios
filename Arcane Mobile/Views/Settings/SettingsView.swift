@@ -105,6 +105,12 @@ struct SettingsView: View {
         .onChange(of: availableTabs) { _, available in
             if !navPath.allSatisfy(available.contains) { navPath.removeAll() }
         }
+        .onChange(of: manager.allEnvironmentsPreview) { _, _ in
+            if navPath.contains(where: \.isEnvironmentScoped) { navPath.removeAll() }
+        }
+        .onChange(of: manager.clientGeneration) { _, _ in
+            if navPath.contains(where: \.isEnvironmentScoped) { navPath.removeAll() }
+        }
         .onChange(of: manager.activeEnvironmentID) { oldValue, newValue in
             if oldValue != newValue,
                navigationEnvironmentID != newValue.rawValue,
@@ -132,6 +138,12 @@ struct SettingsView: View {
                     systemImage: "gearshape.fill",
                     color: .gray
                 )
+            }
+
+            NavigationLink {
+                PreviewFeaturesView()
+            } label: {
+                SettingsRow(title: "Preview Features", systemImage: "flask.fill", color: .purple)
             }
 
             NavigationLink {

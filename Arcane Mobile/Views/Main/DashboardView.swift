@@ -65,6 +65,7 @@ private struct DashboardLiveCounts: Sendable, Equatable {
 private struct DashboardFleetCountResult: Sendable {
     let total: Int?
     let unavailableEnvironmentIDs: [String]
+    var counts: [String: Int] = [:]
 }
 
 private struct DashboardCountIssue: Identifiable {
@@ -117,6 +118,8 @@ struct DashboardView: View {
     @State private var environments: [Arcane.Environment] = []
     @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
+    @State private var volumeCounts: [String: Int] = [:]
+    @State private var overviewExpanded = false
     @State private var supplementalImageUpdatesTotal: Int?
     @State private var liveCounts: DashboardLiveCounts?
     @State private var environmentLiveStates: [String: DashboardEnvironmentLiveState] = [:]
@@ -181,7 +184,9 @@ struct DashboardView: View {
     }
 
     private var canPrune: Bool {
-        manager.permissions.has(Permission.System.prune, in: envID)
+        manager.allEnvironmentsPreview
+            ? allEnvironments.filter(\.enabled).contains { manager.permissions.has(Permission.System.prune, in: EnvironmentID(rawValue: $0.id)) }
+            : manager.permissions.has(Permission.System.prune, in: envID)
     }
 
     private var imageUpdatesTotal: Int? {
@@ -257,11 +262,13 @@ struct DashboardView: View {
                             onOpenCenter: { performAttentionAction({ showAttentionCenter = true }, presentsSheet: true) }
                         )
                     }
-                    if #available(iOS 26, *) {
-                        ToolbarSpacer(.fixed, placement: .topBarLeading)
-                    }
-                    AppToolbarItem(placement: .topBarLeading) {
-                        EnvironmentSwitcherToolbarButton()
+                    if !manager.allEnvironmentsPreview {
+                        if #available(iOS 26, *) {
+                            ToolbarSpacer(.fixed, placement: .topBarLeading)
+                        }
+                        AppToolbarItem(placement: .topBarLeading) {
+                            EnvironmentSwitcherToolbarButton()
+                        }
                     }
                 }
 
@@ -310,16 +317,17 @@ struct DashboardView: View {
                 .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showPruneSheet) {
-                SystemPruneView(environmentID: envID)
+                SystemPruneView(environmentID: envID, environments: manager.allEnvironmentsPreview ? allEnvironments.filter(\.enabled) : nil)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showVolumes) {
                 NavigationStack {
-                    VolumesView(
-                        environmentID: envID,
-                        environmentName: manager.activeEnvironmentName
-                    )
+                    if manager.allEnvironmentsPreview {
+                        AllEnvironmentsResourcesView(kind: .volumes)
+                    } else {
+                        VolumesView(environmentID: envID, environmentName: manager.activeEnvironmentName)
+                    }
                 }
                 .presentationDragIndicator(.visible)
             }
@@ -347,7 +355,11 @@ struct DashboardView: View {
                 ProjectDetailView(project: project, environmentID: manager.activeEnvironmentID)
             }
             .navigationDestination(item: $vulnerabilityRoute) { route in
-                AllVulnerabilitiesView(environmentID: EnvironmentID(rawValue: route.id))
+                if manager.allEnvironmentsPreview {
+                    AllEnvironmentsResourcesView(kind: .vulnerabilities)
+                } else {
+                    AllVulnerabilitiesView(environmentID: EnvironmentID(rawValue: route.id))
+                }
             }
             .navigationDestination(isPresented: $showAPIKeys) {
                 APIKeysView()
@@ -542,7 +554,7 @@ struct DashboardView: View {
                         actionItems: fleet.actionItemsByEnvironmentID[env.id],
                         streamState: streamStore.state(for: env.id),
                         series: statsHistory.series(for: env.id),
-                        isActive: env.id == manager.activeEnvironmentID.rawValue,
+                        isActive: !manager.allEnvironmentsPreview && env.id == manager.activeEnvironmentID.rawValue,
                         onOpen: {
                             detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
                         },
@@ -737,7 +749,7 @@ struct DashboardView: View {
         if vulnerabilities > 0, let target = vulnerabilityEnv {
             items.append(NeedsAttentionItem(
                 id: "vulnerabilities",
-                detail: "Open the vulnerability report for the most affected environment.",
+                detail: manager.allEnvironmentsPreview ? "Open vulnerability reports across all enabled environments." : "Open the vulnerability report for the most affected environment.",
                 severity: criticalVulns ? .critical : .warning,
                 icon: "exclamationmark.shield.fill",
                 title: "Actionable vulnerabilities",
@@ -872,6 +884,7 @@ struct DashboardView: View {
         let images = liveCounts?.images
 
         return VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 8) {
                 DashboardStatTile(
                     title: "Updates",
@@ -904,8 +917,23 @@ struct DashboardView: View {
                 ) { showVolumes = true }
                 .cardEntrance(id: "dashboard.tile.volumes", index: 3)
             }
+            if manager.allEnvironmentsPreview {
+                DisclosureGroup(overviewExpanded ? "" : "By Environment", isExpanded: $overviewExpanded) {
+                    let environments = allEnvironments.filter(\.enabled)
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(environments.enumerated()), id: \.element.id) { index, environment in
+                            if index > 0 { Divider() }
+                            environmentCountBreakdown(environment)
+                        }
+                    }
+                }
+                .font(.subheadline)
+                .accessibilityLabel("Environment breakdown")
+            }
+            }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
+            .motionAwareAnimation(Motion.reflow, value: overviewExpanded)
             .glassCardBackground()
             .scrollEdgeFade()
 
@@ -914,15 +942,54 @@ struct DashboardView: View {
         }
     }
 
+    private func environmentCountBreakdown(_ environment: Arcane.Environment) -> some View {
+        let info = fleet.dockerInfoByEnvironmentID[environment.id]
+        let updates = imageUpdateCountStore.count(environmentID: environment.id, client: manager.client, userID: manager.currentUser?.id)
+        let color = EnvironmentColorStore.shared.hex(server: manager.serverURL, environmentID: environment.id).flatMap(Color.init(hex:)) ?? .secondary
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "server.rack")
+                Text(environment.displayName).fontWeight(.medium)
+                Spacer(minLength: 8)
+            }.foregroundStyle(color)
+            HStack(alignment: .top, spacing: 8) {
+                countBreakdownLabels(info: info, updates: updates, volumes: volumeCounts[environment.id])
+            }
+            .font(.subheadline)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func countBreakdownLabels(info: DockerInfo?, updates: Int?, volumes: Int?) -> some View {
+        Text(updates.map(String.init) ?? "—")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Updates: " + (updates.map(String.init) ?? "Unavailable"))
+        Text(info.map { "\($0.containersRunning) / \($0.containers)" } ?? "—")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Containers: " + (info.map { "\($0.containersRunning) running of \($0.containers)" } ?? "Unavailable"))
+        Text(info.map { String($0.images) } ?? "—")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Images: " + (info.map { String($0.images) } ?? "Unavailable"))
+        Text(volumes.map(String.init) ?? "—")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Volumes: " + (volumes.map(String.init) ?? "Unavailable"))
+    }
+
     /// Footnote under the overview panel (never inside it).
     @ViewBuilder
     private var fleetCountAvailabilityNote: some View {
         let issues = countAvailabilityIssues
         if issues.isEmpty {
-            Label("Counts include all enabled environments.", systemImage: "server.rack")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
+            if !manager.allEnvironmentsPreview {
+                Label("Counts include all enabled environments.", systemImage: "server.rack")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            }
         } else {
             Button {
                 countAvailabilityPresentation = DashboardCountAvailability(issues: issues)
@@ -1026,6 +1093,7 @@ struct DashboardView: View {
         // still begin without a value.
         if !refresh {
             volumesTotal = nil
+            volumeCounts = [:]
             supplementalImageUpdatesTotal = nil
             liveCounts = nil
             environmentLiveStates = [:]
@@ -1073,6 +1141,7 @@ struct DashboardView: View {
             if let total = volumes.total {
                 volumesTotal = total
             }
+            volumeCounts = volumes.counts
             volumeCountUnavailableEnvironmentIDs = volumes.unavailableEnvironmentIDs
             if let total = updates.total {
                 supplementalImageUpdatesTotal = total
@@ -1259,7 +1328,8 @@ struct DashboardView: View {
             let total = unavailableIDs.isEmpty ? Int(counts.values.reduce(0, +)) : nil
             return DashboardFleetCountResult(
                 total: total,
-                unavailableEnvironmentIDs: unavailableIDs
+                unavailableEnvironmentIDs: unavailableIDs,
+                counts: counts.mapValues(Int.init)
             )
         }
     }
@@ -1742,6 +1812,8 @@ struct SystemPruneView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
     let environmentID: EnvironmentID
+    var environments: [Arcane.Environment]? = nil
+    @State private var fleetOperation = FleetOperationStore()
 
     @State private var containerMode: PruneContainerMode = .none
     @State private var containerAge = "24h"
@@ -1770,6 +1842,23 @@ struct SystemPruneView: View {
     var body: some View {
         NavigationStack {
             Form {
+                if let environments {
+                    Section("All Enabled Environments") {
+                        ForEach(environments.filter(\.enabled)) { environment in
+                            VStack(alignment: .leading) {
+                                Text(environment.displayName)
+                                if !manager.permissions.has(Permission.System.prune, in: EnvironmentID(rawValue: environment.id)) {
+                                    Text("No prune permission").font(.caption).foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                        Text("The selected cleanup runs on every environment listed above. Removed data cannot be recovered.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                if !fleetOperation.results.isEmpty {
+                    Section("Results") { FleetOperationResults(store: fleetOperation) }
+                }
                 Section("Containers") {
                     FormPicker(title: "Containers", selection: $containerMode) {
                         Text("None").tag(PruneContainerMode.none)
@@ -1816,11 +1905,13 @@ struct SystemPruneView: View {
                     if buildCacheMode == .olderThan { ageRow($buildCacheAge) }
                 }
             }
-            .navigationTitle("System Prune")
+            .disabled(isPruning)
+            .navigationTitle(environments == nil ? "System Prune" : "Prune All Environments")
+            .interactiveDismissDisabled(isPruning)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 AppToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(fleetOperation.results.isEmpty ? "Cancel" : "Done") { dismiss() }.disabled(isPruning)
                 }
                 AppToolbarItem(placement: .confirmationAction) {
                     if isPruning {
@@ -1830,11 +1921,11 @@ struct SystemPruneView: View {
                             Task { await runPrune() }
                         } label: {
                             Label(
-                                selectedCount > 0 ? "Prune (\(selectedCount))" : "Prune",
+                                environments != nil ? "Prune All" : (selectedCount > 0 ? "Prune (\(selectedCount))" : "Prune"),
                                 systemImage: "trash"
                             )
                         }
-                        .disabled(selectedCount == 0)
+                        .disabled(selectedCount == 0 || !fleetOperation.results.isEmpty || environments?.isEmpty == true)
                     }
                 }
             }
@@ -1852,7 +1943,7 @@ struct SystemPruneView: View {
     /// effort: on failure (older server, missing permission) the pickers just
     /// stay at "None".
     private func loadServerDefaults() async {
-        guard !hasLoadedServerDefaults, let client = manager.client else { return }
+        guard environments == nil, !hasLoadedServerDefaults, let client = manager.client else { return }
         hasLoadedServerDefaults = true
         let path = client.rest.environmentPath(environmentID, "settings")
         guard let raw = try? await client.transport.rawRequest(path, body: Optional<String>.none),
@@ -1921,6 +2012,25 @@ struct SystemPruneView: View {
                 until: buildCacheMode == .olderThan ? buildCacheAge : nil
             ) : nil
         )
+
+        if let environments {
+            let session = manager.clientGeneration
+            await fleetOperation.run(environments: environments, isCurrent: { session == manager.clientGeneration }) { id in
+                guard manager.permissions.has(Permission.System.prune, in: id) else {
+                    throw ArcaneError.transport("Not run: no prune permission")
+                }
+                let result = try await client.system.prune(request, envID: id)
+                guard session == manager.clientGeneration else { return "Completed on previous connection" }
+                await ResponseCache.shared.invalidateEnvironment(id.rawValue)
+                let mutations = ResourceMutationStore.shared
+                if containerMode != .none { mutations.markChanged(kind: .containers, envID: id) }
+                if imageMode != .none { mutations.markChanged(kind: .images, envID: id) }
+                if volumeMode != .none { mutations.markChanged(kind: .volumes, envID: id) }
+                if networkMode != .none { mutations.markChanged(kind: .networks, envID: id) }
+                return formatPruneResult(result)
+            }
+            return
+        }
 
         do {
             let result = try await client.system.prune(request, envID: environmentID)

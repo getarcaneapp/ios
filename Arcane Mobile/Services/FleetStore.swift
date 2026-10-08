@@ -119,7 +119,7 @@ final class FleetStore {
                     guard let self, generation == self.loadGeneration, session == manager.cacheSessionIdentity else { return }
                     self.apply(
                         environments: fresh,
-                        activeEnvironmentID: activeEnvironmentID
+                        activeEnvironmentID: activeEnvironmentID, server: manager.serverURL
                     )
                 },
                 fetchPage: { start, limit in
@@ -133,7 +133,7 @@ final class FleetStore {
             if let loaded {
                 apply(
                     environments: loaded,
-                    activeEnvironmentID: activeEnvironmentID
+                    activeEnvironmentID: activeEnvironmentID, server: manager.serverURL
                 )
             }
             hasLoaded = true
@@ -194,7 +194,8 @@ final class FleetStore {
         statsHistory.reconcile(environments: statsOrdered(activeEnvironmentID: activeEnvironmentID))
     }
 
-    private func apply(environments: [Arcane.Environment], activeEnvironmentID: String) {
+    private func apply(environments: [Arcane.Environment], activeEnvironmentID: String, server: String) {
+        EnvironmentColorStore.shared.assignDefaults(server: server, environmentIDs: environments.map(\.id))
         self.environments = environments
         environmentCatalogRevision &+= 1
         dashboardStream.reconcile(environments: environments)

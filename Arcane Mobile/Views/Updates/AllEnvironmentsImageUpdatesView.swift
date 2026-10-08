@@ -26,6 +26,8 @@ struct AllEnvironmentsImageUpdatesView: View {
     /// `envID::resourceID` (image, container, or project) with an update in flight.
     @State private var updatingKeys: Set<String> = []
     @State private var rescanningEnvID: String?
+    @State private var showFleetUpdater = false
+    @State private var showFleetCheck = false
     @State private var updaterRunTarget: UpdaterRunTarget?
     /// The image whose detail sheet is open.
     @State private var detailTarget: ImageDetailTarget?
@@ -86,6 +88,24 @@ struct AllEnvironmentsImageUpdatesView: View {
         }
         .navigationTitle("Updates")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if manager.allEnvironmentsPreview && dismissOnOperationStart {
+                AppToolbarItem(placement: .topBarLeading) {
+                    Button("Check All", systemImage: "arrow.clockwise") { showFleetCheck = true }
+                        .disabled(isLoading || buckets.isEmpty)
+                }
+                AppToolbarItem(placement: .primaryAction) {
+                    Button("Update All", systemImage: "arrow.triangle.2.circlepath") { showFleetUpdater = true }
+                        .disabled(isLoading || buckets.isEmpty)
+                }
+            }
+        }
+        .sheet(isPresented: $showFleetCheck) {
+            NavigationStack { FleetUpdaterRunView(environments: buckets.map(\.env), action: .checkImages) }
+        }
+        .sheet(isPresented: $showFleetUpdater) {
+            NavigationStack { FleetUpdaterRunView(environments: buckets.map(\.env)) }
+        }
         .sheet(item: $updaterRunTarget) { target in
             UpdaterRunSheet(
                 environments: [],

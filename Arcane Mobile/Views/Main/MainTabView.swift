@@ -124,13 +124,13 @@ struct MainTabView: View {
     private func tabRoot(for tab: AppTab) -> some View {
         let usesEnvironment = tab == .dashboard || tab.isEnvironmentScoped
         TabNavigationContainer(
-            showsEnvironmentContext: usesEnvironment,
+            showsEnvironmentContext: tab.isEnvironmentScoped,
             resetsForEnvironmentChanges: usesEnvironment
         ) {
             appTabDestination(tab, manager: manager, selectedTab: $selectedTab)
         }
         .id(usesEnvironment
-            ? "\(tab.id)-\(manager.activeEnvironmentID.rawValue)"
+            ? "\(tab.id)-\(manager.activeEnvironmentID.rawValue)-\(manager.allEnvironmentsPreview)-\(manager.clientGeneration)"
             : tab.id)
     }
 

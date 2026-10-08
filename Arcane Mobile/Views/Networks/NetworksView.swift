@@ -31,9 +31,7 @@ struct NetworksView: View {
     @State private var userNetworks: [NetworkSummary] = []
 
 
-    private enum NetworkTypeFilter: String, CaseIterable {
-        case all = "All", standard = "Standard", internalOnly = "Internal"
-    }
+
 
     /// Both destructive confirmations on this screen route through a single
     /// `.deleteConfirmation` cover (one full-screen cover per view).
@@ -428,6 +426,8 @@ struct NetworksView: View {
 struct NetworkRow: View {
     let network: NetworkSummary
 
+    var environmentName: String? = nil
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "network")
@@ -456,6 +456,7 @@ struct NetworkRow: View {
                         .foregroundStyle(.teal)
                     }
                 }
+                FleetEnvironmentLabel(name: environmentName)
             }
 
             Spacer(minLength: 0)

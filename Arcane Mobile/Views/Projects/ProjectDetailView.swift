@@ -1047,7 +1047,7 @@ struct CreateProjectView: View {
         name != (prefilledName ?? "") || composeContent != (prefilledCompose ?? Self.defaultCompose) || envContent != (prefilledEnv ?? "")
     }
     private var sessionIsCurrent: Bool {
-        sessionIdentity == manager.cacheSessionIdentity && environmentID == manager.activeEnvironmentID
+        sessionIdentity == manager.cacheSessionIdentity && manager.acceptsEnvironmentContext(environmentID)
     }
 
     private static let defaultCompose = "services:\n  app:\n    image: \n    ports:\n      - \"8080:80\"\n"

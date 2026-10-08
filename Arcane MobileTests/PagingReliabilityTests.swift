@@ -332,3 +332,183 @@ private final class PagingReliabilityURLProtocol: URLProtocol, @unchecked Sendab
     }
     override func stopLoading() {}
 }
+
+@MainActor @Suite("All environments preview loading")
+struct FleetResourcesLoadingTests {
+    @Test func preservesDuplicateIDsAcrossEnvironmentsAndCollectsEveryPage() async throws {
+        let requests = PagingRequestRecorder()
+        let server = PagingTestServer { request in
+            let environment = request.url!.path.split(separator: "/")[2].description
+            let start = pagingStart(request)
+            _ = requests.record(environment, start: start)
+            let items = (start..<min(start + 2, 3)).map {
+                DynamicResource(id: "shared-\($0)", values: ["name": .string("Sync \($0)")])
+            }
+            return (200, try pagingEnvelope(items, stride: 2, total: 3))
+        }
+        defer { server.close() }
+        let store = FleetResourcesStore()
+        let environments = ["one", "two"].map { Arcane.Environment(id: $0, name: $0, apiUrl: "", status: "online") }
+        await store.load(kind: .gitOps, environments: environments, client: server.client(), acceptsResult: { true })
+        #expect(store.buckets.count == 2)
+        #expect(store.buckets.allSatisfy { $0.resources.count == 3 && $0.error == nil && !$0.isLoading })
+        #expect(requests.starts(for: "one") == [0, 2])
+        #expect(requests.starts(for: "two") == [0, 2])
+        #expect(store.buckets[0].resources.map(\.id) == store.buckets[1].resources.map(\.id))
+        #expect(store.buckets[0].environmentID != store.buckets[1].environmentID)
+    }
+
+    @Test(arguments: [403, 500, 504])
+    func oneFailureDoesNotHideOtherEnvironmentsAndDisabledEnvironmentsAreSkipped(status: Int) async throws {
+        let requests = PagingRequestRecorder()
+        let server = PagingTestServer { request in
+            let environment = request.url!.path.split(separator: "/")[2].description
+            _ = requests.record(environment, start: pagingStart(request))
+            if environment == "env1" { return (status, Data(#"{"error":"Environment unavailable"}"#.utf8)) }
+            return (200, try pagingEnvelope([DynamicResource(id: "same", values: [:])], stride: 50, total: 1))
+        }
+        defer { server.close() }
+        var environments = (0..<7).map { Arcane.Environment(id: "env\($0)", name: "Environment \($0)", apiUrl: "", status: "online") }
+        environments[6].enabled = false
+        let store = FleetResourcesStore()
+        await store.load(kind: .gitOps, environments: environments, client: server.client(), acceptsResult: { true })
+        #expect(store.buckets.count == 6)
+        #expect(store.buckets.filter { $0.error != nil }.map(\.id) == ["env1"])
+        #expect(store.buckets.filter { $0.error == nil }.allSatisfy { $0.resources.count == 1 })
+        #expect(!requests.environmentIDs.contains("env6"))
+        #expect(requests.environmentIDs.contains("env5"))
+    }
+
+    @Test func refreshKeepsVisibleResourcesUntilReplacementArrives() async throws {
+        let server = PagingTestServer { _ in
+            (200, try pagingEnvelope([DynamicResource(id: "visible", values: ["id": .string("visible")])], stride: 50, total: 1))
+        }
+        defer { server.close() }
+        let client = server.client()
+        let store = FleetResourcesStore()
+        let environments = [Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online")]
+        await store.load(kind: .gitOps, environments: environments, client: client, acceptsResult: { true })
+        var checkedRefresh = false
+        await store.load(kind: .gitOps, environments: environments, client: client) {
+            #expect(store.isLoading)
+            #expect(store.buckets.first?.resources.map(\.id) == ["visible"])
+            checkedRefresh = true
+            return true
+        }
+        #expect(checkedRefresh)
+        #expect(store.buckets.first?.resources.map(\.id) == ["visible"])
+        // A different client must never inherit the prior account's visible rows.
+        await store.load(kind: .gitOps, environments: environments, client: server.client()) {
+            #expect(store.buckets.allSatisfy { $0.resources.isEmpty })
+            return true
+        }
+    }
+
+    @Test func staleSessionResultsAreRejected() async throws {
+        let server = PagingTestServer { _ in
+            (200, try pagingEnvelope([DynamicResource(id: "old-account", values: [:])], stride: 50, total: 1))
+        }
+        defer { server.close() }
+        let store = FleetResourcesStore()
+        await store.load(kind: .gitOps, environments: [.init(id: "one", name: "One", apiUrl: "", status: "online")], client: server.client(), acceptsResult: { false })
+        #expect(store.buckets.allSatisfy { $0.resources.isEmpty })
+        #expect(!store.isLoading)
+    }
+}
+
+@MainActor @Suite("Environment colors")
+struct EnvironmentColorTests {
+    @Test func defaultsAreUniquePersistentAndCustomDuplicatesAreRejected() throws {
+        let suite = "environment-colors-test-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = EnvironmentColorStore(defaults: defaults)
+        let ids = (0..<30).map(String.init)
+        store.assignDefaults(server: "https://one.example", environmentIDs: ids)
+        let colors = ids.compactMap { store.hex(server: "https://one.example", environmentID: $0) }
+        #expect(colors.count == ids.count)
+        #expect(Set(colors).count == ids.count)
+        #expect(!store.set(colors[0].lowercased(), server: "https://one.example", environmentID: ids[1]))
+        #expect(store.set(colors[0], server: "https://two.example", environmentID: ids[1]))
+        store.set(nil, server: "https://one.example", environmentID: ids[1])
+        #expect(Set(ids.compactMap { store.hex(server: "https://one.example", environmentID: $0) }).count == ids.count)
+        let restored = EnvironmentColorStore(defaults: defaults)
+        restored.assignDefaults(server: "https://one.example", environmentIDs: ids.reversed())
+        #expect(ids.map { restored.hex(server: "https://one.example", environmentID: $0) } == ids.map { store.hex(server: "https://one.example", environmentID: $0) })
+    }
+}
+
+@MainActor @Suite("Combined resource filters")
+struct FleetResourceFilterTests {
+    @Test func environmentAndContainerFiltersCompose() {
+        let running = ContainerSummary(id: "same", names: ["web"], image: "nginx", imageId: "image", labels: ["app": "web"], state: "running", status: "Up")
+        let one = FleetResourceListItem(resource: .container(running), bucket: .init(id: "one", name: "One"))
+        let two = FleetResourceListItem(resource: .container(running), bucket: .init(id: "two", name: "Two"))
+        var filters = FleetResourceFilters()
+        filters.environmentID = "one"
+        filters.state = .running
+        filters.label = "app=web"
+        #expect(filters.matches(one))
+        #expect(!filters.matches(two))
+        filters.state = .stopped
+        #expect(!filters.matches(one))
+        filters.state = .all
+        filters.label = "app=other"
+        #expect(!filters.matches(one))
+        filters.label = "app"
+        #expect(filters.matches(one))
+    }
+
+    @Test func hiddenContainersRequireExplicitOptInAndResetClearsFilters() {
+        var container = ContainerSummary(id: "hidden", image: "nginx", imageId: "image", state: "running", status: "Up")
+        container.hidden = true
+        let item = FleetResourceListItem(resource: .container(container), bucket: .init(id: "one", name: "One"))
+        var filters = FleetResourceFilters()
+        #expect(!filters.matches(item))
+        filters.showHidden = true
+        #expect(filters.matches(item))
+        #expect(filters.activeCount == 1)
+        filters = FleetResourceFilters()
+        #expect(filters.activeCount == 0)
+    }
+}
+
+@MainActor @Suite("Fleet operations")
+struct FleetOperationTests {
+    @Test func visitsEveryEnabledEnvironmentAndContinuesAfterFailure() async {
+        var disabled = Arcane.Environment(id: "disabled", name: "Disabled", apiUrl: "", status: "offline")
+        disabled.enabled = false
+        let environments = [Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online"), .init(id: "two", name: "Two", apiUrl: "", status: "online"), disabled]
+        let store = FleetOperationStore()
+        var visited: [String] = []
+        await store.run(environments: environments, isCurrent: { true }) { id in
+            visited.append(id.rawValue)
+            if id.rawValue == "one" { throw ArcaneError.transport("Offline") }
+            return "Done"
+        }
+        #expect(visited == ["one", "two"])
+        #expect(store.results.map(\.failed) == [true, false])
+        #expect(store.results.allSatisfy { $0.finished })
+        #expect(!store.isRunning)
+        await store.run(environments: environments, isCurrent: { true }) { id in
+            visited.append(id.rawValue)
+            return "Repeated"
+        }
+        #expect(visited == ["one", "two"])
+    }
+
+    @Test func connectionChangeStopsRemainingMutations() async {
+        let environments = [Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online"), .init(id: "two", name: "Two", apiUrl: "", status: "online")]
+        let store = FleetOperationStore()
+        var current = true
+        var visited: [String] = []
+        await store.run(environments: environments, isCurrent: { current }) { id in
+            visited.append(id.rawValue)
+            current = false
+            return "Done"
+        }
+        #expect(visited == ["one"])
+        #expect(store.results[1].failed)
+        #expect(store.results[1].status.hasPrefix("Not started"))
+    }
+}

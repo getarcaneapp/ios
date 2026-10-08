@@ -75,7 +75,7 @@ struct ProjectFilesWorkspaceView: View {
     }
 
     private var sessionIsCurrent: Bool {
-        sessionIdentity == manager.cacheSessionIdentity && environmentID == manager.activeEnvironmentID
+        sessionIdentity == manager.cacheSessionIdentity && manager.acceptsEnvironmentContext(environmentID)
     }
     private var canEdit: Bool {
         readOnlyReason == nil && sessionIsCurrent && manager.permissions.has(Permission.Projects.update, in: environmentID)

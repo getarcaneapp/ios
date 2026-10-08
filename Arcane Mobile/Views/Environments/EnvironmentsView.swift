@@ -15,6 +15,8 @@ struct EnvironmentFleetListRow: View {
     let onOpen: () -> Void
     let onRefresh: () async -> Void
 
+    @State private var colors = EnvironmentColorStore.shared
+    @State private var showColorSheet = false
     @State private var showUpgrade = false
     @State private var showPrune = false
     @State private var isSyncing = false
@@ -41,12 +43,22 @@ struct EnvironmentFleetListRow: View {
             .contentShape(.rect)
         }
         .cardRowLinkStyle()
-        .glassCardBackground(isHighlighted: isActive)
+        .glassCardBackground(isHighlighted: isActive && !manager.allEnvironmentsPreview)
+        .overlay {
+            if manager.allEnvironmentsPreview,
+               let hex = colors.hex(server: manager.serverURL, environmentID: environment.id),
+               let color = Color(hex: hex) {
+                RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+                    .strokeBorder(color, lineWidth: 1.5)
+                    .allowsHitTesting(false)
+            }
+        }
         // Round the context-menu preview to match the card; the default
         // square-cornered preview reads noticeably boxy against it.
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .contextMenu { actions }
         .accessibilityHint("Opens system details. Hold for actions.")
+        .sheet(isPresented: $showColorSheet) { EnvironmentColorSheet(environment: environment) }
         .sheet(isPresented: $showPrune) { SystemPruneView(environmentID: environmentID) }
         .sheet(isPresented: $showUpgrade) {
             NavigationStack { SystemUpgradeView(environmentID: environmentID) }
@@ -153,7 +165,10 @@ struct EnvironmentFleetListRow: View {
     /// Long-press menu for the card.
     @ViewBuilder
     private var actions: some View {
-        if !isActive {
+        if manager.allEnvironmentsPreview {
+            Button("Environment Color", systemImage: "paintpalette") { showColorSheet = true }
+        }
+        if !isActive && !manager.allEnvironmentsPreview {
             Button("Use Environment", systemImage: "checkmark.circle") {
                 manager.setActiveEnvironment(id: environmentID, name: environment.name ?? environment.id)
             }

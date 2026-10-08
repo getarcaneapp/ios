@@ -318,6 +318,8 @@ struct DynamicResourceRow: View {
     let item: DynamicResource
     let systemImage: String
 
+    var environmentName: String? = nil
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
@@ -329,6 +331,7 @@ struct DynamicResourceRow: View {
                 Text(item.subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                FleetEnvironmentLabel(name: environmentName)
             }
             Spacer()
             if let status = item.statusText {

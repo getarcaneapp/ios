@@ -92,38 +92,7 @@ struct AppearanceSettingsView: View {
                         color: selectedAccentColor
                     )
                     Spacer()
-                    // The menu wraps only the trailing value so the popup
-                    // anchors to the trailing edge like a native select.
-                    Menu {
-                        Picker(selection: accentPickerSelection) {
-                            ForEach(AccentColorOption.allCases) { option in
-                                Label {
-                                    Text(option.displayName)
-                                } icon: {
-                                    Image(uiImage: option.menuDot)
-                                }
-                                .tag(option.hex)
-                            }
-                        } label: {
-                            EmptyView()
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if let selectedOption {
-                                Circle()
-                                    .fill(selectedOption.color)
-                                    .frame(width: 9, height: 9)
-                                Text(selectedOption.displayName)
-                                    .foregroundStyle(selectedOption.color)
-                            }
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .font(.subheadline)
-                        .fixedSize()
-                        .contentShape(Rectangle())
-                    }
+                    AccentColorMenu(selection: accentPickerSelection)
                 }
             } footer: {
                 Text("Choose a color to customize the app's appearance.")

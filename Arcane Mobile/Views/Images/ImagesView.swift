@@ -37,9 +37,7 @@ struct ImagesView: View {
     @State private var isBulkRunning = false
     @State private var bulkRunningActionID: String?
 
-    private enum ImageTagsFilter: String, CaseIterable {
-        case all = "All", tagged = "Tagged", untagged = "Untagged"
-    }
+
 
     /// Quick prune and per-image delete share one `.deleteConfirmation` cover
     /// (one full-screen cover per view). The Prune Options form is separate.
@@ -600,6 +598,8 @@ struct ImageRow: View {
     // visible hitching. Use a static tinted chip here instead.
     private let iconTint = Color.purple
 
+    var environmentName: String? = nil
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "photo.stack.fill")
@@ -619,6 +619,7 @@ struct ImageRow: View {
                         .foregroundStyle(.secondary)
                     UpdateStateBadge(state: row.updateState)
                 }
+                FleetEnvironmentLabel(name: environmentName)
             }
 
             Spacer(minLength: 0)
@@ -717,7 +718,7 @@ struct PullImageView: View {
 
     private func startPull() {
         let reference = imageName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !reference.isEmpty, manager.permissions.has("images:pull", in: environmentID), manager.activeEnvironmentID == environmentID else { return }
+        guard !reference.isEmpty, manager.permissions.has("images:pull", in: environmentID), manager.acceptsEnvironmentContext(environmentID) else { return }
         dismiss()
         DeploymentActivityStore.shared.start(
             kind: .imagePull,

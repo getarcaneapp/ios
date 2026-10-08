@@ -8,6 +8,7 @@ struct UpdatesView: View {
     @State private var navTarget: NavTarget?
     @State private var showsUpdaterSheet = false
     @State private var initialUpdaterEnvironmentID: String?
+    @State private var showCheckAll = false
     @State private var presentedEnvironments: [Arcane.Environment] = []
 
     private var runUpdaterItem: ActionButtonItem {
@@ -17,6 +18,13 @@ struct UpdatesView: View {
             systemImage: "play.fill",
             tint: .orange
         ) { launch(.runUpdater) }
+    }
+
+    private var checkAllItem: ActionButtonItem {
+        ActionButtonItem(id: "check-all-updates", title: "Check All", systemImage: "arrow.clockwise", tint: .accentColor) {
+            presentedEnvironments = fleet.environments
+            showCheckAll = true
+        }
     }
 
     private var historyItem: ActionButtonItem {
@@ -51,8 +59,11 @@ struct UpdatesView: View {
             }
             .resourceActionsToolbar(
                 primary: runUpdaterItem,
-                secondary: [historyItem]
+                secondary: manager.allEnvironmentsPreview ? [checkAllItem, historyItem] : [historyItem]
             )
+            .sheet(isPresented: $showCheckAll) {
+                NavigationStack { FleetUpdaterRunView(environments: presentedEnvironments.filter(\.enabled), action: .checkImages) }
+            }
             .task { await fleet.load(manager: manager) }
     }
 
@@ -64,7 +75,7 @@ struct UpdatesView: View {
         }
         presentedEnvironments = environments
         if mode == .runUpdater {
-            initialUpdaterEnvironmentID = environments.count == 1 ? environments.first?.id : nil
+            initialUpdaterEnvironmentID = manager.allEnvironmentsPreview ? nil : (environments.count == 1 ? environments.first?.id : nil)
             showsUpdaterSheet = true
             return
         }

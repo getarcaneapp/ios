@@ -31,33 +31,28 @@ private struct EnvironmentContextModifier: ViewModifier {
     }
 
     private var environmentSubtitle: String {
+        if manager.allEnvironmentsPreview { return "All Environments · Preview" }
         guard let activeEnvironment else { return manager.activeEnvironmentName }
         return "\(activeEnvironment.displayName), \(activeEnvironment.status.capitalized)"
     }
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if isVisible, selectableEnvironments.count > 1 {
-            if #available(iOS 26, *) {
-                environmentTitleMenu(content)
-                    .navigationSubtitle(Text(environmentSubtitle))
-            } else {
-                environmentTitleMenu(content)
-            }
-        } else if isVisible {
+        // Only resource screens own this title menu. The dashboard has its own controls.
+        if !isVisible || manager.allEnvironmentsPreview {
             content
-                .task(id: manager.clientGeneration) {
-                    await fleet.load(manager: manager)
-                }
+        } else if #available(iOS 26, *) {
+            environmentTitleMenu(content)
+                .navigationSubtitle(environmentSubtitle)
         } else {
-            content
+            environmentTitleMenu(content)
         }
     }
 
     private func environmentTitleMenu(_ content: Content) -> some View {
         content
             .toolbarTitleMenu {
-                if isVisible, selectableEnvironments.count > 1 {
+                if isVisible, !manager.allEnvironmentsPreview, selectableEnvironments.count > 1 {
                     Button {
                         showsPicker = true
                     } label: {
@@ -80,7 +75,7 @@ private struct EnvironmentContextModifier: ViewModifier {
                 }
             }
             .task(id: manager.clientGeneration) {
-                await fleet.load(manager: manager)
+                if isVisible { await fleet.load(manager: manager) }
             }
     }
 }
@@ -183,7 +178,7 @@ struct EnvironmentSwitcherToolbarButton: View {
     }
 
     var body: some View {
-        if selectableEnvironments.count > 1 {
+        if !manager.allEnvironmentsPreview, selectableEnvironments.count > 1 {
             Button {
                 showsPicker = true
             } label: {

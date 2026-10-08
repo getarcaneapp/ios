@@ -9,13 +9,14 @@ extension View {
 
 private struct AutomaticWhatsNewPresentationModifier: ViewModifier {
     @SwiftUI.Environment(\.whatsNew) private var whatsNewEnvironment
+    @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
     @State private var presentedWhatsNew: WhatsNewKit.WhatsNew?
     @State private var didEvaluate = false
 
     func body(content: Content) -> some View {
         content
-            .onAppear {
-                guard !didEvaluate else { return }
+            .onChange(of: isLaunchSplashPresented, initial: true) { _, isPresented in
+                guard !isPresented, !didEvaluate else { return }
                 didEvaluate = true
                 presentedWhatsNew = whatsNewEnvironment.whatsNew()
             }
@@ -127,18 +128,34 @@ private struct WhatsNewReleaseContent: View {
         let lines = feature.subtitle.attributedString.string
             .split(separator: "\n", omittingEmptySubsequences: false)
 
+        let section = ReleaseNotes.all
+            .first { $0.version == whatsNew.version.description }?
+            .presentationSections.first { $0.title == feature.title.attributedString.string }
+        let bullets = section?.bullets ?? lines.map { line in
+            ReleaseNote.Bullet(line.hasPrefix("• ") ? String(line.dropFirst(2)) : String(line))
+        }
+
         return VStack(alignment: .leading, spacing: 8) {
             Text(AttributedString(feature.title.attributedString))
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                ForEach(Array(bullets.enumerated()), id: \.offset) { _, bullet in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("•")
                             .foregroundStyle(.tertiary)
                             .accessibilityHidden(true)
-                        Text(verbatim: line.hasPrefix("• ") ? String(line.dropFirst(2)) : String(line))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(verbatim: bullet.text)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                if let badge = bullet.badge { releaseBadge(badge) }
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                if let badge = bullet.badge { releaseBadge(badge) }
+                                Text(verbatim: bullet.text)
+                            }
+                        }
                     }
                 }
             }
@@ -147,6 +164,15 @@ private struct WhatsNewReleaseContent: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func releaseBadge(_ badge: ReleaseNote.Badge) -> some View {
+        Text(badge.label)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(badge.color)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(badge.color.opacity(0.12), in: Capsule())
+            .fixedSize()
     }
 }
 

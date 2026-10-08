@@ -3,6 +3,7 @@ import Arcane
 
 struct UpdaterRunSheet: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
     let environments: [Arcane.Environment]
     let initialEnvironmentID: String?
@@ -20,7 +21,9 @@ struct UpdaterRunSheet: View {
 
     var body: some View {
         NavigationStack {
-            if let selectedEnvironmentID {
+            if manager.allEnvironmentsPreview && initialEnvironmentID == nil {
+                FleetUpdaterRunView(environments: environments)
+            } else if let selectedEnvironmentID {
                 UpdaterRunView(
                     environmentID: EnvironmentID(rawValue: selectedEnvironmentID),
                     showsDismissButton: true

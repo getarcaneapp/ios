@@ -42,6 +42,7 @@ struct EnvironmentDashboardCard: View {
     var onRefresh: () async -> Void = {}
 
     @State private var selectionPulse = false
+    @State private var showColorSheet = false
     @State private var showPruneSheet = false
     @State private var showUpgradeSheet = false
     @State private var isSyncing = false
@@ -150,7 +151,10 @@ struct EnvironmentDashboardCard: View {
         // square-cornered preview reads noticeably boxy against it.
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .contextMenu {
-            if !isActive {
+            if manager.allEnvironmentsPreview {
+                Button("Environment Color", systemImage: "paintpalette") { showColorSheet = true }
+            }
+            if !isActive && !manager.allEnvironmentsPreview {
                 Button {
                     manager.setActiveEnvironment(id: envID, name: environment.name ?? environment.id)
                 } label: {
@@ -186,6 +190,7 @@ struct EnvironmentDashboardCard: View {
                 .tint(.red)
             }
         }
+        .sheet(isPresented: $showColorSheet) { EnvironmentColorSheet(environment: environment) }
         .sheet(isPresented: $showPruneSheet) {
             SystemPruneView(environmentID: envID)
         }
