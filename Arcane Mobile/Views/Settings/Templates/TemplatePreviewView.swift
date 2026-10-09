@@ -80,7 +80,10 @@ struct TemplatePreviewView: View {
                             Button("Edit Template", systemImage: "pencil") { editorMode = .edit(displayedTemplate) }
                         }
                         if canDelete {
-                            Button("Delete Template", systemImage: "trash", role: .destructive) { confirmDelete = true }
+                            Button(role: .destructive) { confirmDelete = true } label: {
+                                DestructiveLabel(text: "Delete Template")
+                            }
+                            .tint(.red)
                         }
                     } label: { Image(systemName: "ellipsis.circle") }
                     .disabled(content == nil || isDeleting)
@@ -128,9 +131,8 @@ struct TemplatePreviewView: View {
                 await onChange()
             }
         }
-        .confirmationDialog("Delete this local template?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete Template", role: .destructive) { Task { await deleteTemplate() } }
-            Button("Cancel", role: .cancel) {}
+        .deleteConfirmation(isPresented: $confirmDelete, title: "Delete this local template?", confirmTitle: "Delete Template", dismissOnConfirm: false) {
+            Task { await deleteTemplate() }
         }
         .sheet(item: $deployment) { deployment in
             CreateProjectView(

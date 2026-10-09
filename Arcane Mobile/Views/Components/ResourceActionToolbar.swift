@@ -58,7 +58,11 @@ private struct ResourceActionToolbarModifier: ViewModifier {
                                     Button(role: menuRole(item)) {
                                         handle(item)
                                     } label: {
-                                        Label(item.title, systemImage: item.systemImage)
+                                        if menuRole(item) == .destructive {
+                                            DestructiveLabel(text: item.title, systemImage: item.systemImage)
+                                        } else {
+                                            Label(item.title, systemImage: item.systemImage)
+                                        }
                                     }
                                     .disabled(disabled(item))
                                 }
@@ -89,7 +93,7 @@ private struct ResourceActionToolbarModifier: ViewModifier {
                 ProgressView()
             } else {
                 Image(systemName: item.systemImage)
-                    .foregroundStyle(item.tint)
+                    .foregroundStyle(item.role == .destructive ? .red : item.tint)
             }
         }
         .accessibilityLabel(item.title)

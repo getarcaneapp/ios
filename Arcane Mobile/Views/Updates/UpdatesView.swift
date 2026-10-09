@@ -8,7 +8,7 @@ struct UpdatesView: View {
     @State private var navTarget: NavTarget?
     @State private var showsUpdaterSheet = false
     @State private var initialUpdaterEnvironmentID: String?
-    @State private var showCheckAll = false
+    @State private var pendingFleetAction: FleetMaintenanceAction?
     @State private var presentedEnvironments: [Arcane.Environment] = []
 
     private var runUpdaterItem: ActionButtonItem {
@@ -23,7 +23,7 @@ struct UpdatesView: View {
     private var checkAllItem: ActionButtonItem {
         ActionButtonItem(id: "check-all-updates", title: "Check All", systemImage: "arrow.clockwise", tint: .accentColor) {
             presentedEnvironments = fleet.environments
-            showCheckAll = true
+            pendingFleetAction = .checkImages
         }
     }
 
@@ -61,9 +61,7 @@ struct UpdatesView: View {
                 primary: runUpdaterItem,
                 secondary: manager.allEnvironmentsPreview ? [checkAllItem, historyItem] : [historyItem]
             )
-            .sheet(isPresented: $showCheckAll) {
-                NavigationStack { FleetUpdaterRunView(environments: presentedEnvironments.filter(\.enabled), action: .checkImages) }
-            }
+            .fleetMaintenanceConfirmation(action: $pendingFleetAction, environments: presentedEnvironments)
             .task { await fleet.load(manager: manager) }
     }
 
@@ -75,7 +73,11 @@ struct UpdatesView: View {
         }
         presentedEnvironments = environments
         if mode == .runUpdater {
-            initialUpdaterEnvironmentID = manager.allEnvironmentsPreview ? nil : (environments.count == 1 ? environments.first?.id : nil)
+            if manager.allEnvironmentsPreview {
+                pendingFleetAction = .update
+                return
+            }
+            initialUpdaterEnvironmentID = environments.count == 1 ? environments.first?.id : nil
             showsUpdaterSheet = true
             return
         }

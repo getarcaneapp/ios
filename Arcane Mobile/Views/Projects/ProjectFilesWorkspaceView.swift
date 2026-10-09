@@ -130,11 +130,11 @@ struct ProjectFilesWorkspaceView: View {
         }
         .disabled(isSaving)
         .interactiveDismissDisabled(hasChanges)
-        .confirmationDialog("Discard unsaved changes?", isPresented: $showDiscard, titleVisibility: .visible) {
-            Button("Discard", role: .destructive) { dismiss() }
+        .deleteConfirmation(isPresented: $showDiscard, title: "Discard unsaved changes?", confirmTitle: "Discard", dismissOnConfirm: false) {
+            dismiss()
         }
-        .confirmationDialog("Reload and discard unsaved changes?", isPresented: $showReloadConfirmation, titleVisibility: .visible) {
-            Button("Reload", role: .destructive) { Task { await loadFiles(refresh: true) } }
+        .deleteConfirmation(isPresented: $showReloadConfirmation, title: "Reload and discard unsaved changes?", confirmTitle: "Reload", dismissOnConfirm: false) {
+            Task { await loadFiles(refresh: true) }
         }
         .sheet(isPresented: $showReview, onDismiss: {
                 guard let deploy = reviewedDeploy else { return }

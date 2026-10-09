@@ -55,6 +55,8 @@ struct DeleteConfirmationConfig {
     var icon: String? = "exclamationmark.triangle"
     var actions: [DeleteConfirmationAction]
     var cancelTitle: String = "Cancel"
+    /// Operations and draft edits can keep their presenting screen open.
+    var dismissOnConfirm: Bool = true
 }
 
 // MARK: - Presenter (single source of truth)
@@ -115,7 +117,7 @@ private struct DeleteConfirmationHost: View {
             if let request = presenter.request, request.sourceHostID == hostID {
                 DeleteConfirmationCard(config: request.config) { action in
                     action?()
-                    if action != nil {
+                    if action != nil && request.config.dismissOnConfirm {
                         request.onConfirmDismiss()
                     }
                     presenter.clear()
@@ -141,6 +143,7 @@ extension View {
         icon: String? = "exclamationmark.triangle",
         confirmTitle: String = "Delete",
         confirmTint: Color? = nil,
+        dismissOnConfirm: Bool = true,
         onConfirm: @escaping () -> Void
     ) -> some View {
         deleteConfirmation(
@@ -153,7 +156,8 @@ extension View {
                     title: confirmTitle,
                     tint: confirmTint,
                     action: onConfirm
-                )]
+                )],
+                dismissOnConfirm: dismissOnConfirm
             )
         )
     }

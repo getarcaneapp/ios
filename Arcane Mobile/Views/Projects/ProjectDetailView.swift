@@ -760,14 +760,14 @@ struct ProjectDetailView: View {
                     .accessibilityLabel("Actions for \(service.name)")
                 }
             }
-            .confirmationDialog(
-                "Remove \(service.name)?",
+            .deleteConfirmation(
                 isPresented: $showRemoveConfirmation,
-                titleVisibility: .visible
+                title: "Remove \(service.name)?",
+                message: "This removes the service container. The Compose service remains in the project.",
+                confirmTitle: "Remove Container",
+                dismissOnConfirm: false
             ) {
-                Button("Remove Container", role: .destructive) { onAction(.remove) }
-            } message: {
-                Text("This removes the service container. The Compose service remains in the project.")
+                onAction(.remove)
             }
         }
 
@@ -938,17 +938,14 @@ struct DeployOptionsSheet: View {
                     }
                 }
             }
-            .confirmationDialog(
-                "Recreate Volumes?",
+            .deleteConfirmation(
                 isPresented: $showsVolumeWarning,
-                titleVisibility: .visible
+                title: "Recreate Volumes?",
+                message: "Existing project volume data will be permanently lost.",
+                confirmTitle: "Deploy and Delete Volume Data",
+                dismissOnConfirm: false
             ) {
-                Button("Deploy and Delete Volume Data", role: .destructive) {
-                    beginDeploy()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Existing project volume data will be permanently lost.")
+                beginDeploy()
             }
         }
     }
@@ -1191,13 +1188,11 @@ struct CreateProjectView: View {
             }
             .disabled(isLoading)
             .interactiveDismissDisabled(previewEnabled && hasDraftChanges)
-            .confirmationDialog("Discard project draft?", isPresented: $showDiscard, titleVisibility: .visible) {
-                Button("Discard", role: .destructive) { dismiss() }
+            .deleteConfirmation(isPresented: $showDiscard, title: "Discard project draft?", confirmTitle: "Discard", dismissOnConfirm: false) {
+                dismiss()
             }
-            .confirmationDialog("Replace Compose and environment drafts?", isPresented: $showReplaceTemplate, titleVisibility: .visible) {
-                Button("Replace", role: .destructive) {
-                    if let id = pendingTemplateID { selectedTemplateID = id; Task { await applyTemplate(id: id) } }
-                }
+            .deleteConfirmation(isPresented: $showReplaceTemplate, title: "Replace Compose and environment drafts?", confirmTitle: "Replace", dismissOnConfirm: false) {
+                if let id = pendingTemplateID { selectedTemplateID = id; Task { await applyTemplate(id: id) } }
             }
             .sheet(isPresented: $showReview, onDismiss: {
                 guard let deploy = reviewedDeploy else { return }
@@ -1245,8 +1240,8 @@ struct CreateProjectView: View {
                     showReplaceImport = true
                 } catch { showToast(.error(friendlyErrorMessage(error))) }
             }
-            .confirmationDialog("Replace the Compose draft?", isPresented: $showReplaceImport, titleVisibility: .visible) {
-                Button("Replace", role: .destructive) { if sessionIsCurrent { composeContent = importedCompose } }
+            .deleteConfirmation(isPresented: $showReplaceImport, title: "Replace the Compose draft?", confirmTitle: "Replace", dismissOnConfirm: false) {
+                if sessionIsCurrent { composeContent = importedCompose }
             }
             .sheet(isPresented: $showRender) {
                 RenderComposeView(

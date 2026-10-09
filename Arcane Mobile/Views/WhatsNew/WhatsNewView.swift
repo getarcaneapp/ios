@@ -12,6 +12,8 @@ private struct AutomaticWhatsNewPresentationModifier: ViewModifier {
     @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
     @State private var presentedWhatsNew: WhatsNewKit.WhatsNew?
     @State private var didEvaluate = false
+    @State private var showsIntroduction = false
+    @AppStorage(AllEnvironmentsIntroduction.seenKey) private var hasSeenIntroduction = false
 
     func body(content: Content) -> some View {
         content
@@ -19,12 +21,18 @@ private struct AutomaticWhatsNewPresentationModifier: ViewModifier {
                 guard !isPresented, !didEvaluate else { return }
                 didEvaluate = true
                 presentedWhatsNew = whatsNewEnvironment.whatsNew()
+                if presentedWhatsNew == nil { showsIntroduction = !hasSeenIntroduction }
             }
-            .sheet(item: $presentedWhatsNew) { whatsNew in
+            .sheet(item: $presentedWhatsNew, onDismiss: {
+                showsIntroduction = !hasSeenIntroduction
+            }) { whatsNew in
                 WhatsNewPresentationView(
                     whatsNew: whatsNew,
                     versionStore: whatsNewEnvironment.whatsNewVersionStore
                 )
+            }
+            .sheet(isPresented: $showsIntroduction) {
+                AllEnvironmentsIntroductionView()
             }
     }
 }

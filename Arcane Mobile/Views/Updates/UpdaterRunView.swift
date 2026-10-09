@@ -21,9 +21,7 @@ struct UpdaterRunSheet: View {
 
     var body: some View {
         NavigationStack {
-            if manager.allEnvironmentsPreview && initialEnvironmentID == nil {
-                FleetUpdaterRunView(environments: environments)
-            } else if let selectedEnvironmentID {
+            if let selectedEnvironmentID {
                 UpdaterRunView(
                     environmentID: EnvironmentID(rawValue: selectedEnvironmentID),
                     showsDismissButton: true

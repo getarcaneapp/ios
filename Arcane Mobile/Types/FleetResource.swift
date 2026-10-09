@@ -69,6 +69,7 @@ nonisolated struct FleetResourceBucket: Identifiable, Sendable {
     let id: String
     let name: String
     var resources: [FleetResource] = []
+    var imageUpdates: [String: ImageUpdateResponse] = [:]
     var error: String?
     var isLoading = true
     var environmentID: EnvironmentID { EnvironmentID(rawValue: id) }

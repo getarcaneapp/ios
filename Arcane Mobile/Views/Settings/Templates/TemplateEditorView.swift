@@ -108,10 +108,12 @@ struct TemplateEditorView: View {
                         .disabled(!canSave || !hasChanges || isSaving)
                 }
             }
-            .confirmationDialog("Discard template changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
-                Button("Discard Changes", role: .destructive) { dismiss() }
-                Button("Keep Editing", role: .cancel) {}
-            }
+            .deleteConfirmation(isPresented: $confirmDiscard, config: DeleteConfirmationConfig(
+                title: "Discard template changes?",
+                actions: [DeleteConfirmationAction(title: "Discard Changes") { dismiss() }],
+                cancelTitle: "Keep Editing",
+                dismissOnConfirm: false
+            ))
             .interactiveDismissDisabled(hasChanges || isSaving)
             .task { if !isLoaded { await load() } }
         }

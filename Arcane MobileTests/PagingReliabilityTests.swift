@@ -335,6 +335,47 @@ private final class PagingReliabilityURLProtocol: URLProtocol, @unchecked Sendab
 
 @MainActor @Suite("All environments preview loading")
 struct FleetResourcesLoadingTests {
+    @Test func imageChecksRefreshAndStayScopedToTheirEnvironment() async throws {
+        let requests = PagingRequestRecorder()
+        let server = PagingTestServer { request in
+            let environment = request.url!.path.split(separator: "/")[2].description
+            if request.url!.path.hasSuffix("by-refs") {
+                let attempt = requests.record(environment, start: 0)
+                if attempt == 1 { return (200, Data(#"{"success":true,"data":{"app:latest":null}}"#.utf8)) }
+                let info = environment == "one"
+                    ? ImageUpdateInfo(hasUpdate: true) : ImageUpdateInfo(currentVersion: "latest")
+                return (200, try JSONEncoder().encode(PagingImageUpdatesEnvelope(data: ["app:latest": info])))
+            }
+            return (200, try pagingEnvelope([ImageSummary(id: "shared", repoTags: ["app:latest"])], stride: 50, total: 1))
+        }
+        defer { server.close() }
+        let store = FleetResourcesStore()
+        let client = server.client()
+        let environments = ["one", "two"].map { Arcane.Environment(id: $0, name: $0, apiUrl: "", status: "online") }
+        await store.load(kind: .images, environments: environments, client: client, acceptsResult: { true })
+        #expect(store.buckets.allSatisfy { $0.imageUpdates.isEmpty && $0.resources.count == 1 })
+        // A completed check triggers the same resource reload as ResourceMutationStore.
+        await store.load(kind: .images, environments: environments, client: client, acceptsResult: { true })
+        let one = try #require(store.buckets.first { $0.id == "one" })
+        let two = try #require(store.buckets.first { $0.id == "two" })
+        #expect(ImageUpdateState.resolve(inline: nil, references: ["app:latest"], results: one.imageUpdates) == .hasUpdate)
+        #expect(ImageUpdateState.resolve(inline: nil, references: ["app:latest"], results: two.imageUpdates) == .upToDate)
+    }
+
+    @Test func unavailableImageChecksKeepImagesAndInlineStatus() async throws {
+        let server = PagingTestServer { request in
+            if request.url!.path.hasSuffix("by-refs") { return (500, Data(#"{"error":"Unavailable"}"#.utf8)) }
+            return (200, try pagingEnvelope([ImageSummary(id: "image", repoTags: ["app:latest"], updateInfo: .init(hasUpdate: true))], stride: 50, total: 1))
+        }
+        defer { server.close() }
+        let store = FleetResourcesStore()
+        await store.load(kind: .images, environments: [.init(id: "one", name: "One", apiUrl: "", status: "online")], client: server.client(), acceptsResult: { true })
+        let bucket = try #require(store.buckets.first)
+        #expect(bucket.error == nil)
+        guard case .image(let image) = try #require(bucket.resources.first) else { Issue.record("Missing image"); return }
+        #expect(ImageUpdateState.resolve(inline: image.updateInfo, references: image.repoTags, results: bucket.imageUpdates) == .hasUpdate)
+    }
+
     @Test func preservesDuplicateIDsAcrossEnvironmentsAndCollectsEveryPage() async throws {
         let requests = PagingRequestRecorder()
         let server = PagingTestServer { request in
@@ -511,4 +552,57 @@ struct FleetOperationTests {
         #expect(store.results[1].failed)
         #expect(store.results[1].status.hasPrefix("Not started"))
     }
+}
+
+
+@MainActor @Suite("Fleet toast feedback", .serialized)
+struct FleetToastFeedbackTests {
+    @Test func partialFailureStillReportsAfterAnotherToastReplacesProgress() async {
+        let environments = [
+            Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online"),
+            Arcane.Environment(id: "two", name: "Two", apiUrl: "", status: "online")
+        ]
+        let store = FleetOperationStore()
+        await store.runWithToast(title: "Check for Updates", environments: environments, isCurrent: { true }) { id in
+            if id.rawValue == "one" {
+                #expect(ToastPresenter.shared.currentToast?.activityState == nil)
+                #expect(ToastPresenter.shared.currentToast?.isPersistent == true)
+            }
+            showToast(.info("Another activity"))
+            if id.rawValue == "one" { throw ArcaneError.transport("Offline") }
+            return "Done"
+        }
+        #expect(store.results.map(\.failed) == [true, false])
+        #expect(ToastPresenter.shared.currentToast?.title.contains("1 succeeded, 1 failed") == true)
+        #expect(!store.isRunning)
+        dismissToast()
+    }
+
+    @Test func duplicateRunIsBlockedAndLaterConfirmedRunCanStart() async {
+        let environments = [Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online")]
+        let store = FleetOperationStore()
+        var calls = 0
+        await store.runWithToast(title: "Update All", environments: environments, isCurrent: { true }) { _ in
+            calls += 1
+            await store.runWithToast(title: "Duplicate", environments: environments, isCurrent: { true }) { _ in
+                calls += 100
+                return "Unexpected"
+            }
+            return "Done"
+        }
+        #expect(calls == 1)
+        await store.runWithToast(title: "Update All", environments: environments, isCurrent: { true }) { _ in
+            calls += 1
+            return "Done"
+        }
+        #expect(calls == 2)
+        #expect(store.results.count == 1)
+        #expect(ToastPresenter.shared.currentToast?.title == "Update All complete")
+        dismissToast()
+    }
+}
+
+private struct PagingImageUpdatesEnvelope: Encodable {
+    let success = true
+    let data: [String: ImageUpdateInfo]
 }

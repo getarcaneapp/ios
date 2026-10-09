@@ -26,8 +26,7 @@ struct AllEnvironmentsImageUpdatesView: View {
     /// `envID::resourceID` (image, container, or project) with an update in flight.
     @State private var updatingKeys: Set<String> = []
     @State private var rescanningEnvID: String?
-    @State private var showFleetUpdater = false
-    @State private var showFleetCheck = false
+    @State private var pendingFleetAction: FleetMaintenanceAction?
     @State private var updaterRunTarget: UpdaterRunTarget?
     /// The image whose detail sheet is open.
     @State private var detailTarget: ImageDetailTarget?
@@ -91,21 +90,16 @@ struct AllEnvironmentsImageUpdatesView: View {
         .toolbar {
             if manager.allEnvironmentsPreview && dismissOnOperationStart {
                 AppToolbarItem(placement: .topBarLeading) {
-                    Button("Check All", systemImage: "arrow.clockwise") { showFleetCheck = true }
+                    Button("Check All", systemImage: "arrow.clockwise") { pendingFleetAction = .checkImages }
                         .disabled(isLoading || buckets.isEmpty)
                 }
                 AppToolbarItem(placement: .primaryAction) {
-                    Button("Update All", systemImage: "arrow.triangle.2.circlepath") { showFleetUpdater = true }
+                    Button("Update All", systemImage: "arrow.triangle.2.circlepath") { pendingFleetAction = .update }
                         .disabled(isLoading || buckets.isEmpty)
                 }
             }
         }
-        .sheet(isPresented: $showFleetCheck) {
-            NavigationStack { FleetUpdaterRunView(environments: buckets.map(\.env), action: .checkImages) }
-        }
-        .sheet(isPresented: $showFleetUpdater) {
-            NavigationStack { FleetUpdaterRunView(environments: buckets.map(\.env)) }
-        }
+        .fleetMaintenanceConfirmation(action: $pendingFleetAction, environments: buckets.map(\.env))
         .sheet(item: $updaterRunTarget) { target in
             UpdaterRunSheet(
                 environments: [],

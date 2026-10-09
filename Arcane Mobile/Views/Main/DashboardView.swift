@@ -1813,7 +1813,6 @@ struct SystemPruneView: View {
 
     let environmentID: EnvironmentID
     var environments: [Arcane.Environment]? = nil
-    @State private var fleetOperation = FleetOperationStore()
 
     @State private var containerMode: PruneContainerMode = .none
     @State private var containerAge = "24h"
@@ -1826,7 +1825,7 @@ struct SystemPruneView: View {
     @State private var buildCacheAge = "24h"
 
     @State private var isPruning = false
-    @State private var errorMessage: String?
+    @State private var showPruneConfirmation = false
     @State private var hasLoadedServerDefaults = false
 
     private var selectedCount: Int {
@@ -1855,9 +1854,6 @@ struct SystemPruneView: View {
                         Text("The selected cleanup runs on every environment listed above. Removed data cannot be recovered.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
-                }
-                if !fleetOperation.results.isEmpty {
-                    Section("Results") { FleetOperationResults(store: fleetOperation) }
                 }
                 Section("Containers") {
                     FormPicker(title: "Containers", selection: $containerMode) {
@@ -1911,28 +1907,33 @@ struct SystemPruneView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 AppToolbarItem(placement: .cancellationAction) {
-                    Button(fleetOperation.results.isEmpty ? "Cancel" : "Done") { dismiss() }.disabled(isPruning)
+                    Button("Cancel") { dismiss() }.disabled(isPruning)
                 }
                 AppToolbarItem(placement: .confirmationAction) {
                     if isPruning {
                         ProgressView().scaleEffect(0.8)
                     } else {
                         Button {
-                            Task { await runPrune() }
+                            showPruneConfirmation = true
                         } label: {
-                            Label(
-                                environments != nil ? "Prune All" : (selectedCount > 0 ? "Prune (\(selectedCount))" : "Prune"),
-                                systemImage: "trash"
-                            )
+                            DestructiveLabel(text: environments != nil ? "Prune All" : (selectedCount > 0 ? "Prune (\(selectedCount))" : "Prune"))
                         }
-                        .disabled(selectedCount == 0 || !fleetOperation.results.isEmpty || environments?.isEmpty == true)
+                        .tint(.red)
+                        .disabled(selectedCount == 0 || FleetOperationStore.shared.isRunning || environments?.isEmpty == true)
                     }
                 }
             }
-            .alert("Prune failed", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-                Button("OK") { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "")
+            .deleteConfirmation(
+                isPresented: $showPruneConfirmation,
+                title: environments == nil ? "Prune resources?" : "Prune all environments?",
+                message: environments == nil
+                    ? "Remove the selected resources. Removed data cannot be recovered."
+                    : "Remove the selected resources across all enabled environments. Removed data cannot be recovered.",
+                icon: "trash",
+                confirmTitle: environments == nil ? "Prune" : "Prune All",
+                dismissOnConfirm: false
+            ) {
+                Task { await runPrune() }
             }
             .task { await loadServerDefaults() }
         }
@@ -2015,7 +2016,8 @@ struct SystemPruneView: View {
 
         if let environments {
             let session = manager.clientGeneration
-            await fleetOperation.run(environments: environments, isCurrent: { session == manager.clientGeneration }) { id in
+            dismiss()
+            await FleetOperationStore.shared.runWithToast(title: "Cleaning up…", completionTitle: "Cleanup complete", symbol: "trash", isDestructive: true, environments: environments, isCurrent: { session == manager.clientGeneration }) { id in
                 guard manager.permissions.has(Permission.System.prune, in: id) else {
                     throw ArcaneError.transport("Not run: no prune permission")
                 }
@@ -2045,7 +2047,7 @@ struct SystemPruneView: View {
             }
             dismiss()
         } catch {
-            errorMessage = friendlyErrorMessage(error)
+            showToast(.error(friendlyErrorMessage(error)))
         }
     }
 

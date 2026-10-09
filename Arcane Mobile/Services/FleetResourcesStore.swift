@@ -23,7 +23,10 @@ final class FleetResourcesStore {
         buckets = environments.filter(\.enabled).sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
             .map { environment in
                 var bucket = FleetResourceBucket(id: environment.id, name: environment.displayName)
-                if let existing = previous[environment.id] { bucket.resources = existing.resources }
+                if let existing = previous[environment.id] {
+                    bucket.resources = existing.resources
+                    bucket.imageUpdates = existing.imageUpdates
+                }
                 bucket.isLoading = true
                 return bucket
             }
@@ -55,6 +58,21 @@ final class FleetResourcesStore {
         do {
             try Task.checkCancellation()
             result.resources = try await resources(kind: kind, environmentID: target.environmentID, client: client)
+            if kind == .images {
+                let references = Array(Set(result.resources.flatMap { resource -> [String] in
+                    guard case .image(let image) = resource else { return [] }
+                    return image.repoTags.filter { $0 != "<none>:<none>" }
+                })).sorted()
+                result.imageUpdates = [:]
+                // Bound each request and keep image rows usable when update metadata is unavailable.
+                for start in stride(from: 0, to: references.count, by: 50) {
+                    guard !Task.isCancelled else { break }
+                    let batch = Array(references[start..<min(start + 50, references.count)])
+                    if let info = try? await client.images.updateInfoByRefs(envID: target.environmentID, imageRefs: batch) {
+                        result.imageUpdates.merge(ImageUpdateState.checkedResults(info)) { _, new in new }
+                    }
+                }
+            }
             result.isLoading = false
             return result
         } catch {

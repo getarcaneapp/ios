@@ -15,6 +15,13 @@ nonisolated enum ImageUpdateState: Equatable {
         else { self = .unknown }
     }
 
+    static func checkedResults(_ info: [String: ImageUpdateInfo?]) -> [String: ImageUpdateResponse] {
+        info.compactMapValues { value in
+            guard let value, value.hasCheckResult || value.checkTime != nil else { return nil }
+            return value.asUpdateResponse
+        }
+    }
+
     static func resolve(inline: ImageUpdateInfo?, references: [String], results: [String: ImageUpdateResponse]) -> Self {
         let tags = Set(references.filter { $0 != "<none>:<none>" })
         let checks = tags.sorted().compactMap { results[$0] }

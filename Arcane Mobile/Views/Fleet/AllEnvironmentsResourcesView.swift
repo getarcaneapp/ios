@@ -11,9 +11,7 @@ struct AllEnvironmentsResourcesView: View {
     @State private var filters = FleetResourceFilters()
     @State private var sortOrder = ListSortOrder.ascending
     @State private var showFilters = false
-    @State private var maintenanceAction: FleetMaintenanceAction?
     @State private var pendingMaintenanceAction: FleetMaintenanceAction?
-    @State private var showMaintenanceConfirmation = false
     @State private var showPrune = false
     @State private var router = QuickActionRouter.shared
     @State private var routeEnvironment: FleetResourceBucket?
@@ -56,7 +54,7 @@ struct AllEnvironmentsResourcesView: View {
                                 .background(.bar)
                         }
                 } label: {
-                    resourceRow(item.resource, environmentName: item.bucket.name)
+                    resourceRow(item.resource, environmentName: item.bucket.name, imageUpdates: item.bucket.imageUpdates)
                         .environment(\.fleetEnvironmentID, item.bucket.id)
                 }
             }
@@ -73,27 +71,21 @@ struct AllEnvironmentsResourcesView: View {
                     Button { showFilters = true } label: {
                         Label(filters.activeCount > 0 ? "Filter (\(filters.activeCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
                     }
-                    Divider()
-                    Picker("Environment", selection: $filters.environmentID) {
-                        Text("All Environments").tag(String?.none)
-                        ForEach(store.buckets) { bucket in
-                            Text(bucket.name).tag(String?.some(bucket.id))
-                        }
-                    }
                     if [.containers, .projects, .images].contains(kind) {
                         Divider()
                         Button("Update All", systemImage: "arrow.triangle.2.circlepath") {
                             pendingMaintenanceAction = .update
-                            showMaintenanceConfirmation = true
                         }
                         Button("Check All", systemImage: "arrow.clockwise") {
                             pendingMaintenanceAction = .checkImages
-                            showMaintenanceConfirmation = true
                         }
                     }
                     if [.containers, .images, .volumes, .networks].contains(kind) {
                         Divider()
-                        Button("Prune", systemImage: "trash", role: .destructive) { showPrune = true }
+                        Button(role: .destructive) { showPrune = true } label: {
+                            DestructiveLabel(text: "Prune")
+                        }
+                        .tint(.red)
                     }
                 } label: { Label("More options", systemImage: "ellipsis.circle") }
                 .disabled(store.buckets.isEmpty)
@@ -121,22 +113,7 @@ struct AllEnvironmentsResourcesView: View {
                     ?? FleetResourceBucket(id: environment, name: environment)
             }
         }
-        .confirmationDialog(
-            pendingMaintenanceAction?.title ?? "Confirm",
-            isPresented: $showMaintenanceConfirmation,
-            titleVisibility: .visible,
-            presenting: pendingMaintenanceAction
-        ) { action in
-            Button(action.buttonTitle) { maintenanceAction = action }
-            Button("Cancel", role: .cancel) {}
-        } message: { action in
-            Text(action.explanation + "\n\nEnvironments: " + fleet.environments.filter(\.enabled).map(\.displayName).joined(separator: ", "))
-        }
-        .sheet(item: $maintenanceAction) { action in
-            NavigationStack {
-                FleetUpdaterRunView(environments: fleet.environments.filter(\.enabled), action: action, startImmediately: true)
-            }
-        }
+        .fleetMaintenanceConfirmation(action: $pendingMaintenanceAction, environments: fleet.environments)
         .sheet(isPresented: $showPrune) {
             SystemPruneView(environmentID: manager.activeEnvironmentID, environments: fleet.environments.filter(\.enabled))
         }
@@ -160,13 +137,13 @@ struct AllEnvironmentsResourcesView: View {
         }
     }
 
-    @ViewBuilder private func resourceRow(_ resource: FleetResource, environmentName: String) -> some View {
+    @ViewBuilder private func resourceRow(_ resource: FleetResource, environmentName: String, imageUpdates: [String: ImageUpdateResponse]) -> some View {
         switch resource {
         case .container(let item): ContainerRow(container: item, environmentName: environmentName)
         case .project(let item): ProjectRow(project: item, environmentName: environmentName)
         case .network(let item): NetworkRow(network: item, environmentName: environmentName)
         case .volume(let item): VolumeRow(volume: item, environmentName: environmentName)
-        case .image(let item): ImageRow(row: .init(image: item, displayName: item.repoTags.first ?? item.id, sizeText: item.size.byteString, updateState: .unknown), environmentName: environmentName)
+        case .image(let item): ImageRow(row: .init(image: item, displayName: item.repoTags.first ?? item.id, sizeText: item.size.byteString, updateState: ImageUpdateState.resolve(inline: item.updateInfo, references: item.repoTags, results: imageUpdates)), environmentName: environmentName)
         case .port(let item): PortMappingRow(port: item, environmentName: environmentName)
         case .job(let item):
             Label {

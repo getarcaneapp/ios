@@ -508,10 +508,7 @@ struct ImagesView: View {
             let map = try await client.images.updateInfoByRefs(envID: environmentID, imageRefs: refs)
             guard !Task.isCancelled, generation == loadGeneration,
                   clientGeneration == manager.clientGeneration else { return }
-            updateInfo.merge(map.compactMapValues { info in
-                guard let info, info.hasCheckResult || info.checkTime != nil else { return nil }
-                return info.asUpdateResponse
-            }) { _, new in new }
+            updateInfo.merge(ImageUpdateState.checkedResults(map)) { _, new in new }
             rebuildSections()
         } catch {
             // Update info is best-effort decoration — silent failure.

@@ -147,13 +147,16 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.10.0",
             new: [
-                .init("View and manage resources across all environments in one place.", badge: .preview),
+                .init("View and manage resources across all environments in one place, with environment filters and a guided introduction.", badge: .preview),
                 .init("Native Compose editor for projects and templates in Preview Features.", badge: .preview)
             ],
             changed: [
                 .init("Preview badges identify experimental features in release notes.")
             ],
             fixed: [
+                .init("Image update results appear correctly in All Environments."),
+                .init("Fleet actions use concise confirmation prompts and compact toast feedback; Compose drafts use standard confirmations."),
+                .init("Destructive menu icons match their red action labels."),
                 .init("Saved resource tabs stay visible through launch and refresh."),
                 .init("Dashboard toolbar buttons remain directly accessible.")
             ]

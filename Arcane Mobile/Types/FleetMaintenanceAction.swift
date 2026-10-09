@@ -6,13 +6,31 @@ enum FleetMaintenanceAction: String, Identifiable {
     var title: String {
         switch self {
         case .update: "Update All"
-        case .checkImages: "Check All"
+        case .checkImages: "Check for Updates"
         }
     }
     var buttonTitle: String {
         switch self {
         case .update: "Update All"
         case .checkImages: "Check All"
+        }
+    }
+    var progressTitle: String {
+        switch self {
+        case .update: "Updating resources…"
+        case .checkImages: "Checking for updates…"
+        }
+    }
+    var completionTitle: String {
+        switch self {
+        case .update: "Updates complete"
+        case .checkImages: "Updates checked"
+        }
+    }
+    var systemImage: String {
+        switch self {
+        case .update: "arrow.triangle.2.circlepath"
+        case .checkImages: "arrow.clockwise"
         }
     }
     var explanation: String {
