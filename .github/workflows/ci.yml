@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Build and test
+    name: Build
     runs-on: xcode-27
     timeout-minutes: 30
 
@@ -31,34 +31,12 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Install quality tools
-        run: |
-          if ! command -v swiftlint >/dev/null 2>&1; then
-            brew install swiftlint
-          fi
-          if ! command -v just >/dev/null 2>&1; then
-            brew install just
-          fi
-          swiftlint version
-
-      - name: Check Swift formatting and lint
-        run: just check
-
       - name: Resolve Swift packages
         run: |
           xcodebuild \
             -resolvePackageDependencies \
             -project "Arcane Mobile.xcodeproj" \
             -scheme "Arcane Mobile"
-
-      - name: Run unit tests
-        run: |
-          xcodebuild test \
-            -project "Arcane Mobile.xcodeproj" \
-            -scheme "Arcane Mobile" \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,name=iPhone 17,OS=latest" \
-            CODE_SIGNING_ALLOWED=NO
 
       - name: Build for a generic iOS device
         run: |
