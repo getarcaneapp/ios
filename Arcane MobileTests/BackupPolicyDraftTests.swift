@@ -1,12 +1,14 @@
 import Foundation
 import Testing
+
 @testable import Arcane_Mobile
 
 @MainActor
 @Suite struct BackupPolicyDraftTests {
     @Test func newPolicyOmitsServerID() throws {
         let draft = BackupPolicyDraft()
-        let json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft.update)) as? [String: Any])
+        let json = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(draft.update)) as? [String: Any])
         #expect(json["id"] == nil)
     }
     @Test func existingPolicyRetainsIDAndExplicitDestinationClearing() {
@@ -21,7 +23,8 @@ import Testing
         #expect(draft.isValid)
         draft.retentionCount = 3651
         #expect(!draft.isValid)
-        draft.retentionCount = 7; draft.localEnabled = false
+        draft.retentionCount = 7
+        draft.localEnabled = false
         #expect(!draft.isValid)
         draft.s3Enabled = true
         #expect(!draft.isValid)

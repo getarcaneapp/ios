@@ -1,6 +1,6 @@
-import Foundation
 import Arcane
 import CryptoKit
+import Foundation
 
 /// Keychain constants shared by the app and the widget/intents extension.
 /// The access group lets both processes read the same session tokens; it
@@ -14,7 +14,9 @@ nonisolated enum SharedKeychain {
 
     /// The shared-group store — what intents/widgets read, and what the app
     /// migrates into.
-    static func sharedStore(for origin: String, validating: @escaping @Sendable () -> Bool = { true }) -> KeychainTokenStore {
+    static func sharedStore(for origin: String, validating: @escaping @Sendable () -> Bool = { true })
+        -> KeychainTokenStore
+    {
         KeychainTokenStore(service: originService(origin), accessGroup: accessGroup, validating: validating)
     }
 

@@ -87,7 +87,8 @@ struct LogViewerTests {
     @Test
     func adaptiveRowsRenderAcrossLayoutsAndAccessibilitySizes() throws {
         let line = try makeLine(
-            message: "{\"request\":\"https://example.com/a/very/long/path?environment=production\",\"status\":500,\"detail\":\"upstream connection timed out while waiting for response headers\"}",
+            message:
+                "{\"request\":\"https://example.com/a/very/long/path?environment=production\",\"status\":500,\"detail\":\"upstream connection timed out while waiting for response headers\"}",
             level: "error",
             service: "extraordinarily-long-background-worker-service",
             timestamp: "2026-08-29T12:34:56.789Z"
@@ -153,10 +154,11 @@ struct LogViewerTests {
             let image = try #require(renderer.uiImage)
 
             #expect(
-                image.size == CGSize(
-                    width: configuration.width,
-                    height: configuration.height
-                )
+                image.size
+                    == CGSize(
+                        width: configuration.width,
+                        height: configuration.height
+                    )
             )
             Attachment.record(image, named: configuration.name, as: .png)
         }
@@ -255,9 +257,10 @@ struct LogViewerTests {
         host.view.frame = bounds
         host.view.layoutIfNeeded()
 
-        store.receive(try (0..<80).map { index in
-            try makeLine(message: longMessage(prefix: "initial", index: index))
-        })
+        store.receive(
+            try (0..<80).map { index in
+                try makeLine(message: longMessage(prefix: "initial", index: index))
+            })
         try await settle(host)
 
         let scrollView = try #require(
@@ -266,9 +269,10 @@ struct LogViewerTests {
         )
         let offsetBeforeNewLines = scrollView.contentOffset.y
 
-        store.receive(try (80..<100).map { index in
-            try makeLine(message: longMessage(prefix: "new", index: index))
-        })
+        store.receive(
+            try (80..<100).map { index in
+                try makeLine(message: longMessage(prefix: "new", index: index))
+            })
         try await settle(host)
 
         let maximumOffset = max(
@@ -297,9 +301,10 @@ struct LogViewerTests {
         defer { window.isHidden = true }
         host.view.frame = bounds
 
-        store.receive(try (0..<80).map { index in
-            try makeLine(message: longMessage(prefix: "initial", index: index))
-        })
+        store.receive(
+            try (0..<80).map { index in
+                try makeLine(message: longMessage(prefix: "initial", index: index))
+            })
         try await settle(host)
         let scrollView = try #require(
             descendants(of: UIScrollView.self, in: window)
@@ -314,9 +319,10 @@ struct LogViewerTests {
         #expect(!store.isFollowing)
         #expect(pausedOffset < scrollView.contentSize.height - scrollView.bounds.height - 100)
 
-        store.receive(try (80..<100).map { index in
-            try makeLine(message: longMessage(prefix: "new", index: index))
-        })
+        store.receive(
+            try (80..<100).map { index in
+                try makeLine(message: longMessage(prefix: "new", index: index))
+            })
         try await settle(host)
         #expect(!store.isFollowing)
         #expect(store.newLinesWhilePaused == 20)

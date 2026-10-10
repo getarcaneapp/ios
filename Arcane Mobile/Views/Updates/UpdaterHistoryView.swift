@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct UpdaterHistoryView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -25,9 +25,9 @@ struct UpdaterHistoryView: View {
             return
         }
         displayedRecords = records.filter { record in
-            record.resourceName.localizedCaseInsensitiveContains(trimmed) ||
-            record.resourceType.localizedCaseInsensitiveContains(trimmed) ||
-            record.status.rawValue.localizedCaseInsensitiveContains(trimmed)
+            record.resourceName.localizedCaseInsensitiveContains(trimmed)
+                || record.resourceType.localizedCaseInsensitiveContains(trimmed)
+                || record.status.rawValue.localizedCaseInsensitiveContains(trimmed)
         }
     }
 
@@ -37,7 +37,8 @@ struct UpdaterHistoryView: View {
                 ProgressView("Loading updater history…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, records.isEmpty {
-                ContentUnavailableView("Couldn't Load History", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+                ContentUnavailableView(
+                    "Couldn't Load History", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
             } else if records.isEmpty {
                 ContentUnavailableView("No Update History", systemImage: "clock.arrow.circlepath")
             } else {
@@ -49,22 +50,26 @@ struct UpdaterHistoryView: View {
                             UpdaterHistoryRow(record: record)
                         }
                     }
-            PaginatedListFooter(
-                hasMore: hasMore && searchText.isEmpty, loadMoreError: loadMoreError,
-                onRetry: { Task { await loadMore() } },
-                onLoadMore: { Task { await loadMore() } }
-            )
+                    PaginatedListFooter(
+                        hasMore: hasMore && searchText.isEmpty, loadMoreError: loadMoreError,
+                        onRetry: { Task { await loadMore() } },
+                        onLoadMore: { Task { await loadMore() } }
+                    )
                 }
                 .listStyle(.insetGrouped)
             }
         }
         .navigationTitle("Updater History")
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search updater history")
+        .searchable(
+            text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search updater history"
+        )
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) { rebuildDisplayedRecords() }
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await load(refresh: true) } } label: {
+                Button {
+                    Task { await load(refresh: true) }
+                } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .accessibilityLabel("Refresh")
@@ -199,9 +204,9 @@ private struct UpdaterHistoryRow: View {
         let oldTag = oldVersions[key]
         let newTag = newVersions[key]
         switch (oldTag, newTag) {
-        case let (.some(old), .some(new)) where old != new: return "\(old) → \(new)"
-        case let (.some(old), _): return old
-        case let (_, .some(new)): return new
+        case (.some(let old), .some(let new)) where old != new: return "\(old) → \(new)"
+        case (.some(let old), _): return old
+        case (_, .some(let new)): return new
         default: return nil
         }
     }

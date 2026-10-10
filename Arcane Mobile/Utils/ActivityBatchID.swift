@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 nonisolated enum ActivityBatchID {
     static func make() -> String {

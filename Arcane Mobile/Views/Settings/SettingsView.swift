@@ -40,14 +40,14 @@ struct SettingsView: View {
                 title: "Resources",
                 tabs: [
                     .containers, .images, .imageVulnerabilities, .networks,
-                    .ports, .networkTopology, .volumes, .swarm
+                    .ports, .networkTopology, .volumes, .swarm,
                 ]
             ),
             MoreDestinationGroup(
                 title: "Administration",
                 tabs: [
                     .events, .activities, .customize, .templateRegistries,
-                    .containerRegistries, .variables, .gitRepositories, .gitOps
+                    .containerRegistries, .variables, .gitRepositories, .gitOps,
                 ]
             ),
             MoreDestinationGroup(
@@ -55,9 +55,9 @@ struct SettingsView: View {
                 tabs: [
                     .apiKeys, .federatedCredentials, .systemBackups, .webhooks,
                     .authentication, .oidcRoleMappings, .notifications, .jobs,
-                    .users, .roles, .systemSettings
+                    .users, .roles, .systemSettings,
                 ]
-            )
+            ),
         ]
     }
 
@@ -65,7 +65,8 @@ struct SettingsView: View {
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
         return groups.compactMap { group in
             let accessible = group.tabs.filter(availableTabs.contains)
-            let matches = query.isEmpty
+            let matches =
+                query.isEmpty
                 ? accessible
                 : accessible.filter {
                     $0.title.localizedCaseInsensitiveContains(query)
@@ -113,8 +114,9 @@ struct SettingsView: View {
         }
         .onChange(of: manager.activeEnvironmentID) { oldValue, newValue in
             if oldValue != newValue,
-               navigationEnvironmentID != newValue.rawValue,
-               navPath.contains(where: \.isEnvironmentScoped) {
+                navigationEnvironmentID != newValue.rawValue,
+                navPath.contains(where: \.isEnvironmentScoped)
+            {
                 navPath.removeAll()
             }
             navigationEnvironmentID = newValue.rawValue
@@ -192,22 +194,24 @@ struct SettingsView: View {
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint(visibleTabSet.contains(tab)
-                        ? "Switches to the \(tab.title) tab"
-                        : "Opens \(tab.title)")
+                    .accessibilityHint(
+                        visibleTabSet.contains(tab)
+                            ? "Switches to the \(tab.title) tab"
+                            : "Opens \(tab.title)")
                 }
             }
         }
     }
 
     private func open(_ tab: AppTab, replacingPath: Bool = false) {
-        guard let destination = MainTabView.resolveDestination(
-            tab.id, visibleTabs: visibleTabSet, availableTabs: availableTabs
-        ) else { return }
+        guard
+            let destination = MainTabView.resolveDestination(
+                tab.id, visibleTabs: visibleTabSet, availableTabs: availableTabs
+            )
+        else { return }
         if let nested = destination.moreDestination {
             navigationEnvironmentID = manager.activeEnvironmentID.rawValue
-            if replacingPath { navPath = [nested] }
-            else { navPath.append(nested) }
+            if replacingPath { navPath = [nested] } else { navPath.append(nested) }
         } else {
             if replacingPath { navPath.removeAll() }
             selectedTab = destination.selectedTab.id

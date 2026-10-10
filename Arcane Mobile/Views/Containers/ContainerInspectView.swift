@@ -1,6 +1,6 @@
+import Arcane
 import SwiftUI
 import UIKit
-import Arcane
 
 struct ContainerInspectView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager

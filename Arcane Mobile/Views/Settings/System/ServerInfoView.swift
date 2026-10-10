@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// Read-only details about the connected Arcane server (version, runtime,
 /// build metadata). Rows copy their value on tap.
@@ -12,14 +12,16 @@ struct ServerInfoView: View {
         List {
             if let v = serverVersion {
                 Section {
-                    serverRow("Version", value: clean(v.displayVersion) ?? clean(v.currentVersion),
-                              icon: "shippingbox.fill", color: .blue)
+                    serverRow(
+                        "Version", value: clean(v.displayVersion) ?? clean(v.currentVersion),
+                        icon: "shippingbox.fill", color: .blue)
                     if let tag = clean(v.currentTag) {
                         serverRow("Image Tag", value: tag, icon: "tag.fill", color: .purple)
                     }
                     if v.updateAvailable == true, let newest = clean(v.newestVersion) {
-                        serverRow("Update Available", value: newest,
-                                  icon: "arrow.up.circle.fill", color: .blue)
+                        serverRow(
+                            "Update Available", value: newest,
+                            icon: "arrow.up.circle.fill", color: .blue)
                     }
                 } footer: {
                     Text("Tap a row to copy its value.")
@@ -37,8 +39,9 @@ struct ServerInfoView: View {
                 }
                 Section("Build") {
                     if let rev = clean(v.shortRevision) {
-                        serverRow("Revision", value: rev, copy: v.revision ?? rev,
-                                  icon: "number", color: .gray, mono: true)
+                        serverRow(
+                            "Revision", value: rev, copy: v.revision ?? rev,
+                            icon: "number", color: .gray, mono: true)
                     }
                     if let bt = clean(v.buildTime) {
                         serverRow("Build Time", value: bt, icon: "clock.fill", color: .gray)
@@ -65,8 +68,10 @@ struct ServerInfoView: View {
     }
 
     @ViewBuilder
-    private func serverRow(_ title: String, value: String?, copy: String? = nil,
-                           icon: String, color: Color, mono: Bool = false) -> some View {
+    private func serverRow(
+        _ title: String, value: String?, copy: String? = nil,
+        icon: String, color: Color, mono: Bool = false
+    ) -> some View {
         let display = value ?? "—"
         Button {
             UIPasteboard.general.string = copy ?? display

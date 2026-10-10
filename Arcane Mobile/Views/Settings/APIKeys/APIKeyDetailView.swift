@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct APIKeyDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -87,36 +87,39 @@ struct APIKeyDetailView: View {
     private var actionItems: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
         if canUpdate && !isProtected {
-            items.append(ActionButtonItem(
-                id: "edit",
-                title: "Edit",
-                systemImage: "pencil",
-                tint: .blue
-            ) {
-                showEditSheet = true
-            })
+            items.append(
+                ActionButtonItem(
+                    id: "edit",
+                    title: "Edit",
+                    systemImage: "pencil",
+                    tint: .blue
+                ) {
+                    showEditSheet = true
+                })
         }
         if rotationUnavailableReason == nil {
-            items.append(ActionButtonItem(
-                id: "rotate",
-                title: "Rotate",
-                systemImage: "arrow.triangle.2.circlepath",
-                tint: .orange
-            ) {
-                showRotateConfirmation = true
-            })
+            items.append(
+                ActionButtonItem(
+                    id: "rotate",
+                    title: "Rotate",
+                    systemImage: "arrow.triangle.2.circlepath",
+                    tint: .orange
+                ) {
+                    showRotateConfirmation = true
+                })
         }
         if canDelete && !isProtected {
-            items.append(ActionButtonItem(
-                id: "delete",
-                title: "Delete",
-                systemImage: "trash",
-                tint: .red,
-                role: .destructive,
-                confirmationMessage: "This permanently revokes the API key. Anything using it will stop working."
-            ) {
-                Task { await deleteKey() }
-            })
+            items.append(
+                ActionButtonItem(
+                    id: "delete",
+                    title: "Delete",
+                    systemImage: "trash",
+                    tint: .red,
+                    role: .destructive,
+                    confirmationMessage: "This permanently revokes the API key. Anything using it will stop working."
+                ) {
+                    Task { await deleteKey() }
+                })
         }
         return items
     }
@@ -138,7 +141,8 @@ struct APIKeyDetailView: View {
                     protectedNotice
                 }
             } else if let reason = rotationUnavailableReason,
-                      reason != "Loading key access…" {
+                reason != "Loading key access…"
+            {
                 Section {
                     rotationNotice(reason)
                 }
@@ -152,8 +156,7 @@ struct APIKeyDetailView: View {
                     Menu {
                         ForEach(actionItems) { item in
                             Button(role: item.role) {
-                                if item.role == .destructive { pendingDelete = item }
-                                else { item.action() }
+                                if item.role == .destructive { pendingDelete = item } else { item.action() }
                             } label: {
                                 Label(item.title, systemImage: item.systemImage)
                             }
@@ -178,7 +181,8 @@ struct APIKeyDetailView: View {
             isPresented: $showRotateConfirmation,
             config: DeleteConfirmationConfig(
                 title: "Rotate \(apiKey.name)?",
-                message: "A replacement with the same access will be created before this key is revoked. Anything using \(apiKey.keyPrefix)… must be updated with the new key.",
+                message:
+                    "A replacement with the same access will be created before this key is revoked. Anything using \(apiKey.keyPrefix)… must be updated with the new key.",
                 icon: "arrow.triangle.2.circlepath",
                 actions: [
                     DeleteConfirmationAction(title: "Rotate", role: nil, tint: .orange) {
@@ -294,9 +298,10 @@ struct APIKeyDetailView: View {
 
     private var protectedNotice: some View {
         Label {
-            Text(apiKey.isStatic
-                 ? "This static key is managed by Arcane and cannot be edited, rotated, or deleted."
-                 : "This key is paired with an environment and cannot be edited, rotated, or deleted.")
+            Text(
+                apiKey.isStatic
+                    ? "This static key is managed by Arcane and cannot be edited, rotated, or deleted."
+                    : "This key is paired with an environment and cannot be edited, rotated, or deleted.")
         } icon: {
             Image(systemName: "lock.fill")
                 .foregroundStyle(.orange)

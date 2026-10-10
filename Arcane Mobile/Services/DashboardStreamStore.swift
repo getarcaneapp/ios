@@ -1,6 +1,6 @@
+import Arcane
 import Foundation
 import Observation
-import Arcane
 
 /// Consumes the aggregated `GET /dashboard/stream` NDJSON endpoint (one
 /// connection covering the local environment + every enabled remote

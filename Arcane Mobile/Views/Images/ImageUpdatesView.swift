@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ImageUpdatesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -210,7 +210,8 @@ struct UpdateRow: View {
 
     private func versionLine(_ info: ImageUpdateResponse) -> String {
         if let latest = info.latestVersion, !latest.isEmpty,
-           !info.currentVersion.isEmpty, latest != info.currentVersion {
+            !info.currentVersion.isEmpty, latest != info.currentVersion
+        {
             return "\(info.currentVersion) → \(latest)"
         }
         if !info.updateType.isEmpty {

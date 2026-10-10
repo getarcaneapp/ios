@@ -1,6 +1,6 @@
 import AppIntents
-import Foundation
 import Arcane
+import Foundation
 
 // App-process App Intents: open-in-app navigation, container/project entities,
 // and mutation actions for Shortcuts/Siri. Mutation intents are deliberately
@@ -84,11 +84,12 @@ nonisolated struct ContainerEntityQuery: EntityStringQuery {
                 environmentID: EnvironmentID(rawValue: entity.environmentID),
                 containerID: entity.containerID
             )
-            entities.append(ContainerEntity(
-                environmentID: entity.environmentID,
-                containerID: details.id,
-                name: details.name.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            ))
+            entities.append(
+                ContainerEntity(
+                    environmentID: entity.environmentID,
+                    containerID: details.id,
+                    name: details.name.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                ))
         }
         return entities
     }

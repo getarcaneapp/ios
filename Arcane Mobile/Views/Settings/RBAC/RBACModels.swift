@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 extension Role {
     /// Display name shown in UI. Falls back to the role ID.

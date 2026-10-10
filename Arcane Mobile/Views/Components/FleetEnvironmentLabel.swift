@@ -12,7 +12,8 @@ struct FleetEnvironmentLabel: View {
 
     private var color: Color {
         guard manager.allEnvironmentsPreview, let environmentID,
-              let hex = colors.hex(server: manager.serverURL, environmentID: environmentID) else { return .secondary }
+            let hex = colors.hex(server: manager.serverURL, environmentID: environmentID)
+        else { return .secondary }
         return Color(hex: hex) ?? .secondary
     }
 

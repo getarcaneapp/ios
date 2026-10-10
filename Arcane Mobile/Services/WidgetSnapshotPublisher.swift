@@ -35,8 +35,9 @@ final class WidgetSnapshotPublisher {
         guard let latest else { return }
         self.latest = nil
         guard sessionIdentity == AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity),
-              latest.serverOrigin == IntentClientFactory.serverOrigin,
-              latest.isDemo || SharedKeychain.credentialOrigin == latest.serverOrigin else { return }
+            latest.serverOrigin == IntentClientFactory.serverOrigin,
+            latest.isDemo || SharedKeychain.credentialOrigin == latest.serverOrigin
+        else { return }
         WidgetSnapshotStore.saveAndReloadIfChanged(latest)
     }
 

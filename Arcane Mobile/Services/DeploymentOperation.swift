@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 // MARK: - Action kind
 
@@ -68,10 +68,12 @@ final class DeploymentOperation: Identifiable {
     @ObservationIgnored internal var receivedTerminalSuccess = false
     @ObservationIgnored internal var activityLookupTargetID: String
 
-    init(kind: DeploymentActionKind, envID: EnvironmentID, targetID: String,
-         targetName: String, environmentName: String,
-         updateTargets: [UpdateTarget] = [],
-         deployOptions: DeployOptions? = nil) {
+    init(
+        kind: DeploymentActionKind, envID: EnvironmentID, targetID: String,
+        targetName: String, environmentName: String,
+        updateTargets: [UpdateTarget] = [],
+        deployOptions: DeployOptions? = nil
+    ) {
         self.kind = kind
         self.envID = envID
         self.targetID = targetID

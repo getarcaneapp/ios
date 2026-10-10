@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 struct VolumeWorkspaceDraft {
     var text = ""
@@ -20,6 +20,8 @@ struct VolumeWorkspaceDraft {
 
     static func validRelativePath(_ path: String) -> Bool {
         !path.isEmpty && !path.hasPrefix("/") && !path.contains("\0")
-            && !path.split(separator: "/", omittingEmptySubsequences: false).contains { $0.isEmpty || $0 == ".." || $0 == "." }
+            && !path.split(separator: "/", omittingEmptySubsequences: false).contains {
+                $0.isEmpty || $0 == ".." || $0 == "."
+            }
     }
 }

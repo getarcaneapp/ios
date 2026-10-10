@@ -267,127 +267,138 @@ struct NotificationProviderFormState: Equatable {
     ) -> NotificationConfiguration {
         switch provider {
         case .discord:
-            .discord(DiscordNotificationConfiguration(
-                webhookId: webhookID,
-                token: token.nilIfEmpty,
-                username: username.nilIfEmpty,
-                avatarUrl: avatarURL.nilIfEmpty,
-                events: events.sdkValue
-            ))
+            .discord(
+                DiscordNotificationConfiguration(
+                    webhookId: webhookID,
+                    token: token.nilIfEmpty,
+                    username: username.nilIfEmpty,
+                    avatarUrl: avatarURL.nilIfEmpty,
+                    events: events.sdkValue
+                ))
         case .email:
-            .email(EmailNotificationConfiguration(
-                smtpHost: host,
-                smtpPort: Int(port) ?? 0,
-                smtpUsername: smtpUsername,
-                smtpPassword: password.nilIfEmpty,
-                fromAddress: fromAddress,
-                toAddresses: recipients.values,
-                tlsMode: EmailTLSMode(rawValue: tlsMode) ?? .starttls,
-                authMode: EmailAuthMode(rawValue: authMode) ?? .auto,
-                events: events.sdkValue
-            ))
+            .email(
+                EmailNotificationConfiguration(
+                    smtpHost: host,
+                    smtpPort: Int(port) ?? 0,
+                    smtpUsername: smtpUsername,
+                    smtpPassword: password.nilIfEmpty,
+                    fromAddress: fromAddress,
+                    toAddresses: recipients.values,
+                    tlsMode: EmailTLSMode(rawValue: tlsMode) ?? .starttls,
+                    authMode: EmailAuthMode(rawValue: authMode) ?? .auto,
+                    events: events.sdkValue
+                ))
         case .telegram:
-            .telegram(TelegramNotificationConfiguration(
-                botToken: token.nilIfEmpty,
-                chatIds: recipients.values,
-                preview: preview,
-                notification: notification,
-                parseMode: parseMode.nilIfEmpty,
-                title: title.nilIfEmpty,
-                events: events.sdkValue
-            ))
+            .telegram(
+                TelegramNotificationConfiguration(
+                    botToken: token.nilIfEmpty,
+                    chatIds: recipients.values,
+                    preview: preview,
+                    notification: notification,
+                    parseMode: parseMode.nilIfEmpty,
+                    title: title.nilIfEmpty,
+                    events: events.sdkValue
+                ))
         case .signal:
-            .signal(SignalNotificationConfiguration(
-                host: host,
-                port: Int(port) ?? 0,
-                user: user.nilIfEmpty,
-                password: password.nilIfEmpty,
-                token: token.nilIfEmpty,
-                source: source,
-                recipients: recipients.values,
-                disableTls: disableTLS,
-                events: events.sdkValue
-            ))
+            .signal(
+                SignalNotificationConfiguration(
+                    host: host,
+                    port: Int(port) ?? 0,
+                    user: user.nilIfEmpty,
+                    password: password.nilIfEmpty,
+                    token: token.nilIfEmpty,
+                    source: source,
+                    recipients: recipients.values,
+                    disableTls: disableTLS,
+                    events: events.sdkValue
+                ))
         case .slack:
-            .slack(SlackNotificationConfiguration(
-                token: token.nilIfEmpty,
-                botName: botName.nilIfEmpty,
-                icon: icon.nilIfEmpty,
-                color: color.nilIfEmpty,
-                title: title.nilIfEmpty,
-                channel: channel.nilIfEmpty,
-                threadTs: threadTS.nilIfEmpty,
-                events: events.sdkValue
-            ))
+            .slack(
+                SlackNotificationConfiguration(
+                    token: token.nilIfEmpty,
+                    botName: botName.nilIfEmpty,
+                    icon: icon.nilIfEmpty,
+                    color: color.nilIfEmpty,
+                    title: title.nilIfEmpty,
+                    channel: channel.nilIfEmpty,
+                    threadTs: threadTS.nilIfEmpty,
+                    events: events.sdkValue
+                ))
         case .ntfy:
-            .ntfy(NtfyNotificationConfiguration(
-                host: host,
-                port: Int(port) ?? 0,
-                topic: topic,
-                username: username.nilIfEmpty,
-                password: password.nilIfEmpty,
-                title: title.nilIfEmpty,
-                priority: priority.nilIfEmpty,
-                tags: tags.values.nilIfEmpty,
-                icon: icon.nilIfEmpty,
-                cache: cache,
-                firebase: firebase,
-                disableTls: disableTLS,
-                disableTlsVerification: disableTLSVerification,
-                events: events.sdkValue
-            ))
+            .ntfy(
+                NtfyNotificationConfiguration(
+                    host: host,
+                    port: Int(port) ?? 0,
+                    topic: topic,
+                    username: username.nilIfEmpty,
+                    password: password.nilIfEmpty,
+                    title: title.nilIfEmpty,
+                    priority: priority.nilIfEmpty,
+                    tags: tags.values.nilIfEmpty,
+                    icon: icon.nilIfEmpty,
+                    cache: cache,
+                    firebase: firebase,
+                    disableTls: disableTLS,
+                    disableTlsVerification: disableTLSVerification,
+                    events: events.sdkValue
+                ))
         case .pushover:
-            .pushover(PushoverNotificationConfiguration(
-                token: token.nilIfEmpty,
-                user: user,
-                devices: devices.values.nilIfEmpty,
-                priority: Int(priority) ?? 0,
-                title: title.nilIfEmpty,
-                events: events.sdkValue
-            ))
+            .pushover(
+                PushoverNotificationConfiguration(
+                    token: token.nilIfEmpty,
+                    user: user,
+                    devices: devices.values.nilIfEmpty,
+                    priority: Int(priority) ?? 0,
+                    title: title.nilIfEmpty,
+                    events: events.sdkValue
+                ))
         case .gotify:
-            .gotify(GotifyNotificationConfiguration(
-                host: host,
-                port: Int(port),
-                token: token.nilIfEmpty,
-                path: path.nilIfEmpty,
-                priority: Int(priority),
-                title: title.nilIfEmpty,
-                disableTls: disableTLS,
-                insecureSkipVerify: insecureSkipVerify,
-                useHeader: useHeader,
-                events: events.sdkValue
-            ))
+            .gotify(
+                GotifyNotificationConfiguration(
+                    host: host,
+                    port: Int(port),
+                    token: token.nilIfEmpty,
+                    path: path.nilIfEmpty,
+                    priority: Int(priority),
+                    title: title.nilIfEmpty,
+                    disableTls: disableTLS,
+                    insecureSkipVerify: insecureSkipVerify,
+                    useHeader: useHeader,
+                    events: events.sdkValue
+                ))
         case .matrix:
-            .matrix(MatrixNotificationConfiguration(
-                host: host,
-                port: Int(port),
-                rooms: rooms,
-                username: username.nilIfEmpty,
-                password: password.nilIfEmpty,
-                disableTlsVerification: disableTLSVerification,
-                events: events.sdkValue
-            ))
+            .matrix(
+                MatrixNotificationConfiguration(
+                    host: host,
+                    port: Int(port),
+                    rooms: rooms,
+                    username: username.nilIfEmpty,
+                    password: password.nilIfEmpty,
+                    disableTlsVerification: disableTLSVerification,
+                    events: events.sdkValue
+                ))
         case .googlechat:
-            .googlechat(GoogleChatNotificationConfiguration(
-                webhookUrl: webhookURL.nilIfEmpty,
-                events: events.sdkValue
-            ))
+            .googlechat(
+                GoogleChatNotificationConfiguration(
+                    webhookUrl: webhookURL.nilIfEmpty,
+                    events: events.sdkValue
+                ))
         case .generic:
-            .generic(GenericNotificationConfiguration(
-                webhookUrl: webhookURL,
-                method: method.nilIfEmpty,
-                contentType: supportsPost26Features ? contentType.nilIfEmpty : nil,
-                titleKey: supportsPost26Features ? titleKey.nilIfEmpty : nil,
-                messageKey: supportsPost26Features ? messageKey.nilIfEmpty : nil,
-                customHeaders: headers.dictionary.nilIfEmpty,
-                disableTls: disableTLS,
-                events: events.sdkValue,
-                successBodyContains: supportsPost26Features
-                    ? successBodyContains.nilIfEmpty
-                    : nil,
-                payloadTemplate: supportsPost26Features ? payloadTemplate.nilIfEmpty : nil
-            ))
+            .generic(
+                GenericNotificationConfiguration(
+                    webhookUrl: webhookURL,
+                    method: method.nilIfEmpty,
+                    contentType: supportsPost26Features ? contentType.nilIfEmpty : nil,
+                    titleKey: supportsPost26Features ? titleKey.nilIfEmpty : nil,
+                    messageKey: supportsPost26Features ? messageKey.nilIfEmpty : nil,
+                    customHeaders: headers.dictionary.nilIfEmpty,
+                    disableTls: disableTLS,
+                    events: events.sdkValue,
+                    successBodyContains: supportsPost26Features
+                        ? successBodyContains.nilIfEmpty
+                        : nil,
+                    payloadTemplate: supportsPost26Features ? payloadTemplate.nilIfEmpty : nil
+                ))
         }
     }
 
@@ -409,19 +420,19 @@ struct NotificationProviderFormState: Equatable {
     }
 }
 
-private extension String {
-    var nilIfEmpty: String? {
+extension String {
+    fileprivate var nilIfEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 }
 
-private extension Array where Element == String {
-    var nilIfEmpty: [String]? { isEmpty ? nil : self }
+extension Array where Element == String {
+    fileprivate var nilIfEmpty: [String]? { isEmpty ? nil : self }
 }
 
-private extension Array where Element == StableStringRow {
-    var values: [String] {
+extension Array where Element == StableStringRow {
+    fileprivate var values: [String] {
         compactMap { row in
             let value = row.value.trimmingCharacters(in: .whitespacesAndNewlines)
             return value.isEmpty ? nil : value
@@ -429,8 +440,8 @@ private extension Array where Element == StableStringRow {
     }
 }
 
-private extension Array where Element == StableHeaderRow {
-    var dictionary: [String: String] {
+extension Array where Element == StableHeaderRow {
+    fileprivate var dictionary: [String: String] {
         reduce(into: [:]) { result, row in
             let name = row.name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return }
@@ -439,6 +450,6 @@ private extension Array where Element == StableHeaderRow {
     }
 }
 
-private extension Dictionary {
-    var nilIfEmpty: Self? { isEmpty ? nil : self }
+extension Dictionary {
+    fileprivate var nilIfEmpty: Self? { isEmpty ? nil : self }
 }

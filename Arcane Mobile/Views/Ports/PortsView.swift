@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct PortsView: View {
     private static let pageSize = 50
@@ -28,13 +28,18 @@ struct PortsView: View {
     private func rebuildSections() {
         let filtered = filteredPorts(matching: debouncedSearchText)
         let groups = Dictionary(grouping: filtered) { $0.containerName }
-        sections = groups
-            .map { PortGroup(container: $0.key, ports: $0.value.sorted { lhs, rhs in
-                let lhsHost = lhs.hostPort ?? Int.max
-                let rhsHost = rhs.hostPort ?? Int.max
-                if lhsHost != rhsHost { return lhsHost < rhsHost }
-                return lhs.containerPort < rhs.containerPort
-            }) }
+        sections =
+            groups
+            .map {
+                PortGroup(
+                    container: $0.key,
+                    ports: $0.value.sorted { lhs, rhs in
+                        let lhsHost = lhs.hostPort ?? Int.max
+                        let rhsHost = rhs.hostPort ?? Int.max
+                        if lhsHost != rhsHost { return lhsHost < rhsHost }
+                        return lhs.containerPort < rhs.containerPort
+                    })
+            }
             .sorted { $0.container.localizedStandardCompare($1.container) == .orderedAscending }
     }
 
@@ -42,11 +47,11 @@ struct PortsView: View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return ports }
         return ports.filter { port in
-            port.containerName.localizedCaseInsensitiveContains(trimmed) ||
-            port.protocolName.localizedCaseInsensitiveContains(trimmed) ||
-            portString(port.containerPort).contains(trimmed) ||
-            (port.hostPort.map(portString) ?? "").contains(trimmed) ||
-            displayHostIP(port.hostIp).localizedCaseInsensitiveContains(trimmed)
+            port.containerName.localizedCaseInsensitiveContains(trimmed)
+                || port.protocolName.localizedCaseInsensitiveContains(trimmed)
+                || portString(port.containerPort).contains(trimmed)
+                || (port.hostPort.map(portString) ?? "").contains(trimmed)
+                || displayHostIP(port.hostIp).localizedCaseInsensitiveContains(trimmed)
         }
     }
 
@@ -56,7 +61,8 @@ struct PortsView: View {
                 ProgressView("Loading ports…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, ports.isEmpty {
-                ContentUnavailableView("Couldn't Load Ports", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+                ContentUnavailableView(
+                    "Couldn't Load Ports", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
             } else if ports.isEmpty {
                 ContentUnavailableView("No Ports", systemImage: "point.3.connected.trianglepath.dotted")
             } else {
@@ -114,11 +120,13 @@ struct PortsView: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search ports")
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) {
-            Task { await load(refresh: true) }
+            Task { await load() }
         }
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await load(refresh: true) } } label: {
+                Button {
+                    Task { await load() }
+                } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .accessibilityLabel("Refresh")
@@ -126,10 +134,10 @@ struct PortsView: View {
             }
         }
         .task { await load() }
-        .refreshable { await load(refresh: true) }
+        .refreshable { await load() }
     }
 
-    private func load(refresh: Bool = false) async {
+    private func load() async {
         guard let client = manager.client else { return }
         let generation = pagination.reset()
         isLoadingMore = false
@@ -190,13 +198,15 @@ struct PortsView: View {
         requestedStart: Int,
         generation: Int
     ) {
-        guard pagination.receive(
-            pagination: response.pagination,
-            itemCount: response.data.count,
-            requestedStart: requestedStart,
-            requestedLimit: Self.pageSize,
-            generation: generation
-        ) else { return }
+        guard
+            pagination.receive(
+                pagination: response.pagination,
+                itemCount: response.data.count,
+                requestedStart: requestedStart,
+                requestedLimit: Self.pageSize,
+                generation: generation
+            )
+        else { return }
         ports = PaginationLoader.merge(current: ports, incoming: response.data, reset: reset)
         loadMoreError = nil
         errorMessage = nil
@@ -318,7 +328,8 @@ struct PortMappingDetailView: View {
 private func displayHostIP(_ value: String?) -> String {
     let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     guard !trimmed.isEmpty,
-          trimmed.localizedCaseInsensitiveCompare("invalid IP") != .orderedSame else {
+        trimmed.localizedCaseInsensitiveCompare("invalid IP") != .orderedSame
+    else {
         return "0.0.0.0"
     }
     return trimmed

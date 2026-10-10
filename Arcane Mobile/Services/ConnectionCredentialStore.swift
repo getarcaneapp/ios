@@ -1,7 +1,9 @@
 import Foundation
 import Security
 
-nonisolated struct SyncedConnectionCredential: Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+nonisolated struct SyncedConnectionCredential: Equatable, Sendable, CustomStringConvertible,
+    CustomDebugStringConvertible
+{
     let username: String
     let password: String
 
@@ -13,7 +15,8 @@ nonisolated struct SyncedConnectionCredential: Equatable, Sendable, CustomString
             throw ConnectionCredentialValidationError.emptyPassword
         }
         guard username.utf8.count <= ConnectionCredentialRecord.maximumUsernameBytes,
-              password.utf8.count <= ConnectionCredentialRecord.maximumPasswordBytes else {
+            password.utf8.count <= ConnectionCredentialRecord.maximumPasswordBytes
+        else {
             throw ConnectionCredentialValidationError.credentialTooLarge
         }
 
@@ -60,7 +63,9 @@ nonisolated enum ConnectionCredentialValidationError: LocalizedError, Equatable,
     }
 }
 
-nonisolated struct ConnectionCredentialRecord: Codable, Equatable, Sendable, CustomStringConvertible, CustomDebugStringConvertible {
+nonisolated struct ConnectionCredentialRecord: Codable, Equatable, Sendable, CustomStringConvertible,
+    CustomDebugStringConvertible
+{
     static let schemaVersion = 1
     static let maximumUsernameBytes = 1_024
     static let maximumPasswordBytes = 16_384
@@ -86,9 +91,10 @@ nonisolated struct ConnectionCredentialRecord: Codable, Equatable, Sendable, Cus
 
     func credential(for profile: ConnectionProfile) -> SyncedConnectionCredential? {
         guard version == Self.schemaVersion,
-              profileID == profile.id,
-              let normalizedServerURL = try? ConnectionProfileSync.normalizedServerURL(profile.serverURL),
-              serverURL == normalizedServerURL else {
+            profileID == profile.id,
+            let normalizedServerURL = try? ConnectionProfileSync.normalizedServerURL(profile.serverURL),
+            serverURL == normalizedServerURL
+        else {
             return nil
         }
         return try? SyncedConnectionCredential(username: username, password: password)
@@ -176,10 +182,11 @@ nonisolated struct ConnectionCredentialKeychainStore {
             throw KeychainError(status: errSecDecode)
         }
 
-        return Set(items.compactMap { item in
-            guard let account = item[kSecAttrAccount as String] as? String else { return nil }
-            return UUID(uuidString: account)
-        })
+        return Set(
+            items.compactMap { item in
+                guard let account = item[kSecAttrAccount as String] as? String else { return nil }
+                return UUID(uuidString: account)
+            })
     }
 
     func save(_ record: ConnectionCredentialRecord) throws {
@@ -226,12 +233,13 @@ nonisolated struct ConnectionCredentialKeychainStore {
     static func decode(_ data: Data) throws -> ConnectionCredentialRecord {
         let record = try JSONDecoder().decode(ConnectionCredentialRecord.self, from: data)
         guard record.version == ConnectionCredentialRecord.schemaVersion,
-              !record.username.isEmpty,
-              !record.password.isEmpty,
-              record.username.utf8.count <= ConnectionCredentialRecord.maximumUsernameBytes,
-              record.password.utf8.count <= ConnectionCredentialRecord.maximumPasswordBytes,
-              let normalizedServerURL = try? ConnectionProfileSync.normalizedServerURL(record.serverURL),
-              normalizedServerURL == record.serverURL else {
+            !record.username.isEmpty,
+            !record.password.isEmpty,
+            record.username.utf8.count <= ConnectionCredentialRecord.maximumUsernameBytes,
+            record.password.utf8.count <= ConnectionCredentialRecord.maximumPasswordBytes,
+            let normalizedServerURL = try? ConnectionProfileSync.normalizedServerURL(record.serverURL),
+            normalizedServerURL == record.serverURL
+        else {
             throw KeychainError(status: errSecDecode)
         }
         return record

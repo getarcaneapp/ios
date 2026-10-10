@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ContainerPortsSection: View {
     let ports: [ContainerPort]

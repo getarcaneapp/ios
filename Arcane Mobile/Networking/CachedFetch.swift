@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 // Stale-while-revalidate wrapper around `client.rest.get`. Views call this
 // to get a cached value immediately when one exists, while a fresh fetch
@@ -28,8 +28,9 @@ struct CachedClient: Sendable {
         onFresh: (@MainActor @Sendable (T) -> Void)? = nil
     ) async throws -> T? {
         #if DEBUG
-        assert(!path.hasSuffix("/stats") && !path.hasSuffix("/logs"),
-               "ResponseCache must not be used for stream paths: \(path)")
+            assert(
+                !path.hasSuffix("/stats") && !path.hasSuffix("/logs"),
+                "ResponseCache must not be used for stream paths: \(path)")
         #endif
 
         let captured = client
@@ -64,7 +65,7 @@ struct CachedClient: Sendable {
     @discardableResult
     func getList<E: Codable & Sendable>(
         _ path: String,
-        elementType: E.Type,
+        elementType _: E.Type,
         policy: CachePolicy,
         envID: EnvironmentID,
         refresh: Bool = false,
@@ -106,7 +107,7 @@ struct CachedClient: Sendable {
     @discardableResult
     func getListCustom<E: Codable & Sendable>(
         path: String,
-        elementType: E.Type,
+        elementType _: E.Type,
         policy: CachePolicy,
         envID: EnvironmentID,
         refresh: Bool = false,
@@ -191,7 +192,7 @@ struct CachedClient: Sendable {
     @discardableResult
     func getCustom<T: Codable & Sendable>(
         path: String,
-        as type: T.Type,
+        as _: T.Type,
         policy: CachePolicy,
         envID: EnvironmentID,
         refresh: Bool = false,
@@ -199,8 +200,9 @@ struct CachedClient: Sendable {
         fetcher: @Sendable @escaping () async throws -> T
     ) async throws -> T? {
         #if DEBUG
-        assert(!path.hasSuffix("/stats") && !path.hasSuffix("/logs"),
-               "ResponseCache must not be used for stream paths: \(path)")
+            assert(
+                !path.hasSuffix("/stats") && !path.hasSuffix("/logs"),
+                "ResponseCache must not be used for stream paths: \(path)")
         #endif
         let key = CacheKey(
             serverIdentity: serverIdentity, userID: userID,
@@ -209,9 +211,10 @@ struct CachedClient: Sendable {
         )
         let generation = await ResponseCache.shared.generation(for: key)
         if !refresh,
-           let hit = await ResponseCache.shared.getEntry(
-               key, as: T.self, ttl: policy.ttl, generation: generation
-           ) {
+            let hit = await ResponseCache.shared.getEntry(
+                key, as: T.self, ttl: policy.ttl, generation: generation
+            )
+        {
             if hit.age >= policy.revalidateAfter {
                 let onFreshCopy = onFresh
                 Task.detached(priority: .utility) {
@@ -245,7 +248,8 @@ struct CachedClient: Sendable {
         let session = sessionIdentity
         await ResponseCache.shared.invalidate { key in
             guard key.serverIdentity == server, key.userID == user,
-                  key.sessionIdentity == session, key.envID == env else { return false }
+                key.sessionIdentity == session, key.envID == env
+            else { return false }
             return paths.contains { Self.matches(pattern: $0, path: key.pathWithQuery) }
         }
     }
@@ -257,7 +261,8 @@ struct CachedClient: Sendable {
         let session = sessionIdentity
         await ResponseCache.shared.invalidate { key in
             guard key.serverIdentity == server, key.userID == user,
-                  key.sessionIdentity == session else { return false }
+                key.sessionIdentity == session
+            else { return false }
             return paths.contains { Self.matches(pattern: $0, path: key.pathWithQuery) }
         }
     }
@@ -265,7 +270,8 @@ struct CachedClient: Sendable {
     nonisolated static func matches(pattern: String, path: String) -> Bool {
         if pattern == path
             || path.hasPrefix(pattern + "?")
-            || path.hasPrefix(pattern + "#") {
+            || path.hasPrefix(pattern + "#")
+        {
             return true
         }
         if pattern.hasSuffix("*") {

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 import WhatsNewKit
 
 struct AppSettingsView: View {
@@ -61,14 +61,16 @@ struct AppSettingsView: View {
                             + "Everything will be re-fetched as needed."
                         : "This will clear all cached images and API data.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Clear Cache") {
-                        Task {
-                            await ImageCache.shared.clear()
-                            await ResponseCache.shared.invalidateAll()
-                            await refreshCacheSize()
-                            showToast(.success("Cache cleared"))
+                    actions: [
+                        DeleteConfirmationAction(title: "Clear Cache") {
+                            Task {
+                                await ImageCache.shared.clear()
+                                await ResponseCache.shared.invalidateAll()
+                                await refreshCacheSize()
+                                showToast(.success("Cache cleared"))
+                            }
                         }
-                    }]
+                    ]
                 )
             }
         }
@@ -131,7 +133,8 @@ struct AppSettingsView: View {
     }
 
     private var notificationsFooter: String {
-        let toasts = "\(activityToastScope.subtitle). User Initiated excludes automated and server maintenance activities."
+        let toasts =
+            "\(activityToastScope.subtitle). User Initiated excludes automated and server maintenance activities."
         guard manager.supportsMobilePush else { return toasts }
         if push.serverStatus?.enabled != true {
             return toasts + " Push notifications are turned off by your Arcane admin."
@@ -139,7 +142,8 @@ struct AppSettingsView: View {
         if push.isAuthorizationDenied {
             return toasts + " Notifications for Arcane are turned off in iOS Settings."
         }
-        return toasts + " Push notifications are delivered through Arcane's push relay; only the notification text is sent, never your server address or credentials."
+        return toasts
+            + " Push notifications are delivered through Arcane's push relay; only the notification text is sent, never your server address or credentials."
     }
 
     private var activityToastScope: ActivityToastScope {

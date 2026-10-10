@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct DashboardPinnedSection: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -135,8 +135,8 @@ struct DashboardPinnedSection: View {
 
 }
 
-private extension DashboardPinnedSection {
-    func open(_ item: DashboardPinnedItem) {
+extension DashboardPinnedSection {
+    fileprivate func open(_ item: DashboardPinnedItem) {
         switch item {
         case .container(let container):
             onOpenContainer(container)
@@ -145,11 +145,11 @@ private extension DashboardPinnedSection {
         }
     }
 
-    func scheduleReload() {
+    fileprivate func scheduleReload() {
         Task { await reload(refresh: true) }
     }
 
-    func reload(refresh: Bool = false) async {
+    fileprivate func reload(refresh: Bool = false) async {
         guard manager.client != nil else { return }
         let requestedEnvironmentID = environmentID
         loadGeneration += 1
@@ -178,7 +178,7 @@ private extension DashboardPinnedSection {
         }
     }
 
-    func loadPinnedContainers(
+    fileprivate func loadPinnedContainers(
         envID: EnvironmentID,
         generation: Int,
         refresh: Bool
@@ -212,7 +212,7 @@ private extension DashboardPinnedSection {
         }
     }
 
-    func loadPinnedProjects(
+    fileprivate func loadPinnedProjects(
         envID: EnvironmentID,
         generation: Int,
         refresh: Bool
@@ -246,7 +246,7 @@ private extension DashboardPinnedSection {
         }
     }
 
-    func runAction(for item: DashboardPinnedItem) async {
+    fileprivate func runAction(for item: DashboardPinnedItem) async {
         guard let client = manager.client, runningID == nil else { return }
         runningID = item.id
         defer { runningID = nil }
@@ -279,20 +279,24 @@ private extension DashboardPinnedSection {
         }
     }
 
-    func invalidateContainerCaches() async {
+    fileprivate func invalidateContainerCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "containers"),
-            client.rest.environmentPath(environmentID, "containers/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "containers"),
+                client.rest.environmentPath(environmentID, "containers/*"),
+            ])
     }
 
-    func invalidateProjectCaches() async {
+    fileprivate func invalidateProjectCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "projects") + "*",
-            client.rest.environmentPath(environmentID, "projects/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "projects") + "*",
+                client.rest.environmentPath(environmentID, "projects/*"),
+            ])
     }
 }
 
@@ -394,8 +398,8 @@ private struct DashboardPinnedRowContent: View {
     }
 }
 
-private extension ProjectDetails {
-    var isDashboardRunning: Bool {
+extension ProjectDetails {
+    fileprivate var isDashboardRunning: Bool {
         status.lowercased() == "running"
     }
 }

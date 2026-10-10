@@ -5,8 +5,8 @@
 //  Created by Kyle Mendell on 7/2/26.
 //
 
-import WidgetKit
 import SwiftUI
+import WidgetKit
 
 @main
 struct ArcaneWidgetsBundle: WidgetBundle {

@@ -23,10 +23,15 @@ struct AllEnvironmentsResourcesView: View {
             bucket.resources.map { FleetResourceListItem(resource: $0, bucket: bucket) }
         }
         .filter { filters.matches($0) }
-        .filter { search.isEmpty || $0.bucket.name.localizedCaseInsensitiveContains(search) || $0.resource.searchText.localizedCaseInsensitiveContains(search) }
+        .filter {
+            search.isEmpty || $0.bucket.name.localizedCaseInsensitiveContains(search)
+                || $0.resource.searchText.localizedCaseInsensitiveContains(search)
+        }
         .sorted {
             let order = $0.resource.searchText.localizedStandardCompare($1.resource.searchText)
-            if order != .orderedSame { return sortOrder.areInIncreasingOrder($0.resource.searchText, $1.resource.searchText) }
+            if order != .orderedSame {
+                return sortOrder.areInIncreasingOrder($0.resource.searchText, $1.resource.searchText)
+            }
             return $0.bucket.name.localizedStandardCompare($1.bucket.name) == .orderedAscending
         }
     }
@@ -54,8 +59,10 @@ struct AllEnvironmentsResourcesView: View {
                                 .background(.bar)
                         }
                 } label: {
-                    resourceRow(item.resource, environmentName: item.bucket.name, imageUpdates: item.bucket.imageUpdates)
-                        .environment(\.fleetEnvironmentID, item.bucket.id)
+                    resourceRow(
+                        item.resource, environmentName: item.bucket.name, imageUpdates: item.bucket.imageUpdates
+                    )
+                    .environment(\.fleetEnvironmentID, item.bucket.id)
                 }
             }
             if store.isLoading && !visibleResources.isEmpty { ProgressView("Loading…") }
@@ -68,8 +75,12 @@ struct AllEnvironmentsResourcesView: View {
                     Picker("Sort", selection: $sortOrder) {
                         ForEach(ListSortOrder.allCases) { Label($0.title, systemImage: $0.systemImage).tag($0) }
                     }
-                    Button { showFilters = true } label: {
-                        Label(filters.activeCount > 0 ? "Filter (\(filters.activeCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                    Button {
+                        showFilters = true
+                    } label: {
+                        Label(
+                            filters.activeCount > 0 ? "Filter (\(filters.activeCount))" : "Filter…",
+                            systemImage: "line.3.horizontal.decrease.circle")
                     }
                     if [.containers, .projects, .images].contains(kind) {
                         Divider()
@@ -82,21 +93,30 @@ struct AllEnvironmentsResourcesView: View {
                     }
                     if [.containers, .images, .volumes, .networks].contains(kind) {
                         Divider()
-                        Button(role: .destructive) { showPrune = true } label: {
+                        Button(role: .destructive) {
+                            showPrune = true
+                        } label: {
                             DestructiveLabel(text: "Prune")
                         }
                         .tint(.red)
                     }
-                } label: { Label("More options", systemImage: "ellipsis.circle") }
+                } label: {
+                    Label("More options", systemImage: "ellipsis.circle")
+                }
                 .disabled(store.buckets.isEmpty)
             }
         }
         .overlay {
             if (fleet.isLoading || store.isLoading) && visibleResources.isEmpty {
                 ProgressView("Loading…")
-            } else if fleet.hasLoaded && !store.isLoading && visibleResources.isEmpty && fleet.errorMessage == nil && store.buckets.allSatisfy({ $0.error == nil }) {
-                if !search.isEmpty { ContentUnavailableView.search(text: search) }
-                else { ContentUnavailableView("No \(kind.title)", systemImage: "server.rack") }
+            } else if fleet.hasLoaded && !store.isLoading && visibleResources.isEmpty && fleet.errorMessage == nil
+                && store.buckets.allSatisfy({ $0.error == nil })
+            {
+                if !search.isEmpty {
+                    ContentUnavailableView.search(text: search)
+                } else {
+                    ContentUnavailableView("No \(kind.title)", systemImage: "server.rack")
+                }
             }
         }
         .task(id: requestID) { await load() }
@@ -109,19 +129,25 @@ struct AllEnvironmentsResourcesView: View {
             default: environment = nil
             }
             if let environment {
-                routeEnvironment = store.buckets.first { $0.id == environment }
+                routeEnvironment =
+                    store.buckets.first { $0.id == environment }
                     ?? FleetResourceBucket(id: environment, name: environment)
             }
         }
         .fleetMaintenanceConfirmation(action: $pendingMaintenanceAction, environments: fleet.environments)
         .sheet(isPresented: $showPrune) {
-            SystemPruneView(environmentID: manager.activeEnvironmentID, environments: fleet.environments.filter(\.enabled))
+            SystemPruneView(
+                environmentID: manager.activeEnvironmentID, environments: fleet.environments.filter(\.enabled))
         }
-        .sheet(isPresented: $showFilters) { FleetResourceFilterSheet(kind: kind, buckets: store.buckets, filters: $filters) }
+        .sheet(isPresented: $showFilters) {
+            FleetResourceFilterSheet(kind: kind, buckets: store.buckets, filters: $filters)
+        }
         .sheet(item: $routeEnvironment) { bucket in
             NavigationStack {
                 scopedTools(bucket)
-                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { routeEnvironment = nil } } }
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Done") { routeEnvironment = nil } }
+                    }
             }
         }
         .onChange(of: mutations.versions) { _, _ in Task { await load() } }
@@ -137,13 +163,21 @@ struct AllEnvironmentsResourcesView: View {
         }
     }
 
-    @ViewBuilder private func resourceRow(_ resource: FleetResource, environmentName: String, imageUpdates: [String: ImageUpdateResponse]) -> some View {
+    @ViewBuilder private func resourceRow(
+        _ resource: FleetResource, environmentName: String, imageUpdates: [String: ImageUpdateResponse]
+    ) -> some View {
         switch resource {
         case .container(let item): ContainerRow(container: item, environmentName: environmentName)
         case .project(let item): ProjectRow(project: item, environmentName: environmentName)
         case .network(let item): NetworkRow(network: item, environmentName: environmentName)
         case .volume(let item): VolumeRow(volume: item, environmentName: environmentName)
-        case .image(let item): ImageRow(row: .init(image: item, displayName: item.repoTags.first ?? item.id, sizeText: item.size.byteString, updateState: ImageUpdateState.resolve(inline: item.updateInfo, references: item.repoTags, results: imageUpdates)), environmentName: environmentName)
+        case .image(let item):
+            ImageRow(
+                row: .init(
+                    image: item, displayName: item.repoTags.first ?? item.id, sizeText: item.size.byteString,
+                    updateState: ImageUpdateState.resolve(
+                        inline: item.updateInfo, references: item.repoTags, results: imageUpdates)),
+                environmentName: environmentName)
         case .port(let item): PortMappingRow(port: item, environmentName: environmentName)
         case .job(let item):
             Label {
@@ -151,8 +185,11 @@ struct AllEnvironmentsResourcesView: View {
                     Text(item.name)
                     FleetEnvironmentLabel(name: environmentName)
                 }
-            } icon: { Image(systemName: "play.square.stack") }
-        case .gitOps(let item): DynamicResourceRow(item: item, systemImage: "arrow.triangle.branch", environmentName: environmentName)
+            } icon: {
+                Image(systemName: "play.square.stack")
+            }
+        case .gitOps(let item):
+            DynamicResourceRow(item: item, systemImage: "arrow.triangle.branch", environmentName: environmentName)
         case .vulnerability(let item):
             VStack(alignment: .leading) {
                 Text(item.vulnerabilityId)
@@ -165,7 +202,9 @@ struct AllEnvironmentsResourcesView: View {
                     Text("View network topology")
                     FleetEnvironmentLabel(name: environmentName)
                 }
-            } icon: { Image(systemName: "point.3.connected.trianglepath.dotted") }
+            } icon: {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+            }
         }
     }
 
@@ -184,7 +223,9 @@ struct AllEnvironmentsResourcesView: View {
             case .topology: NetworkTopologyView(environmentID: bucket.environmentID)
             }
         }
-        .safeAreaInset(edge: .top) { Text(bucket.name).font(.subheadline).frame(maxWidth: .infinity).padding(6).background(.bar) }
+        .safeAreaInset(edge: .top) {
+            Text(bucket.name).font(.subheadline).frame(maxWidth: .infinity).padding(6).background(.bar)
+        }
     }
 }
 
@@ -202,7 +243,8 @@ private struct FleetResourceDestination: View {
         case .network(let item): NetworkDetailView(network: item, environmentID: bucket.environmentID)
         case .volume(let item): VolumeDetailView(volume: item, environmentID: bucket.environmentID)
         case .port(let item): PortMappingDetailView(port: item)
-        case .job(let item): JobDetailView(environmentID: bucket.environmentID, job: item, isRunning: isRunning) { await run(item) }
+        case .job(let item):
+            JobDetailView(environmentID: bucket.environmentID, job: item, isRunning: isRunning) { await run(item) }
         case .gitOps(let item): DynamicResourceDetailView(title: item.title, resource: item, actions: [])
         case .vulnerability(let item): VulnerabilityWithImageDetailView(record: item)
         case .topology: NetworkTopologyView(environmentID: bucket.environmentID)

@@ -10,10 +10,11 @@ struct ImageCachePerformanceTests {
     @Test
     func decodeDownsamplesToRequestedPixelSize() throws {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 200, height: 100))
-        let data = try #require(renderer.image { context in
-            UIColor.red.setFill()
-            context.cgContext.fill(CGRect(x: 0, y: 0, width: 200, height: 100))
-        }.pngData())
+        let data = try #require(
+            renderer.image { context in
+                UIColor.red.setFill()
+                context.cgContext.fill(CGRect(x: 0, y: 0, width: 200, height: 100))
+            }.pngData())
 
         let image = try #require(ImageCache.decode(data: data, maxPixelSize: 40))
 
@@ -24,10 +25,11 @@ struct ImageCachePerformanceTests {
     @Test
     func concurrentLoadsShareOneFetch() async throws {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24))
-        let data = try #require(renderer.image { context in
-            UIColor.blue.setFill()
-            context.cgContext.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
-        }.pngData())
+        let data = try #require(
+            renderer.image { context in
+                UIColor.blue.setFill()
+                context.cgContext.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+            }.pngData())
         let fetchCount = Mutex(0)
         let key = "https://performance.invalid/\(UUID().uuidString).png"
 

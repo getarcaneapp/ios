@@ -300,7 +300,8 @@ private struct LogViewerSurface: View {
         guard !text.isEmpty else { return }
 
         do {
-            let filename = "\(LogViewerFormatting.sanitizedFilename(title))-\(Self.exportDateFormatter.string(from: Date())).log"
+            let filename =
+                "\(LogViewerFormatting.sanitizedFilename(title))-\(Self.exportDateFormatter.string(from: Date())).log"
             let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
             try text.write(to: url, atomically: true, encoding: .utf8)
             shareFile = LogShareFile(url: url)
@@ -618,8 +619,9 @@ struct LogLineView: View {
     @ViewBuilder
     private var metadataViews: some View {
         if showTimestamps,
-           let timestamp = line.timestamp,
-           !timestamp.isEmpty {
+            let timestamp = line.timestamp,
+            !timestamp.isEmpty
+        {
             metadataText(
                 LogViewerFormatting.displayTimestamp(timestamp),
                 color: .secondary
@@ -631,9 +633,9 @@ struct LogLineView: View {
             } icon: {
                 Image(systemName: "shippingbox")
             }
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
         if let level = LogViewerFormatting.levelLabel(line.level) {
             metadataText(level, color: metadataColor)
@@ -681,9 +683,9 @@ private struct LogShareFile: Identifiable {
 private struct LogActivityShareSheet: UIViewControllerRepresentable {
     let url: URL
 
-    func makeUIViewController(context: Context) -> UIActivityViewController {
+    func makeUIViewController(context _: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: [url], applicationActivities: nil)
     }
 
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    func updateUIViewController(_: UIActivityViewController, context _: Context) {}
 }

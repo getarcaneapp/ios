@@ -45,7 +45,8 @@ struct Sparkline: View {
 
     private func drawSparkline(in context: inout GraphicsContext, size: CGSize) {
         guard let first = samples.first, let last = samples.last,
-              size.width > 0, size.height > 0 else { return }
+            size.width > 0, size.height > 0
+        else { return }
 
         let startTime = first.timestamp.timeIntervalSinceReferenceDate
         let timeSpan = max(last.timestamp.timeIntervalSinceReferenceDate - startTime, 1)

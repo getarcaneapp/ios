@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// Per-user role assignment editor reached from `UserDetailView`. Shows the
 /// user's current assignments grouped by scope (Global first, then per-env),
@@ -43,19 +43,23 @@ struct UserRoleAssignmentsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { showAddSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Role Assignment")
+                Button {
+                    showAddSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                }.accessibilityLabel("Add Role Assignment")
                     .disabled(availableRoles.isEmpty)
             }
         }
         .task { await load() }
-        .refreshable { await load(refresh: true) }
+        .refreshable { await load() }
         .sheet(isPresented: $showAddSheet) {
             AddRoleAssignmentSheet(
                 user: user,
                 availableRoles: availableRoles,
                 availableEnvironments: availableEnvironments,
                 existingAssignments: assignments,
-                onSaved: { await load(refresh: true) }
+                onSaved: { await load() }
             )
         }
         .alert(
@@ -73,7 +77,8 @@ struct UserRoleAssignmentsView: View {
             item: $pendingRemoveAssignment,
             title: { _ in "Remove Assignment" },
             message: { assignment in
-                let roleName = availableRoles.first(where: { $0.id == assignment.roleId })?.displayName ?? assignment.roleId
+                let roleName =
+                    availableRoles.first(where: { $0.id == assignment.roleId })?.displayName ?? assignment.roleId
                 return "Remove the “\(roleName)” role from this user?"
             },
             icon: "person.crop.circle.badge.minus",
@@ -132,7 +137,7 @@ struct UserRoleAssignmentsView: View {
         .listStyle(.insetGrouped)
     }
 
-    private func load(refresh: Bool = false) async {
+    private func load() async {
         guard let client = manager.client else { return }
         if assignments.isEmpty { isLoading = true }
         errorMessage = nil
@@ -160,7 +165,8 @@ struct UserRoleAssignmentsView: View {
 
     private func remove(_ assignment: RoleAssignment) async {
         guard let client = manager.client else { return }
-        let remainingManual = assignments
+        let remainingManual =
+            assignments
             .filter { $0.sourceKind == .manual && $0.id != assignment.id }
             .map { UserAssignmentInput(roleId: $0.roleId, environmentId: $0.environmentId) }
         do {
@@ -169,7 +175,8 @@ struct UserRoleAssignmentsView: View {
                 assignments = updated
             }
         } catch let ArcaneError.conflict(message) {
-            actionErrorMessage = message ?? "Cannot remove this assignment — at least one global administrator must remain."
+            actionErrorMessage =
+                message ?? "Cannot remove this assignment — at least one global administrator must remain."
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -295,7 +302,8 @@ struct AddRoleAssignmentSheet: View {
         let envId: String? = scope == .global ? nil : selectedEnvironmentId
         // The PUT endpoint replaces all manual assignments — preserve the
         // existing manual ones and append the new one.
-        var inputs = existingAssignments
+        var inputs =
+            existingAssignments
             .filter { $0.sourceKind == .manual }
             .map { UserAssignmentInput(roleId: $0.roleId, environmentId: $0.environmentId) }
         let new = UserAssignmentInput(roleId: selectedRoleId, environmentId: envId)

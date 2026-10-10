@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import Arcane_Mobile
 
 @Suite("Compose Preview preference")

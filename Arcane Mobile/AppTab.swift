@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// Every destination represented by the shared app navigation model.
 /// Pure data — no view types. Use `appTabDestination(_:manager:selectedTab:)`
@@ -134,14 +134,14 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .dashboard, .updates, .projects:
             return .management
         case .containers, .images, .imageVulnerabilities, .networks, .ports,
-             .networkTopology, .volumes:
+            .networkTopology, .volumes:
             return .resources
         case .swarm:
             return .swarm
         case .events, .customize, .settings, .templateRegistries, .containerRegistries,
-             .variables, .gitRepositories, .gitOps, .apiKeys, .webhooks, .authentication,
-             .notifications, .jobs, .users, .roles, .systemSettings, .activities,
-             .oidcRoleMappings, .systemBackups, .federatedCredentials:
+            .variables, .gitRepositories, .gitOps, .apiKeys, .webhooks, .authentication,
+            .notifications, .jobs, .users, .roles, .systemSettings, .activities,
+            .oidcRoleMappings, .systemBackups, .federatedCredentials:
             return .administration
         }
     }
@@ -156,7 +156,10 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .customize:
             return [.templateRegistries, .containerRegistries, .variables, .gitRepositories]
         case .settings:
-            return [.apiKeys, .federatedCredentials, .systemBackups, .webhooks, .authentication, .notifications, .jobs, .users, .roles, .systemSettings]
+            return [
+                .apiKeys, .federatedCredentials, .systemBackups, .webhooks, .authentication, .notifications, .jobs,
+                .users, .roles, .systemSettings,
+            ]
         default:
             return []
         }
@@ -168,19 +171,21 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .ports, .networkTopology: return .networks
         case .templateRegistries, .containerRegistries, .variables, .gitRepositories: return .customize
         case .apiKeys, .webhooks, .authentication, .notifications, .jobs, .users, .roles,
-             .systemSettings, .systemBackups, .federatedCredentials:
+            .systemSettings, .systemBackups, .federatedCredentials:
             return .settings
         default:
             return nil
         }
     }
 
-    var showsInNavigationMenus: Bool { parent == nil && self != .activities && self != .gitOps && self != .oidcRoleMappings }
+    var showsInNavigationMenus: Bool {
+        parent == nil && self != .activities && self != .gitOps && self != .oidcRoleMappings
+    }
 
     var canPinToBottomBar: Bool {
         switch self {
         case .dashboard, .updates, .projects, .containers, .images, .networks,
-             .volumes, .events, .swarm:
+            .volumes, .events, .swarm:
             return true
         default:
             return false
@@ -190,8 +195,8 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
     var requiresAdmin: Bool {
         switch self {
         case .customize, .templateRegistries, .containerRegistries, .variables, .gitRepositories,
-             .gitOps, .swarm, .apiKeys, .webhooks, .authentication, .notifications, .jobs,
-             .users, .roles, .systemSettings, .oidcRoleMappings:
+            .gitOps, .swarm, .apiKeys, .webhooks, .authentication, .notifications, .jobs,
+            .users, .roles, .systemSettings, .oidcRoleMappings:
             return true
         default:
             return false
@@ -208,7 +213,7 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
     var isEnvironmentScoped: Bool {
         switch self {
         case .containers, .images, .imageVulnerabilities, .projects, .volumes, .networks,
-             .ports, .networkTopology, .gitOps, .jobs, .swarm:
+            .ports, .networkTopology, .gitOps, .jobs, .swarm:
             return true
         default:
             return false
@@ -230,9 +235,17 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .swarm: return ["route.swarm"]
         case .events: return ["route.events"]
         case .customize:
-            return ["customize.category.templates", "customize.category.registries", "customize.category.variables", "customize.category.git-repositories"]
+            return [
+                "customize.category.templates", "customize.category.registries", "customize.category.variables",
+                "customize.category.git-repositories",
+            ]
         case .settings:
-            return ["settings.category.apikeys", "settings.category.webhooks", "settings.category.authentication", "settings.category.notifications", "settings.category.jobschedule", "settings.category.users", "settings.category.roles", "settings.category.appearance", "settings.category.build", "settings.category.timeouts", "settings.category.diagnostics"]
+            return [
+                "settings.category.apikeys", "settings.category.webhooks", "settings.category.authentication",
+                "settings.category.notifications", "settings.category.jobschedule", "settings.category.users",
+                "settings.category.roles", "settings.category.appearance", "settings.category.build",
+                "settings.category.timeouts", "settings.category.diagnostics",
+            ]
         case .templateRegistries: return ["customize.category.templates"]
         case .containerRegistries: return ["customize.category.registries"]
         case .variables: return ["customize.category.variables"]
@@ -246,7 +259,10 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .users: return ["settings.category.users"]
         case .roles: return ["settings.category.roles"]
         case .systemSettings:
-            return ["settings.category.appearance", "settings.category.build", "settings.category.timeouts", "settings.category.diagnostics"]
+            return [
+                "settings.category.appearance", "settings.category.build", "settings.category.timeouts",
+                "settings.category.diagnostics",
+            ]
         case .activities: return ["route.activities"]
         case .systemBackups: return ["settings.category.systembackups"]
         case .federatedCredentials: return []
@@ -266,49 +282,49 @@ func appTabDestination(
     if manager.allEnvironmentsPreview, let kind = FleetResourceKind(tab: tab) {
         AllEnvironmentsResourcesView(kind: kind)
     } else {
-    switch tab {
-    case .dashboard: DashboardView(selectedTab: selectedTab)
-    case .updates: UpdatesView()
-    case .projects:
-        ProjectsView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
-    case .containers:
-        ContainersView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
-    case .images:
-        ImagesView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
-    case .imageVulnerabilities: AllVulnerabilitiesView(environmentID: manager.activeEnvironmentID)
-    case .networks:
-        NetworksView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
-    case .ports: PortsView(environmentID: manager.activeEnvironmentID)
-    case .networkTopology: NetworkTopologyView(environmentID: manager.activeEnvironmentID)
-    case .volumes:
-        VolumesView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
-    case .swarm:
-        ContentUnavailableView {
-            Label("Coming Soon", systemImage: "square.stack.3d.up")
-        } description: {
-            Text("Swarm management is planned for a future Arcane Mobile update.")
+        switch tab {
+        case .dashboard: DashboardView(selectedTab: selectedTab)
+        case .updates: UpdatesView()
+        case .projects:
+            ProjectsView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
+        case .containers:
+            ContainersView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
+        case .images:
+            ImagesView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
+        case .imageVulnerabilities: AllVulnerabilitiesView(environmentID: manager.activeEnvironmentID)
+        case .networks:
+            NetworksView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
+        case .ports: PortsView(environmentID: manager.activeEnvironmentID)
+        case .networkTopology: NetworkTopologyView(environmentID: manager.activeEnvironmentID)
+        case .volumes:
+            VolumesView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
+        case .swarm:
+            ContentUnavailableView {
+                Label("Coming Soon", systemImage: "square.stack.3d.up")
+            } description: {
+                Text("Swarm management is planned for a future Arcane Mobile update.")
+            }
+            .navigationTitle("Swarm")
+        case .events: EventsView()
+        case .customize: NavigationCatalogLandingView(parent: .customize)
+        case .settings: SettingsView()
+        case .templateRegistries: TemplateBrowserView(embedded: true)
+        case .containerRegistries: ContainerRegistriesView()
+        case .variables: VariablesView()
+        case .gitRepositories: GitRepositoriesView()
+        case .gitOps: GitOpsSyncsView(environmentID: manager.activeEnvironmentID)
+        case .apiKeys: APIKeysView()
+        case .webhooks: WebhooksView()
+        case .authentication: AuthenticationSettingsView()
+        case .notifications: NotificationSettingsView()
+        case .jobs: JobsView(environmentID: manager.activeEnvironmentID)
+        case .users: UsersView()
+        case .roles: RolesView()
+        case .systemSettings: SystemSettingsView()
+        case .activities: ActivitiesView()
+        case .systemBackups: SystemBackupsView()
+        case .federatedCredentials: FederatedCredentialsView()
+        case .oidcRoleMappings: OIDCRoleMappingsView()
         }
-        .navigationTitle("Swarm")
-    case .events: EventsView()
-    case .customize: NavigationCatalogLandingView(parent: .customize)
-    case .settings: SettingsView()
-    case .templateRegistries: TemplateBrowserView(embedded: true)
-    case .containerRegistries: ContainerRegistriesView()
-    case .variables: VariablesView()
-    case .gitRepositories: GitRepositoriesView()
-    case .gitOps: GitOpsSyncsView(environmentID: manager.activeEnvironmentID)
-    case .apiKeys: APIKeysView()
-    case .webhooks: WebhooksView()
-    case .authentication: AuthenticationSettingsView()
-    case .notifications: NotificationSettingsView()
-    case .jobs: JobsView(environmentID: manager.activeEnvironmentID)
-    case .users: UsersView()
-    case .roles: RolesView()
-    case .systemSettings: SystemSettingsView()
-    case .activities: ActivitiesView()
-    case .systemBackups: SystemBackupsView()
-    case .federatedCredentials: FederatedCredentialsView()
-    case .oidcRoleMappings: OIDCRoleMappingsView()
     }
-}
 }

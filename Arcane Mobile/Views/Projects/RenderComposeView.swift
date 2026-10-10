@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct RenderComposeView: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
@@ -64,9 +64,11 @@ struct RenderComposeView: View {
     private var formPane: some View {
         Form {
             Section {
-                Text("Fill values for the placeholders found in this compose file. Empty values fall back to the default (if any).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Fill values for the placeholders found in this compose file. Empty values fall back to the default (if any)."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             Section("Variables") {
@@ -161,8 +163,9 @@ struct RenderComposeView: View {
             guard let eq = line.firstIndex(of: "=") else { continue }
             let key = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
             var value = String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
-            if (value.hasPrefix("\"") && value.hasSuffix("\"")) ||
-               (value.hasPrefix("'") && value.hasSuffix("'")), value.count >= 2 {
+            if (value.hasPrefix("\"") && value.hasSuffix("\"")) || (value.hasPrefix("'") && value.hasSuffix("'")),
+                value.count >= 2
+            {
                 value = String(value.dropFirst().dropLast())
             }
             if !key.isEmpty { result[key] = value }

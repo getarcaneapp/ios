@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 nonisolated struct ContainerStatsFrame: Identifiable, Hashable, Sendable {
     let id = UUID()
@@ -19,7 +19,9 @@ nonisolated struct ContainerStatsFrame: Identifiable, Hashable, Sendable {
 
     /// Overload that accepts the SDK's `ContainerStatsPayload` (which exposes
     /// the Docker stats blob as a `[String: JSONValue]` map under `raw`).
-    static func from(json: ContainerStatsPayload, previous: ContainerStatsFrame?, now: Date = Date()) -> ContainerStatsFrame? {
+    static func from(json: ContainerStatsPayload, previous: ContainerStatsFrame?, now: Date = Date())
+        -> ContainerStatsFrame?
+    {
         from(json: .object(json.raw), previous: previous, now: now)
     }
 
@@ -32,19 +34,22 @@ nonisolated struct ContainerStatsFrame: Identifiable, Hashable, Sendable {
         let preTotal = pre["cpu_usage"]?.asObject?["total_usage"]?.asInt64 ?? 0
         let sysTotal = cpu["system_cpu_usage"]?.asInt64 ?? 0
         let preSys = pre["system_cpu_usage"]?.asInt64 ?? 0
-        let online = cpu["online_cpus"]?.asInt64
+        let online =
+            cpu["online_cpus"]?.asInt64
             ?? Int64(cpu["cpu_usage"]?.asObject?["percpu_usage"]?.asArray?.count ?? 1)
 
         let cpuDelta = nonnegativeDelta(cpuTotal, preTotal)
         let sysDelta = nonnegativeDelta(sysTotal, preSys)
-        let rawCPUPercent: Double = (sysDelta > 0 && cpuDelta > 0)
+        let rawCPUPercent: Double =
+            (sysDelta > 0 && cpuDelta > 0)
             ? (cpuDelta / sysDelta) * Double(max(online, 1)) * 100.0
             : 0.0
         let cpuPercent = rawCPUPercent.isFinite ? min(max(rawCPUPercent, 0), 100_000) : 0
 
         let mem = root["memory_stats"]?.asObject ?? [:]
         let usage = mem["usage"]?.asInt64 ?? 0
-        let cache = mem["stats"]?.asObject?["cache"]?.asInt64
+        let cache =
+            mem["stats"]?.asObject?["cache"]?.asInt64
             ?? mem["stats"]?.asObject?["inactive_file"]?.asInt64
             ?? 0
         let memUsed = safeNonnegativeSubtract(usage, cache)
@@ -122,25 +127,26 @@ nonisolated struct ContainerStatsFrame: Identifiable, Hashable, Sendable {
 
 extension JSONValue {
     nonisolated var asObject: [String: JSONValue]? {
-        if case let .object(v) = self { return v } else { return nil }
+        if case .object(let v) = self { return v } else { return nil }
     }
     nonisolated var asArray: [JSONValue]? {
-        if case let .array(v) = self { return v } else { return nil }
+        if case .array(let v) = self { return v } else { return nil }
     }
     nonisolated var asInt64: Int64? {
-        guard case let .number(v) = self,
-              v.isFinite,
-              v >= Double(Int64.min),
-              v < Double(Int64.max) else { return nil }
+        guard case .number(let v) = self,
+            v.isFinite,
+            v >= Double(Int64.min),
+            v < Double(Int64.max)
+        else { return nil }
         return Int64(v)
     }
     nonisolated var asDouble: Double? {
-        if case let .number(v) = self { return v } else { return nil }
+        if case .number(let v) = self { return v } else { return nil }
     }
     nonisolated var asString: String? {
-        if case let .string(v) = self { return v } else { return nil }
+        if case .string(let v) = self { return v } else { return nil }
     }
     nonisolated var asBool: Bool? {
-        if case let .bool(v) = self { return v } else { return nil }
+        if case .bool(let v) = self { return v } else { return nil }
     }
 }

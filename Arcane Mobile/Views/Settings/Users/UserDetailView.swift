@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct UserDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -98,7 +98,8 @@ struct UserDetailView: View {
 
     private func saveUser() async {
         guard let client = manager.client else { return }
-        isSaving = true; errorMessage = nil
+        isSaving = true
+        errorMessage = nil
         defer { isSaving = false }
         let supportsRBAC = manager.serverCapabilities?.supportsRoleManagement == true
         do {

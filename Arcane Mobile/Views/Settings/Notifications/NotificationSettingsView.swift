@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct NotificationSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -48,7 +48,9 @@ struct NotificationSettingsView: View {
         .deleteConfirmation(
             item: $pendingDeleteProvider,
             title: { _ in "Delete Provider" },
-            message: { "Remove the “\($0.displayName)” notification provider? You'll stop receiving its notifications." },
+            message: {
+                "Remove the “\($0.displayName)” notification provider? You'll stop receiving its notifications."
+            },
             icon: "trash",
             confirmTitle: "Delete",
             onConfirm: { provider in Task { await deleteProvider(provider) } }
@@ -62,11 +64,13 @@ struct NotificationSettingsView: View {
         Section {
             ForEach(availableProviders) { provider in
                 let existing = configuredResponse(for: provider)
-                NavigationLink(destination: NotificationProviderFormView(
-                    provider: provider,
-                    existing: existing,
-                    onSaved: { await loadProviders() }
-                )) {
+                NavigationLink(
+                    destination: NotificationProviderFormView(
+                        provider: provider,
+                        existing: existing,
+                        onSaved: { await loadProviders() }
+                    )
+                ) {
                     HStack(spacing: 12) {
                         Image(systemName: provider.systemImage)
                             .foregroundStyle(provider.iconColor)

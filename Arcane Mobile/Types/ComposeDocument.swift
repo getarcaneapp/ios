@@ -10,7 +10,9 @@ nonisolated struct ComposeDocument {
     init(_ source: String) throws {
         let parser = Parser()
         try parser.setLanguage(tree_sitter_yaml())
-        guard let root = parser.parse(source)?.rootNode else { throw ComposeDocumentError.invalid("Unable to parse YAML.") }
+        guard let root = parser.parse(source)?.rootNode else {
+            throw ComposeDocumentError.invalid("Unable to parse YAML.")
+        }
         guard !root.hasError else {
             let error = Self.firstError(root)
             let line = Int(error.pointRange.lowerBound.row) + 1
@@ -19,7 +21,9 @@ nonisolated struct ComposeDocument {
         self.source = source
         self.root = root
         let documents = Self.children(root).filter { $0.nodeType == "document" }
-        guard documents.count <= 1 else { throw ComposeDocumentError.invalid("Edit multi-document YAML in the YAML editor.") }
+        guard documents.count <= 1 else {
+            throw ComposeDocumentError.invalid("Edit multi-document YAML in the YAML editor.")
+        }
         try validateKeys(root)
     }
 
@@ -43,12 +47,16 @@ nonisolated struct ComposeDocument {
         guard let node = resolve(path) else { return nil }
         if let sequence = Self.flowSequence(node) { return Self.flowItems(sequence).map(fragment) }
         guard let sequence = Self.sequence(node) else { return nil }
-        return Self.children(sequence).filter { $0.nodeType == "block_sequence_item" }.compactMap { Self.content($0).map(fragment) }
+        return Self.children(sequence).filter { $0.nodeType == "block_sequence_item" }.compactMap {
+            Self.content($0).map(fragment)
+        }
     }
     func isEditable(at path: [String]) -> Bool { (try? editableTarget(path)) != nil }
 
     static func quoted(_ string: String) -> String {
-        guard let data = try? JSONEncoder().encode(string), let result = String(data: data, encoding: .utf8) else { return "\"\"" }
+        guard let data = try? JSONEncoder().encode(string), let result = String(data: data, encoding: .utf8) else {
+            return "\"\""
+        }
         return result.replacingOccurrences(of: "\\/", with: "/")
     }
 }

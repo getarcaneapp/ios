@@ -1,6 +1,6 @@
+import Arcane
 import Foundation
 import Observation
-import Arcane
 
 /// Shared fleet ownership for Dashboard and Environments.
 @MainActor
@@ -116,7 +116,9 @@ final class FleetStore {
                 policy: .environments,
                 refresh: refresh,
                 onFresh: { [weak self] fresh in
-                    guard let self, generation == self.loadGeneration, session == manager.cacheSessionIdentity else { return }
+                    guard let self, generation == self.loadGeneration, session == manager.cacheSessionIdentity else {
+                        return
+                    }
                     self.apply(
                         environments: fresh,
                         activeEnvironmentID: activeEnvironmentID, server: manager.serverURL
@@ -129,7 +131,9 @@ final class FleetStore {
                     return ResourcePage(items: response.data, pagination: response.pagination)
                 }
             )
-            guard !Task.isCancelled, generation == loadGeneration, session == manager.cacheSessionIdentity else { return }
+            guard !Task.isCancelled, generation == loadGeneration, session == manager.cacheSessionIdentity else {
+                return
+            }
             if let loaded {
                 apply(
                     environments: loaded,

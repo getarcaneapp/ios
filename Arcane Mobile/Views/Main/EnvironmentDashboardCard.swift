@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 nonisolated enum DashboardVersionBadgeFormatter {
     static func arcane(
@@ -127,9 +127,15 @@ struct EnvironmentDashboardCard: View {
                 let hasAnyData = dockerInfo != nil
                 HStack(spacing: 12) {
                     let miniRadius = Radius.concentric(outer: Radius.card, inset: 10)
-                    DashboardMiniMetric(title: "Running", value: hasAnyData ? "\(running)" : "--", color: .green, cornerRadius: miniRadius)
-                    DashboardMiniMetric(title: "Stopped", value: hasAnyData ? "\(stopped)" : "--", color: .secondary, cornerRadius: miniRadius)
-                    DashboardMiniMetric(title: "Images", value: hasAnyData ? "\(images)" : "--", color: .purple, cornerRadius: miniRadius)
+                    DashboardMiniMetric(
+                        title: "Running", value: hasAnyData ? "\(running)" : "--", color: .green,
+                        cornerRadius: miniRadius)
+                    DashboardMiniMetric(
+                        title: "Stopped", value: hasAnyData ? "\(stopped)" : "--", color: .secondary,
+                        cornerRadius: miniRadius)
+                    DashboardMiniMetric(
+                        title: "Images", value: hasAnyData ? "\(images)" : "--", color: .purple,
+                        cornerRadius: miniRadius)
                 }
                 .frame(maxWidth: .infinity)
 
@@ -281,7 +287,7 @@ struct EnvironmentDashboardCard: View {
                 .tint(.teal)
                 .scaleEffect(x: 1, y: 2, anchor: .center)
                 .animation(Motion.gauge, value: percent)
-            .frame(height: 8)
+                .frame(height: 8)
         }
         .padding(8)
         .frame(maxWidth: .infinity)
@@ -328,7 +334,8 @@ struct EnvironmentDashboardCard: View {
             if let versionInfo = streamSnapshot?.versionInfo {
                 arcaneVersionBadge(versionInfo)
             } else if let currentVersion = cachedCard?.versionInfo?.currentVersion,
-                      !currentVersion.isEmpty {
+                !currentVersion.isEmpty
+            {
                 let label = DashboardVersionBadgeFormatter.arcane(
                     displayVersion: "",
                     currentTag: nil,
@@ -359,7 +366,8 @@ struct EnvironmentDashboardCard: View {
     private func actionItemsRow(_ items: [ActionItem]) -> some View {
         let isVisible = !items.isEmpty
         let hasCritical = items.contains { $0.severity == .critical }
-        let summary = items
+        let summary =
+            items
             .prefix(2)
             .map { "\($0.count) \(Self.actionItemLabel($0.kind))" }
             .joined(separator: " · ")
@@ -397,7 +405,7 @@ struct EnvironmentDashboardCard: View {
     private func arcaneVersionBadge(_ info: VersionInfo) -> some View {
         let label = Self.versionBadgeText(info)
         let badge = versionBadgeBody("Arcane \(label)", showsUpdate: info.updateAvailable)
-        .accessibilityLabel(info.updateAvailable ? "Arcane \(label), update available" : "Arcane \(label)")
+            .accessibilityLabel(info.updateAvailable ? "Arcane \(label), update available" : "Arcane \(label)")
 
         if info.updateAvailable, canUpgrade {
             Button {
@@ -453,7 +461,8 @@ struct EnvironmentDashboardCard: View {
     private var memoryPercent: Double? {
         if let p = latestStats?.memoryPercent { return p }
         if let used = latestStats?.memoryUsageBytes,
-           let total = memoryTotalBytes, total > 0 {
+            let total = memoryTotalBytes, total > 0
+        {
             return (Double(used) / Double(total)) * 100.0
         }
         return nil
@@ -465,8 +474,9 @@ struct EnvironmentDashboardCard: View {
 
     private var diskPercent: Double? {
         guard let used = latestStats?.diskUsageBytes,
-              let total = latestStats?.diskTotalBytes,
-              total > 0 else { return nil }
+            let total = latestStats?.diskTotalBytes,
+            total > 0
+        else { return nil }
         return (Double(used) / Double(total)) * 100.0
     }
 
@@ -477,7 +487,8 @@ struct EnvironmentDashboardCard: View {
 
     private func checkUpgradeAvailability() async {
         guard let client = manager.client,
-              manager.currentUser?.isAdmin == true else {
+            manager.currentUser?.isAdmin == true
+        else {
             canUpgrade = false
             return
         }

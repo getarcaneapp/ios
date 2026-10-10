@@ -10,15 +10,16 @@ extension View {
         resourceName: String? = nil,
         active: Bool = true
     ) -> some View {
-        modifier(ResourceActionToolbarModifier(
-            primary: primary,
-            secondary: secondary,
-            overflow: overflow,
-            runningItemID: runningItemID,
-            isDisabled: isDisabled,
-            resourceName: resourceName,
-            active: active
-        ))
+        modifier(
+            ResourceActionToolbarModifier(
+                primary: primary,
+                secondary: secondary,
+                overflow: overflow,
+                runningItemID: runningItemID,
+                isDisabled: isDisabled,
+                resourceName: resourceName,
+                active: active
+            ))
     }
 }
 

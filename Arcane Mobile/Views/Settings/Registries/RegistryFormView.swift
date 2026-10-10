@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct RegistryFormView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -49,7 +49,8 @@ struct RegistryFormView: View {
                 || !awsRegion.isEmpty
                 || !repositoryNameRows.isEmpty
         }
-        let typeMatch = registryType == registry.registryType
+        let typeMatch =
+            registryType == registry.registryType
             || (typeBinding.wrappedValue == "generic"
                 && (registry.registryType == "generic" || registry.registryType == "custom"))
         return url != registry.url
@@ -230,7 +231,8 @@ struct RegistryFormView: View {
 
     private func saveRegistry() async {
         guard let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+        isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             if let registry {
@@ -270,7 +272,8 @@ struct RegistryFormView: View {
                 )
                 let _: ContainerRegistry = try await client.rest.post("container-registries", body: body)
             }
-            await onSuccess(); dismiss()
+            await onSuccess()
+            dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
@@ -290,8 +293,8 @@ func registryRepositoryNames(rows: [StableStringRow], supported: Bool) -> [Strin
     }
 }
 
-private extension String {
-    var nilIfEmpty: String? {
+extension String {
+    fileprivate var nilIfEmpty: String? {
         isEmpty ? nil : self
     }
 }

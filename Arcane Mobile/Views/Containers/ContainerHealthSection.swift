@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ContainerHealthSection: View {
     let health: ContainerHealth
@@ -88,8 +88,8 @@ struct ContainerHealthHistoryView: View {
     }
 }
 
-private extension String {
-    var formattedHealthDate: String {
+extension String {
+    fileprivate var formattedHealthDate: String {
         ArcaneDateFormatting.formattedISO8601(self, date: .abbreviated, time: .standard)
     }
 }

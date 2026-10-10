@@ -207,11 +207,12 @@ nonisolated enum SupportBundleBuilder {
         let canonical = ServerCacheIdentity.canonical(for: identityURL)
         let privateID = "srv-" + shortHash("\(fingerprintSalt)\u{0}\(canonical)")
         let scheme = url.scheme?.lowercased()
-        let transport: SupportBundleServerDescriptor.Transport = switch scheme {
-        case "https": .https
-        case "http": .http
-        default: .other
-        }
+        let transport: SupportBundleServerDescriptor.Transport =
+            switch scheme {
+            case "https": .https
+            case "http": .http
+            default: .other
+            }
         let host = url.host?.lowercased() ?? ""
         let hostKind: SupportBundleServerDescriptor.HostKind
         if host.contains(":") {
@@ -224,11 +225,12 @@ nonisolated enum SupportBundleBuilder {
             hostKind = .hostname
         }
 
-        let defaultPort: Int? = switch scheme {
-        case "https": 443
-        case "http": 80
-        default: nil
-        }
+        let defaultPort: Int? =
+            switch scheme {
+            case "https": 443
+            case "http": 80
+            default: nil
+            }
         let path = url.path
 
         return SupportBundleServerDescriptor(
@@ -265,7 +267,8 @@ nonisolated enum SupportBundleBuilder {
             options: .regularExpression
         )
         result = result.replacingOccurrences(
-            of: #"(?i)\b(x[-_]?api[-_]?key|api[-_]?key|password|passwd|pwd|client[-_]?secret|access[-_]?token|refresh[-_]?token|token|secret|set-cookie|cookie)\b(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)"#,
+            of:
+                #"(?i)\b(x[-_]?api[-_]?key|api[-_]?key|password|passwd|pwd|client[-_]?secret|access[-_]?token|refresh[-_]?token|token|secret|set-cookie|cookie)\b(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&]+)"#,
             with: "$1$2[REDACTED]",
             options: .regularExpression
         )
@@ -306,7 +309,7 @@ nonisolated enum SupportBundleBuilder {
             "Active environment name: \(reportValue(snapshot.activeEnvironmentName))",
             "Connection warning: \(snapshot.connectionWarning.map { reportValue($0) } ?? "None")",
             "",
-            "[Server]"
+            "[Server]",
         ]
 
         if let server = snapshot.server {
@@ -316,12 +319,12 @@ nonisolated enum SupportBundleBuilder {
                 "Transport: \(server.transport.rawValue)",
                 "Host form: \(server.hostKind.rawValue)",
                 "Non-default port: \(yesNo(server.usesNonDefaultPort))",
-                "Base path: \(yesNo(server.usesBasePath))"
+                "Base path: \(yesNo(server.usesBasePath))",
             ])
         } else {
             lines.append(contentsOf: [
                 "Address: Unavailable",
-                "Stable server ID: Unavailable"
+                "Stable server ID: Unavailable",
             ])
         }
 
@@ -334,7 +337,7 @@ nonisolated enum SupportBundleBuilder {
                 "Arcane build time: \(reportValue(backend.buildTime))",
                 "Enabled backend features: \(listValue(backend.enabledFeatures))",
                 "Arcane update available: \(yesNo(backend.updateAvailable))",
-                "Newest Arcane version: \(safeVersion(backend.newestVersion) ?? "Unavailable")"
+                "Newest Arcane version: \(safeVersion(backend.newestVersion) ?? "Unavailable")",
             ])
         } else {
             lines.append("Arcane version: Unavailable")
@@ -353,7 +356,7 @@ nonisolated enum SupportBundleBuilder {
             "[Endpoint Diagnostics]",
             "Server URL configured: \(snapshot.serverURLConfigured ? "Passed" : "Failed")",
             "Client configured: \(snapshot.clientConfigured ? "Passed" : "Failed")",
-            "Authenticated session: \(snapshot.authenticationState == .authenticated ? "Passed" : "Failed")"
+            "Authenticated session: \(snapshot.authenticationState == .authenticated ? "Passed" : "Failed")",
         ])
         appendCheck("API health", snapshot.diagnostics.apiHealth, to: &lines)
         appendCheck("Version endpoint", snapshot.diagnostics.versionEndpoint, to: &lines)
@@ -383,7 +386,7 @@ nonisolated enum SupportBundleBuilder {
                 "Containers stopped: \(numberValue(docker.containersStopped))",
                 "Images: \(numberValue(docker.images))",
                 "Docker root directory: \(reportValue(docker.dockerRootDirectory))",
-                "Security options: \(listValue(docker.securityOptions))"
+                "Security options: \(listValue(docker.securityOptions))",
             ])
         } else {
             lines.append("Docker information: Unavailable")
@@ -392,7 +395,7 @@ nonisolated enum SupportBundleBuilder {
         lines.append(contentsOf: [
             "",
             "[Environment Inventory]",
-            "Count returned: \(String(snapshot.diagnostics.environments.count))"
+            "Count returned: \(String(snapshot.diagnostics.environments.count))",
         ])
         for (index, environment) in snapshot.diagnostics.environments.enumerated() {
             lines.append(contentsOf: [
@@ -415,7 +418,7 @@ nonisolated enum SupportBundleBuilder {
                 "  Certificate expires: \(dateValue(environment.certificateExpiresAt))",
                 "  Certificate days remaining: \(numberValue(environment.certificateDaysRemaining))",
                 "  Certificate expired: \(optionalYesNo(environment.certificateExpired))",
-                "  Certificate expiring soon: \(optionalYesNo(environment.certificateExpiringSoon))"
+                "  Certificate expiring soon: \(optionalYesNo(environment.certificateExpiringSoon))",
             ])
         }
 
@@ -423,7 +426,7 @@ nonisolated enum SupportBundleBuilder {
         lines.append(contentsOf: [
             "",
             "[Recent Failed Activities]",
-            "Count included: \(String(activities.count))"
+            "Count included: \(String(activities.count))",
         ])
         if activities.isEmpty {
             lines.append("No recent failed activities returned")
@@ -449,7 +452,7 @@ nonisolated enum SupportBundleBuilder {
                 "  Started: \(activity.startedAt.ISO8601Format())",
                 "  Ended: \(dateValue(activity.endedAt))",
                 "  Duration milliseconds: \(numberValue(activity.durationMs))",
-                "  Detail request error: \(activity.detailError.map { reportValue($0, maximumLength: 4_000) } ?? "None")"
+                "  Detail request error: \(activity.detailError.map { reportValue($0, maximumLength: 4_000) } ?? "None")",
             ])
             if let metadata = activity.metadata, !metadata.isEmpty {
                 lines.append("  Metadata: \(jsonText(metadata))")
@@ -516,7 +519,8 @@ nonisolated enum SupportBundleBuilder {
     }
 
     private static func listValue(_ values: [String]) -> String {
-        let sanitized = values
+        let sanitized =
+            values
             .map { reportValue($0) }
             .filter { $0 != "Unavailable" }
             .sorted()
@@ -525,7 +529,8 @@ nonisolated enum SupportBundleBuilder {
 
     private static func reportValue(_ value: String?, maximumLength: Int = 2_000) -> String {
         guard let value else { return "Unavailable" }
-        let singleLine = value
+        let singleLine =
+            value
             .replacingOccurrences(of: "\r", with: "\\r")
             .replacingOccurrences(of: "\n", with: "\\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -549,7 +554,8 @@ nonisolated enum SupportBundleBuilder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(sanitized),
-              let text = String(data: data, encoding: .utf8) else {
+            let text = String(data: data, encoding: .utf8)
+        else {
             return "Unavailable"
         }
         return reportValue(text, maximumLength: 12_000)
@@ -603,7 +609,7 @@ nonisolated enum SupportBundleBuilder {
             "credential",
             "privatekey",
             "clientsecret",
-            "accesskey"
+            "accesskey",
         ].contains { normalized.contains($0) }
     }
 
@@ -746,10 +752,12 @@ nonisolated enum SupportBundleCollector {
     private static func probeVersion(client: ArcaneClient) async -> VersionProbe {
         do {
             let response = try await client.version.appVersion()
-            let version = response.currentVersion.isEmpty
+            let version =
+                response.currentVersion.isEmpty
                 ? response.displayVersion
                 : response.currentVersion
-            let revision = response.shortRevision.isEmpty
+            let revision =
+                response.shortRevision.isEmpty
                 ? response.revision
                 : response.shortRevision
             return VersionProbe(

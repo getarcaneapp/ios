@@ -1,6 +1,6 @@
-import SwiftUI
-import Charts
 import Arcane
+import Charts
+import SwiftUI
 
 struct ContainerStatsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -88,32 +88,32 @@ struct ContainerStatsView: View {
             EmptyView()
         } else {
             VStack(spacing: 16) {
-                    summaryTiles
-                    StatsChartCard(
-                        title: "CPU",
-                        colors: [Color.accentColor],
-                        legend: nil,
-                        unit: "%",
-                        series: [chartSeries.cpu]
-                    )
-                    .equatable()
-                    memoryCard
-                    StatsChartCard(
-                        title: "Network I/O",
-                        colors: [.green, .orange],
-                        legend: ["RX", "TX"],
-                        unit: "B/s",
-                        series: [chartSeries.networkReceive, chartSeries.networkTransmit]
-                    )
-                    .equatable()
-                    StatsChartCard(
-                        title: "Block I/O",
-                        colors: [Color.accentColor, Color.accentColor.opacity(0.5)],
-                        legend: ["Read", "Write"],
-                        unit: "B/s",
-                        series: [chartSeries.blockRead, chartSeries.blockWrite]
-                    )
-                    .equatable()
+                summaryTiles
+                StatsChartCard(
+                    title: "CPU",
+                    colors: [Color.accentColor],
+                    legend: nil,
+                    unit: "%",
+                    series: [chartSeries.cpu]
+                )
+                .equatable()
+                memoryCard
+                StatsChartCard(
+                    title: "Network I/O",
+                    colors: [.green, .orange],
+                    legend: ["RX", "TX"],
+                    unit: "B/s",
+                    series: [chartSeries.networkReceive, chartSeries.networkTransmit]
+                )
+                .equatable()
+                StatsChartCard(
+                    title: "Block I/O",
+                    colors: [Color.accentColor, Color.accentColor.opacity(0.5)],
+                    legend: ["Read", "Write"],
+                    unit: "B/s",
+                    series: [chartSeries.blockRead, chartSeries.blockWrite]
+                )
+                .equatable()
             }
         }
     }
@@ -121,7 +121,8 @@ struct ContainerStatsView: View {
     private var summaryTiles: some View {
         Grid(horizontalSpacing: 12, verticalSpacing: 12) {
             GridRow {
-                tile(title: "CPU", value: percentString(latest?.cpuPercent), systemImage: "cpu", tint: Color.accentColor)
+                tile(
+                    title: "CPU", value: percentString(latest?.cpuPercent), systemImage: "cpu", tint: Color.accentColor)
                 tile(
                     title: "Memory",
                     value: memoryString(used: latest?.memoryUsed, limit: latest?.memoryLimit),
@@ -149,7 +150,9 @@ struct ContainerStatsView: View {
         }
     }
 
-    private func tile(title: String, value: String, subtitle: String? = nil, systemImage: String, tint: Color) -> some View {
+    private func tile(title: String, value: String, subtitle: String? = nil, systemImage: String, tint: Color)
+        -> some View
+    {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: systemImage)
@@ -217,7 +220,7 @@ struct ContainerStatsView: View {
                         Self.parseFrame(raw: raw, previous: previousSnapshot)
                     }
                     guard let parsed = await parseTask.value else { continue }
-                    
+
                     previousFrame = parsed
                     bufferedFrames.append(parsed)
                     if bufferedFrames.count > windowSize {

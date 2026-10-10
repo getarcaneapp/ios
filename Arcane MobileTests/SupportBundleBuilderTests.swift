@@ -86,7 +86,8 @@ struct SupportBundleBuilderTests {
 
     @Test
     func redactorKeepsDebugContextWhileRemovingCredentialValues() {
-        let input = "POST https://admin:pw@arcane.test/api?token=query-secret returned 401; "
+        let input =
+            "POST https://admin:pw@arcane.test/api?token=query-secret returned 401; "
             + "api_key=key-secret Authorization: Bearer bearer-secret request=abc123"
         let output = SupportBundleBuilder.redacted(input)
 
@@ -120,7 +121,7 @@ struct SupportBundleBuilderTests {
             durationMs: 60_000,
             metadata: [
                 "image": .string("ghcr.io/acme/api:latest"),
-                "accessToken": .string("metadata-secret")
+                "accessToken": .string("metadata-secret"),
             ],
             detailError: nil,
             messages: [
@@ -130,7 +131,7 @@ struct SupportBundleBuilderTests {
                     message: "registry returned 401; password=message-secret",
                     payload: [
                         "exitCode": .number(1),
-                        "password": .string("payload-secret")
+                        "password": .string("payload-secret"),
                     ]
                 )
             ]

@@ -1,6 +1,6 @@
+import Arcane
 import SwiftUI
 import UniformTypeIdentifiers
-import Arcane
 
 struct VolumeWorkspaceView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -19,12 +19,17 @@ struct VolumeWorkspaceView: View {
     @State private var pendingDelete: ProjectFile?
     private var canUpload: Bool { manager.permissions.has(Permission.Volumes.upload, in: environmentID) }
     private var canDelete: Bool { manager.permissions.has(Permission.Volumes.delete, in: environmentID) }
-    private var identity: String { "\(manager.clientGeneration)|\(manager.client?.configuration.baseURL.absoluteString ?? "")|\(manager.currentUser?.id ?? "")|\(environmentID.rawValue)|\(volumeName)" }
+    private var identity: String {
+        "\(manager.clientGeneration)|\(manager.client?.configuration.baseURL.absoluteString ?? "")|\(manager.currentUser?.id ?? "")|\(environmentID.rawValue)|\(volumeName)"
+    }
     private var entries: [ProjectFile] {
         (workspace?.files ?? []).filter { file in
             let parent = file.relativePath.split(separator: "/").dropLast().joined(separator: "/")
             return parent == directory
-        }.sorted { $0.isDirectory != $1.isDirectory ? $0.isDirectory : $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }.sorted {
+            $0.isDirectory != $1.isDirectory
+                ? $0.isDirectory : $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
     }
 
     var body: some View {
@@ -33,46 +38,76 @@ struct VolumeWorkspaceView: View {
                 Text("This server does not support volume workspaces. Use the file browser to inspect this volume.")
             }
             if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
-            if workspace?.fileTreeTruncated == true { Text("The server returned a partial file tree.").foregroundStyle(.orange) }
+            if workspace?.fileTreeTruncated == true {
+                Text("The server returned a partial file tree.").foregroundStyle(.orange)
+            }
             if !directory.isEmpty {
-                Button("Parent folder", systemImage: "arrow.up") { directory = directory.split(separator: "/").dropLast().joined(separator: "/") }
+                Button("Parent folder", systemImage: "arrow.up") {
+                    directory = directory.split(separator: "/").dropLast().joined(separator: "/")
+                }
             }
             ForEach(entries, id: \.relativePath) { file in
                 Button {
-                    if file.isDirectory { directory = file.relativePath }
-                    else { selectedFile = file }
+                    if file.isDirectory { directory = file.relativePath } else { selectedFile = file }
                 } label: {
                     Label(file.name, systemImage: file.isDirectory ? "folder" : "doc.text")
                 }
                 .contextMenu {
                     if canUpload && canDelete && file.isSymlink != true {
-                        Button("Rename") { actionFile = file; input = file.name; action = .rename }
-                        Button("Move") { actionFile = file; input = ""; action = .move }
+                        Button("Rename") {
+                            actionFile = file
+                            input = file.name
+                            action = .rename
+                        }
+                        Button("Move") {
+                            actionFile = file
+                            input = ""
+                            action = .move
+                        }
                     }
                     if canDelete { Button("Delete", role: .destructive) { pendingDelete = file } }
                 }
             }
-            if loading { ProgressView() }
-            else if entries.isEmpty && workspace != nil { Text("Empty folder").foregroundStyle(.secondary) }
+            if loading {
+                ProgressView()
+            } else if entries.isEmpty && workspace != nil {
+                Text("Empty folder").foregroundStyle(.secondary)
+            }
         }
         .navigationTitle(directory.isEmpty ? volumeName : directory)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if canUpload && workspace != nil {
                 Menu("Add", systemImage: "plus") {
-                    Button("New file") { actionFile = nil; input = ""; action = .createFile }
-                    Button("New folder") { actionFile = nil; input = ""; action = .createFolder }
+                    Button("New file") {
+                        actionFile = nil
+                        input = ""
+                        action = .createFile
+                    }
+                    Button("New folder") {
+                        actionFile = nil
+                        input = ""
+                        action = .createFolder
+                    }
                     Button("Upload files") { importing = true }
                 }
                 .disabled(loading)
             }
         }
-        .task(id: identity) { workspace = nil; directory = ""; selectedFile = nil; await load() }
+        .task(id: identity) {
+            workspace = nil
+            directory = ""
+            selectedFile = nil
+            await load()
+        }
         .refreshable { await load() }
         .sheet(isPresented: Binding(get: { selectedFile != nil }, set: { if !$0 { selectedFile = nil } })) {
             if let file = selectedFile, let workspace {
                 NavigationStack {
-                    VolumeWorkspaceFileView(environmentID: environmentID, volumeName: volumeName, file: file, revision: workspace.fileTreeRevision) { await load() }
+                    VolumeWorkspaceFileView(
+                        environmentID: environmentID, volumeName: volumeName, file: file,
+                        revision: workspace.fileTreeRevision
+                    ) { await load() }
                 }
                 .id(identity)
             }
@@ -91,15 +126,30 @@ struct VolumeWorkspaceView: View {
                 .navigationTitle(action?.rawValue.replacingOccurrences(of: "_", with: " ").capitalized ?? "File")
                 .toolbar {
                     AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { action = nil } }
-                    AppToolbarItem(placement: .confirmationAction) { Button("Apply") { Task { await applyAction() } }.disabled(loading || !validInput) }
+                    AppToolbarItem(placement: .confirmationAction) {
+                        Button("Apply") { Task { await applyAction() } }.disabled(loading || !validInput)
+                    }
                 }
             }
         }
-        .confirmationDialog("Delete \(pendingDelete?.relativePath ?? "")?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }), titleVisibility: .visible) {
+        .confirmationDialog(
+            "Delete \(pendingDelete?.relativePath ?? "")?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
             Button("Delete", role: .destructive) {
-                if let file = pendingDelete { Task { await apply([.init(operation: .delete, relativePath: file.relativePath, recursive: file.isDirectory)]); pendingDelete = nil } }
+                if let file = pendingDelete {
+                    Task {
+                        await apply([
+                            .init(operation: .delete, relativePath: file.relativePath, recursive: file.isDirectory)
+                        ])
+                        pendingDelete = nil
+                    }
+                }
             }
-        } message: { Text("Deleting a folder also deletes its contents.") }
+        } message: {
+            Text("Deleting a folder also deletes its contents.")
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.data], allowsMultipleSelection: true) { result in
             Task {
                 do {
@@ -107,7 +157,8 @@ struct VolumeWorkspaceView: View {
                     let accessed = urls.filter { $0.startAccessingSecurityScopedResource() }
                     defer { accessed.forEach { $0.stopAccessingSecurityScopedResource() } }
                     let changes = urls.enumerated().map { index, url in
-                        VolumeWorkspaceFileChange(operation: .createFile, relativePath: joined(url.lastPathComponent), uploadIndex: index)
+                        VolumeWorkspaceFileChange(
+                            operation: .createFile, relativePath: joined(url.lastPathComponent), uploadIndex: index)
                     }
                     await apply(changes, files: urls)
                 } catch { showToast(.error(friendlyErrorMessage(error))) }
@@ -121,14 +172,18 @@ struct VolumeWorkspaceView: View {
     }
     private func joined(_ name: String) -> String { directory.isEmpty ? name : directory + "/" + name }
     private func load() async {
-        guard let client = manager.client, manager.permissions.has(Permission.Volumes.read, in: environmentID) else { return }
+        guard let client = manager.client, manager.permissions.has(Permission.Volumes.read, in: environmentID) else {
+            return
+        }
         let key = identity
         loading = true
         defer { if key == identity { loading = false } }
         do {
             let result = try await client.volumes.workspace(envID: environmentID, name: volumeName)
             guard !Task.isCancelled, identity == key else { return }
-            workspace = result; errorMessage = nil; unsupported = false
+            workspace = result
+            errorMessage = nil
+            unsupported = false
         } catch {
             guard !Task.isCancelled, identity == key else { return }
             unsupported = (error as? ArcaneError) == .notFound
@@ -143,10 +198,18 @@ struct VolumeWorkspaceView: View {
             do {
                 try Data().write(to: url)
                 defer { try? FileManager.default.removeItem(at: url) }
-                if await apply([.init(operation: action, relativePath: path, uploadIndex: 0)], files: [url]) { self.action = nil }
+                if await apply([.init(operation: action, relativePath: path, uploadIndex: 0)], files: [url]) {
+                    self.action = nil
+                }
             } catch { showToast(.error(friendlyErrorMessage(error))) }
         } else {
-            if await apply([.init(operation: action, relativePath: path, newName: action == .rename ? input : nil, newParentPath: action == .move ? input : nil)]) { self.action = nil }
+            if await apply([
+                .init(
+                    operation: action, relativePath: path, newName: action == .rename ? input : nil,
+                    newParentPath: action == .move ? input : nil)
+            ]) {
+                self.action = nil
+            }
         }
     }
     @discardableResult
@@ -156,7 +219,8 @@ struct VolumeWorkspaceView: View {
         loading = true
         defer { if key == identity { loading = false } }
         do {
-            let result = try await client.volumes.updateWorkspace(envID: environmentID, name: volumeName,
+            let result = try await client.volumes.updateWorkspace(
+                envID: environmentID, name: volumeName,
                 manifest: .init(fileTreeRevision: workspace.fileTreeRevision, fileChanges: changes), files: files)
             guard !Task.isCancelled, key == identity else { return false }
             self.workspace = result
@@ -167,7 +231,9 @@ struct VolumeWorkspaceView: View {
             guard !Task.isCancelled, key == identity else { return false }
             if case .conflict = error as? ArcaneError {
                 errorMessage = "Files changed on the server. Refresh and review them before retrying."
-            } else { errorMessage = friendlyErrorMessage(error) }
+            } else {
+                errorMessage = friendlyErrorMessage(error)
+            }
             return false
         }
     }

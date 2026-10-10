@@ -86,8 +86,9 @@ final class DeployLiveActivityController {
 
     /// Progress update for a server-observed Live Activity.
     func updateServerActivity(phase: String, progress: Double?, detail: String?) {
-        deliver(.init(phase: phase, progress: progress, state: .running, detail: detail),
-                immediate: false)
+        deliver(
+            .init(phase: phase, progress: progress, state: .running, detail: detail),
+            immediate: false)
     }
 
     /// Terminal update for a server-observed Live Activity.
@@ -113,19 +114,23 @@ final class DeployLiveActivityController {
         lastFlush = .now
 
         pumpTask = Task.detached {
-            guard let activity = try? Activity<DeployActivityAttributes>.request(
-                attributes: attributes,
-                content: .init(state: initialState,
-                               staleDate: Date().addingTimeInterval(Self.staleGrace))
-            ) else { return }
+            guard
+                let activity = try? Activity<DeployActivityAttributes>.request(
+                    attributes: attributes,
+                    content: .init(
+                        state: initialState,
+                        staleDate: Date().addingTimeInterval(Self.staleGrace))
+                )
+            else { return }
 
             for await command in stream {
                 switch command {
                 case .update(let state, let staleDate):
                     await activity.update(.init(state: state, staleDate: staleDate))
                 case .end(let state, let linger):
-                    await activity.end(.init(state: state, staleDate: nil),
-                                       dismissalPolicy: .after(.now + linger))
+                    await activity.end(
+                        .init(state: state, staleDate: nil),
+                        dismissalPolicy: .after(.now + linger))
                     return
                 case .endImmediately:
                     await activity.end(activity.content, dismissalPolicy: .immediate)
@@ -166,10 +171,11 @@ final class DeployLiveActivityController {
         cancelPendingFlush()
         // Let the outcome linger briefly — a touch longer on failure so it
         // can actually be read — then leave the Lock Screen.
-        let linger: TimeInterval = switch operation.status {
-        case .failure: 8
-        default: 4
-        }
+        let linger: TimeInterval =
+            switch operation.status {
+            case .failure: 8
+            default: 4
+            }
         commands.yield(.end(Self.contentState(for: operation), linger: linger))
         finishPump()
     }
@@ -225,9 +231,10 @@ final class DeployLiveActivityController {
             runState = .failure
         }
         let detail = operation.lines.last.map { String($0.text.prefix(60)) }
-        return .init(phase: phase,
-                     progress: operation.progressFraction,
-                     state: runState,
-                     detail: detail)
+        return .init(
+            phase: phase,
+            progress: operation.progressFraction,
+            state: runState,
+            detail: detail)
     }
 }

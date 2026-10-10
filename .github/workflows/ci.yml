@@ -31,6 +31,19 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Install quality tools
+        run: |
+          if ! command -v swiftlint >/dev/null 2>&1; then
+            brew install swiftlint
+          fi
+          if ! command -v just >/dev/null 2>&1; then
+            brew install just
+          fi
+          swiftlint version
+
+      - name: Check Swift formatting and lint
+        run: just check
+
       - name: Resolve Swift packages
         run: |
           xcodebuild \

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 // MARK: - Reusable rows
 
@@ -59,4 +59,3 @@ struct SettingsNavigationRow: View {
 }
 
 // MARK: - Users View
-

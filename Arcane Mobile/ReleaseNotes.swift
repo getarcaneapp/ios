@@ -114,17 +114,18 @@ extension ReleaseNote {
     }
 
     func whatsNew(includesPreviousReleases: Bool = false) -> WhatsNew {
-        let secondaryAction: WhatsNew.SecondaryAction? = if includesPreviousReleases {
-            WhatsNew.SecondaryAction(
-                title: "Previous Releases",
-                foregroundColor: .secondary,
-                action: .present {
-                    WhatsNewArchiveView()
-                }
-            )
-        } else {
-            nil
-        }
+        let secondaryAction: WhatsNew.SecondaryAction? =
+            if includesPreviousReleases {
+                WhatsNew.SecondaryAction(
+                    title: "Previous Releases",
+                    foregroundColor: .secondary,
+                    action: .present {
+                        WhatsNewArchiveView()
+                    }
+                )
+            } else {
+                nil
+            }
 
         return WhatsNew(
             version: .init(stringLiteral: version),
@@ -148,22 +149,26 @@ enum ReleaseNotes {
             version: "0.10.0",
             new: [
                 .init("Blueprint alternate app icon."),
-                .init("View and manage resources across all environments in one place, with environment filters and a guided introduction.", badge: .preview),
-                .init("Native Compose editor for projects and templates in Preview Features.", badge: .preview)
+                .init(
+                    "View and manage resources across all environments in one place, with environment filters and a guided introduction.",
+                    badge: .preview),
+                .init("Native Compose editor for projects and templates in Preview Features.", badge: .preview),
             ],
             changed: [
                 .init("Updated SwiftUI and Arcane SDK integration for iOS 18 through iOS 27."),
-                .init("Preview badges identify experimental features in release notes.")
+                .init("Preview badges identify experimental features in release notes."),
             ],
             fixed: [
                 .init("Live logs preserve proxy sessions and close connections when cancelled."),
                 .init("Profile images use the current display resolution."),
                 .init("Proxy authentication failures show specific error messages."),
                 .init("Image update results appear correctly in All Environments."),
-                .init("Fleet actions use concise confirmation prompts and compact toast feedback; Compose drafts use standard confirmations."),
+                .init(
+                    "Fleet actions use concise confirmation prompts and compact toast feedback; Compose drafts use standard confirmations."
+                ),
                 .init("Destructive menu icons match their red action labels."),
                 .init("Saved resource tabs stay visible through launch and refresh."),
-                .init("Dashboard toolbar buttons remain directly accessible.")
+                .init("Dashboard toolbar buttons remain directly accessible."),
             ]
         ),
         ReleaseNote(
@@ -174,7 +179,7 @@ enum ReleaseNotes {
             changed: [
                 .init("Security findings and image patch actions share the redesigned security view."),
                 .init("Risk score and trend share a switchable card with an animated score."),
-                .init("Security overview and findings use the app's detail tabs.")
+                .init("Security overview and findings use the app's detail tabs."),
             ],
             fixed: [
                 .init("Deployment updates avoid duplicate activity toasts and Live Activities."),
@@ -194,7 +199,7 @@ enum ReleaseNotes {
                 .init("Live logs follow wrapped output to the bottom."),
                 .init("Security findings load the next page without repeating earlier results."),
                 .init("Dashboard live stats connect on cold launch."),
-                .init("Dashboard environment switcher uses the app accent color.")
+                .init("Dashboard environment switcher uses the app accent color."),
             ]
         ),
         ReleaseNote(
@@ -208,11 +213,13 @@ enum ReleaseNotes {
                 .init("Telegram topic destinations with chat:topic syntax."),
                 .init("Hidden container visibility toggle with label filtering."),
                 .init("Live Activities for automated and system work when All Activities is selected."),
-                .init("Update option in the container long-press menu when an update is available.")
+                .init("Update option in the container long-press menu when an update is available."),
             ],
             changed: [
-                .init("Updated navigation with a native tab bar, compact environment switching, and streamlined resource detail layouts."),
-                .init("Accent color uses a native menu picker.")
+                .init(
+                    "Updated navigation with a native tab bar, compact environment switching, and streamlined resource detail layouts."
+                ),
+                .init("Accent color uses a native menu picker."),
             ],
             fixed: [
                 .init("Attention Center items open without delay."),
@@ -220,7 +227,7 @@ enum ReleaseNotes {
                 .init("Vulnerability report loads summary, filters, and findings together."),
                 .init("Accent menu shows each color correctly."),
                 .init("Push toggle recovers from already-registered devices."),
-                .init("Push errors show readable text.")
+                .init("Push errors show readable text."),
             ]
         ),
         ReleaseNote(
@@ -232,7 +239,7 @@ enum ReleaseNotes {
                 .init("Volume file editing, transfers, and conflict review."),
                 .init("Volume and system backup policies, recovery, and S3 destinations."),
                 .init("Image tagging, export, and vulnerability patching."),
-                .init("Federated credential management.")
+                .init("Federated credential management."),
             ],
             changed: [
                 .init("Project status and creation date aligned beside the project name."),
@@ -246,7 +253,7 @@ enum ReleaseNotes {
                 .init("Accent color menu shows colored dots and labels."),
                 .init("App icon previews use native display resolutions."),
                 .init("Clearer gray grid backgrounds for app icons."),
-                .init("Templates use the same collapsible search layout as resource pages.")
+                .init("Templates use the same collapsible search layout as resource pages."),
             ],
             fixed: [
                 .init("Template filters scroll with the list without overlapping the navigation header."),
@@ -258,7 +265,7 @@ enum ReleaseNotes {
                 .init("Dashboard rings track live stats without judder."),
                 .init("Dashboard attention badge refreshes when returning to the tab."),
                 .init("Attention Center badge no longer flickers during loads."),
-                .init("Smoother scrolling across dashboards, resource lists, logs, and terminal output.")
+                .init("Smoother scrolling across dashboards, resource lists, logs, and terminal output."),
             ]
         ),
         ReleaseNote(
@@ -270,10 +277,16 @@ enum ReleaseNotes {
                 .init("Activity Center button no longer badges failed activities."),
                 .init("Activity Center and System Prune are separate toolbar buttons."),
                 .init("Environment cards open details on tap and show their actions on long press."),
-                .init("Environment cards show icon counts beside the name and full-width CPU, memory, and disk rings; the active environment is marked by its outline."),
-                .init("Update All is a two-tap icon button that expands into a confirm step and starts the run immediately."),
-                .init("Update All progress shows environments as a left-to-right pipeline with floating bubbles and filling connectors."),
-                .init("Staggered card entrances, sweeping ring gauges, and scroll-edge fades on the dashboard.")
+                .init(
+                    "Environment cards show icon counts beside the name and full-width CPU, memory, and disk rings; the active environment is marked by its outline."
+                ),
+                .init(
+                    "Update All is a two-tap icon button that expands into a confirm step and starts the run immediately."
+                ),
+                .init(
+                    "Update All progress shows environments as a left-to-right pipeline with floating bubbles and filling connectors."
+                ),
+                .init("Staggered card entrances, sweeping ring gauges, and scroll-edge fades on the dashboard."),
             ],
             changed: [
                 .init("Connection profiles manage server details and saved sign-ins together."),
@@ -284,8 +297,10 @@ enum ReleaseNotes {
                 .init("Removed log search from the viewer."),
                 .init("Log expansion and options use separate navigation-bar buttons."),
                 .init("Dashboard environment cards show Arcane and Docker API versions."),
-                .init("Dashboard redesign with frosted Liquid Glass cards that follow the system Liquid Glass appearance, compact rings, and a large title."),
-                .init("Update All and Run Updater use centered native sheets.")
+                .init(
+                    "Dashboard redesign with frosted Liquid Glass cards that follow the system Liquid Glass appearance, compact rings, and a large title."
+                ),
+                .init("Update All and Run Updater use centered native sheets."),
             ],
             fixed: [
                 .init("Authentication settings save with one-year session timeouts."),
@@ -295,20 +310,25 @@ enum ReleaseNotes {
                 .init("Activity and update counts clear without relaunching."),
                 .init("Cleaner login controls with a properly spaced keyboard dismissal."),
                 .init("Disabled local password authentication is hidden from sign-in."),
-                .init("Tab bar stays compact during bottom-edge bounce.")
+                .init("Tab bar stays compact during bottom-edge bounce."),
             ]
         ),
         ReleaseNote(
             version: "0.8.1",
             new: [
                 .init("Potential secrets are blurred in container and image environment-variable views."),
-                .init("Detailed API key management with assigned users, partial keys, editing, rotation, and deletion."),
-                .init("Environment Settings includes an independent environment dropdown.")
+                .init(
+                    "Detailed API key management with assigned users, partial keys, editing, rotation, and deletion."),
+                .init("Environment Settings includes an independent environment dropdown."),
             ],
             changed: [
-                .init("Environment-wide updates keep every environment in a progress cycle with loading rings and animated result symbols."),
+                .init(
+                    "Environment-wide updates keep every environment in a progress cycle with loading rings and animated result symbols."
+                ),
                 .init("Dashboard explains the four-environment limit for live system metrics."),
-                .init("Environment settings identify the selected environment and follow Arcane web configuration groups."),
+                .init(
+                    "Environment settings identify the selected environment and follow Arcane web configuration groups."
+                ),
                 .init("Trivy network settings list available Docker networks in a menu."),
                 .init("Environment Settings detail pages omit repeated environment banners."),
                 .init("User avatar settings live under Users and apply to the manager."),
@@ -317,7 +337,7 @@ enum ReleaseNotes {
                 .init("What's New uses compact category sections and toolbar actions."),
                 .init("Animated bottom-tab selection with a sliding accent indicator."),
                 .init("Selectable straight, parabolic, and teleport dock indicator motion."),
-                .init("Adaptive log viewer with full-screen reading and configurable line wrapping.")
+                .init("Adaptive log viewer with full-screen reading and configurable line wrapping."),
             ],
             fixed: [
                 .init("Dashboard activity badges remain fully visible in the navigation toolbar."),
@@ -334,7 +354,7 @@ enum ReleaseNotes {
                 .init("Resource rows clear their selection highlight after returning from details."),
                 .init("Custom accent colors apply consistently across app surfaces."),
                 .init("Consistent accent and destructive colors for navigation toolbar actions."),
-                .init("Unit test suite compatibility with Swift 6 actor isolation.")
+                .init("Unit test suite compatibility with Swift 6 actor isolation."),
             ]
         ),
         ReleaseNote(
@@ -342,7 +362,7 @@ enum ReleaseNotes {
             new: [
                 .init("Activity Center button on the Dashboard in tab-bar navigation mode."),
                 .init("Optional accent-colored Arcane logo animation with a zoom transition on app launch."),
-                .init("Techy alternate app icon.")
+                .init("Techy alternate app icon."),
             ],
             changed: [
                 .init("Consistent dashboard-style cards, chips, and section headers across screens."),
@@ -351,7 +371,7 @@ enum ReleaseNotes {
                 .init("Volume, network, job, container detail, Swarm, and template screens use dashboard card layout."),
                 .init("User, registry, webhook, and template lists render as cards."),
                 .init("Shared card and list surfaces extracted to reusable vocabulary for future screens."),
-                .init("Deployment and client lifecycle helpers factored for maintainability.")
+                .init("Deployment and client lifecycle helpers factored for maintainability."),
             ],
             fixed: [
                 .init("Settings menu rows show navigation chevrons."),
@@ -374,16 +394,18 @@ enum ReleaseNotes {
                 .init("Notification provider configuration with native controls and floating save actions."),
                 .init("Configurable project deploy options."),
                 .init("Repository names for container registries."),
-                .init("Image layer history.")
+                .init("Image layer history."),
             ],
             changed: [
                 .init("Removed Arcane Assistant."),
                 .init("Native controls across forms, actions, and modal sheets."),
                 .init("Arcane wordmark and Activity Center access in sidebar navigation."),
-                .init("Dashboard uses a flat fleet layout with compact environment rows, smooth well-spaced gauges, grouped sections, and separate prune controls."),
+                .init(
+                    "Dashboard uses a flat fleet layout with compact environment rows, smooth well-spaced gauges, grouped sections, and separate prune controls."
+                ),
                 .init("Dashboard is the single environment fleet destination."),
                 .init("Sidebar navigation, resource details, and page actions match Arcane’s consolidated layout."),
-                .init("Project services and logs share one workspace.")
+                .init("Project services and logs share one workspace."),
             ],
             fixed: [
                 .init("Home Screen widgets retain data after the device locks."),
@@ -393,7 +415,7 @@ enum ReleaseNotes {
                 .init("Tab bar Settings hides pinned pages and opens every available destination."),
                 .init("Page tab bars scroll without truncating labels."),
                 .init("Sidebar buttons and switches respond reliably."),
-                .init("Project compose and custom files open on current Arcane servers.")
+                .init("Project compose and custom files open on current Arcane servers."),
             ]
         ),
         ReleaseNote(
@@ -409,14 +431,14 @@ enum ReleaseNotes {
                 .init("Image uploads report the server result correctly."),
                 .init("Reliable OIDC sign-in when identity providers repeat callbacks."),
                 .init("Resource lists and pickers load every available item."),
-                .init("Hardened sessions, widgets, remote images, and server-provided data.")
+                .init("Hardened sessions, widgets, remote images, and server-provided data."),
             ]
         ),
         ReleaseNote(
             version: "0.6.0",
             new: [
                 .init("Global variable management with secret and environment scoping."),
-                .init("Configurable activity start toasts for user or system activity.")
+                .init("Configurable activity start toasts for user or system activity."),
             ],
             changed: [
                 .init("Floating profile and App Settings buttons in sidebar navigation."),
@@ -435,7 +457,7 @@ enum ReleaseNotes {
                 .init("Hero zoom navigation transitions for resource cards and details."),
                 .init("Rich context menus and swipe actions for jobs, variables, events, and updates."),
                 .init("Long-press preview cards render custom container and project icons."),
-                .init("Navigation toolbar actions render as separate buttons.")
+                .init("Navigation toolbar actions render as separate buttons."),
             ],
             fixed: [
                 .init("Network topology renders as an interactive network-to-container diagram."),
@@ -451,14 +473,14 @@ enum ReleaseNotes {
                 .init("Widget refreshes keep environment work within the extension budget."),
                 .init("Delete confirmations avoid unnecessary app-wide overlay work."),
                 .init("Context menu previews safely retain app environment dependencies."),
-                .init("Container registry previews show current status and URL.")
+                .init("Container registry previews show current status and URL."),
             ]
         ),
         ReleaseNote(
             version: "0.5.4",
             changed: [
                 .init("Version details moved below the Danger Zone in App Settings."),
-                .init("Bounded terminal and event history during long-running sessions.")
+                .init("Bounded terminal and event history during long-running sessions."),
             ],
             fixed: [
                 .init("Assistant uses safe context limits."), .init("Assistant stays hidden on unsupported devices."),
@@ -467,7 +489,7 @@ enum ReleaseNotes {
                 .init("Reliable sign-out when the server is unavailable."),
                 .init("Reliable log and statistics reconnection after reopening views."),
                 .init("Correct terminal output when text and control sequences span network frames."),
-                .init("Isolated cached data for servers that share a hostname.")
+                .init("Isolated cached data for servers that share a hostname."),
             ]
         ),
         ReleaseNote(
@@ -480,14 +502,14 @@ enum ReleaseNotes {
             version: "0.5.2",
             new: [
                 .init("Redesigned Updates page with one-tap and per-container updates."),
-                .init("Container updates show progress in the pill and Live Activities.")
+                .init("Container updates show progress in the pill and Live Activities."),
             ],
             changed: [
                 .init("Terminal-style redesign for the operation log.")
             ],
             fixed: [
                 .init("Ports showing thousands separators (9,000 → 9000)."),
-                .init("Needs Attention and the Updates tile counted updates differently.")
+                .init("Needs Attention and the Updates tile counted updates differently."),
             ]
         ),
         ReleaseNote(
@@ -506,7 +528,7 @@ enum ReleaseNotes {
                 .init("Logs now support timestamps, copy, share, and clear."),
                 .init("Volume browsing now has breadcrumbs and path jumping."),
                 .init("Events now update live with a pause control."),
-                .init("Pinned containers and projects now show on the dashboard.")
+                .init("Pinned containers and projects now show on the dashboard."),
             ],
             fixed: [
                 .init("Dashboard pull-to-refresh now reconnects live streams and refreshes data.")
@@ -515,34 +537,64 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.4.1",
             new: [
-                .init("Live Activities: deploys, redeploys, pulls, and builds now show live progress in the Dynamic Island and on the Lock Screen when you leave the app."),
-                .init("A floating progress pill tracks the running operation inside the app — tap it any time to reopen the full log."),
-                .init("Deployments are now synced with the server: if the connection drops mid-operation, the app re-attaches and picks up where the server is, and Cancel stops the operation server-side too. (Arcane v2 servers)"),
-                .init("Pulling an image from the Images tab now shows real download progress with the same pill and Live Activity treatment."),
+                .init(
+                    "Live Activities: deploys, redeploys, pulls, and builds now show live progress in the Dynamic Island and on the Lock Screen when you leave the app."
+                ),
+                .init(
+                    "A floating progress pill tracks the running operation inside the app — tap it any time to reopen the full log."
+                ),
+                .init(
+                    "Deployments are now synced with the server: if the connection drops mid-operation, the app re-attaches and picks up where the server is, and Cancel stops the operation server-side too. (Arcane v2 servers)"
+                ),
+                .init(
+                    "Pulling an image from the Images tab now shows real download progress with the same pill and Live Activity treatment."
+                ),
                 .init("One-tap setup for the Arcane Community Templates registry."),
-                .init("Your profile picture now syncs from the server — custom avatars and Gravatar (when enabled) — on the Account page and in Settings."),
+                .init(
+                    "Your profile picture now syncs from the server — custom avatars and Gravatar (when enabled) — on the Account page and in Settings."
+                ),
             ],
             changed: [
-                .init("The deploy log sheet can now be swiped away mid-run — the operation keeps going behind the progress pill instead of locking you in."),
+                .init(
+                    "The deploy log sheet can now be swiped away mid-run — the operation keeps going behind the progress pill instead of locking you in."
+                ),
                 .init("Sign out moved to the Account page, with a combined Sign Out / Sign Out & Change Server menu."),
                 .init("Clear Cache moved to a Danger Zone at the bottom of App Settings."),
-                .init("The templates button on Projects now opens the template browser directly; registry management moved behind its Settings button."),
-                .init("Profile name and email are now read-only for SSO accounts — they're managed by your identity provider."),
-                .init("The project Files section now pins only the compose file, .env, and compose override files, with a Browse Files row for everything else — so you can always add new files even when custom files exist."),
-                .init("The project file browser now works more like the Files app: a + button for new files and folders, one flat file list, and folder item counts and file sizes on each row."),
+                .init(
+                    "The templates button on Projects now opens the template browser directly; registry management moved behind its Settings button."
+                ),
+                .init(
+                    "Profile name and email are now read-only for SSO accounts — they're managed by your identity provider."
+                ),
+                .init(
+                    "The project Files section now pins only the compose file, .env, and compose override files, with a Browse Files row for everything else — so you can always add new files even when custom files exist."
+                ),
+                .init(
+                    "The project file browser now works more like the Files app: a + button for new files and folders, one flat file list, and folder item counts and file sizes on each row."
+                ),
             ],
             fixed: [
-                .init("A deployment that failed on the server no longer shows as complete just because the progress stream ended cleanly — the outcome is now confirmed against the server."),
-                .init("Fixed getting signed out when launching the app after an update — a widget refresh could invalidate the app's session at the worst moment."),
+                .init(
+                    "A deployment that failed on the server no longer shows as complete just because the progress stream ended cleanly — the outcome is now confirmed against the server."
+                ),
+                .init(
+                    "Fixed getting signed out when launching the app after an update — a widget refresh could invalidate the app's session at the worst moment."
+                ),
             ]
         ),
         ReleaseNote(
             version: "0.4.0",
             new: [
-                .init("Home and Lock Screen widgets: Status (configurable, with refresh button), Environments, and Updates & Vulnerabilities."),
-                .init("Siri & Shortcuts: open tabs, containers, and projects; restart containers; start/stop projects (with confirmation)."),
+                .init(
+                    "Home and Lock Screen widgets: Status (configurable, with refresh button), Environments, and Updates & Vulnerabilities."
+                ),
+                .init(
+                    "Siri & Shortcuts: open tabs, containers, and projects; restart containers; start/stop projects (with confirmation)."
+                ),
                 .init("Environment cards show live CPU and memory sparklines with a rolling minute of history."),
-                .init("New Needs Attention card on the dashboard — offline environments, vulnerabilities, stopped containers, updates, expiring keys, and failed activities in one place."),
+                .init(
+                    "New Needs Attention card on the dashboard — offline environments, vulnerabilities, stopped containers, updates, expiring keys, and failed activities in one place."
+                ),
                 .init("Vulnerability summaries use a proportional severity bar instead of plain numbers."),
                 .init("New Account page in Settings: edit your display name and email, and change your password."),
             ],
@@ -565,7 +617,9 @@ enum ReleaseNotes {
                 .init("Inspect view search no longer lags on large containers."),
                 .init("Confirmation dialog buttons no longer balloon with long titles."),
                 .init("Delete dialogs opened from a detail page's bottom bar render full-width instead of squeezed."),
-                .init("Signing in to a URL that serves a webpage (proxy portal, wrong port) now explains the problem instead of showing a raw JSON error."),
+                .init(
+                    "Signing in to a URL that serves a webpage (proxy portal, wrong port) now explains the problem instead of showing a raw JSON error."
+                ),
                 .init("Destructive menu actions now show a red icon to match their red text."),
                 .init("Cleaned up overlapping buttons in the log viewer's top bar."),
             ]
@@ -573,7 +627,7 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.3.2",
             changed: [
-                .init("Cleaned up alot of areas of the UI to more consistient with native iOS styling"),
+                .init("Cleaned up alot of areas of the UI to more consistient with native iOS styling")
             ]
         ),
         ReleaseNote(
@@ -583,8 +637,12 @@ enum ReleaseNotes {
                 .init("Browse and edit custom project files from project details with a Files-style browser."),
             ],
             fixed: [
-                .init("Delete confirmation dialogs now stay clear of the floating bottom bar so action buttons remain tappable."),
-                .init("Activity Center live updates now reconnect after transient stream drops instead of immediately showing a paused warning."),
+                .init(
+                    "Delete confirmation dialogs now stay clear of the floating bottom bar so action buttons remain tappable."
+                ),
+                .init(
+                    "Activity Center live updates now reconnect after transient stream drops instead of immediately showing a paused warning."
+                ),
             ]
         ),
         ReleaseNote(
@@ -605,7 +663,7 @@ enum ReleaseNotes {
                 .init("Redesigned Navbar Tab Switcher on iOS 26."),
             ],
             fixed: [
-                .init("Fixed the issue with the iOS Keychain signing users out even when refresh tokens exist."),
+                .init("Fixed the issue with the iOS Keychain signing users out even when refresh tokens exist.")
             ]
         ),
         ReleaseNote(
@@ -622,86 +680,149 @@ enum ReleaseNotes {
                 .init("Dashboard totals now include polling and standby environments."),
                 .init("RBAC-capable servers now use role pickers in user forms."),
                 .init("Forms now use clearer labels, examples, helper text, and picker controls."),
-                .init("App Settings now separates About links from support actions.")
+                .init("App Settings now separates About links from support actions."),
             ],
             fixed: [
                 .init("Updated libarcane-swift to decode null JSON object values correctly."),
                 .init("App Settings cache size now reports persistent disk cache only."),
                 .init("Dashboard keeps the selected environment at the top of the Environments list."),
                 .init("Dashboard resource gauges now show live stats connection errors."),
-                .init("Real devices now handle local-network Arcane server connections more reliably.")
+                .init("Real devices now handle local-network Arcane server connections more reliably."),
             ]
         ),
         ReleaseNote(
             version: "0.2.1",
             changed: [
-                .init("Server addresses entered without http:// or https:// now default to https://, and the login screen reminds you to include http:// when connecting to a local server."),
+                .init(
+                    "Server addresses entered without http:// or https:// now default to https://, and the login screen reminds you to include http:// when connecting to a local server."
+                )
             ],
             fixed: [
-                .init("You can now sign in to a local, HTTP-only Arcane server on your network — for example http://192.168.1.50:3000. iOS was silently blocking these plain-HTTP connections, so login failed with a generic connection error."),
-                .init("Connection problems on the login screen now explain what actually went wrong — can't reach the server, server not found, timed out, or a secure-connection issue — instead of showing a raw system message."),
-                .init("The Dashboard's Containers and Images tiles showed '—' instead of counts on Arcane 2.0 servers. They now read live per-environment data — the same source the environment cards use — so they populate regardless of server version, and a genuine zero shows as '0' instead of a dash."),
+                .init(
+                    "You can now sign in to a local, HTTP-only Arcane server on your network — for example http://192.168.1.50:3000. iOS was silently blocking these plain-HTTP connections, so login failed with a generic connection error."
+                ),
+                .init(
+                    "Connection problems on the login screen now explain what actually went wrong — can't reach the server, server not found, timed out, or a secure-connection issue — instead of showing a raw system message."
+                ),
+                .init(
+                    "The Dashboard's Containers and Images tiles showed '—' instead of counts on Arcane 2.0 servers. They now read live per-environment data — the same source the environment cards use — so they populate regardless of server version, and a genuine zero shows as '0' instead of a dash."
+                ),
             ]
         ),
         ReleaseNote(
             version: "0.2.0",
             new: [
-                .init("First Public Testflight Release!"),
+                .init("First Public Testflight Release!")
             ]
         ),
         ReleaseNote(
             version: "0.1.9",
             changed: [
-                .init("Searching and filtering large resource lists (Containers, Images, Networks, Projects, Volumes) is snappier — results are now computed once when you stop typing or change the sort or filter, instead of re-sorting on every keystroke."),
-                .init("The dashboard now appears as soon as your environment cards are ready instead of waiting on the cross-environment Volumes and Updates totals, which fill in their tiles a moment later."),
-                .init("Resource icons stop loading the moment you scroll past them, so fast scrolling through long lists uses less CPU and data."),
-                .init("Loading skeletons now use a single synchronized shimmer that stays contained to each placeholder — no glow bleed onto neighboring content — and honor the system Reduce Motion setting."),
-                .init("Swarm management is temporarily a placeholder while the screen is reworked. The tab stays in the navigation; the cluster, services, and nodes screens will return in a future update."),
+                .init(
+                    "Searching and filtering large resource lists (Containers, Images, Networks, Projects, Volumes) is snappier — results are now computed once when you stop typing or change the sort or filter, instead of re-sorting on every keystroke."
+                ),
+                .init(
+                    "The dashboard now appears as soon as your environment cards are ready instead of waiting on the cross-environment Volumes and Updates totals, which fill in their tiles a moment later."
+                ),
+                .init(
+                    "Resource icons stop loading the moment you scroll past them, so fast scrolling through long lists uses less CPU and data."
+                ),
+                .init(
+                    "Loading skeletons now use a single synchronized shimmer that stays contained to each placeholder — no glow bleed onto neighboring content — and honor the system Reduce Motion setting."
+                ),
+                .init(
+                    "Swarm management is temporarily a placeholder while the screen is reworked. The tab stays in the navigation; the cluster, services, and nodes screens will return in a future update."
+                ),
             ]
         ),
         ReleaseNote(
             version: "0.1.8",
             fixed: [
-                .init("Project compose files and env file do not show up when requested."),
+                .init("Project compose files and env file do not show up when requested.")
             ]
         ),
         ReleaseNote(
             version: "0.1.7",
             new: [
-                .init("New Roles screen for Arcane 2.0 servers: browse built-in roles, create and edit custom roles, and pick permissions from a searchable, grouped picker. Pinnable as a bottom tab or reachable from Settings → Administration."),
-                .init("New OIDC Role Mappings screen for Arcane 2.0 servers: map an SSO claim value to a role and an optional environment scope. Mappings declared via the OIDC_ROLE_MAPPINGS env var are shown read-only with a lock badge."),
-                .init("New Edit Role Assignments screen on every user's detail page (Arcane 2.0 servers): see a user's assignments grouped by scope (Global, then per-environment), add new assignments with a role + scope picker, swipe to remove manual assignments. OIDC-sourced assignments are shown but can't be changed from the app."),
-                .init("Tabs that only make sense on Arcane 2.0 (Roles, OIDC Role Mappings) are automatically hidden when you connect to an older server, and reappear when you connect to a 2.0 one."),
+                .init(
+                    "New Roles screen for Arcane 2.0 servers: browse built-in roles, create and edit custom roles, and pick permissions from a searchable, grouped picker. Pinnable as a bottom tab or reachable from Settings → Administration."
+                ),
+                .init(
+                    "New OIDC Role Mappings screen for Arcane 2.0 servers: map an SSO claim value to a role and an optional environment scope. Mappings declared via the OIDC_ROLE_MAPPINGS env var are shown read-only with a lock badge."
+                ),
+                .init(
+                    "New Edit Role Assignments screen on every user's detail page (Arcane 2.0 servers): see a user's assignments grouped by scope (Global, then per-environment), add new assignments with a role + scope picker, swipe to remove manual assignments. OIDC-sourced assignments are shown but can't be changed from the app."
+                ),
+                .init(
+                    "Tabs that only make sense on Arcane 2.0 (Roles, OIDC Role Mappings) are automatically hidden when you connect to an older server, and reappear when you connect to a 2.0 one."
+                ),
             ],
             changed: [
-                .init("Updated to work with Arcane 2.0's new role-based access control while still supporting older servers transparently. Existing admin users keep admin access after the server upgrade (Arcane 2.0 backfills them into the built-in Admin role)."),
-                .init("Creating or editing a user on Arcane 2.0 servers now manages the admin role through the new role-assignment endpoint behind the scenes. The Administrator toggle still works the same way; for finer control, use the new Edit Role Assignments screen on the user's detail page."),
+                .init(
+                    "Updated to work with Arcane 2.0's new role-based access control while still supporting older servers transparently. Existing admin users keep admin access after the server upgrade (Arcane 2.0 backfills them into the built-in Admin role)."
+                ),
+                .init(
+                    "Creating or editing a user on Arcane 2.0 servers now manages the admin role through the new role-assignment endpoint behind the scenes. The Administrator toggle still works the same way; for finer control, use the new Edit Role Assignments screen on the user's detail page."
+                ),
             ],
             fixed: [
-                .init("Permission picker now expands one resource group at a time instead of opening every group together."),
-                .init("Permission picker search field is now the standard iOS search bar at the top of the screen instead of a custom field inside the form."),
+                .init(
+                    "Permission picker now expands one resource group at a time instead of opening every group together."
+                ),
+                .init(
+                    "Permission picker search field is now the standard iOS search bar at the top of the screen instead of a custom field inside the form."
+                ),
             ]
         ),
         ReleaseNote(
             version: "0.1.6",
             changed: [
-                .init("Removed the Apprise section from Notifications. Apprise support has been dropped in Arcane 2.0."),
-                .init("Admin badge in the Users list is now a solid indigo capsule with white text — better contrast and a less alarming color than the previous orange-on-orange."),
-                .init("Tapping a row in any resource list (Containers, Images, Networks, Volumes, Projects) — or an environment card on the Dashboard — now zooms into the detail view instead of pushing flat from the right."),
-                .init("Resource lists now show shimmering skeleton rows on first load instead of a centered 'Loading…' spinner, and the Dashboard's first-load skeleton has the same subtle shimmer."),
-                .init("Paginated lists (Images, Networks, Volumes, Projects) auto-load the next page as you scroll, with a skeleton row in place while the next page fetches, instead of requiring you to tap 'Load More'."),
-                .init("Search results in long lists settle 200 ms after you stop typing instead of re-filtering on every keystroke."),
+                .init(
+                    "Removed the Apprise section from Notifications. Apprise support has been dropped in Arcane 2.0."),
+                .init(
+                    "Admin badge in the Users list is now a solid indigo capsule with white text — better contrast and a less alarming color than the previous orange-on-orange."
+                ),
+                .init(
+                    "Tapping a row in any resource list (Containers, Images, Networks, Volumes, Projects) — or an environment card on the Dashboard — now zooms into the detail view instead of pushing flat from the right."
+                ),
+                .init(
+                    "Resource lists now show shimmering skeleton rows on first load instead of a centered 'Loading…' spinner, and the Dashboard's first-load skeleton has the same subtle shimmer."
+                ),
+                .init(
+                    "Paginated lists (Images, Networks, Volumes, Projects) auto-load the next page as you scroll, with a skeleton row in place while the next page fetches, instead of requiring you to tap 'Load More'."
+                ),
+                .init(
+                    "Search results in long lists settle 200 ms after you stop typing instead of re-filtering on every keystroke."
+                ),
                 .init("Resource lists animate row reflow when you change the sort order or apply a filter."),
-                .init("Empty states for all five resource lists now offer a primary action — Create for Networks/Volumes/Projects, Pull Image for Images, Refresh for Containers — instead of a dead end."),
+                .init(
+                    "Empty states for all five resource lists now offer a primary action — Create for Networks/Volumes/Projects, Pull Image for Images, Refresh for Containers — instead of a dead end."
+                ),
                 .init("Container detail tabs (Overview, Stats, Logs) slide between sections instead of snapping."),
-                .init("The status dot on a running container's detail screen pulses subtly so it's clear the container is live."),
-                .init("Start, Stop, Restart, and Redeploy buttons cross-fade smoothly into the in-flight spinner while an action runs."),
-                .init("Dashboard counts and the CPU/Memory/Disk gauges on environment cards now roll between values instead of popping."),
-                .init("Dashboard, Container, Project, and Environment detail screens now use iOS 26's soft scroll-edge effect so the toolbar fades naturally into the scrolling content."),
-                .init("Logs view: the Live/Paused button icon morphs between states, pausing shows a floating 'N new' pill at the bottom that resumes live tailing and jumps to the latest line, and new log lines fade in gently instead of popping."),
-                .init("The Arcane logo on the login screen bounces in with a spring on appear instead of just popping into place."),
-                .init("Tab swap hint banner fades out smoothly when dismissed or when you discover the long-press feature, instead of popping."),
-                .init("Dashboard tiles and mini-metric cards now read out as a single VoiceOver element with the metric name and value combined, instead of as a stack of separate icons and numbers."),
+                .init(
+                    "The status dot on a running container's detail screen pulses subtly so it's clear the container is live."
+                ),
+                .init(
+                    "Start, Stop, Restart, and Redeploy buttons cross-fade smoothly into the in-flight spinner while an action runs."
+                ),
+                .init(
+                    "Dashboard counts and the CPU/Memory/Disk gauges on environment cards now roll between values instead of popping."
+                ),
+                .init(
+                    "Dashboard, Container, Project, and Environment detail screens now use iOS 26's soft scroll-edge effect so the toolbar fades naturally into the scrolling content."
+                ),
+                .init(
+                    "Logs view: the Live/Paused button icon morphs between states, pausing shows a floating 'N new' pill at the bottom that resumes live tailing and jumps to the latest line, and new log lines fade in gently instead of popping."
+                ),
+                .init(
+                    "The Arcane logo on the login screen bounces in with a spring on appear instead of just popping into place."
+                ),
+                .init(
+                    "Tab swap hint banner fades out smoothly when dismissed or when you discover the long-press feature, instead of popping."
+                ),
+                .init(
+                    "Dashboard tiles and mini-metric cards now read out as a single VoiceOver element with the metric name and value combined, instead of as a stack of separate icons and numbers."
+                ),
                 .init("Action toolbar button labels now scale with the system Text Size setting."),
                 .init("All new motion respects the system Reduce Motion accessibility setting."),
             ]
@@ -709,7 +830,9 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.1.5",
             new: [
-                .init("Redesigned login screen with a refined hero, glass-effect form card, and a persistent 'Try the demo' card that's always available — no need to wipe your server config to spin up a demo."),
+                .init(
+                    "Redesigned login screen with a refined hero, glass-effect form card, and a persistent 'Try the demo' card that's always available — no need to wipe your server config to spin up a demo."
+                )
             ],
             changed: [
                 .init("Login screen and demo banner now use your selected accent color from Settings."),
@@ -718,60 +841,88 @@ enum ReleaseNotes {
                 .init("Removed the 'Welcome back' subtitle on the login screen for a cleaner hero."),
             ],
             fixed: [
-                .init("'End' button in the demo banner now sends you back to the login screen immediately instead of waiting on background cleanup."),
+                .init(
+                    "'End' button in the demo banner now sends you back to the login screen immediately instead of waiting on background cleanup."
+                ),
                 .init("Server URL, Username, and Password placeholders no longer pick up URL-style link coloring."),
                 .init("'End' button color now matches your selected accent color instead of the system default."),
-                .init("Appearance settings swatch selection is now derived from the stored accent color, so the checkmark always matches the actual color the app is using."),
-                .init("Tab bar labels for long titles (Container Registries, Template Registries, Git Repositories, System Settings, Authentication) now use compact names so they no longer wrap or clip."),
+                .init(
+                    "Appearance settings swatch selection is now derived from the stored accent color, so the checkmark always matches the actual color the app is using."
+                ),
+                .init(
+                    "Tab bar labels for long titles (Container Registries, Template Registries, Git Repositories, System Settings, Authentication) now use compact names so they no longer wrap or clip."
+                ),
             ]
         ),
         ReleaseNote(
             version: "0.1.4",
             fixed: [
-                .init("Fix an issue where the ImageList logic was not parsed correctly"),
+                .init("Fix an issue where the ImageList logic was not parsed correctly")
             ]
         ),
         ReleaseNote(
             version: "0.1.3",
             new: [
-                .init("New cross-environment Updates screen: per-environment summary cards with totals, per-image update rows, and a 'Recheck all images' action for each environment."),
+                .init(
+                    "New cross-environment Updates screen: per-environment summary cards with totals, per-image update rows, and a 'Recheck all images' action for each environment."
+                )
             ],
             changed: [
-                .init("Refactored the app to use the shared Arcane Swift SDK directly for API models and services, improving consistency with the backend."),
+                .init(
+                    "Refactored the app to use the shared Arcane Swift SDK directly for API models and services, improving consistency with the backend."
+                )
             ]
         ),
         ReleaseNote(
             version: "0.1.2",
             new: [
-                .init("Dashboard now shows an Updates tile with the total count of pending image updates across all environments. Tap to jump into the Updates tab."),
-                .init("New floating Liquid Glass action bar on Project, Container, Environment, and Updates detail screens — primary actions (Stop, Restart, Redeploy, etc.) live in circular glass buttons above the tab bar."),
+                .init(
+                    "Dashboard now shows an Updates tile with the total count of pending image updates across all environments. Tap to jump into the Updates tab."
+                ),
+                .init(
+                    "New floating Liquid Glass action bar on Project, Container, Environment, and Updates detail screens — primary actions (Stop, Restart, Redeploy, etc.) live in circular glass buttons above the tab bar."
+                ),
             ],
             changed: [
-                .init("Dashboard now loads environment cards lazily as you scroll and shows at most 50 environments at a time, with a link to view the full list."),
-                .init("Replaced the Environments overview tile with the new Updates tile — the per-environment cards below already convey online/total counts."),
-                .init("Container detail tabs are now Overview, Stats, and Logs (replacing the Inspect tab). Inspect moved to a toolbar button; Terminal also lives in the toolbar when the container is running."),
+                .init(
+                    "Dashboard now loads environment cards lazily as you scroll and shows at most 50 environments at a time, with a link to view the full list."
+                ),
+                .init(
+                    "Replaced the Environments overview tile with the new Updates tile — the per-environment cards below already convey online/total counts."
+                ),
+                .init(
+                    "Container detail tabs are now Overview, Stats, and Logs (replacing the Inspect tab). Inspect moved to a toolbar button; Terminal also lives in the toolbar when the container is running."
+                ),
             ],
             fixed: [
                 .init("Error messages now show human-readable text instead of raw API responses or schema URLs"),
                 .init("Error banners wrap to multiple lines so long messages are fully readable"),
                 .init("Validation errors point to the specific field that needs attention"),
-                .init("Fixed a security issue where a malicious or compromised server could degrade or crash the app by returning an excessive number of environments."),
-                .init("Fixed a security issue where a malicious or compromised server could crash the app at launch by returning duplicate keys in the public OIDC settings response."),
+                .init(
+                    "Fixed a security issue where a malicious or compromised server could degrade or crash the app by returning an excessive number of environments."
+                ),
+                .init(
+                    "Fixed a security issue where a malicious or compromised server could crash the app at launch by returning duplicate keys in the public OIDC settings response."
+                ),
             ]
         ),
         ReleaseNote(
             version: "0.1.1",
             new: [
-                .init("Redesigned dashboard with per-environment summary cards showing live CPU, memory, disk, and container/image counts"),
+                .init(
+                    "Redesigned dashboard with per-environment summary cards showing live CPU, memory, disk, and container/image counts"
+                ),
                 .init("Long-press an environment card to set it as the active context or jump into system details"),
                 .init("Volume totals now aggregate across all environments on the dashboard"),
                 .init("Skeleton loading state on first dashboard load"),
             ],
             changed: [
-                .init("Overall Design fixes between iOS 18 and iOS 26"),
+                .init("Overall Design fixes between iOS 18 and iOS 26")
             ],
             fixed: [
-                .init("Fixed a security issue where crafted icon URLs could leak authentication headers to external servers."),
+                .init(
+                    "Fixed a security issue where crafted icon URLs could leak authentication headers to external servers."
+                )
             ]
         ),
         ReleaseNote(

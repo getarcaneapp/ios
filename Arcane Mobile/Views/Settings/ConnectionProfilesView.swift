@@ -48,7 +48,8 @@ struct ConnectionProfilesView: View {
                     ContentUnavailableView(
                         "No Connection Profiles",
                         systemImage: "server.rack",
-                        description: Text("Add a server once, then choose it quickly on any device using your iCloud account.")
+                        description: Text(
+                            "Add a server once, then choose it quickly on any device using your iCloud account.")
                     )
                     .frame(maxWidth: .infinity, minHeight: 220)
                     .listRowBackground(Color.clear)
@@ -96,7 +97,9 @@ struct ConnectionProfilesView: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(profileStore.syncState.description)
-                    Text("Profiles can include a password sign-in. Profiles and sign-ins sync through iCloud Keychain; sessions stay on each device.")
+                    Text(
+                        "Profiles can include a password sign-in. Profiles and sign-ins sync through iCloud Keychain; sessions stay on each device."
+                    )
                 }
             }
         }
@@ -139,23 +142,27 @@ struct ConnectionProfilesView: View {
                     title: "Delete \(profile.name)?",
                     message: deleteMessage(for: profile),
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Delete Profile") {
-                        do {
-                            try profileStore.delete(profile)
-                            showToast(.success("Connection profile deleted"))
-                        } catch {
-                            showToast(.error(error.localizedDescription))
+                    actions: [
+                        DeleteConfirmationAction(title: "Delete Profile") {
+                            do {
+                                try profileStore.delete(profile)
+                                showToast(.success("Connection profile deleted"))
+                            } catch {
+                                showToast(.error(error.localizedDescription))
+                            }
                         }
-                    }]
+                    ]
                 )
             case .switchServer(let profile):
                 return DeleteConfirmationConfig(
                     title: "Switch to \(profile.name)?",
                     message: "You'll be signed out of the current server. Its saved profile will remain available.",
                     icon: "arrow.left.arrow.right",
-                    actions: [DeleteConfirmationAction(title: "Switch Server") {
-                        connect(to: profile)
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Switch Server") {
+                            connect(to: profile)
+                        }
+                    ]
                 )
             }
         }
@@ -246,7 +253,8 @@ struct ConnectionProfilesView: View {
     }
 
     private func deleteMessage(for profile: ConnectionProfile) -> String {
-        let item = profileStore.hasSyncedCredential(for: profile)
+        let item =
+            profileStore.hasSyncedCredential(for: profile)
             ? "profile and its synced sign-in"
             : "saved profile"
         if isCurrent(profile) {
@@ -325,7 +333,9 @@ private struct ConnectionProfileEditorView: View {
             } header: {
                 Text("Profile")
             } footer: {
-                Text("HTTP or HTTPS only. URL credentials, query parameters, and fragments are removed before iCloud sync.")
+                Text(
+                    "HTTP or HTTPS only. URL credentials, query parameters, and fragments are removed before iCloud sync."
+                )
             }
 
             Section {
@@ -450,9 +460,10 @@ private struct ConnectionProfileEditorView: View {
 
     private func clearCredentialIfServerChanged(to newValue: String) {
         guard let profile,
-              hasExistingCredential,
-              let normalized = try? ConnectionProfileSync.normalizedServerURL(newValue),
-              normalized != profile.serverURL else { return }
+            hasExistingCredential,
+            let normalized = try? ConnectionProfileSync.normalizedServerURL(newValue),
+            normalized != profile.serverURL
+        else { return }
 
         username = ""
         password = ""

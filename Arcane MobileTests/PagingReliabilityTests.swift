@@ -13,9 +13,13 @@ struct PagingReliabilityTests {
         let server = PagingTestServer { request in
             let path = request.url!.path
             if path == "/api/environments" {
-                return (200, try pagingEnvelope((0..<7).map {
-                    Arcane.Environment(id: "env\($0)", name: "Environment \($0)", apiUrl: "", status: "online")
-                }, stride: 50, total: 7))
+                return (
+                    200,
+                    try pagingEnvelope(
+                        (0..<7).map {
+                            Arcane.Environment(id: "env\($0)", name: "Environment \($0)", apiUrl: "", status: "online")
+                        }, stride: 50, total: 7)
+                )
             }
             let environment = path.split(separator: "/")[2].description
             let start = pagingStart(request)
@@ -23,7 +27,10 @@ struct PagingReliabilityTests {
             if ["env0", "env1", "env2", "env3"].contains(environment), attempt == 1 {
                 return (400, Data(#"{"error":"temporarily unavailable"}"#.utf8))
             }
-            return (200, try pagingEnvelope([pagingActivity(id: environment, environment: environment)], stride: 20, total: 1))
+            return (
+                200,
+                try pagingEnvelope([pagingActivity(id: environment, environment: environment)], stride: 20, total: 1)
+            )
         }
         defer { server.close() }
         let store = ActivityCenterStore()
@@ -43,24 +50,37 @@ struct PagingReliabilityTests {
     func expandedActivityHistorySurvivesRecentSnapshotAndUpdate() async throws {
         let server = PagingTestServer { request in
             if request.url!.path == "/api/environments" {
-                return (200, try pagingEnvelope([
-                    Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online")
-                ], stride: 50, total: 1))
+                return (
+                    200,
+                    try pagingEnvelope(
+                        [
+                            Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online")
+                        ], stride: 50, total: 1)
+                )
             }
             if ["/api/activities/stream", "/api/stream"].contains(request.url!.path) {
-                let snapshot = ActivityStreamEvent(type: .snapshot, environmentID: "one",
+                let snapshot = ActivityStreamEvent(
+                    type: .snapshot, environmentID: "one",
                     activities: (0..<50).map { pagingActivity(id: "a\($0)") }, timestamp: .now)
                 var updated = pagingActivity(id: "a0")
                 updated.latestMessage = "live update received"
-                let update = ActivityStreamEvent(type: .activity, environmentID: "one", activity: updated, timestamp: .now)
+                let update = ActivityStreamEvent(
+                    type: .activity, environmentID: "one", activity: updated, timestamp: .now)
                 let multiplexed = request.url!.path == "/api/stream"
-                return (200, try pagingStreamLine(snapshot, multiplexed: multiplexed)
-                    + pagingStreamLine(update, multiplexed: multiplexed))
+                return (
+                    200,
+                    try pagingStreamLine(snapshot, multiplexed: multiplexed)
+                        + pagingStreamLine(update, multiplexed: multiplexed)
+                )
             }
             let start = pagingStart(request)
-            return (200, try pagingEnvelope((start..<min(start + 50, 100)).map {
-                pagingActivity(id: "a\($0)")
-            }, stride: 50, total: 100))
+            return (
+                200,
+                try pagingEnvelope(
+                    (start..<min(start + 50, 100)).map {
+                        pagingActivity(id: "a\($0)")
+                    }, stride: 50, total: 100)
+            )
         }
         defer { server.close() }
         let store = ActivityCenterStore()
@@ -100,13 +120,18 @@ struct PagingReliabilityTests {
         activity.status = .running
         activity.progress = 45
         let halfway = activity
-        let message = ActivityMessage(id: "line", activityID: halfway.id, level: .info,
+        let message = ActivityMessage(
+            id: "line", activityID: halfway.id, level: .info,
             message: "Still working", createdAt: halfway.startedAt.addingTimeInterval(1))
         let server = PagingTestServer { request in
             if request.url!.path.hasSuffix("/stream") {
-                let update = ActivityStreamEvent(type: .activity, environmentID: "one", activity: halfway, timestamp: message.createdAt)
-                let output = ActivityStreamEvent(type: .message, environmentID: "one", message: message, timestamp: message.createdAt)
-                return (200, try pagingStreamLine(update, multiplexed: true) + pagingStreamLine(output, multiplexed: true))
+                let update = ActivityStreamEvent(
+                    type: .activity, environmentID: "one", activity: halfway, timestamp: message.createdAt)
+                let output = ActivityStreamEvent(
+                    type: .message, environmentID: "one", message: message, timestamp: message.createdAt)
+                return (
+                    200, try pagingStreamLine(update, multiplexed: true) + pagingStreamLine(output, multiplexed: true)
+                )
             }
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
@@ -141,20 +166,27 @@ struct PagingReliabilityTests {
         completed.endedAt = initial.startedAt.addingTimeInterval(60)
         completed.updatedAt = completed.endedAt
         let terminal = completed
-        let message = ActivityMessage(id: "message", activityID: initial.id,
+        let message = ActivityMessage(
+            id: "message", activityID: initial.id,
             level: .success, message: "Deployment finished", createdAt: terminal.endedAt!)
         let server = PagingTestServer { request in
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             if request.url!.path.hasSuffix("/stream") {
                 let events = [
-                    ActivityStreamEvent(type: .snapshot, environmentID: "one", activities: [initial], timestamp: initial.startedAt),
-                    ActivityStreamEvent(type: .message, environmentID: "one", message: message, timestamp: message.createdAt),
-                    ActivityStreamEvent(type: .activity, environmentID: "one", activity: terminal, timestamp: message.createdAt),
+                    ActivityStreamEvent(
+                        type: .snapshot, environmentID: "one", activities: [initial], timestamp: initial.startedAt),
+                    ActivityStreamEvent(
+                        type: .message, environmentID: "one", message: message, timestamp: message.createdAt),
+                    ActivityStreamEvent(
+                        type: .activity, environmentID: "one", activity: terminal, timestamp: message.createdAt),
                 ]
-                return (200, try events.reduce(into: Data()) { data, event in
-                    data += try pagingStreamLine(event, multiplexed: request.url!.path == "/api/stream")
-                })
+                return (
+                    200,
+                    try events.reduce(into: Data()) { data, event in
+                        data += try pagingStreamLine(event, multiplexed: request.url!.path == "/api/stream")
+                    }
+                )
             }
             return (200, try encoder.encode(PagingDetailEnvelope(data: ActivityDetail(activity: initial))))
         }
@@ -191,9 +223,15 @@ struct PagingReliabilityTests {
             let attempt = requests.record("templates", start: start)
             if start == 20 && attempt == 2 { return (400, Data(#"{"error":"retry"}"#.utf8)) }
             let ids = start == 0 ? Array(0..<20) : Array(19..<25)
-            return (200, try pagingEnvelope(ids.map {
-                Template(id: "t\($0)", name: "Template \($0)", description: "", content: "", isCustom: true, isRemote: false)
-            }, stride: 20, total: -1))
+            return (
+                200,
+                try pagingEnvelope(
+                    ids.map {
+                        Template(
+                            id: "t\($0)", name: "Template \($0)", description: "", content: "", isCustom: true,
+                            isRemote: false)
+                    }, stride: 20, total: -1)
+            )
         }
         defer { server.close() }
         let store = TemplateBrowserStore()
@@ -217,9 +255,15 @@ struct PagingReliabilityTests {
             let start = pagingStart(request)
             _ = requests.record("events", start: start)
             let ids = start == 0 ? Array(0..<20) : (start == 20 ? Array(19..<39) : [39, 40])
-            return (200, try pagingEnvelope(ids.map {
-                Event(id: "e\($0)", type: "test", severity: "info", title: "Event", timestamp: .now, createdAt: .now)
-            }, stride: 20, total: 41))
+            return (
+                200,
+                try pagingEnvelope(
+                    ids.map {
+                        Event(
+                            id: "e\($0)", type: "test", severity: "info", title: "Event", timestamp: .now,
+                            createdAt: .now)
+                    }, stride: 20, total: 41)
+            )
         }
         defer { server.close() }
         let store = EventsStore()
@@ -239,8 +283,9 @@ private func pagingStart(_ request: URLRequest) -> Int {
 }
 
 private func pagingActivity(id: String, environment: String = "one") -> Activity {
-    Activity(id: id, environmentID: environment, type: .autoUpdate, status: .success,
-             startedAt: Date(timeIntervalSince1970: 1_700_000_000), createdAt: Date(timeIntervalSince1970: 1_700_000_000))
+    Activity(
+        id: id, environmentID: environment, type: .autoUpdate, status: .success,
+        startedAt: Date(timeIntervalSince1970: 1_700_000_000), createdAt: Date(timeIntervalSince1970: 1_700_000_000))
 }
 
 private struct PagingEnvelope<T: Encodable>: Encodable {
@@ -263,7 +308,8 @@ private struct PagingActivityStreamEnvelope: Encodable {
 private func pagingStreamLine(_ event: ActivityStreamEvent, multiplexed: Bool) throws -> Data {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
-    let data = try multiplexed
+    let data =
+        try multiplexed
         ? encoder.encode(PagingActivityStreamEnvelope(activity: event, timestamp: event.timestamp))
         : encoder.encode(event)
     return data + Data([10])
@@ -272,10 +318,13 @@ private func pagingStreamLine(_ event: ActivityStreamEvent, multiplexed: Bool) t
 private func pagingEnvelope<T: Encodable>(_ items: [T], stride: Int, total: Int64) throws -> Data {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .iso8601
-    return try encoder.encode(PagingEnvelope(data: items, pagination: .init(
-        totalPages: total < 0 ? -1 : max(1, (total + Int64(stride) - 1) / Int64(stride)),
-        totalItems: total, currentPage: 1, itemsPerPage: stride
-    )))
+    return try encoder.encode(
+        PagingEnvelope(
+            data: items,
+            pagination: .init(
+                totalPages: total < 0 ? -1 : max(1, (total + Int64(stride) - 1) / Int64(stride)),
+                totalItems: total, currentPage: 1, itemsPerPage: stride
+            )))
 }
 
 private final class PagingRequestRecorder: @unchecked Sendable {
@@ -299,9 +348,11 @@ private struct PagingTestServer {
     func client() -> ArcaneClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [PagingReliabilityURLProtocol.self]
-        return ArcaneClient(configuration: .init(baseURL: URL(string: "https://\(host)")!,
-            urlSession: URLSession(configuration: configuration),
-            retryPolicy: .init(maxAttempts: 1, baseBackoff: .zero, maxBackoff: .zero)))
+        return ArcaneClient(
+            configuration: .init(
+                baseURL: URL(string: "https://\(host)")!,
+                urlSession: URLSession(configuration: configuration),
+                retryPolicy: .init(maxAttempts: 1, baseBackoff: .zero, maxBackoff: .zero)))
     }
     func close() { PagingReliabilityURLProtocol.registry.remove(host) }
 }
@@ -317,14 +368,18 @@ private final class PagingHandlerRegistry: @unchecked Sendable {
 
 private final class PagingReliabilityURLProtocol: URLProtocol, @unchecked Sendable {
     static let registry = PagingHandlerRegistry()
-    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canInit(with _: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         do {
             guard let handler = Self.registry.handler(for: request.url?.host ?? "") else { throw URLError(.badURL) }
             let (status, data) = try handler(request)
-            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
-                headerFields: ["Content-Type": request.url?.path.hasSuffix("stream") == true ? "application/x-ndjson" : "application/json"])!
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: status, httpVersion: nil,
+                headerFields: [
+                    "Content-Type": request.url?.path.hasSuffix("stream") == true
+                        ? "application/x-ndjson" : "application/json"
+                ])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)
@@ -342,11 +397,14 @@ struct FleetResourcesLoadingTests {
             if request.url!.path.hasSuffix("by-refs") {
                 let attempt = requests.record(environment, start: 0)
                 if attempt == 1 { return (200, Data(#"{"success":true,"data":{"app:latest":null}}"#.utf8)) }
-                let info = environment == "one"
+                let info =
+                    environment == "one"
                     ? ImageUpdateInfo(hasUpdate: true) : ImageUpdateInfo(currentVersion: "latest")
                 return (200, try JSONEncoder().encode(PagingImageUpdatesEnvelope(data: ["app:latest": info])))
             }
-            return (200, try pagingEnvelope([ImageSummary(id: "shared", repoTags: ["app:latest"])], stride: 50, total: 1))
+            return (
+                200, try pagingEnvelope([ImageSummary(id: "shared", repoTags: ["app:latest"])], stride: 50, total: 1)
+            )
         }
         defer { server.close() }
         let store = FleetResourcesStore()
@@ -358,22 +416,36 @@ struct FleetResourcesLoadingTests {
         await store.load(kind: .images, environments: environments, client: client, acceptsResult: { true })
         let one = try #require(store.buckets.first { $0.id == "one" })
         let two = try #require(store.buckets.first { $0.id == "two" })
-        #expect(ImageUpdateState.resolve(inline: nil, references: ["app:latest"], results: one.imageUpdates) == .hasUpdate)
-        #expect(ImageUpdateState.resolve(inline: nil, references: ["app:latest"], results: two.imageUpdates) == .upToDate)
+        #expect(
+            ImageUpdateState.resolve(inline: nil, references: ["app:latest"], results: one.imageUpdates) == .hasUpdate)
+        #expect(
+            ImageUpdateState.resolve(inline: nil, references: ["app:latest"], results: two.imageUpdates) == .upToDate)
     }
 
     @Test func unavailableImageChecksKeepImagesAndInlineStatus() async throws {
         let server = PagingTestServer { request in
             if request.url!.path.hasSuffix("by-refs") { return (500, Data(#"{"error":"Unavailable"}"#.utf8)) }
-            return (200, try pagingEnvelope([ImageSummary(id: "image", repoTags: ["app:latest"], updateInfo: .init(hasUpdate: true))], stride: 50, total: 1))
+            return (
+                200,
+                try pagingEnvelope(
+                    [ImageSummary(id: "image", repoTags: ["app:latest"], updateInfo: .init(hasUpdate: true))],
+                    stride: 50, total: 1)
+            )
         }
         defer { server.close() }
         let store = FleetResourcesStore()
-        await store.load(kind: .images, environments: [.init(id: "one", name: "One", apiUrl: "", status: "online")], client: server.client(), acceptsResult: { true })
+        await store.load(
+            kind: .images, environments: [.init(id: "one", name: "One", apiUrl: "", status: "online")],
+            client: server.client(), acceptsResult: { true })
         let bucket = try #require(store.buckets.first)
         #expect(bucket.error == nil)
-        guard case .image(let image) = try #require(bucket.resources.first) else { Issue.record("Missing image"); return }
-        #expect(ImageUpdateState.resolve(inline: image.updateInfo, references: image.repoTags, results: bucket.imageUpdates) == .hasUpdate)
+        guard case .image(let image) = try #require(bucket.resources.first) else {
+            Issue.record("Missing image")
+            return
+        }
+        #expect(
+            ImageUpdateState.resolve(inline: image.updateInfo, references: image.repoTags, results: bucket.imageUpdates)
+                == .hasUpdate)
     }
 
     @Test func preservesDuplicateIDsAcrossEnvironmentsAndCollectsEveryPage() async throws {
@@ -409,7 +481,9 @@ struct FleetResourcesLoadingTests {
             return (200, try pagingEnvelope([DynamicResource(id: "same", values: [:])], stride: 50, total: 1))
         }
         defer { server.close() }
-        var environments = (0..<7).map { Arcane.Environment(id: "env\($0)", name: "Environment \($0)", apiUrl: "", status: "online") }
+        var environments = (0..<7).map {
+            Arcane.Environment(id: "env\($0)", name: "Environment \($0)", apiUrl: "", status: "online")
+        }
         environments[6].enabled = false
         let store = FleetResourcesStore()
         await store.load(kind: .gitOps, environments: environments, client: server.client(), acceptsResult: { true })
@@ -422,7 +496,11 @@ struct FleetResourcesLoadingTests {
 
     @Test func refreshKeepsVisibleResourcesUntilReplacementArrives() async throws {
         let server = PagingTestServer { _ in
-            (200, try pagingEnvelope([DynamicResource(id: "visible", values: ["id": .string("visible")])], stride: 50, total: 1))
+            (
+                200,
+                try pagingEnvelope(
+                    [DynamicResource(id: "visible", values: ["id": .string("visible")])], stride: 50, total: 1)
+            )
         }
         defer { server.close() }
         let client = server.client()
@@ -451,7 +529,9 @@ struct FleetResourcesLoadingTests {
         }
         defer { server.close() }
         let store = FleetResourcesStore()
-        await store.load(kind: .gitOps, environments: [.init(id: "one", name: "One", apiUrl: "", status: "online")], client: server.client(), acceptsResult: { false })
+        await store.load(
+            kind: .gitOps, environments: [.init(id: "one", name: "One", apiUrl: "", status: "online")],
+            client: server.client(), acceptsResult: { false })
         #expect(store.buckets.allSatisfy { $0.resources.isEmpty })
         #expect(!store.isLoading)
     }
@@ -475,14 +555,18 @@ struct EnvironmentColorTests {
         #expect(Set(ids.compactMap { store.hex(server: "https://one.example", environmentID: $0) }).count == ids.count)
         let restored = EnvironmentColorStore(defaults: defaults)
         restored.assignDefaults(server: "https://one.example", environmentIDs: ids.reversed())
-        #expect(ids.map { restored.hex(server: "https://one.example", environmentID: $0) } == ids.map { store.hex(server: "https://one.example", environmentID: $0) })
+        #expect(
+            ids.map { restored.hex(server: "https://one.example", environmentID: $0) }
+                == ids.map { store.hex(server: "https://one.example", environmentID: $0) })
     }
 }
 
 @MainActor @Suite("Combined resource filters")
 struct FleetResourceFilterTests {
     @Test func environmentAndContainerFiltersCompose() {
-        let running = ContainerSummary(id: "same", names: ["web"], image: "nginx", imageId: "image", labels: ["app": "web"], state: "running", status: "Up")
+        let running = ContainerSummary(
+            id: "same", names: ["web"], image: "nginx", imageId: "image", labels: ["app": "web"], state: "running",
+            status: "Up")
         let one = FleetResourceListItem(resource: .container(running), bucket: .init(id: "one", name: "One"))
         let two = FleetResourceListItem(resource: .container(running), bucket: .init(id: "two", name: "Two"))
         var filters = FleetResourceFilters()
@@ -519,7 +603,10 @@ struct FleetOperationTests {
     @Test func visitsEveryEnabledEnvironmentAndContinuesAfterFailure() async {
         var disabled = Arcane.Environment(id: "disabled", name: "Disabled", apiUrl: "", status: "offline")
         disabled.enabled = false
-        let environments = [Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online"), .init(id: "two", name: "Two", apiUrl: "", status: "online"), disabled]
+        let environments = [
+            Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online"),
+            .init(id: "two", name: "Two", apiUrl: "", status: "online"), disabled,
+        ]
         let store = FleetOperationStore()
         var visited: [String] = []
         await store.run(environments: environments, isCurrent: { true }) { id in
@@ -539,7 +626,10 @@ struct FleetOperationTests {
     }
 
     @Test func connectionChangeStopsRemainingMutations() async {
-        let environments = [Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online"), .init(id: "two", name: "Two", apiUrl: "", status: "online")]
+        let environments = [
+            Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online"),
+            .init(id: "two", name: "Two", apiUrl: "", status: "online"),
+        ]
         let store = FleetOperationStore()
         var current = true
         var visited: [String] = []
@@ -554,13 +644,12 @@ struct FleetOperationTests {
     }
 }
 
-
 @MainActor @Suite("Fleet toast feedback", .serialized)
 struct FleetToastFeedbackTests {
     @Test func partialFailureStillReportsAfterAnotherToastReplacesProgress() async {
         let environments = [
             Arcane.Environment(id: "one", name: "One", apiUrl: "", status: "online"),
-            Arcane.Environment(id: "two", name: "Two", apiUrl: "", status: "online")
+            Arcane.Environment(id: "two", name: "Two", apiUrl: "", status: "online"),
         ]
         let store = FleetOperationStore()
         await store.runWithToast(title: "Check for Updates", environments: environments, isCurrent: { true }) { id in

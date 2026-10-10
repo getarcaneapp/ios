@@ -13,8 +13,9 @@ struct MainTabView: View {
     init(defaults: UserDefaults = .standard) {
         let remember = defaults.object(forKey: "arcane.rememberLastTab") as? Bool ?? true
         if remember,
-           let saved = defaults.string(forKey: "arcane.lastSelectedTabID"),
-           !saved.isEmpty {
+            let saved = defaults.string(forKey: "arcane.lastSelectedTabID"),
+            !saved.isEmpty
+        {
             self.selectedTab = saved
         } else {
             self.selectedTab = AppTab.dashboard.id
@@ -70,34 +71,36 @@ struct MainTabView: View {
 
     var body: some View {
         tabs
-        .environment(fleetStore)
-        .onChange(of: selectedTab) { _, newValue in
-            UserDefaults.standard.set(newValue, forKey: "arcane.lastSelectedTabID")
-        }
-        .onChange(of: router.pendingTabID) { _, newValue in
-            guard let target = newValue else { return }
-            routeToDestination(target)
-            router.pendingTabID = nil
-        }
-        .onChange(of: allowedDestinationIDs) { _, _ in
-            ensureSelectedTabVisible()
-        }
-        .onDisappear {
-            fleetStore.configure(client: nil)
-        }
-        .onAppear {
-            if let target = router.pendingTabID {
+            .environment(fleetStore)
+            .onChange(of: selectedTab) { _, newValue in
+                UserDefaults.standard.set(newValue, forKey: "arcane.lastSelectedTabID")
+            }
+            .onChange(of: router.pendingTabID) { _, newValue in
+                guard let target = newValue else { return }
                 routeToDestination(target)
                 router.pendingTabID = nil
             }
-            ensureSelectedTabVisible()
-        }
+            .onChange(of: allowedDestinationIDs) { _, _ in
+                ensureSelectedTabVisible()
+            }
+            .onDisappear {
+                fleetStore.configure(client: nil)
+            }
+            .onAppear {
+                if let target = router.pendingTabID {
+                    routeToDestination(target)
+                    router.pendingTabID = nil
+                }
+                ensureSelectedTabVisible()
+            }
     }
 
     private func routeToDestination(_ destinationID: String) {
-        guard let destination = Self.resolveDestination(
-            destinationID, visibleTabs: Set(visibleTabs), availableTabs: availableTabSet
-        ) else { return }
+        guard
+            let destination = Self.resolveDestination(
+                destinationID, visibleTabs: Set(visibleTabs), availableTabs: availableTabSet
+            )
+        else { return }
         moreDestination = destination.moreDestination
         selectedTab = destination.selectedTab.id
     }
@@ -130,9 +133,10 @@ struct MainTabView: View {
         ) {
             appTabDestination(tab, manager: manager, selectedTab: $selectedTab)
         }
-        .id(usesEnvironment
-            ? "\(tab.id)-\(manager.activeEnvironmentID.rawValue)-\(manager.allEnvironmentsPreview)-\(manager.clientGeneration)"
-            : tab.id)
+        .id(
+            usesEnvironment
+                ? "\(tab.id)-\(manager.activeEnvironmentID.rawValue)-\(manager.allEnvironmentsPreview)-\(manager.clientGeneration)"
+                : tab.id)
     }
 
     private var moreRoot: some View {

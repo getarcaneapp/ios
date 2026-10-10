@@ -1,6 +1,6 @@
+import Arcane
 import Foundation
 import SwiftUI
-import Arcane
 
 /// Fleet-wide Arcane self-upgrade, mirroring the web app's "Update All" button
 /// on the environments page: online remote agents are upgraded first, then the
@@ -161,7 +161,8 @@ struct UpdateAllEnvironmentsView: View {
         case .polling(let job):
             let results = resultsInProcessingOrder(job.results ?? [])
             let done = completedResultCount(results)
-            let progress: Double? = results.isEmpty
+            let progress: Double? =
+                results.isEmpty
                 ? nil
                 : Double(done) / Double(results.count)
             let activeEnvironment = results.first { $0.status == .updating }
@@ -179,7 +180,8 @@ struct UpdateAllEnvironmentsView: View {
                 )
             }
 
-            let subtitle = results.isEmpty
+            let subtitle =
+                results.isEmpty
                 ? "Preparing environments"
                 : "\(done) of \(results.count) complete"
             return FleetUpdateSceneModel(
@@ -224,9 +226,10 @@ struct UpdateAllEnvironmentsView: View {
             return FleetUpdateSceneModel(
                 kind: kind,
                 title: title,
-                subtitle: note ?? (job.status == .failed
-                    ? (job.error ?? "The environment update failed.")
-                    : lastRunSummary(job: job)),
+                subtitle: note
+                    ?? (job.status == .failed
+                        ? (job.error ?? "The environment update failed.")
+                        : lastRunSummary(job: job)),
                 progress: results.isEmpty ? nil : Double(done) / Double(results.count),
                 completedCount: done,
                 totalCount: results.count,
@@ -515,11 +518,13 @@ struct UpdateAllEnvironmentsView: View {
                         phase = .reconnecting(lastKnown)
                     }
                     if consecutiveFailures >= maxFailures {
-                        let managerDone = lastKnown.status == .pendingRestart
+                        let managerDone =
+                            lastKnown.status == .pendingRestart
                             && (lastKnown.managerResult?.status == .updated
                                 || lastKnown.managerResult?.status == .triggered
                                 || lastKnown.managerResult?.status == .updating)
-                        let note = managerDone
+                        let note =
+                            managerDone
                             ? "The Arcane manager is restarting — check back in a minute."
                             : "Lost connection before the update finished. Check the server once it's reachable again."
                         finish(lastKnown, note: note)
@@ -653,7 +658,8 @@ struct FleetUpdateSceneModel: Equatable {
     }
 
     var accessibilityValue: String {
-        let progressDescription = totalCount > 0
+        let progressDescription =
+            totalCount > 0
             ? "\(completedCount) of \(totalCount) environments complete"
             : subtitle
         guard let activeEnvironment else { return progressDescription }
@@ -880,14 +886,15 @@ nonisolated enum FleetUpdateBubblePresentation: Equatable, Sendable {
     case unknown
 
     init(status: EnvironmentUpdateResultStatus) {
-        self = switch status {
-        case .pending: .pending
-        case .updating: .updating
-        case .updated, .upToDate, .triggered: .succeeded
-        case .skippedOffline: .skipped
-        case .failed: .failed
-        case .unknown: .unknown
-        }
+        self =
+            switch status {
+            case .pending: .pending
+            case .updating: .updating
+            case .updated, .upToDate, .triggered: .succeeded
+            case .skippedOffline: .skipped
+            case .failed: .failed
+            case .unknown: .unknown
+            }
     }
 
     var terminalSymbol: String? {

@@ -13,7 +13,8 @@ nonisolated struct ComposeFieldOptions {
             return
         }
         if path.count == 5, case .key(let root) = path[0], ["services", "jobs"].contains(root),
-           Array(path.suffix(3)) == [.key("healthcheck"), .key("test"), .index(0)] {
+            Array(path.suffix(3)) == [.key("healthcheck"), .key("test"), .index(0)]
+        {
             values = ["CMD", "CMD-SHELL", "NONE"]
             allowsCustom = false
             return
@@ -53,7 +54,10 @@ nonisolated struct ComposeFieldOptions {
                 Entry(p + "cap_drop/[]", capabilities),
                 Entry(p + "stop_signal", signals, custom: true),
                 Entry(p + "restart", ["no", "always", "on-failure", "unless-stopped"], custom: true),
-                Entry(p + "pull_policy", ["missing", "always", "never", "build", "if_not_present", "refresh", "daily", "weekly"], custom: true),
+                Entry(
+                    p + "pull_policy",
+                    ["missing", "always", "never", "build", "if_not_present", "refresh", "daily", "weekly"],
+                    custom: true),
                 Entry(p + "isolation", ["default", "process", "hyperv"]),
                 Entry(p + "build/isolation", ["default", "process", "hyperv"]),
                 Entry(p + "deploy/mode", ["replicated", "global", "replicated-job", "global-job"]),
@@ -63,7 +67,8 @@ nonisolated struct ComposeFieldOptions {
                 Entry(p + "deploy/rollback_config/failure_action", ["continue", "pause"]),
                 Entry(p + "ports/[]/protocol", ["tcp", "udp"]),
                 Entry(p + "ports/[]/mode", ["host", "ingress"]),
-                Entry(p + "volumes/[]/bind/propagation", ["private", "rprivate", "shared", "rshared", "slave", "rslave"]),
+                Entry(
+                    p + "volumes/[]/bind/propagation", ["private", "rprivate", "shared", "rshared", "slave", "rslave"]),
                 Entry(p + "volumes/[]/consistency", ["consistent", "cached", "delegated"]),
                 Entry(p + "devices/[]/permissions", ["rwm", "r", "w", "m", "rw", "rm", "wm"]),
                 Entry(p + "env_file/[]/format", ["raw"]),
@@ -73,11 +78,18 @@ nonisolated struct ComposeFieldOptions {
                 Entry(p + "uts", ["host"]),
                 Entry(p + "userns_mode", ["host"]),
                 Entry(p + "build/network", ["default", "none", "host"], custom: true),
-                Entry(p + "logging/driver", ["local", "json-file", "syslog", "journald", "gelf", "fluentd", "awslogs", "splunk", "etwlogs", "gcplogs", "none"], custom: true)
+                Entry(
+                    p + "logging/driver",
+                    [
+                        "local", "json-file", "syslog", "journald", "gelf", "fluentd", "awslogs", "splunk", "etwlogs",
+                        "gcplogs", "none",
+                    ], custom: true),
             ]
         }
         result += [Entry("jobs/*/triggers/schedule/[]/timezone", TimeZone.knownTimeZoneIdentifiers, custom: true)]
-        result += [Entry("networks/*/driver", ["bridge", "host", "overlay", "ipvlan", "macvlan", "none"], custom: true)]
+        result += [
+            Entry("networks/*/driver", ["bridge", "host", "overlay", "ipvlan", "macvlan", "none"], custom: true)
+        ]
         return result
     }()
 
@@ -88,14 +100,15 @@ nonisolated struct ComposeFieldOptions {
         "IPC_LOCK", "IPC_OWNER", "KILL", "LEASE", "LINUX_IMMUTABLE", "MAC_ADMIN", "MAC_OVERRIDE",
         "MKNOD", "NET_ADMIN", "NET_BIND_SERVICE", "NET_BROADCAST", "NET_RAW", "PERFMON", "SETFCAP",
         "SETGID", "SETPCAP", "SETUID", "SYS_ADMIN", "SYS_BOOT", "SYS_CHROOT", "SYS_MODULE", "SYS_NICE",
-        "SYS_PACCT", "SYS_PTRACE", "SYS_RAWIO", "SYS_RESOURCE", "SYS_TIME", "SYS_TTY_CONFIG", "SYSLOG", "WAKE_ALARM"
+        "SYS_PACCT", "SYS_PTRACE", "SYS_RAWIO", "SYS_RESOURCE", "SYS_TIME", "SYS_TTY_CONFIG", "SYSLOG", "WAKE_ALARM",
     ]
-    private static let signals = [
-        "SIGTERM", "SIGINT", "SIGHUP", "SIGQUIT", "SIGKILL", "SIGUSR1", "SIGUSR2", "SIGABRT", "SIGALRM",
-        "SIGBUS", "SIGCHLD", "SIGCLD", "SIGCONT", "SIGFPE", "SIGILL", "SIGIO", "SIGIOT", "SIGPIPE", "SIGPOLL",
-        "SIGPROF", "SIGPWR", "SIGSEGV", "SIGSTKFLT", "SIGSTOP", "SIGSYS", "SIGTRAP", "SIGTSTP", "SIGTTIN",
-        "SIGTTOU", "SIGURG", "SIGVTALRM", "SIGWINCH", "SIGXCPU", "SIGXFSZ", "SIGRTMIN", "SIGRTMAX"
-    ] + (1...15).map { "SIGRTMIN+" + String($0) } + (1...14).map { "SIGRTMAX-" + String($0) }
+    private static let signals =
+        [
+            "SIGTERM", "SIGINT", "SIGHUP", "SIGQUIT", "SIGKILL", "SIGUSR1", "SIGUSR2", "SIGABRT", "SIGALRM",
+            "SIGBUS", "SIGCHLD", "SIGCLD", "SIGCONT", "SIGFPE", "SIGILL", "SIGIO", "SIGIOT", "SIGPIPE", "SIGPOLL",
+            "SIGPROF", "SIGPWR", "SIGSEGV", "SIGSTKFLT", "SIGSTOP", "SIGSYS", "SIGTRAP", "SIGTSTP", "SIGTTIN",
+            "SIGTTOU", "SIGURG", "SIGVTALRM", "SIGWINCH", "SIGXCPU", "SIGXFSZ", "SIGRTMIN", "SIGRTMAX",
+        ] + (1...15).map { "SIGRTMIN+" + String($0) } + (1...14).map { "SIGRTMAX-" + String($0) }
 
     func label(_ value: String) -> String {
         if Self.capabilities.contains(value) || value.hasPrefix("SIG") || value.contains("/") { return value }

@@ -1,7 +1,7 @@
-import Foundation
-import UIKit
-import Observation
 import Arcane
+import Foundation
+import Observation
+import UIKit
 
 /// Bridges UIApplicationShortcutItem deliveries from the AppDelegate into the
 /// SwiftUI world. `MainTabView` observes `pendingTabID` and routes selection.

@@ -16,18 +16,21 @@ struct BackupPolicyDraft: Identifiable {
     var ignoreAnonymous = true
 
     var isValid: Bool {
-        !schedule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && retentionCount >= 0 && retentionCount <= 3650
-        && (localEnabled || s3Enabled) && (!s3Enabled || !s3DestinationId.isEmpty)
+        !schedule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && retentionCount >= 0
+            && retentionCount <= 3650
+            && (localEnabled || s3Enabled) && (!s3Enabled || !s3DestinationId.isEmpty)
     }
     var update: UpdateBackupPolicy {
-        .init(id: isNew ? nil : id, enabled: enabled, schedule: schedule, retentionCount: retentionCount,
-              stopContainers: stopContainers, localEnabled: localEnabled, s3Enabled: s3Enabled,
-              s3DestinationId: s3DestinationId.isEmpty ? nil : s3DestinationId)
+        .init(
+            id: isNew ? nil : id, enabled: enabled, schedule: schedule, retentionCount: retentionCount,
+            stopContainers: stopContainers, localEnabled: localEnabled, s3Enabled: s3Enabled,
+            s3DestinationId: s3DestinationId.isEmpty ? nil : s3DestinationId)
     }
     var volumeUpdate: UpdateSystemVolumeBackupPolicy {
-        .init(id: isNew ? nil : id, enabled: enabled, schedule: schedule, retentionCount: retentionCount,
-              stopContainers: stopContainers, localEnabled: localEnabled, s3Enabled: s3Enabled,
-              s3DestinationId: s3DestinationId.isEmpty ? nil : s3DestinationId, selectionMode: selectionMode,
-              volumeNames: volumeNames.split(separator: "\n").map(String.init), ignoreAnonymous: ignoreAnonymous)
+        .init(
+            id: isNew ? nil : id, enabled: enabled, schedule: schedule, retentionCount: retentionCount,
+            stopContainers: stopContainers, localEnabled: localEnabled, s3Enabled: s3Enabled,
+            s3DestinationId: s3DestinationId.isEmpty ? nil : s3DestinationId, selectionMode: selectionMode,
+            volumeNames: volumeNames.split(separator: "\n").map(String.init), ignoreAnonymous: ignoreAnonymous)
     }
 }

@@ -22,18 +22,18 @@ private struct AppAccentNavigationBarModifier: ViewModifier {
 private struct NavigationBarAccent: UIViewControllerRepresentable {
     let color: UIColor
 
-    func makeUIViewController(context: Context) -> AccentController {
+    func makeUIViewController(context _: Context) -> AccentController {
         let controller = AccentController()
         controller.view.backgroundColor = .clear
         return controller
     }
 
-    func updateUIViewController(_ controller: AccentController, context: Context) {
+    func updateUIViewController(_ controller: AccentController, context _: Context) {
         controller.color = color
         controller.applyAccent()
     }
 
-    static func dismantleUIViewController(_ controller: AccentController, coordinator: ()) {
+    static func dismantleUIViewController(_ controller: AccentController, coordinator _: ()) {
         controller.deactivate()
     }
 
@@ -75,11 +75,12 @@ private struct NavigationBarAccent: UIViewControllerRepresentable {
                 originalCompactScrollEdge = navigationBar.compactScrollEdgeAppearance
             }
             guard let standard = originalStandard else { return }
-            let indicator = (standard.backIndicatorImage ?? UIImage(systemName: "chevron.backward"))?
+            let indicator = standard.backIndicatorImage
                 .withTintColor(color, renderingMode: .alwaysOriginal)
             func accented(_ original: UINavigationBarAppearance) -> UINavigationBarAppearance {
-                let appearance = original.copy() as! UINavigationBarAppearance
-                appearance.setBackIndicatorImage(indicator, transitionMaskImage: standard.backIndicatorTransitionMaskImage ?? indicator)
+                let appearance = original.copy()
+                appearance.setBackIndicatorImage(
+                    indicator, transitionMaskImage: standard.backIndicatorTransitionMaskImage)
                 appearance.backButtonAppearance.normal.titleTextAttributes[.foregroundColor] = color
                 appearance.backButtonAppearance.highlighted.titleTextAttributes[.foregroundColor] = color
                 return appearance

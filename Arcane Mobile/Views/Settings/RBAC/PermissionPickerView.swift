@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// Hierarchical permission picker driven by the server's `PermissionsManifest`.
 ///
@@ -97,11 +97,13 @@ struct PermissionPickerView: View {
                     for a in actionsInResource { selected.insert(a.permission) }
                 }
             } label: {
-                Image(systemName: allSelected
-                    ? "checkmark.square.fill"
-                    : (partiallySelected ? "minus.square.fill" : "square"))
-                    .font(.title3)
-                    .foregroundStyle(allSelected || partiallySelected ? Color.accentColor : .secondary)
+                Image(
+                    systemName: allSelected
+                        ? "checkmark.square.fill"
+                        : (partiallySelected ? "minus.square.fill" : "square")
+                )
+                .font(.title3)
+                .foregroundStyle(allSelected || partiallySelected ? Color.accentColor : .secondary)
             }
             .buttonStyle(.plain)
             .disabled(isReadOnly)
@@ -111,13 +113,14 @@ struct PermissionPickerView: View {
 
     @ViewBuilder
     private func actionToggle(_ action: PermissionAction) -> some View {
-        Toggle(isOn: Binding(
-            get: { selected.contains(action.permission) },
-            set: { isOn in
-                if isOn { selected.insert(action.permission) }
-                else { selected.remove(action.permission) }
-            }
-        )) {
+        Toggle(
+            isOn: Binding(
+                get: { selected.contains(action.permission) },
+                set: { isOn in
+                    if isOn { selected.insert(action.permission) } else { selected.remove(action.permission) }
+                }
+            )
+        ) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(action.label.isEmpty ? action.key : action.label)
                     .font(.body)

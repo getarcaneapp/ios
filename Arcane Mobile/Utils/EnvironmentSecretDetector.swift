@@ -68,7 +68,8 @@ nonisolated enum EnvironmentSecretDetector {
     }
 
     private static func nameLooksSensitive(_ name: String) -> Bool {
-        let words = name
+        let words =
+            name
             .uppercased()
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
@@ -106,7 +107,8 @@ nonisolated enum EnvironmentSecretDetector {
 
         let uppercaseValue = value.uppercased()
         if uppercaseValue.contains("-----BEGIN "),
-           uppercaseValue.contains("PRIVATE KEY-----") {
+            uppercaseValue.contains("PRIVATE KEY-----")
+        {
             return true
         }
 
@@ -118,26 +120,29 @@ nonisolated enum EnvironmentSecretDetector {
     private static func looksLikeJSONWebToken(_ value: String) -> Bool {
         let segments = value.split(separator: ".", omittingEmptySubsequences: false)
         guard segments.count == 3,
-              value.count >= 40,
-              segments[0].hasPrefix("eyJ") else {
+            value.count >= 40,
+            segments[0].hasPrefix("eyJ")
+        else {
             return false
         }
 
         return segments.allSatisfy { segment in
-            !segment.isEmpty && segment.utf8.allSatisfy { byte in
-                switch byte {
-                case 45, 48...57, 65...90, 95, 97...122:
-                    true
-                default:
-                    false
+            !segment.isEmpty
+                && segment.utf8.allSatisfy { byte in
+                    switch byte {
+                    case 45, 48...57, 65...90, 95, 97...122:
+                        true
+                    default:
+                        false
+                    }
                 }
-            }
         }
     }
 
     private static func containsURLCredential(_ value: String) -> Bool {
         guard let components = URLComponents(string: value),
-              components.scheme != nil else {
+            components.scheme != nil
+        else {
             return false
         }
 
@@ -168,9 +173,10 @@ nonisolated enum EnvironmentSecretDetector {
 
     private static func removingMatchingQuotes(_ value: String) -> String {
         guard value.count >= 2,
-              let first = value.first,
-              let last = value.last,
-              (first == "\"" && last == "\"") || (first == "'" && last == "'") else {
+            let first = value.first,
+            let last = value.last,
+            (first == "\"" && last == "\"") || (first == "'" && last == "'")
+        else {
             return value
         }
         return String(value.dropFirst().dropLast())

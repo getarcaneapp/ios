@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct FederatedCredentialsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -16,12 +16,16 @@ struct FederatedCredentialsView: View {
     @State private var search = ""
     @State private var pendingDelete: FederatedCredential?
     private var canManage: Bool { manager.currentUser?.isGlobalAdmin == true }
-    private var identity: String { "\(manager.clientGeneration)|\(manager.client?.configuration.baseURL.absoluteString ?? "")|\(manager.currentUser?.id ?? "")|\(search)" }
+    private var identity: String {
+        "\(manager.clientGeneration)|\(manager.client?.configuration.baseURL.absoluteString ?? "")|\(manager.currentUser?.id ?? "")|\(search)"
+    }
 
     var body: some View {
         Group {
             if unsupported {
-                ContentUnavailableView("Federated Credentials Unavailable", systemImage: "key.slash", description: Text("This server does not support federated credential management."))
+                ContentUnavailableView(
+                    "Federated Credentials Unavailable", systemImage: "key.slash",
+                    description: Text("This server does not support federated credential management."))
             } else if loading && credentials.isEmpty {
                 ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, credentials.isEmpty {
@@ -52,14 +56,19 @@ struct FederatedCredentialsView: View {
                                 VStack(alignment: .leading) {
                                     Text(credential.name)
                                     Text(credential.issuerUrl).font(.subheadline).foregroundStyle(.secondary)
-                                    Text(credential.enabled ? "Enabled" : "Disabled").font(.caption).foregroundStyle(.secondary)
+                                    Text(credential.enabled ? "Enabled" : "Disabled").font(.caption).foregroundStyle(
+                                        .secondary)
                                 }
-                            } icon: { Image(systemName: "key") }
+                            } icon: {
+                                Image(systemName: "key")
+                            }
                         }
                         .disabled(!manager.permissions.has("federated:read", in: nil))
                         .swipeActions(allowsFullSwipe: false) {
                             if canManage {
-                                Button("Delete", systemImage: "trash", role: .destructive) { pendingDelete = credential }
+                                Button("Delete", systemImage: "trash", role: .destructive) {
+                                    pendingDelete = credential
+                                }
                             }
                         }
                     }
@@ -84,33 +93,52 @@ struct FederatedCredentialsView: View {
         }
         .task(id: identity) { await load(reset: true) }
         .refreshable { await load(reset: true) }
-        .sheet(isPresented: $creating) { FederatedCredentialFormView(credential: nil, onSaved: { await load(reset: true) }) }
-        .deleteConfirmation(item: $pendingDelete, title: { _ in "Delete Credential" },
-            message: { "Delete \($0.name) and its service user?" }, icon: "trash", confirmTitle: "Delete") { credential in
+        .sheet(isPresented: $creating) {
+            FederatedCredentialFormView(credential: nil, onSaved: { await load(reset: true) })
+        }
+        .deleteConfirmation(
+            item: $pendingDelete, title: { _ in "Delete Credential" },
+            message: { "Delete \($0.name) and its service user?" }, icon: "trash", confirmTitle: "Delete"
+        ) { credential in
             Task {
                 guard canManage, let client = manager.client else { return }
-                do { try await client.federatedCredentials.delete(id: credential.id); await load(reset: true) }
-                catch { showToast(.error(friendlyErrorMessage(error))) }
+                do {
+                    try await client.federatedCredentials.delete(id: credential.id)
+                    await load(reset: true)
+                } catch { showToast(.error(friendlyErrorMessage(error))) }
             }
         }
     }
 
     private func load(reset: Bool) async {
         guard manager.serverCapabilities?.supportsRoleManagement == true,
-              manager.permissions.has("federated:list", in: nil), let client = manager.client else { return }
+            manager.permissions.has("federated:list", in: nil), let client = manager.client
+        else { return }
         let key = identity
         guard loadingIdentity != key else { return }
         let request = UUID()
         requestID = request
         loadingIdentity = key
-        if loadedIdentity != key { credentials = []; total = 0; loadedIdentity = key }
+        if loadedIdentity != key {
+            credentials = []
+            total = 0
+            loadedIdentity = key
+        }
         if reset { unsupported = false }
         loading = true
         errorMessage = nil
         loadMoreError = nil
-        defer { if requestID == request { loading = false; loadingIdentity = nil } }
+        defer {
+            if requestID == request {
+                loading = false
+                loadingIdentity = nil
+            }
+        }
         do {
-            let result = try await client.federatedCredentials.list(query: .init(search: search, start: reset ? 0 : credentials.count, limit: 30, sortBy: "name", sortOrder: .ascending))
+            let result = try await client.federatedCredentials.list(
+                query: .init(
+                    search: search, start: reset ? 0 : credentials.count, limit: 30, sortBy: "name",
+                    sortOrder: .ascending))
             guard !Task.isCancelled, key == identity, requestID == request else { return }
             if reset { credentials = [] }
             credentials += result.data.filter { row in !credentials.contains { $0.id == row.id } }
@@ -118,8 +146,7 @@ struct FederatedCredentialsView: View {
         } catch {
             guard !Task.isCancelled, key == identity, requestID == request else { return }
             unsupported = (error as? ArcaneError) == .notFound
-            if reset { errorMessage = friendlyErrorMessage(error) }
-            else { loadMoreError = friendlyErrorMessage(error) }
+            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 }
@@ -160,7 +187,11 @@ struct FederatedCredentialDetailView: View {
         }
         .sheet(isPresented: $editing) {
             FederatedCredentialFormView(credential: credential) {
-                if let client = manager.client { do { credential = try await client.federatedCredentials.get(id: credential.id) } catch { showToast(.error(friendlyErrorMessage(error))) } }
+                if let client = manager.client {
+                    do { credential = try await client.federatedCredentials.get(id: credential.id) } catch {
+                        showToast(.error(friendlyErrorMessage(error)))
+                    }
+                }
                 await onSaved()
             }
         }

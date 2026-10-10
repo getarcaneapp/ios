@@ -1,5 +1,5 @@
-import WidgetKit
 import SwiftUI
+import WidgetKit
 
 /// Phase-3 widget: pending image updates + actionable vulnerabilities across
 /// the fleet, with a per-environment breakdown on systemMedium. Deep-links to

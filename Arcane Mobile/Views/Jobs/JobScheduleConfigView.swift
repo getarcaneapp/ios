@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 private struct JobScheduleField: Hashable {
     let key: String
@@ -50,7 +50,9 @@ struct JobScheduleConfigView: View {
                         scheduleRow(field)
                     }
                 } footer: {
-                    Text("Cron expressions accept 5- or 6-field syntax. Changes save to the active environment's settings.")
+                    Text(
+                        "Cron expressions accept 5- or 6-field syntax. Changes save to the active environment's settings."
+                    )
                 }
 
                 if hasChanges {
@@ -81,7 +83,9 @@ struct JobScheduleConfigView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await load(refresh: true) } } label: {
+                Button {
+                    Task { await load(refresh: true) }
+                } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .accessibilityLabel("Refresh")

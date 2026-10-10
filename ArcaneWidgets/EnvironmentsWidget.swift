@@ -1,6 +1,6 @@
-import WidgetKit
-import SwiftUI
 import AppIntents
+import SwiftUI
+import WidgetKit
 
 struct EnvironmentsEntry: TimelineEntry {
     let date: Date
@@ -10,7 +10,7 @@ struct EnvironmentsEntry: TimelineEntry {
 }
 
 struct EnvironmentsProvider: TimelineProvider {
-    func placeholder(in context: Context) -> EnvironmentsEntry {
+    func placeholder(in _: Context) -> EnvironmentsEntry {
         EnvironmentsEntry(date: Date(), snapshot: StatusEntry.placeholderEntry().snapshot)
     }
 
@@ -22,7 +22,7 @@ struct EnvironmentsProvider: TimelineProvider {
         }
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<EnvironmentsEntry>) -> Void) {
+    func getTimeline(in _: Context, completion: @escaping (Timeline<EnvironmentsEntry>) -> Void) {
         let entry = EnvironmentsEntry(date: Date(), snapshot: WidgetSnapshotStore.load())
         completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60))))
     }
@@ -39,16 +39,20 @@ struct EnvironmentsWidgetConfigurationIntent: WidgetConfigurationIntent {
 }
 
 struct ConfiguredEnvironmentsProvider: AppIntentTimelineProvider {
-    func placeholder(in context: Context) -> EnvironmentsEntry {
+    func placeholder(in _: Context) -> EnvironmentsEntry {
         EnvironmentsEntry(date: Date(), snapshot: StatusEntry.placeholderEntry().snapshot)
     }
 
-    func snapshot(for configuration: EnvironmentsWidgetConfigurationIntent, in context: Context) async -> EnvironmentsEntry {
+    func snapshot(for configuration: EnvironmentsWidgetConfigurationIntent, in context: Context) async
+        -> EnvironmentsEntry
+    {
         if context.isPreview { return placeholder(in: context) }
         return entry(for: configuration)
     }
 
-    func timeline(for configuration: EnvironmentsWidgetConfigurationIntent, in context: Context) async -> Timeline<EnvironmentsEntry> {
+    func timeline(for configuration: EnvironmentsWidgetConfigurationIntent, in _: Context) async -> Timeline<
+        EnvironmentsEntry
+    > {
         Timeline(entries: [entry(for: configuration)], policy: .after(Date().addingTimeInterval(30 * 60)))
     }
 

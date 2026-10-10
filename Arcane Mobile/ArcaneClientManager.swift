@@ -1,15 +1,15 @@
-import Foundation
 import Arcane
 import ArcaneOIDC
 import ArcanePasskeys
 import AuthenticationServices
 import CryptoKit
 import Darwin
+import Foundation
 
 enum AppAuthState {
-    case setup          // No server URL configured
-    case authenticating // Server URL set, checking existing tokens
-    case login          // Server URL configured, not authenticated
+    case setup  // No server URL configured
+    case authenticating  // Server URL set, checking existing tokens
+    case login  // Server URL configured, not authenticated
     case authenticated  // Logged in
 }
 
@@ -39,9 +39,9 @@ private final class ImageRedirectPolicy: NSObject, URLSessionTaskDelegate, @unch
     }
 
     nonisolated func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
+        _: URLSession,
+        task _: URLSessionTask,
+        willPerformHTTPRedirection _: HTTPURLResponse,
         newRequest request: URLRequest,
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
@@ -78,7 +78,8 @@ nonisolated struct LoginCapabilities: Equatable, Sendable {
         // Older servers do not publish authLocalEnabled, so only an explicit
         // false disables the password path.
         localAuthEnabled = localAuthValue != "false"
-        oidcEnabled = values["oidcEnabled"]?
+        oidcEnabled =
+            values["oidcEnabled"]?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() == "true"
         oidcProviderName = values["oidcProviderName"] ?? ""
@@ -175,7 +176,10 @@ final class ArcaneClientManager {
     private let tokenStoreFactory: ((String) -> any TokenStore)?
 
     // MARK: - Init
-    init(serverURL initialURL: String? = nil, sessionFactory: ((Bool) -> URLSession)? = nil, tokenStoreFactory: ((String) -> any TokenStore)? = nil) {
+    init(
+        serverURL initialURL: String? = nil, sessionFactory: ((Bool) -> URLSession)? = nil,
+        tokenStoreFactory: ((String) -> any TokenStore)? = nil
+    ) {
         self.sessionFactory = sessionFactory
         self.tokenStoreFactory = tokenStoreFactory
         let saved = initialURL ?? UserDefaults.standard.string(forKey: "arcane.serverURL") ?? ""
@@ -183,7 +187,8 @@ final class ArcaneClientManager {
         if !saved.isEmpty, let url = URL(string: saved) {
             parsedServerURL = url
             let origin = AppGroup.canonicalServerOrigin(for: url)
-            let shouldMigrateLegacyCredentials = origin != nil
+            let shouldMigrateLegacyCredentials =
+                origin != nil
                 && SharedKeychain.credentialOrigin == nil
             if shouldMigrateLegacyCredentials, let origin {
                 SharedKeychain.bindCredentials(to: origin)
@@ -196,7 +201,8 @@ final class ArcaneClientManager {
         }
         if let savedEnvID = UserDefaults.standard.string(forKey: "arcane.activeEnvironmentID") {
             activeEnvironmentID = EnvironmentID(rawValue: savedEnvID)
-            activeEnvironmentName = UserDefaults.standard.string(forKey: "arcane.activeEnvironmentName") ?? "Local Docker"
+            activeEnvironmentName =
+                UserDefaults.standard.string(forKey: "arcane.activeEnvironmentName") ?? "Local Docker"
         } else {
             // Persist the default env (id 0) so it's always explicit
             UserDefaults.standard.set(EnvironmentID.localDocker.rawValue, forKey: "arcane.activeEnvironmentID")
@@ -214,7 +220,8 @@ final class ArcaneClientManager {
         let lowered = trimmed.lowercased()
         // Default to https:// when the user omits a scheme. Local HTTP servers
         // must be entered with an explicit http:// prefix (see login help text).
-        let normalized = (lowered.hasPrefix("http://") || lowered.hasPrefix("https://"))
+        let normalized =
+            (lowered.hasPrefix("http://") || lowered.hasPrefix("https://"))
             ? trimmed
             : "https://\(trimmed)"
         guard let parsed = URL(string: normalized), parsed.host != nil else {
@@ -318,7 +325,8 @@ final class ArcaneClientManager {
     func canAccess(_ tab: AppTab) -> Bool {
         let supportsV2 = serverCapabilities?.mode == .rbac
         guard supportsV2 || !tab.requiresV2,
-              let user = currentUser else {
+            let user = currentUser
+        else {
             return false
         }
 
@@ -332,19 +340,26 @@ final class ArcaneClientManager {
         }
 
         if supportsV2,
-           let permissionsManifest,
-           !permissionsManifest.accessSurfaces.isEmpty,
-           !tab.accessSurfaceIDs.isEmpty {
-            let scopes = allEnvironmentsPreview && tab.isEnvironmentScoped
-                ? Array(Set([activeEnvironmentID.rawValue] + Array(user.permissionsByEnv?.keys ?? Dictionary<String, [String]>().keys)))
+            let permissionsManifest,
+            !permissionsManifest.accessSurfaces.isEmpty,
+            !tab.accessSurfaceIDs.isEmpty
+        {
+            let scopes =
+                allEnvironmentsPreview && tab.isEnvironmentScoped
+                ? Array(
+                    Set(
+                        [activeEnvironmentID.rawValue] + Array(user.permissionsByEnv?.keys ?? [String: [String]]().keys)
+                    ))
                 : [activeEnvironmentID.rawValue]
-            return scopes.contains { scope in tab.accessSurfaceIDs.contains { surfaceID in
-                permissionsManifest.canAccessSurface(
-                    id: surfaceID,
-                    user: user,
-                    selectedEnvironmentID: scope
-                )
-            } }
+            return scopes.contains { scope in
+                tab.accessSurfaceIDs.contains { surfaceID in
+                    permissionsManifest.canAccessSurface(
+                        id: surfaceID,
+                        user: user,
+                        selectedEnvironmentID: scope
+                    )
+                }
+            }
         }
 
         return user.isAdmin || !tab.requiresAdmin
@@ -378,7 +393,7 @@ final class ArcaneClientManager {
 
     @MainActor
     func loginWithOIDC(anchor: ASPresentationAnchor) async {
-        guard let client else {
+        guard client != nil else {
             errorMessage = "No server configured"
             return
         }
@@ -397,7 +412,8 @@ final class ArcaneClientManager {
             guard isCurrentAuthentication(generation) else { return }
             let capabilities = await client.serverCapabilities()
             guard isCurrentAuthentication(generation) else { return }
-            await completeAuthenticatedBootstrap(user: result.user, capabilities: capabilities, client: client, generation: generation)
+            await completeAuthenticatedBootstrap(
+                user: result.user, capabilities: capabilities, client: client, generation: generation)
             guard isCurrentAuthentication(generation) else { return }
             needsConnectionBootstrapRetry = false
         } catch let error as MFARequiredError {
@@ -418,7 +434,7 @@ final class ArcaneClientManager {
 
     @MainActor
     func loginWithPasskey(anchor: ASPresentationAnchor) async {
-        guard let client else {
+        guard client != nil else {
             errorMessage = "No server configured"
             return
         }
@@ -453,7 +469,7 @@ final class ArcaneClientManager {
 
     @MainActor
     func completePendingMFAWithPasskey(anchor: ASPresentationAnchor) async {
-        guard let client, let challenge = pendingMFAChallenge else { return }
+        guard client != nil, let challenge = pendingMFAChallenge else { return }
         let generation = beginAuthentication(preservingMFAChallenge: challenge)
         guard let client = self.client else { return }
         let authenticator = ArcanePasskeyAuthenticator(client: client)
@@ -495,7 +511,7 @@ final class ArcaneClientManager {
     }
 
     func completePendingMFAWithRecoveryCode(_ code: String) async {
-        guard let client, let challenge = pendingMFAChallenge else { return }
+        guard client != nil, let challenge = pendingMFAChallenge else { return }
         let generation = beginAuthentication(preservingMFAChallenge: challenge)
         guard let client = self.client else { return }
         isLoading = true
@@ -562,7 +578,8 @@ final class ArcaneClientManager {
 
         guard isCurrentAuthentication(generation) else { return }
         guard !credentialRemains else {
-            errorMessage = logoutError.map(friendlyErrorMessage)
+            errorMessage =
+                logoutError.map(friendlyErrorMessage)
                 ?? "Couldn't remove local sign-in credentials."
             return
         }
@@ -624,7 +641,8 @@ final class ArcaneClientManager {
                 let response = try await client.auth.login(username: session.username, password: session.password)
                 guard isCurrentAuthentication(generation) else { return }
                 let capabilities = await client.serverCapabilities()
-                await completeAuthenticatedBootstrap(user: response.user, capabilities: capabilities, client: client, generation: generation)
+                await completeAuthenticatedBootstrap(
+                    user: response.user, capabilities: capabilities, client: client, generation: generation)
                 guard isCurrentAuthentication(generation) else { return }
                 needsConnectionBootstrapRetry = false
                 isDemoActive = true
@@ -889,12 +907,13 @@ final class ArcaneClientManager {
 
     private func fetchGravatar(for user: User, using client: ArcaneClient, generation: Int) async -> Data? {
         guard let email = user.email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-              !email.isEmpty else { return nil }
+            !email.isEmpty
+        else { return nil }
         // Only reach out to Gravatar when the server has it enabled, like
         // the web UI — don't leak email hashes to a third party otherwise.
         guard let settings = try? await client.settings.getSettings(envID: .localDocker),
-              isCurrentAuthentication(generation),
-              settings.first(where: { $0.key == "enableGravatar" })?.value.lowercased() == "true"
+            isCurrentAuthentication(generation),
+            settings.first(where: { $0.key == "enableGravatar" })?.value.lowercased() == "true"
         else { return nil }
         let hash = SHA256.hash(data: Data(email.utf8))
             .map { String(format: "%02x", $0) }
@@ -912,38 +931,44 @@ final class ArcaneClientManager {
         guard await Self.isAllowedImageURL(url, serverURL: configuredServerURL) else { return nil }
         var request = URLRequest(url: url)
         if let serverURL = parsedServerURL,
-           ArcaneAPIHelpers.isSameOrigin(url, serverURL),
-           let headers = try? await client.authManager.authenticationHeaders() {
+            ArcaneAPIHelpers.isSameOrigin(url, serverURL),
+            let headers = try? await client.authManager.authenticationHeaders()
+        {
             for (key, value) in headers {
                 request.setValue(value, forHTTPHeaderField: key)
             }
         }
         let delegate = ImageRedirectPolicy { redirectedRequest in
             guard let candidate = redirectedRequest.url,
-                  await Self.isAllowedImageURL(candidate, serverURL: configuredServerURL) else {
+                await Self.isAllowedImageURL(candidate, serverURL: configuredServerURL)
+            else {
                 return nil
             }
             var sanitized = redirectedRequest
             if let configuredServerURL,
-               !ArcaneAPIHelpers.isSameOrigin(candidate, configuredServerURL) {
+                !ArcaneAPIHelpers.isSameOrigin(candidate, configuredServerURL)
+            {
                 sanitized.setValue(nil, forHTTPHeaderField: "Authorization")
             }
             return sanitized
         }
         guard let (bytes, response) = try? await session.bytes(for: request, delegate: delegate),
-              let http = response as? HTTPURLResponse,
-              http.statusCode == 200,
-              http.expectedContentLength <= Int64(RemoteDataLimits.maximumImageBytes) else { return nil }
+            let http = response as? HTTPURLResponse,
+            http.statusCode == 200,
+            http.expectedContentLength <= Int64(RemoteDataLimits.maximumImageBytes)
+        else { return nil }
         if let contentType = http.value(forHTTPHeaderField: "Content-Type")?.lowercased(),
-           !contentType.hasPrefix("image/") && !contentType.hasPrefix("application/octet-stream") {
+            !contentType.hasPrefix("image/") && !contentType.hasPrefix("application/octet-stream")
+        {
             return nil
         }
 
         var data = Data()
-        data.reserveCapacity(min(
-            RemoteDataLimits.maximumImageBytes,
-            max(0, Int(http.expectedContentLength))
-        ))
+        data.reserveCapacity(
+            min(
+                RemoteDataLimits.maximumImageBytes,
+                max(0, Int(http.expectedContentLength))
+            ))
         do {
             for try await byte in bytes {
                 guard data.count < RemoteDataLimits.maximumImageBytes else { return nil }
@@ -1096,7 +1121,10 @@ final class ArcaneClientManager {
         for url: URL,
         _ operation: @escaping @Sendable (ArcaneClient) async throws -> T
     ) async throws -> T {
-        let bundle = Self.makeClient(url: url, bootstrap: true, credentialLease: credentialLease, credentialPersistence: credentialPersistence, session: sessionFactory?(true), originStore: tokenStoreFactory?(AppGroup.canonicalServerOrigin(for: url) ?? url.absoluteString))
+        let bundle = Self.makeClient(
+            url: url, bootstrap: true, credentialLease: credentialLease, credentialPersistence: credentialPersistence,
+            session: sessionFactory?(true),
+            originStore: tokenStoreFactory?(AppGroup.canonicalServerOrigin(for: url) ?? url.absoluteString))
         let id = UUID()
         bootstrapSessions[id] = bundle.session
         bootstrapAuthManagers[id] = bundle.client.authManager
@@ -1110,7 +1138,9 @@ final class ArcaneClientManager {
         }
         return try await withTaskCancellationHandler {
             try await task.value
-        } onCancel: { task.cancel() }
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     /// Blocking `getaddrinfo` — never call on the main actor; use
@@ -1189,7 +1219,7 @@ final class ArcaneClientManager {
             "not connected to the internet",
             "internet connection appears to be offline",
             "offline",
-            "dns"
+            "dns",
         ]
         return transientPhrases.contains { lower.contains($0) }
     }
@@ -1197,13 +1227,13 @@ final class ArcaneClientManager {
     private static func isTransientNetworkError(_ error: URLError) -> Bool {
         switch error.code {
         case .cannotFindHost,
-             .cannotConnectToHost,
-             .dnsLookupFailed,
-             .networkConnectionLost,
-             .notConnectedToInternet,
-             .timedOut,
-             .dataNotAllowed,
-             .callIsActive:
+            .cannotConnectToHost,
+            .dnsLookupFailed,
+            .networkConnectionLost,
+            .notConnectedToInternet,
+            .timedOut,
+            .dataNotAllowed,
+            .callIsActive:
             return true
         default:
             return false
@@ -1219,14 +1249,16 @@ final class ArcaneClientManager {
         guard shouldSuggestPrivateRelayWorkaround(for: error) else {
             return base
         }
-        return "\(base) If this is your local Arcane server, iCloud Private Relay or Limit IP Address Tracking may be bypassing local DNS. Turn it off for this Wi-Fi network, then try again."
+        return
+            "\(base) If this is your local Arcane server, iCloud Private Relay or Limit IP Address Tracking may be bypassing local DNS. Turn it off for this Wi-Fi network, then try again."
     }
 
     private func shouldSuggestPrivateRelayWorkaround(for error: Error) -> Bool {
         guard shouldRefreshNetworkSession(after: error),
-              let host = parsedServerURL?.host(percentEncoded: false),
-              !Self.isIPAddress(host),
-              !lastBootstrapDNSAddresses.isEmpty else {
+            let host = parsedServerURL?.host(percentEncoded: false),
+            !Self.isIPAddress(host),
+            !lastBootstrapDNSAddresses.isEmpty
+        else {
             return false
         }
         return lastBootstrapDNSAddresses.allSatisfy(Self.isPublicIPAddress)
@@ -1248,8 +1280,9 @@ final class ArcaneClientManager {
 
     private static func isAllowedImageURL(_ url: URL, serverURL: URL?) async -> Bool {
         guard url.user == nil, url.password == nil,
-              let scheme = url.scheme?.lowercased(),
-              let host = url.host(percentEncoded: false), !host.isEmpty else { return false }
+            let scheme = url.scheme?.lowercased(),
+            let host = url.host(percentEncoded: false), !host.isEmpty
+        else { return false }
         if let serverURL, ArcaneAPIHelpers.isSameOrigin(url, serverURL) {
             return scheme == "http" || scheme == "https"
         }
@@ -1283,7 +1316,7 @@ final class ArcaneClientManager {
         if isPrivateIPv4(octets) { return true }
         switch (octets[0], octets[1], octets[2]) {
         case (0, _, _), (192, 0, 0), (192, 0, 2),
-             (198, 18...19, _), (198, 51, 100), (203, 0, 113):
+            (198, 18...19, _), (198, 51, 100), (203, 0, 113):
             return true
         default:
             return octets[0] >= 224
@@ -1339,23 +1372,29 @@ final class ArcaneClientManager {
         let origin = AppGroup.canonicalServerOrigin(for: url) ?? url.absoluteString
         let tokenStore: MigratingTokenStore
         if let originStore {
-            tokenStore = MigratingTokenStore(origin: origin, originStore: originStore, legacy: InMemoryTokenStore(), legacyAppGroup: InMemoryTokenStore(), lease: credentialLease, persistence: credentialPersistence, credentialOrigin: { origin })
+            tokenStore = MigratingTokenStore(
+                origin: origin, originStore: originStore, legacy: InMemoryTokenStore(),
+                legacyAppGroup: InMemoryTokenStore(), lease: credentialLease, persistence: credentialPersistence,
+                credentialOrigin: { origin })
         } else {
-            tokenStore = MigratingTokenStore(origin: origin, allowsLegacyMigration: allowsLegacyTokenMigration, lease: credentialLease, persistence: credentialPersistence)
+            tokenStore = MigratingTokenStore(
+                origin: origin, allowsLegacyMigration: allowsLegacyTokenMigration, lease: credentialLease,
+                persistence: credentialPersistence)
         }
-        let client = ArcaneClient(configuration: .init(
-            baseURL: url,
-            // Migrates the session into the shared keychain group so widget
-            // buttons and Shortcuts intents can authenticate. Falls back to
-            // (and keeps writing) the original private item — see
-            // MigratingTokenStore for the sign-out-safety invariants.
-            tokenStore: tokenStore,
-            defaultEnvironmentID: .localDocker,
-            urlSession: session,
-            retryPolicy: bootstrap
-                ? .init(maxAttempts: 1, baseBackoff: .milliseconds(300), maxBackoff: .milliseconds(300))
-                : .init(maxAttempts: 5, baseBackoff: .milliseconds(300), maxBackoff: .seconds(3))
-        ))
+        let client = ArcaneClient(
+            configuration: .init(
+                baseURL: url,
+                // Migrates the session into the shared keychain group so widget
+                // buttons and Shortcuts intents can authenticate. Falls back to
+                // (and keeps writing) the original private item — see
+                // MigratingTokenStore for the sign-out-safety invariants.
+                tokenStore: tokenStore,
+                defaultEnvironmentID: .localDocker,
+                urlSession: session,
+                retryPolicy: bootstrap
+                    ? .init(maxAttempts: 1, baseBackoff: .milliseconds(300), maxBackoff: .milliseconds(300))
+                    : .init(maxAttempts: 5, baseBackoff: .milliseconds(300), maxBackoff: .seconds(3))
+            ))
         return ClientBundle(client: client, session: session)
     }
 

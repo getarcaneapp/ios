@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 /// API-key fields added by Arcane v2 that are not yet surfaced by the SDK's
 /// `APIKey` model. Keeping this additive and optional lets the detail screen

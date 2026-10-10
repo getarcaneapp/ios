@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct NetworkTopologyView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -92,7 +92,8 @@ struct NetworkTopologyView: View {
                 as: NetworkTopology.self
             )
             guard response.nodes.count <= RemoteDataLimits.maximumTopologyNodes,
-                  response.edges.count <= RemoteDataLimits.maximumTopologyEdges else {
+                response.edges.count <= RemoteDataLimits.maximumTopologyEdges
+            else {
                 throw RemoteDataLimitError.collectionTooLarge(
                     maximumItems: RemoteDataLimits.maximumTopologyEdges
                 )
@@ -301,7 +302,8 @@ private struct TopologyEdgeCanvas: View {
         Canvas { context, _ in
             for edge in graph.edges {
                 guard let source = graph.nodeByID[edge.source],
-                      let target = graph.nodeByID[edge.target] else { continue }
+                    let target = graph.nodeByID[edge.target]
+                else { continue }
 
                 let sourcePosition = graph.position(for: source)
                 let targetPosition = graph.position(for: target)
@@ -614,10 +616,12 @@ private struct TopologyGraphLayout {
             resolvedNodes[node.id] = node
         }
 
-        let networks = uniqueNodes
+        let networks =
+            uniqueNodes
             .filter { $0.type == .network }
             .sorted(by: Self.nodeSort)
-        let containers = uniqueNodes
+        let containers =
+            uniqueNodes
             .filter { $0.type == .container }
             .sorted(by: Self.nodeSort)
         let networkOrder = Dictionary(uniqueKeysWithValues: networks.enumerated().map { ($1.id, $0) })
@@ -626,8 +630,9 @@ private struct TopologyGraphLayout {
         let validEdges = topology.edges
             .filter { edge in
                 guard seenEdgeIDs.insert(edge.id).inserted,
-                      resolvedNodes[edge.source]?.type == .network,
-                      resolvedNodes[edge.target]?.type == .container else { return false }
+                    resolvedNodes[edge.source]?.type == .network,
+                    resolvedNodes[edge.target]?.type == .container
+                else { return false }
                 return true
             }
             .sorted { left, right in
@@ -648,7 +653,8 @@ private struct TopologyGraphLayout {
         var containersByNetwork: [String: [TopologyNode]] = [:]
         var isolatedContainers: [TopologyNode] = []
         for container in containers {
-            let primaryNetworkID = validEdges
+            let primaryNetworkID =
+                validEdges
                 .filter { $0.target == container.id }
                 .compactMap { edge -> (id: String, order: Int)? in
                     networkOrder[edge.source].map { (id: edge.source, order: $0) }
@@ -666,7 +672,8 @@ private struct TopologyGraphLayout {
         }
 
         let networkX = Self.outerPadding + Self.networkNodeSize.width / 2
-        let containerX = Self.outerPadding + Self.networkNodeSize.width
+        let containerX =
+            Self.outerPadding + Self.networkNodeSize.width
             + Self.columnGap + Self.containerNodeSize.width / 2
         var resolvedPositions: [String: CGPoint] = [:]
         var currentTop = Self.outerPadding
@@ -700,10 +707,11 @@ private struct TopologyGraphLayout {
                         + CGFloat(index) * (Self.containerNodeSize.height + Self.rowGap)
                 )
             }
-            currentTop += Self.columnHeight(
-                count: isolatedContainers.count,
-                nodeHeight: Self.containerNodeSize.height
-            ) + Self.groupGap
+            currentTop +=
+                Self.columnHeight(
+                    count: isolatedContainers.count,
+                    nodeHeight: Self.containerNodeSize.height
+                ) + Self.groupGap
         }
 
         let minimumHeight = max(Self.networkNodeSize.height, Self.containerNodeSize.height)

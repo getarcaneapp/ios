@@ -70,7 +70,8 @@ nonisolated struct WidgetSnapshot: Codable, Sendable, Equatable {
     /// Equality ignoring `generatedAt` — used to decide whether a rewrite is
     /// material enough to spend a WidgetCenter reload on.
     func materiallyEquals(_ other: WidgetSnapshot) -> Bool {
-        var a = self, b = other
+        var a = self
+        var b = other
         a.generatedAt = .distantPast
         b.generatedAt = .distantPast
         return a == b

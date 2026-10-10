@@ -32,7 +32,8 @@ nonisolated enum PaginationLoader {
                 collected.append(item)
             }
 
-            let pageStride = page.pagination.itemsPerPage > 0
+            let pageStride =
+                page.pagination.itemsPerPage > 0
                 ? page.pagination.itemsPerPage
                 : limit
             let (nextStart, offsetOverflow) = start.addingReportingOverflow(pageStride)
@@ -106,7 +107,8 @@ nonisolated struct ProgressivePaginationState: Sendable {
             totalItems = pagination.totalItems
         }
 
-        let pageStride = pagination.itemsPerPage > 0
+        let pageStride =
+            pagination.itemsPerPage > 0
             ? pagination.itemsPerPage
             : max(1, requestedLimit)
         let (candidateStart, offsetOverflow) = requestedStart.addingReportingOverflow(pageStride)

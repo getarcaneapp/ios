@@ -88,7 +88,8 @@ final class ImageUpdateCountStore {
         userID: String?
     ) async {
         guard let client,
-              let summary = try? await client.images.updateSummary(envID: environmentID) else { return }
+            let summary = try? await client.images.updateSummary(envID: environmentID)
+        else { return }
         setCount(
             summary.imagesWithUpdates,
             environmentID: environmentID,

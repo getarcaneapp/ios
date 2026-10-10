@@ -14,14 +14,18 @@ struct PreviewFeaturesView: View {
                 Text("Edit Compose files with native forms. YAML editing remains available.")
             }
             Section {
-                Toggle("All Environments", isOn: Binding(
-                    get: { manager.allEnvironmentsPreview },
-                    set: { manager.allEnvironmentsPreview = $0 }
-                ))
+                Toggle(
+                    "All Environments",
+                    isOn: Binding(
+                        get: { manager.allEnvironmentsPreview },
+                        set: { manager.allEnvironmentsPreview = $0 }
+                    ))
                 Button("Replay Walkthrough") { showsIntroduction = true }
                 NavigationLink("Environment Colors") { EnvironmentColorsView() }
             } footer: {
-                Text("Show resources from all enabled environments together. Environment switching is unavailable while this preview is on.")
+                Text(
+                    "Show resources from all enabled environments together. Environment switching is unavailable while this preview is on."
+                )
             }
         }
         .listStyle(.insetGrouped)

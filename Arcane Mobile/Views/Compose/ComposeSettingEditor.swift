@@ -58,8 +58,10 @@ private struct ComposeSettingFields: View {
             if !root && collection && !namedEntry {
                 DisclosureGroup(isExpanded: $expanded) {
                     if expanded { contents }
-                } label: { Text(title).foregroundStyle(Color.primary) }
-                    .onChange(of: expanded) { _, open in if open { draft.prepareFields() } }
+                } label: {
+                    Text(title).foregroundStyle(Color.primary)
+                }
+                .onChange(of: expanded) { _, open in if open { draft.prepareFields() } }
             } else if namedEntry && (draft.kind == .string || draft.kind == .number) && options.values.isEmpty {
                 HStack {
                     TextField("Name", text: $draft.name)
@@ -70,7 +72,9 @@ private struct ComposeSettingFields: View {
                 }
                 .onChange(of: draft.name) { _, _ in updateEntry() }
                 .onChange(of: draft.value) { _, _ in updateEntry() }
-            } else { contents }
+            } else {
+                contents
+            }
         }
         .contextMenu {
             if choices.count > 1 { formatPicker }
@@ -110,26 +114,35 @@ private struct ComposeSettingFields: View {
             .onDelete { indices in draft.children.remove(atOffsets: indices) }
             Button("Add item", systemImage: "plus") { draft.appendEntry() }.buttonStyle(.borderless)
         case .boolean:
-            Toggle(title, isOn: Binding(get: { draft.value == "true" }, set: { enabled in
-                draft.value = String(enabled)
-                draft.included = true
-            }))
+            Toggle(
+                title,
+                isOn: Binding(
+                    get: { draft.value == "true" },
+                    set: { enabled in
+                        draft.value = String(enabled)
+                        draft.included = true
+                    }))
         case .string, .number:
             if !options.values.isEmpty {
-                ComposeValuePicker(title: title, options: options, value: Binding(get: { draft.value }, set: { value in
-                    draft.value = value
-                    draft.included = !value.isEmpty
-                }))
+                ComposeValuePicker(
+                    title: title, options: options,
+                    value: Binding(
+                        get: { draft.value },
+                        set: { value in
+                            draft.value = value
+                            draft.included = !value.isEmpty
+                        }))
             } else {
                 LabeledContent(namedEntry ? "Value" : title) {
-                        TextField(placeholder, text: $draft.value)
-                            .textFieldStyle(.plain)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(draft.kind == .number ? .numbersAndPunctuation : .default)
-                            .accessibilityLabel(namedEntry ? "Value" : title)
-                            .onChange(of: draft.value) { _, _ in
-                                draft.included = namedEntry ? !draft.name.isEmpty || !draft.value.isEmpty : !draft.value.isEmpty
-                            }
+                    TextField(placeholder, text: $draft.value)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
+                        .keyboardType(draft.kind == .number ? .numbersAndPunctuation : .default)
+                        .accessibilityLabel(namedEntry ? "Value" : title)
+                        .onChange(of: draft.value) { _, _ in
+                            draft.included =
+                                namedEntry ? !draft.name.isEmpty || !draft.value.isEmpty : !draft.value.isEmpty
+                        }
                 }
             }
 
@@ -139,13 +152,18 @@ private struct ComposeSettingFields: View {
     }
 
     private var formatPicker: some View {
-        Picker("Enter as", selection: Binding(get: { draft.kind }, set: { kind in
-            draft.kind = kind
-            draft.value = ""
-            draft.children = []
-            draft.included = false
-            draft.prepareFields()
-        })) {
+        Picker(
+            "Enter as",
+            selection: Binding(
+                get: { draft.kind },
+                set: { kind in
+                    draft.kind = kind
+                    draft.value = ""
+                    draft.children = []
+                    draft.included = false
+                    draft.prepareFields()
+                })
+        ) {
             ForEach(choices) { kind in Text(formatName(kind)).tag(kind) }
         }
     }

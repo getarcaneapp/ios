@@ -242,8 +242,10 @@ private struct TrailingIndicator: View {
 
 // MARK: - Shared helpers
 
-private func stateTint(for state: DeployActivityAttributes.ContentState,
-                       isStale: Bool = false) -> Color {
+private func stateTint(
+    for state: DeployActivityAttributes.ContentState,
+    isStale: Bool = false
+) -> Color {
     if isStale, state.state == .running { return .gray }
     switch state.state {
     case .running: return .blue
@@ -254,8 +256,10 @@ private func stateTint(for state: DeployActivityAttributes.ContentState,
 
 /// A stale running activity means the app was suspended mid-operation and
 /// can't push updates — say so instead of freezing on the last phase.
-private func phaseText(for state: DeployActivityAttributes.ContentState,
-                       isStale: Bool = false) -> String {
+private func phaseText(
+    for state: DeployActivityAttributes.ContentState,
+    isStale: Bool = false
+) -> String {
     if isStale, state.state == .running { return "Open Arcane to update" }
     return state.state == .running ? "\(state.phase)…" : state.phase
 }

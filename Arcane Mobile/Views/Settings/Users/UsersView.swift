@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct UsersView: View {
     private static let pageSize = 50
@@ -27,7 +27,7 @@ struct UsersView: View {
                 } description: {
                     Text(errorMessage)
                 } actions: {
-                    Button("Retry") { Task { await loadUsers(refresh: true) } }
+                    Button("Retry") { Task { await loadUsers() } }
                 }
             } else if users.isEmpty {
                 ContentUnavailableView {
@@ -66,7 +66,7 @@ struct UsersView: View {
         )
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) {
-            Task { await loadUsers(refresh: true) }
+            Task { await loadUsers() }
         }
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
@@ -81,17 +81,21 @@ struct UsersView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add User")
+                Button {
+                    showCreateSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                }.accessibilityLabel("Add User")
             }
         }
         .task { await loadUsers() }
-        .refreshable { await loadUsers(refresh: true) }
+        .refreshable { await loadUsers() }
         .sheet(isPresented: $showCreateSheet) {
             CreateUserView {
                 if let cached = manager.cached {
                     await cached.invalidateGlobal(paths: ["users", "users/*"])
                 }
-                await loadUsers(refresh: true)
+                await loadUsers()
             }
         }
         .alert(
@@ -130,7 +134,7 @@ struct UsersView: View {
         }
     }
 
-    private func loadUsers(refresh: Bool = false) async {
+    private func loadUsers() async {
         guard let client = manager.client else { return }
         let generation = pagination.reset()
         isLoadingMore = false
@@ -185,13 +189,15 @@ struct UsersView: View {
         requestedStart: Int,
         generation: Int
     ) {
-        guard pagination.receive(
-            pagination: response.pagination,
-            itemCount: response.data.count,
-            requestedStart: requestedStart,
-            requestedLimit: Self.pageSize,
-            generation: generation
-        ) else { return }
+        guard
+            pagination.receive(
+                pagination: response.pagination,
+                itemCount: response.data.count,
+                requestedStart: requestedStart,
+                requestedLimit: Self.pageSize,
+                generation: generation
+            )
+        else { return }
         users = PaginationLoader.merge(current: users, incoming: response.data, reset: reset)
         loadMoreError = nil
     }
@@ -206,7 +212,7 @@ struct UsersView: View {
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["users", "users/*"])
             }
-            await loadUsers(refresh: true)
+            await loadUsers()
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }

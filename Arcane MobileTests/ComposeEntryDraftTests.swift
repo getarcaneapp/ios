@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Arcane_Mobile
 
 @Suite struct ComposeEntryDraftTests {

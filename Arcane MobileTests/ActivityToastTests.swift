@@ -23,9 +23,11 @@ struct ActivityToastTests {
             #expect(presenter.activeToast == nil)
         }
         #expect(deployments.operation == nil)
-        monitor.handle(ActivityStreamEvent(type: .snapshot, environmentID: "one",
-            activities: [activity(id: "child", batchID: "local-batch", status: .running)],
-            timestamp: .now), scope: .all)
+        monitor.handle(
+            ActivityStreamEvent(
+                type: .snapshot, environmentID: "one",
+                activities: [activity(id: "child", batchID: "local-batch", status: .running)],
+                timestamp: .now), scope: .all)
         #expect(presenter.activeToast == nil)
     }
 
@@ -113,9 +115,10 @@ struct ActivityToastTests {
     }
 
     private func activity(id: String, batchID: String, status: ActivityStatus) -> Activity {
-        Activity(id: id, environmentID: "one", batchID: batchID, type: .autoUpdate,
-                 status: status, startedBy: .init(userId: "user", username: "User"),
-                 startedAt: .now, createdAt: .now)
+        Activity(
+            id: id, environmentID: "one", batchID: batchID, type: .autoUpdate,
+            status: status, startedBy: .init(userId: "user", username: "User"),
+            startedAt: .now, createdAt: .now)
     }
 
     private func event(_ activity: Activity) -> ActivityStreamEvent {

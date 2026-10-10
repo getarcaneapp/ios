@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ProjectsView: View {
     private static let pageSize = 50
@@ -10,7 +10,6 @@ struct ProjectsView: View {
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let environmentID: EnvironmentID
     let environmentName: String
-
 
     @State private var projects: [ProjectDetails] = []
     @State private var routedProject: ProjectDetails?
@@ -37,8 +36,6 @@ struct ProjectsView: View {
 
     @State private var selectedProjectID: String?
 
-
-
     private var activeFilterCount: Int {
         var count = statusFilter != .all ? 1 : 0
         if updateFilter != .all { count += 1 }
@@ -54,10 +51,10 @@ struct ProjectsView: View {
     private func computeSections() -> [StableListSection<String, ProjectDetails>] {
         let query = debouncedSearchText
         let filtered = projects.filter { project in
-            let matchesSearch = query.isEmpty ||
-                project.displayName.localizedCaseInsensitiveContains(query)
+            let matchesSearch = query.isEmpty || project.displayName.localizedCaseInsensitiveContains(query)
             let status = project.status.lowercased()
-            let matchesStatus = statusFilter == .all
+            let matchesStatus =
+                statusFilter == .all
                 || (statusFilter == .running && status == "running")
                 || (statusFilter == .stopped && (status == "stopped" || status == "exited"))
                 || (statusFilter == .partial && (status == "partial" || status == "partially running"))
@@ -83,7 +80,7 @@ struct ProjectsView: View {
         return [
             .init(id: "pinned", title: "Pinned", items: pinnedItems),
             .init(id: "active", title: "Active", items: active),
-            .init(id: "stopped", title: "Stopped", items: stopped)
+            .init(id: "stopped", title: "Stopped", items: stopped),
         ]
     }
 
@@ -106,7 +103,6 @@ struct ProjectsView: View {
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove animates too.
 
-
     private var actionErrorPresented: Binding<Bool> {
         Binding(
             get: { actionErrorMessage != nil },
@@ -123,24 +119,24 @@ struct ProjectsView: View {
             ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = errorMessage, projects.isEmpty {
-            ContentUnavailableView {
-                Label("Couldn't Load Projects", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(error)
-            } actions: {
-                Button("Retry") { Task { await loadProjects(reset: true) } }
+                ContentUnavailableView {
+                    Label("Couldn't Load Projects", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Retry") { Task { await loadProjects(reset: true) } }
+                }
+            } else if projects.isEmpty {
+                ContentUnavailableView {
+                    Label("No Projects", systemImage: "square.stack.3d.up")
+                } description: {
+                    Text("No Compose projects found in this environment.")
+                } actions: {
+                    Button("Create Project") { showCreateSheet = true }
+                }
+            } else {
+                projectsList
             }
-        } else if projects.isEmpty {
-            ContentUnavailableView {
-                Label("No Projects", systemImage: "square.stack.3d.up")
-            } description: {
-                Text("No Compose projects found in this environment.")
-            } actions: {
-                Button("Create Project") { showCreateSheet = true }
-            }
-        } else {
-            projectsList
-        }
         }
     }
 
@@ -161,11 +157,11 @@ struct ProjectsView: View {
             }
 
             PaginatedListFooter(
-                        hasMore: hasMore,
-                        loadMoreError: loadMoreError,
-                        onRetry: { Task { await loadMore() } },
-                        onLoadMore: { Task { await loadMore() } }
-                    )
+                hasMore: hasMore,
+                loadMoreError: loadMoreError,
+                onRetry: { Task { await loadMore() } },
+                onLoadMore: { Task { await loadMore() } }
+            )
         }
         .listStyle(.insetGrouped)
 
@@ -191,7 +187,9 @@ struct ProjectsView: View {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
         }
         AppToolbarItem(placement: .navigationBarTrailing) {
-            Button { showCreateSheet = true } label: {
+            Button {
+                showCreateSheet = true
+            } label: {
                 Image(systemName: "plus")
                     .appAccentToolbarSymbol()
             }
@@ -261,69 +259,71 @@ struct ProjectsView: View {
 
     var body: some View {
         content
-        .navigationTitle("Projects")
-        .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search projects")
-        .toolbar {
-            toolbarContent
-        }
-        .task { await loadProjects(reset: true) }
-        .refreshable { await loadProjects(reset: true, refresh: true) }
-        .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
-        .navigationDestination(for: ProjectDetails.self) { project in
-            ProjectDetailView(project: project, environmentID: environmentID)
-                .onDisappear {
-                    selectedProjectID = Self.selectionAfterReturning(
-                        selectedProjectID,
-                        from: project.id
-                    )
-                }
-        }
-        .sheet(isPresented: $showCreateSheet) {
-            CreateProjectView(environmentID: environmentID) {}
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showFilterSheet) { filterSheetContent }
-        .navigationDestination(item: $routedProject) { project in
-            ProjectDetailView(project: project, environmentID: environmentID)
-        }
-        .onChange(of: router.pendingRoute, initial: true) { _, _ in
-            Task { await consumeProjectRoute() }
-        }
-        .onChange(of: mutationVersion) { _, _ in
-            Task { await loadProjects(reset: true, refresh: true) }
-        }
-        .onChange(of: debouncedSearchText) { rebuildSections() }
-        .onChange(of: statusFilter) { rebuildSections() }
-        .onChange(of: updateFilter) { rebuildSections() }
-        .onChange(of: sortOrder) { rebuildSections() }
-        .onChange(of: pinnedIDs) { rebuildSections() }
-        .deleteConfirmation(item: $pendingDeleteProject) { project in
-            DeleteConfirmationConfig(
-                title: "Delete Project",
-                message: "Remove the project from Arcane, or also remove its files from disk.",
-                icon: "trash",
-                actions: [
-                    DeleteConfirmationAction(title: "Delete") {
-                        Task { await deleteProject(project, removeFiles: false) }
-                    },
-                    DeleteConfirmationAction(title: "Delete and Remove Files") {
-                        Task { await deleteProject(project, removeFiles: true) }
-                    }
-                ]
+            .navigationTitle("Projects")
+            .navigationBarTitleDisplayMode(.large)
+            .searchable(
+                text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search projects"
             )
-        }
-        .alert(
-            "Couldn't Delete Project",
-            isPresented: actionErrorPresented
-        ) {
-            Button("OK", role: .cancel) { actionErrorMessage = nil }
-        } message: {
-            Text(actionErrorMessage ?? "")
-        }
+            .toolbar {
+                toolbarContent
+            }
+            .task { await loadProjects(reset: true) }
+            .refreshable { await loadProjects(reset: true) }
+            .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
+            .navigationDestination(for: ProjectDetails.self) { project in
+                ProjectDetailView(project: project, environmentID: environmentID)
+                    .onDisappear {
+                        selectedProjectID = Self.selectionAfterReturning(
+                            selectedProjectID,
+                            from: project.id
+                        )
+                    }
+            }
+            .sheet(isPresented: $showCreateSheet) {
+                CreateProjectView(environmentID: environmentID) {}
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showFilterSheet) { filterSheetContent }
+            .navigationDestination(item: $routedProject) { project in
+                ProjectDetailView(project: project, environmentID: environmentID)
+            }
+            .onChange(of: router.pendingRoute, initial: true) { _, _ in
+                Task { await consumeProjectRoute() }
+            }
+            .onChange(of: mutationVersion) { _, _ in
+                Task { await loadProjects(reset: true) }
+            }
+            .onChange(of: debouncedSearchText) { rebuildSections() }
+            .onChange(of: statusFilter) { rebuildSections() }
+            .onChange(of: updateFilter) { rebuildSections() }
+            .onChange(of: sortOrder) { rebuildSections() }
+            .onChange(of: pinnedIDs) { rebuildSections() }
+            .deleteConfirmation(item: $pendingDeleteProject) { project in
+                DeleteConfirmationConfig(
+                    title: "Delete Project",
+                    message: "Remove the project from Arcane, or also remove its files from disk.",
+                    icon: "trash",
+                    actions: [
+                        DeleteConfirmationAction(title: "Delete") {
+                            Task { await deleteProject(project, removeFiles: false) }
+                        },
+                        DeleteConfirmationAction(title: "Delete and Remove Files") {
+                            Task { await deleteProject(project, removeFiles: true) }
+                        },
+                    ]
+                )
+            }
+            .alert(
+                "Couldn't Delete Project",
+                isPresented: actionErrorPresented
+            ) {
+                Button("OK", role: .cancel) { actionErrorMessage = nil }
+            } message: {
+                Text(actionErrorMessage ?? "")
+            }
     }
 
-    private func loadProjects(reset: Bool, refresh: Bool = false) async {
+    private func loadProjects(reset: Bool) async {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
@@ -350,12 +350,13 @@ struct ProjectsView: View {
             applyProjectsPage(response, reset: reset, start: start, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
-            if reset { errorMessage = friendlyErrorMessage(error) }
-            else { loadMoreError = friendlyErrorMessage(error) }
+            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 
-    private func applyProjectsPage(_ response: PaginatedResponse<ProjectDetails>, reset: Bool, start: Int, generation: Int) {
+    private func applyProjectsPage(
+        _ response: PaginatedResponse<ProjectDetails>, reset: Bool, start: Int, generation: Int
+    ) {
         guard loadGeneration == generation else { return }
         projects = PaginationLoader.merge(current: projects, incoming: response.data, reset: reset)
         pagination.receive(
@@ -384,8 +385,9 @@ struct ProjectsView: View {
             Button {
                 togglePin(project)
             } label: {
-                Label(isPinned ? "Unpin" : "Pin",
-                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                Label(
+                    isPinned ? "Unpin" : "Pin",
+                    systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
             }
             Button(role: .destructive) {
                 pendingDeleteProject = project
@@ -401,8 +403,9 @@ struct ProjectsView: View {
             Button {
                 togglePinAfterSwipe(project)
             } label: {
-                Label(isPinned ? "Unpin" : "Pin",
-                      systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                Label(
+                    isPinned ? "Unpin" : "Pin",
+                    systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
             }
             .tint(.yellow)
         }
@@ -442,8 +445,9 @@ struct ProjectsView: View {
         default: color = .secondary
         }
         var details: [RowPreviewCard.PreviewDetail] = [
-            .init(icon: "circle.grid.2x2", label: "Services",
-                  value: "\(project.runningCount)/\(project.serviceCount) running")
+            .init(
+                icon: "circle.grid.2x2", label: "Services",
+                value: "\(project.runningCount)/\(project.serviceCount) running")
         ]
         if let version = project.composeVersion {
             details.append(.init(icon: "doc.text", label: "Compose Version", value: version))
@@ -483,10 +487,12 @@ struct ProjectsView: View {
 
     private func invalidateProjectCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "projects") + "*",
-            client.rest.environmentPath(environmentID, "projects/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "projects") + "*",
+                client.rest.environmentPath(environmentID, "projects/*"),
+            ])
     }
 
     private func isStopped(_ project: ProjectDetails) -> Bool {
@@ -563,12 +569,13 @@ struct ProjectRow: View {
     }
 }
 
-private extension ProjectsView {
-    func consumeProjectRoute() async {
+extension ProjectsView {
+    fileprivate func consumeProjectRoute() async {
         guard case .authenticated = manager.authState,
-              case .project(let envID, let id)? = router.pendingRoute,
-              envID == environmentID.rawValue,
-              let client = manager.client else { return }
+            case .project(let envID, let id)? = router.pendingRoute,
+            envID == environmentID.rawValue,
+            let client = manager.client
+        else { return }
         routeGeneration += 1
         let generation = routeGeneration
         let routerGeneration = router.routeGeneration
@@ -578,17 +585,19 @@ private extension ProjectsView {
             let project = try await client.projects.get(envID: environmentID, projectID: id)
             try Task.checkCancellation()
             guard generation == routeGeneration,
-                  routerGeneration == router.routeGeneration,
-                  session == manager.cacheSessionIdentity,
-                  client.transport === manager.client?.transport,
-                  manager.acceptsEnvironmentContext(environmentID) else { return }
+                routerGeneration == router.routeGeneration,
+                session == manager.cacheSessionIdentity,
+                client.transport === manager.client?.transport,
+                manager.acceptsEnvironmentContext(environmentID)
+            else { return }
             routedProject = project
         } catch {
             guard generation == routeGeneration,
-                  routerGeneration == router.routeGeneration,
-                  session == manager.cacheSessionIdentity,
-                  client.transport === manager.client?.transport,
-                  manager.acceptsEnvironmentContext(environmentID) else { return }
+                routerGeneration == router.routeGeneration,
+                session == manager.cacheSessionIdentity,
+                client.transport === manager.client?.transport,
+                manager.acceptsEnvironmentContext(environmentID)
+            else { return }
             showToast(.error(friendlyErrorMessage(error)))
         }
     }

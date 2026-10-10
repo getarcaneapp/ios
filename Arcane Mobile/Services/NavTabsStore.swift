@@ -17,8 +17,9 @@ final class NavTabsStore {
     var pinnedTabs: [AppTab] {
         _ = version
         guard let data = UserDefaults.standard.data(forKey: Self.storageKey),
-              let ids = try? JSONDecoder().decode([String].self, from: data),
-              ids.count == Self.slotCount else {
+            let ids = try? JSONDecoder().decode([String].self, from: data),
+            ids.count == Self.slotCount
+        else {
             return AppTab.mainDefaults
         }
         let resolved = ids.compactMap { AppTab(rawValue: $0) }

@@ -6,22 +6,26 @@ import Testing
 struct NavTabsStoreTests {
     @Test
     func acceptsFourUniquePinnableDestinations() {
-        #expect(NavTabsStore.isValidConfiguration([
-            .dashboard, .containers, .images, .projects,
-        ]))
+        #expect(
+            NavTabsStore.isValidConfiguration([
+                .dashboard, .containers, .images, .projects,
+            ]))
     }
 
     @Test
     func rejectsDuplicatesWrongCountsAndNonPinnableDestinations() {
-        #expect(!NavTabsStore.isValidConfiguration([
-            .dashboard, .dashboard, .images, .projects,
-        ]))
-        #expect(!NavTabsStore.isValidConfiguration([
-            .dashboard, .containers, .images,
-        ]))
-        #expect(!NavTabsStore.isValidConfiguration([
-            .dashboard, .containers, .images, .apiKeys,
-        ]))
+        #expect(
+            !NavTabsStore.isValidConfiguration([
+                .dashboard, .dashboard, .images, .projects,
+            ]))
+        #expect(
+            !NavTabsStore.isValidConfiguration([
+                .dashboard, .containers, .images,
+            ]))
+        #expect(
+            !NavTabsStore.isValidConfiguration([
+                .dashboard, .containers, .images, .apiKeys,
+            ]))
     }
 
     @Test

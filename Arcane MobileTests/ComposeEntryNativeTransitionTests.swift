@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Arcane_Mobile
 
 @Suite struct ComposeEntryNativeTransitionTests {
@@ -7,8 +8,12 @@ import Testing
         var basic = try ComposeEntryDraft(raw: original, kind: .port)
         basic.source = "8081"
         let firstEdit = try basic.yaml(kind: .port)
-        let wrapper = "entry:\n" + firstEdit.split(separator: "\n", omittingEmptySubsequences: false).map { "  " + $0 }.joined(separator: "\n")
-        let nativeEdit = try ComposeDocument(wrapper).settingNative("host", kind: .string, at: [.key("entry"), .key("mode")])
+        let wrapper =
+            "entry:\n"
+            + firstEdit.split(separator: "\n", omittingEmptySubsequences: false).map { "  " + $0 }.joined(
+                separator: "\n")
+        let nativeEdit = try ComposeDocument(wrapper).settingNative(
+            "host", kind: .string, at: [.key("entry"), .key("mode")])
         let nativeRaw = try #require(ComposeDocument(nativeEdit).rawValue(at: ["entry"]))
         var resumed = try ComposeEntryDraft(raw: nativeRaw, kind: .port)
         resumed.target = "81"
@@ -26,8 +31,12 @@ import Testing
         var basic = try ComposeEntryDraft(raw: original, kind: .mount)
         basic.target = "/storage"
         let firstEdit = try basic.yaml(kind: .mount)
-        let wrapper = "entry:\n" + firstEdit.split(separator: "\n", omittingEmptySubsequences: false).map { "  " + $0 }.joined(separator: "\n")
-        let nativeEdit = try ComposeDocument(wrapper).settingNative("rshared", kind: .string, at: [.key("entry"), .key("bind"), .key("propagation")])
+        let wrapper =
+            "entry:\n"
+            + firstEdit.split(separator: "\n", omittingEmptySubsequences: false).map { "  " + $0 }.joined(
+                separator: "\n")
+        let nativeEdit = try ComposeDocument(wrapper).settingNative(
+            "rshared", kind: .string, at: [.key("entry"), .key("bind"), .key("propagation")])
         let nativeRaw = try #require(ComposeDocument(nativeEdit).rawValue(at: ["entry"]))
         var resumed = try ComposeEntryDraft(raw: nativeRaw, kind: .mount)
         resumed.readOnly = true
@@ -38,11 +47,17 @@ import Testing
         #expect(document.scalar(at: ["bind", "propagation"]) == "rshared")
     }
 
-    @Test(arguments: ["target: 80 # container\npublished: '8080'\nmode: host", "type: bind\nsource: /srv/data\ntarget: /data\nbind:\n  propagation: rprivate"])
+    @Test(arguments: [
+        "target: 80 # container\npublished: '8080'\nmode: host",
+        "type: bind\nsource: /srv/data\ntarget: /data\nbind:\n  propagation: rprivate",
+    ])
     func openingNativeSettingsWithoutEditingPreservesEntry(raw: String) throws {
         let kind: ComposeEntryKind = raw.hasPrefix("target:") ? .port : .mount
         let basicRaw = try ComposeEntryDraft(raw: raw, kind: kind).yaml(kind: kind)
-        let wrapper = "entry:\n" + basicRaw.split(separator: "\n", omittingEmptySubsequences: false).map { "  " + $0 }.joined(separator: "\n")
+        let wrapper =
+            "entry:\n"
+            + basicRaw.split(separator: "\n", omittingEmptySubsequences: false).map { "  " + $0 }.joined(
+                separator: "\n")
         let extracted = try #require(ComposeDocument(wrapper).rawValue(at: ["entry"]))
         #expect(try ComposeEntryDraft(raw: extracted, kind: kind).yaml(kind: kind) == raw)
     }

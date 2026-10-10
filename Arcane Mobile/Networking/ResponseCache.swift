@@ -1,5 +1,5 @@
-import Foundation
 import CryptoKit
+import Foundation
 import Synchronization
 
 // Disk-backed, in-memory-mirrored cache for API GET responses.
@@ -11,10 +11,10 @@ import Synchronization
 // implicit @MainActor inference on Sendable/Hashable conformances.
 
 nonisolated struct CacheKey: Hashable, Codable, Sendable {
-    let serverIdentity: String // canonical scheme + host + effective port + base path
-    let userID: String       // currentUser?.id ?? "anon" (multi-account safety)
-    let sessionIdentity: String // rotates for every authenticated session
-    let envID: String        // active environment raw value
+    let serverIdentity: String  // canonical scheme + host + effective port + base path
+    let userID: String  // currentUser?.id ?? "anon" (multi-account safety)
+    let sessionIdentity: String  // rotates for every authenticated session
+    let envID: String  // active environment raw value
     let pathWithQuery: String
 
     var allowsDiskPersistence: Bool {
@@ -58,7 +58,7 @@ actor ResponseCache {
     private var inFlight: [CacheKey: InFlight] = [:]
     private var generations: [CacheKey: CacheGeneration] = [:]
     // Disk tier bounds — trimmed lazily on first use per launch (LRU by mtime).
-    private let diskByteCap = 50 * 1024 * 1024        // 50 MB
+    private let diskByteCap = 50 * 1024 * 1024  // 50 MB
     private let maximumEntryBytes = RemoteDataLimits.maximumResponseBytes
     private let diskMaxAge: TimeInterval = 7 * 24 * 60 * 60  // 7 days
     private var didTrim = false
@@ -68,7 +68,8 @@ actor ResponseCache {
 
     init(directory: URL? = nil, ioQueue: DispatchQueue? = nil) {
         self.ioQueue = ioQueue ?? DispatchQueue(label: "com.arcane.response-cache.io", qos: .utility)
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        let caches =
+            FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let legacyDirectories = ["ResponseCache", "ResponseCache-v2"]
             .map { caches.appendingPathComponent($0, isDirectory: true) }
@@ -94,8 +95,9 @@ actor ResponseCache {
         return await withCheckedContinuation { continuation in
             ioQueue.async {
                 guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
-                      let size = values.fileSize,
-                      size <= entryByteLimit else {
+                    let size = values.fileSize,
+                    size <= entryByteLimit
+                else {
                     continuation.resume(returning: nil)
                     return
                 }
@@ -139,7 +141,7 @@ actor ResponseCache {
     /// Like `get`, but also reports the entry's age so callers can decide
     /// whether a background revalidation is worth the network round-trip.
     func getEntry<T: Codable & Sendable>(
-        _ key: CacheKey, as type: T.Type, ttl: TimeInterval, generation: CacheGeneration? = nil
+        _ key: CacheKey, as _: T.Type, ttl: TimeInterval, generation: CacheGeneration? = nil
     ) async -> (value: T, age: TimeInterval)? {
         let generation = generation ?? self.generation(for: key)
         guard generation.isValid else { return nil }
@@ -157,7 +159,8 @@ actor ResponseCache {
         guard let data = await readDisk(at: url), generation.isValid else { return nil }
         // Cheap header parse first to avoid decoding the full payload on collision/expiry.
         guard let header = try? decoder.decode(EnvelopeHeader.self, from: data),
-              header.key == key else { return nil }
+            header.key == key
+        else { return nil }
         let age = now.timeIntervalSince(header.storedAt)
         if age > ttl { return nil }
         guard let env = try? decoder.decode(ValueEnvelope<T>.self, from: data) else { return nil }
@@ -183,11 +186,13 @@ actor ResponseCache {
         ioQueue.async {
             let fm = FileManager.default
             let keys: [URLResourceKey] = [.contentModificationDateKey, .totalFileAllocatedSizeKey]
-            guard let entries = try? fm.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: keys,
-                options: [.skipsHiddenFiles]
-            ) else { return }
+            guard
+                let entries = try? fm.contentsOfDirectory(
+                    at: directory,
+                    includingPropertiesForKeys: keys,
+                    options: [.skipsHiddenFiles]
+                )
+            else { return }
             let now = Date()
             var alive: [(url: URL, mtime: Date, size: Int)] = []
             for url in entries {
@@ -254,12 +259,14 @@ actor ResponseCache {
             ioQueue.async {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
-                let entries = (try? FileManager.default.contentsOfDirectory(
-                    at: directory, includingPropertiesForKeys: nil
-                )) ?? []
+                let entries =
+                    (try? FileManager.default.contentsOfDirectory(
+                        at: directory, includingPropertiesForKeys: nil
+                    )) ?? []
                 for url in entries {
                     guard let data = try? Data(contentsOf: url),
-                          let header = try? decoder.decode(EnvelopeHeader.self, from: data) else {
+                        let header = try? decoder.decode(EnvelopeHeader.self, from: data)
+                    else {
                         try? FileManager.default.removeItem(at: url)
                         continue
                     }
@@ -323,18 +330,21 @@ actor ResponseCache {
         await withCheckedContinuation { continuation in
             ioQueue.async {
                 let fm = FileManager.default
-                guard let entries = try? fm.contentsOfDirectory(
-                    at: self.diskDirectory,
-                    includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
-                    options: [.skipsHiddenFiles]
-                ) else {
+                guard
+                    let entries = try? fm.contentsOfDirectory(
+                        at: self.diskDirectory,
+                        includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+                        options: [.skipsHiddenFiles]
+                    )
+                else {
                     continuation.resume(returning: 0)
                     return
                 }
                 var total = 0
                 for url in entries {
                     if let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]),
-                       let size = v.totalFileAllocatedSize {
+                        let size = v.totalFileAllocatedSize
+                    {
                         total += size
                     }
                 }

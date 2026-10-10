@@ -1,6 +1,6 @@
+import Arcane
 import Foundation
 import SwiftUI
-import Arcane
 
 enum ListSortOrder: String, CaseIterable, Identifiable {
     case ascending
@@ -231,8 +231,9 @@ private enum ThemedIconURL {
     static func firstUsableURL(_ values: String?...) -> String? {
         for value in values {
             guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !trimmed.isEmpty,
-                  isDirectURL(trimmed) else {
+                !trimmed.isEmpty,
+                isDirectURL(trimmed)
+            else {
                 continue
             }
             return trimmed
@@ -243,7 +244,8 @@ private enum ThemedIconURL {
     private static func isDirectURL(_ value: String) -> Bool {
         if value.hasPrefix("/") { return true }
         guard let url = URL(string: value),
-              let scheme = url.scheme?.lowercased() else {
+            let scheme = url.scheme?.lowercased()
+        else {
             return false
         }
         return scheme == "http" || scheme == "https"
@@ -257,7 +259,6 @@ extension Arcane.Environment {
         return lower == "online" || lower == "up"
     }
 }
-
 
 // MARK: - NetworkSummary compatibility
 //
@@ -309,14 +310,14 @@ extension DockerInfo {
     var swapLimit: Bool { info?["SwapLimit"]?.boolValue ?? false }
 
     var warnings: [String]? {
-        guard case let .array(values) = info?["Warnings"] else { return nil }
+        guard case .array(let values) = info?["Warnings"] else { return nil }
         return values.compactMap { $0.stringValue }
     }
 
     /// Mirrors Docker's `Info.Runtimes` map. Surfaces a `keys` view that the
     /// dashboard uses to display the available runtime names.
     var runtimes: RuntimesView {
-        if case let .object(map) = info?["Runtimes"] {
+        if case .object(let map) = info?["Runtimes"] {
             return RuntimesView(additionalProperties: map)
         }
         return RuntimesView(additionalProperties: [:])
@@ -347,10 +348,12 @@ extension CreateWebhook {
 
     /// View-facing initializer that takes the typed enums and stores their
     /// raw string values, which is what the SDK + backend expect.
-    init(name: String,
-         targetType: TargetTypePayload,
-         actionType: ActionTypePayload,
-         targetId: String) {
+    init(
+        name: String,
+        targetType: TargetTypePayload,
+        actionType: ActionTypePayload,
+        targetId: String
+    ) {
         self.init(
             name: name,
             targetType: targetType.rawValue,
@@ -359,10 +362,12 @@ extension CreateWebhook {
         )
     }
 
-    init(actionType: ActionTypePayload,
-         name: String,
-         targetId: String,
-         targetType: TargetTypePayload) {
+    init(
+        actionType: ActionTypePayload,
+        name: String,
+        targetId: String,
+        targetType: TargetTypePayload
+    ) {
         self.init(
             name: name,
             targetType: targetType.rawValue,
@@ -406,7 +411,7 @@ extension AutoUpdateRecord {
         guard let values else { return [:] }
         var out: [String: String] = [:]
         for (key, value) in values {
-            if case let .string(text) = value { out[key] = text }
+            if case .string(let text) = value { out[key] = text }
         }
         return out
     }
@@ -421,15 +426,15 @@ extension Event {
         var out: [String: String] = [:]
         for (key, value) in metadata {
             switch value {
-            case let .string(s): out[key] = s
-            case let .number(n):
-                if n.rounded() == n { out[key] = "\(Int64(n))" }
-                else { out[key] = "\(n)" }
-            case let .bool(b): out[key] = b ? "true" : "false"
+            case .string(let s): out[key] = s
+            case .number(let n):
+                if n.rounded() == n { out[key] = "\(Int64(n))" } else { out[key] = "\(n)" }
+            case .bool(let b): out[key] = b ? "true" : "false"
             case .null: out[key] = "null"
             case .array, .object:
                 if let data = try? JSONEncoder().encode(value),
-                   let text = String(data: data, encoding: .utf8) {
+                    let text = String(data: data, encoding: .utf8)
+                {
                     out[key] = text
                 }
             }
@@ -450,11 +455,11 @@ extension JSONValue {
     init(_ value: [JSONValue]) { self = .array(value) }
 
     var objectValue: [String: JSONValue]? {
-        if case let .object(map) = self { return map }
+        if case .object(let map) = self { return map }
         return nil
     }
     var arrayValue: [JSONValue]? {
-        if case let .array(values) = self { return values }
+        if case .array(let values) = self { return values }
         return nil
     }
 }
@@ -500,14 +505,16 @@ func friendlyErrorMessage(_ error: Error) -> String {
             if lower.contains("cancel") { return "Cancelled" }
             if lower.contains("could not connect to the server")
                 || lower.contains("connection refused")
-                || lower.contains("cannot connect to host") {
+                || lower.contains("cannot connect to host")
+            {
                 return "Can't reach the server — check the address and that it's running."
             }
             if lower.contains("hostname could not be found")
                 || lower.contains("server with the specified hostname could not be found")
                 || lower.contains("cannot find host")
                 || lower.contains("could not find host")
-                || lower.contains("dns") {
+                || lower.contains("dns")
+            {
                 return "Server not found — check the address."
             }
             if lower.contains("timed out") {
@@ -525,8 +532,10 @@ func friendlyErrorMessage(_ error: Error) -> String {
             // page (proxy login screen, wrong port, or a web app in front of
             // Arcane) instead of the JSON API.
             if message.contains("Unexpected character '<'")
-                || message.lowercased().contains("not valid json") {
-                return "The server replied with a webpage instead of the Arcane API. Check that the address points directly at your Arcane server (including the right port), with no login portal or other site in front of it."
+                || message.lowercased().contains("not valid json")
+            {
+                return
+                    "The server replied with a webpage instead of the Arcane API. Check that the address points directly at your Arcane server (including the right port), with no login portal or other site in front of it."
             }
             return "Response error: \(message)"
         case .unknown(let code, _):
@@ -534,7 +543,8 @@ func friendlyErrorMessage(_ error: Error) -> String {
         }
     }
     if (error as NSError).domain == NSURLErrorDomain,
-       let urlError = error as? URLError {
+        let urlError = error as? URLError
+    {
         switch urlError.code {
         case .cancelled:
             return "Cancelled"
@@ -574,8 +584,6 @@ nonisolated struct PullImageRequest: Encodable, Sendable {
 }
 
 // Use `PaginatedResponse<T>` from libarcane-swift via `client.<service>.list(...)`.
-
-
 
 // Image update checks use the SDK's typed API (`client.images.updateSummary`,
 // `checkUpdateByRef`, `checkAllUpdates`, `updateInfoByRefs`) and its

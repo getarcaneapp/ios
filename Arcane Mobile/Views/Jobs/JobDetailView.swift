@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct JobDetailView: View {
     let environmentID: EnvironmentID

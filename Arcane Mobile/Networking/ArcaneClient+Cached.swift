@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 // `manager.cached` exposes the stale-while-revalidate cached fetch surface.
 // It returns nil if the manager has no client configured, mirroring the
@@ -8,7 +8,8 @@ import Arcane
 extension ArcaneClientManager {
     var cached: CachedClient? {
         guard let client else { return nil }
-        let identity = (parsedServerURL ?? URL(string: serverURL))
+        let identity =
+            (parsedServerURL ?? URL(string: serverURL))
             .map(ServerCacheIdentity.canonical(for:)) ?? serverURL
         return CachedClient(
             client: client,

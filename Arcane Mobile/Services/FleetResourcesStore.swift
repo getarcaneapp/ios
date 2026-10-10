@@ -10,26 +10,32 @@ final class FleetResourcesStore {
     private var clientIdentity: ObjectIdentifier?
     private var resourceKind: FleetResourceKind?
 
-    func load(kind: FleetResourceKind, environments: [Arcane.Environment], client: ArcaneClient, acceptsResult: @MainActor () -> Bool) async {
+    func load(
+        kind: FleetResourceKind, environments: [Arcane.Environment], client: ArcaneClient,
+        acceptsResult: @MainActor () -> Bool
+    ) async {
         generation &+= 1
         let request = generation
         let identity = ObjectIdentifier(client.transport)
-        let previous = clientIdentity == identity && resourceKind == kind
+        let previous =
+            clientIdentity == identity && resourceKind == kind
             ? Dictionary(uniqueKeysWithValues: buckets.map { ($0.id, $0) }) : [:]
         clientIdentity = identity
         resourceKind = kind
         // Keep existing rows visible while the same connection refreshes.
         // A new account/client or resource kind starts with an empty list.
-        buckets = environments.filter(\.enabled).sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
-            .map { environment in
-                var bucket = FleetResourceBucket(id: environment.id, name: environment.displayName)
-                if let existing = previous[environment.id] {
-                    bucket.resources = existing.resources
-                    bucket.imageUpdates = existing.imageUpdates
-                }
-                bucket.isLoading = true
-                return bucket
+        buckets = environments.filter(\.enabled).sorted {
+            $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+        }
+        .map { environment in
+            var bucket = FleetResourceBucket(id: environment.id, name: environment.displayName)
+            if let existing = previous[environment.id] {
+                bucket.resources = existing.resources
+                bucket.imageUpdates = existing.imageUpdates
             }
+            bucket.isLoading = true
+            return bucket
+        }
         let targets = buckets
         isLoading = true
         defer { if request == generation { isLoading = false } }
@@ -53,22 +59,29 @@ final class FleetResourcesStore {
         }
     }
 
-    nonisolated private static func fetch(kind: FleetResourceKind, target: FleetResourceBucket, client: ArcaneClient) async -> FleetResourceBucket {
+    nonisolated private static func fetch(kind: FleetResourceKind, target: FleetResourceBucket, client: ArcaneClient)
+        async -> FleetResourceBucket
+    {
         var result = target
         do {
             try Task.checkCancellation()
             result.resources = try await resources(kind: kind, environmentID: target.environmentID, client: client)
             if kind == .images {
-                let references = Array(Set(result.resources.flatMap { resource -> [String] in
-                    guard case .image(let image) = resource else { return [] }
-                    return image.repoTags.filter { $0 != "<none>:<none>" }
-                })).sorted()
+                let references = Array(
+                    Set(
+                        result.resources.flatMap { resource -> [String] in
+                            guard case .image(let image) = resource else { return [] }
+                            return image.repoTags.filter { $0 != "<none>:<none>" }
+                        })
+                ).sorted()
                 result.imageUpdates = [:]
                 // Bound each request and keep image rows usable when update metadata is unavailable.
                 for start in stride(from: 0, to: references.count, by: 50) {
                     guard !Task.isCancelled else { break }
                     let batch = Array(references[start..<min(start + 50, references.count)])
-                    if let info = try? await client.images.updateInfoByRefs(envID: target.environmentID, imageRefs: batch) {
+                    if let info = try? await client.images.updateInfoByRefs(
+                        envID: target.environmentID, imageRefs: batch)
+                    {
                         result.imageUpdates.merge(ImageUpdateState.checkedResults(info)) { _, new in new }
                     }
                 }
@@ -82,7 +95,9 @@ final class FleetResourcesStore {
         }
     }
 
-    nonisolated static func resources(kind: FleetResourceKind, environmentID: EnvironmentID, client: ArcaneClient) async throws -> [FleetResource] {
+    nonisolated static func resources(kind: FleetResourceKind, environmentID: EnvironmentID, client: ArcaneClient)
+        async throws -> [FleetResource]
+    {
         if kind == .topology { return [.topology] }
         if kind == .jobs { return try await client.jobs.list(envID: environmentID).jobs.map(FleetResource.job) }
         return try await PaginationLoader.collect { start, limit in
@@ -109,9 +124,11 @@ final class FleetResourcesStore {
                 return ResourcePage(items: response.data.map(FleetResource.port), pagination: response.pagination)
             case .vulnerabilities:
                 let response = try await client.vulnerabilities.listAll(envID: environmentID, query: query)
-                return ResourcePage(items: response.data.map(FleetResource.vulnerability), pagination: response.pagination)
+                return ResourcePage(
+                    items: response.data.map(FleetResource.vulnerability), pagination: response.pagination)
             case .gitOps:
-                let response: PaginatedResponse<DynamicResource> = try await client.rest.paginated(client.rest.environmentPath(environmentID, "gitops-syncs"), start: start, limit: limit)
+                let response: PaginatedResponse<DynamicResource> = try await client.rest.paginated(
+                    client.rest.environmentPath(environmentID, "gitops-syncs"), start: start, limit: limit)
                 return ResourcePage(items: response.data.map(FleetResource.gitOps), pagination: response.pagination)
             case .jobs, .topology:
                 preconditionFailure("Nonpaginated resources are loaded before pagination")

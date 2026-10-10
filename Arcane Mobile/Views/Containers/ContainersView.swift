@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ContainersView: View {
     private static let pageSize = 50
@@ -41,8 +41,6 @@ struct ContainersView: View {
     @State private var pagination = ProgressivePaginationState()
     @State private var isLoadingMore = false
     @State private var loadMoreError: String?
-
-
 
     /// Prune and per-container remove share one `.deleteConfirmation` cover
     /// (one full-screen cover per view).
@@ -122,10 +120,11 @@ struct ContainersView: View {
     private func computeSections() -> [StableListSection<String, ContainerSummary>] {
         let query = debouncedSearchText
         let filtered = containers.filter { container in
-            let matchesSearch = query.isEmpty ||
-                container.names.contains(where: { $0.localizedCaseInsensitiveContains(query) }) ||
-                container.image.localizedCaseInsensitiveContains(query)
-            let matchesState = stateFilter == .all
+            let matchesSearch =
+                query.isEmpty || container.names.contains(where: { $0.localizedCaseInsensitiveContains(query) })
+                || container.image.localizedCaseInsensitiveContains(query)
+            let matchesState =
+                stateFilter == .all
                 || (stateFilter == .running && container.isRunning)
                 || (stateFilter == .stopped && !container.isRunning)
             let matchesUpdate = updateFilter.matches(hasUpdate: container.hasAvailableUpdate)
@@ -151,7 +150,7 @@ struct ContainersView: View {
         return [
             .init(id: "pinned", title: "Pinned", items: pinnedItems),
             .init(id: "running", title: "Running", items: running),
-            .init(id: "stopped", title: "Stopped", items: stopped)
+            .init(id: "stopped", title: "Stopped", items: stopped),
         ]
     }
 
@@ -169,7 +168,6 @@ struct ContainersView: View {
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove (start/stop/remove/prune) animates too.
-
 
     private var selectedContainers: [ContainerSummary] {
         containers.filter { selection.contains($0.id) }
@@ -209,12 +207,21 @@ struct ContainersView: View {
         var items: [ActionButtonItem] = []
         let updatable = selectedContainers.filter(\.hasAvailableUpdate)
         if !updatable.isEmpty {
-            items.append(ActionButtonItem(id: "bulk-update", title: "Update (\(updatable.count))", systemImage: "arrow.up.circle.fill", tint: .blue) {
-                startBulkUpdate(containers: updatable)
-            })
+            items.append(
+                ActionButtonItem(
+                    id: "bulk-update", title: "Update (\(updatable.count))", systemImage: "arrow.up.circle.fill",
+                    tint: .blue
+                ) {
+                    startBulkUpdate(containers: updatable)
+                })
         }
-        if manager.serverCapabilities?.mode == .rbac, manager.permissions.has(Permission.Containers.read, in: environmentID) {
-            items.append(ActionButtonItem(id: "generate-compose", title: "Generate Compose", systemImage: "doc.text", tint: .accentColor) { showCompose = true })
+        if manager.serverCapabilities?.mode == .rbac,
+            manager.permissions.has(Permission.Containers.read, in: environmentID)
+        {
+            items.append(
+                ActionButtonItem(
+                    id: "generate-compose", title: "Generate Compose", systemImage: "doc.text", tint: .accentColor
+                ) { showCompose = true })
         }
         items.append(
             ActionButtonItem(
@@ -245,7 +252,7 @@ struct ContainersView: View {
                     Text("No containers found in this environment.")
                 } actions: {
                     Button("Refresh") {
-                        Task { await loadContainers(refresh: true) }
+                        Task { await loadContainers() }
                     }
                 }
             } else {
@@ -340,28 +347,34 @@ struct ContainersView: View {
                     title: "Prune Stopped Containers",
                     message: "Remove all stopped containers. This cannot be undone.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Prune") {
-                        Task { await pruneContainers() }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Prune") {
+                            Task { await pruneContainers() }
+                        }
+                    ]
                 )
             case .remove(let container):
                 return DeleteConfirmationConfig(
                     title: "Remove Container",
                     message: "Remove “\(container.displayName)”? This permanently deletes the container.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Remove") {
-                        Task { await removeContainer(container) }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Remove") {
+                            Task { await removeContainer(container) }
+                        }
+                    ]
                 )
             case .bulkRemove(let ids):
                 return DeleteConfirmationConfig(
                     title: "Remove Containers",
-                    message: "Remove \(ids.count) selected container" +
-                        "\(ids.count == 1 ? "" : "s")? This cannot be undone.",
+                    message: "Remove \(ids.count) selected container"
+                        + "\(ids.count == 1 ? "" : "s")? This cannot be undone.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Remove") {
-                        Task { await bulkRemoveContainers(ids: ids) }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Remove") {
+                            Task { await bulkRemoveContainers(ids: ids) }
+                        }
+                    ]
                 )
             }
         }
@@ -429,7 +442,7 @@ struct ContainersView: View {
             ContainerTerminalView(container: container, environmentID: environmentID)
         }
         .task { await loadContainers() }
-        .refreshable { await loadContainers(refresh: true) }
+        .refreshable { await loadContainers() }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .debounce(labelFilter, for: .milliseconds(500), into: $debouncedLabelFilter)
         .navigationDestination(for: ContainerSummary.self) { container in
@@ -442,19 +455,19 @@ struct ContainersView: View {
             Task { await consumeContainerRoute() }
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadContainers(refresh: true) }
+            Task { await loadContainers() }
         }
         .onChange(of: debouncedSearchText) {
-            Task { await loadContainers(refresh: true) }
+            Task { await loadContainers() }
         }
         .onChange(of: stateFilter) { rebuildSections() }
         .onChange(of: updateFilter) { rebuildSections() }
         .onChange(of: showHidden) {
             rebuildSections()
-            Task { await loadContainers(refresh: true) }
+            Task { await loadContainers() }
         }
         .onChange(of: debouncedLabelFilter) {
-            Task { await loadContainers(refresh: true) }
+            Task { await loadContainers() }
         }
         .onChange(of: sortOrder) { rebuildSections() }
         .onChange(of: pinnedIDs) { rebuildSections() }
@@ -479,8 +492,9 @@ struct ContainersView: View {
                 Button {
                     togglePin(container)
                 } label: {
-                    Label(isPinned ? "Unpin" : "Pin",
-                          systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                    Label(
+                        isPinned ? "Unpin" : "Pin",
+                        systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
                 }
                 containerMenuActions(for: container)
             }
@@ -495,8 +509,9 @@ struct ContainersView: View {
                 Button {
                     togglePinAfterSwipe(container)
                 } label: {
-                    Label(isPinned ? "Unpin" : "Pin",
-                          systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                    Label(
+                        isPinned ? "Unpin" : "Pin",
+                        systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
                 }
                 .tint(.yellow)
                 Button {
@@ -558,7 +573,8 @@ struct ContainersView: View {
     @ViewBuilder
     private func containerMenuActions(for container: ContainerSummary) -> some View {
         if container.hasAvailableUpdate,
-           manager.permissions.has(Permission.Containers.autoUpdate, in: environmentID) {
+            manager.permissions.has(Permission.Containers.autoUpdate, in: environmentID)
+        {
             Button {
                 startBulkUpdate(containers: [container])
             } label: {
@@ -607,7 +623,7 @@ struct ContainersView: View {
     private func containerPreview(_ container: ContainerSummary) -> some View {
         var details: [RowPreviewCard.PreviewDetail] = [
             .init(icon: "photo", label: "Image", value: container.image),
-            .init(icon: "info.circle", label: "Status", value: container.status)
+            .init(icon: "info.circle", label: "Status", value: container.status),
         ]
         if let firstName = container.names.first {
             let trimmed = firstName.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -621,8 +637,9 @@ struct ContainersView: View {
             iconUrl: container.themedIconUrl(for: colorScheme),
             title: container.displayName,
             badges: [
-                .init(text: container.isRunning ? "Running" : "Stopped",
-                      color: container.isRunning ? .green : .secondary)
+                .init(
+                    text: container.isRunning ? "Running" : "Stopped",
+                    color: container.isRunning ? .green : .secondary)
             ],
             details: details
         )
@@ -667,7 +684,7 @@ struct ContainersView: View {
         }
     }
 
-    private func loadContainers(refresh: Bool = false) async {
+    private func loadContainers() async {
         guard let client = manager.client else { return }
         let generation = pagination.reset()
         let start = 0
@@ -745,13 +762,15 @@ struct ContainersView: View {
         requestedStart: Int,
         generation: Int
     ) {
-        guard pagination.receive(
-            pagination: response.pagination,
-            itemCount: response.data.count,
-            requestedStart: requestedStart,
-            requestedLimit: Self.pageSize,
-            generation: generation
-        ) else { return }
+        guard
+            pagination.receive(
+                pagination: response.pagination,
+                itemCount: response.data.count,
+                requestedStart: requestedStart,
+                requestedLimit: Self.pageSize,
+                generation: generation
+            )
+        else { return }
         containers = PaginationLoader.merge(
             current: containers,
             incoming: response.data,
@@ -837,9 +856,11 @@ struct ContainersView: View {
                 try await client.containers.restart(envID: environmentID, id: id)
             }
         }
-        await finishBulkOperation(result, total: ids.count, successTitle: { count in
-            "\(action.summaryVerb) \(count) container\(count == 1 ? "" : "s")"
-        })
+        await finishBulkOperation(
+            result, total: ids.count,
+            successTitle: { count in
+                "\(action.summaryVerb) \(count) container\(count == 1 ? "" : "s")"
+            })
     }
 
     private func startBulkUpdate(containers: [ContainerSummary]) {
@@ -872,9 +893,11 @@ struct ContainersView: View {
         let failedIDs = Set(result.failed.map(\.id))
         let removedIDs = Set(ids.filter { !failedIDs.contains($0) })
         containers.removeAll { removedIDs.contains($0.id) }
-        await finishBulkOperation(result, total: ids.count, successTitle: { count in
-            "Removed \(count) container\(count == 1 ? "" : "s")"
-        })
+        await finishBulkOperation(
+            result, total: ids.count,
+            successTitle: { count in
+                "Removed \(count) container\(count == 1 ? "" : "s")"
+            })
     }
 
     private func finishBulkOperation(
@@ -896,10 +919,12 @@ struct ContainersView: View {
 
     private func invalidateContainerCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "containers"),
-            client.rest.environmentPath(environmentID, "containers/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "containers"),
+                client.rest.environmentPath(environmentID, "containers/*"),
+            ])
     }
 }
 
@@ -1006,13 +1031,14 @@ struct ContainerRow: View {
     }
 }
 
-private extension ContainersView {
+extension ContainersView {
     /// Resolves the destination independently of the paginated and filtered list.
-    func consumeContainerRoute() async {
+    fileprivate func consumeContainerRoute() async {
         guard case .authenticated = manager.authState,
-              case .container(let envID, let id)? = router.pendingRoute,
-              envID == environmentID.rawValue,
-              let client = manager.client else { return }
+            case .container(let envID, let id)? = router.pendingRoute,
+            envID == environmentID.rawValue,
+            let client = manager.client
+        else { return }
         routeGeneration += 1
         let generation = routeGeneration
         let routerGeneration = router.routeGeneration
@@ -1026,18 +1052,20 @@ private extension ContainersView {
             )
             try Task.checkCancellation()
             guard generation == routeGeneration,
-                  routerGeneration == router.routeGeneration,
-                  session == manager.cacheSessionIdentity,
-                  client.transport === manager.client?.transport,
-                  manager.acceptsEnvironmentContext(environmentID) else { return }
+                routerGeneration == router.routeGeneration,
+                session == manager.cacheSessionIdentity,
+                client.transport === manager.client?.transport,
+                manager.acceptsEnvironmentContext(environmentID)
+            else { return }
             routedDetails = details
             routedContainer = details.navigationSummary
         } catch {
             guard generation == routeGeneration,
-                  routerGeneration == router.routeGeneration,
-                  session == manager.cacheSessionIdentity,
-                  client.transport === manager.client?.transport,
-                  manager.acceptsEnvironmentContext(environmentID) else { return }
+                routerGeneration == router.routeGeneration,
+                session == manager.cacheSessionIdentity,
+                client.transport === manager.client?.transport,
+                manager.acceptsEnvironmentContext(environmentID)
+            else { return }
             showToast(.error(friendlyErrorMessage(error)))
         }
     }

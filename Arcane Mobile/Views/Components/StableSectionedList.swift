@@ -46,9 +46,10 @@ struct StableSectionedList<
 
     private var headerAccessorySectionID: SectionID? {
         if let preferredHeaderAccessorySectionID,
-           sections.contains(where: {
-               $0.id == preferredHeaderAccessorySectionID && !$0.items.isEmpty
-           }) {
+            sections.contains(where: {
+                $0.id == preferredHeaderAccessorySectionID && !$0.items.isEmpty
+            })
+        {
             return preferredHeaderAccessorySectionID
         }
         return sections.first(where: { !$0.items.isEmpty })?.id

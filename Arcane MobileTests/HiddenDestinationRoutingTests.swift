@@ -10,9 +10,10 @@ struct HiddenDestinationRoutingTests {
         let visible: Set<AppTab> = [.dashboard, .images, .networks, .volumes]
         let available = visible.union([.containers, .projects])
         for tab in [AppTab.containers, .projects] {
-            let route = try #require(MainTabView.resolveDestination(
-                tab.id, visibleTabs: visible, availableTabs: available
-            ))
+            let route = try #require(
+                MainTabView.resolveDestination(
+                    tab.id, visibleTabs: visible, availableTabs: available
+                ))
             #expect(route.selectedTab == .settings)
             #expect(route.moreDestination == tab)
         }
@@ -22,9 +23,10 @@ struct HiddenDestinationRoutingTests {
     func pinnedDestinationsContinueToSelectTheirTab() throws {
         let visible = Set(AppTab.mainDefaults)
         for tab in AppTab.mainDefaults {
-            let route = try #require(MainTabView.resolveDestination(
-                tab.id, visibleTabs: visible, availableTabs: visible
-            ))
+            let route = try #require(
+                MainTabView.resolveDestination(
+                    tab.id, visibleTabs: visible, availableTabs: visible
+                ))
             #expect(route.selectedTab == tab)
             #expect(route.moreDestination == nil)
         }

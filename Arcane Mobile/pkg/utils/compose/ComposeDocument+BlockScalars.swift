@@ -7,14 +7,17 @@ nonisolated extension ComposeDocument {
         guard node.nodeType == "block_scalar" else { throw ComposeDocumentError.unsupported }
         let bounds = range(node)
         let text = source as NSString
-        let raw = substring(bounds).replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let raw = substring(bounds).replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(
+            of: "\r", with: "\n")
         let header = String(raw.prefix(while: { $0 != "\n" }))
         let indicator = String(header.prefix(while: { !$0.isWhitespace && $0 != "#" }))
         guard let style = indicator.first, style == "|" || style == ">" else { throw ComposeDocumentError.unsupported }
         let explicitIndent = indicator.compactMap(\.wholeNumberValue).first
         let headerSuffix = String(header.dropFirst(indicator.count))
         var parent = node.parent
-        while let current = parent, !["block_mapping_pair", "block_sequence_item"].contains(current.nodeType ?? "") { parent = current.parent }
+        while let current = parent, !["block_mapping_pair", "block_sequence_item"].contains(current.nodeType ?? "") {
+            parent = current.parent
+        }
         let parentIndent = parent.map(column) ?? 0
         var extentEnd = NSMaxRange(bounds)
         // Tree-sitter excludes the final newline and chomped empty lines from clipped/stripped nodes.
@@ -45,14 +48,18 @@ nonisolated extension ComposeDocument {
             let line = content[index]
             value += line
             guard index + 1 < content.count else { continue }
-            if style == "|" { value += "\n"; continue }
+            if style == "|" {
+                value += "\n"
+                continue
+            }
             let next = content[index + 1]
             let ordinary = !line.isEmpty && line.first != " " && line.first != "\t"
             if ordinary && !next.isEmpty && next.first != " " && next.first != "\t" {
                 value += " "
             } else if ordinary && next.isEmpty,
-                      let following = content.dropFirst(index + 1).first(where: { !$0.isEmpty }),
-                      following.first != " " && following.first != "\t" {
+                let following = content.dropFirst(index + 1).first(where: { !$0.isEmpty }),
+                following.first != " " && following.first != "\t"
+            {
                 // The first break of a paragraph separator is folded away; the empty lines remain.
             } else {
                 value += "\n"
@@ -63,13 +70,16 @@ nonisolated extension ComposeDocument {
             while value.hasSuffix("\n") { value.removeLast() }
             if !indicator.contains("-"), !value.isEmpty, hadFinalBreak { value += "\n" }
         }
-        return ComposeBlockScalar(value: value, replacementRange: NSRange(location: bounds.location, length: extentEnd - bounds.location),
-                                  indentation: indentation, parentIndentation: parentIndent, explicitIndentation: explicitIndent, headerSuffix: headerSuffix)
+        return ComposeBlockScalar(
+            value: value, replacementRange: NSRange(location: bounds.location, length: extentEnd - bounds.location),
+            indentation: indentation, parentIndentation: parentIndent, explicitIndentation: explicitIndent,
+            headerSuffix: headerSuffix)
     }
 
     func replacingBlockScalar(_ block: ComposeBlockScalar, value: String) throws -> String {
         let replacement: String
-        if value.unicodeScalars.contains(where: { $0.value == 13 || ($0.value < 32 && $0.value != 9 && $0.value != 10) }) {
+        if value.unicodeScalars.contains(where: { $0.value == 13 || ($0.value < 32 && $0.value != 9 && $0.value != 10) }
+        ) {
             replacement = Self.quoted(value) + block.headerSuffix + newline
         } else {
             let trailingBreaks = value.reversed().prefix(while: { $0 == "\n" }).count
@@ -77,12 +87,17 @@ nonisolated extension ComposeDocument {
             let chomp = trailingBreaks == 0 ? "-" : trailingBreaks > 1 || onlyBreaks ? "+" : ""
             var indentation = block.indentation
             var indicator = block.explicitIndentation.map(String.init) ?? ""
-            let needsExplicitIndent = value.split(separator: "\n", omittingEmptySubsequences: false)
+            let needsExplicitIndent =
+                value.split(separator: "\n", omittingEmptySubsequences: false)
                 .first(where: { !$0.isEmpty }).map { $0.first == " " || $0.first == "\t" } ?? false
             if needsExplicitIndent && indicator.isEmpty {
                 let relative = indentation - block.parentIndentation
-                if (1...9).contains(relative) { indicator = String(relative) }
-                else { indicator = "2"; indentation = block.parentIndentation + 2 }
+                if (1...9).contains(relative) {
+                    indicator = String(relative)
+                } else {
+                    indicator = "2"
+                    indentation = block.parentIndentation + 2
+                }
             }
             var lines = value.components(separatedBy: "\n")
             if value.hasSuffix("\n") { lines.removeLast() }

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 import UniformTypeIdentifiers
 
 struct VolumeBackupsView: View {
@@ -49,15 +49,20 @@ struct VolumeBackupsView: View {
     @ViewBuilder
     private func backupRow(_ backup: BackupEntry) -> some View {
         Section {
-            LabeledContent(backup.createdAt, value: ByteCountFormatter.string(fromByteCount: backup.size, countStyle: .file))
+            LabeledContent(
+                backup.createdAt, value: ByteCountFormatter.string(fromByteCount: backup.size, countStyle: .file))
             if let status = backup.status { LabeledContent("Status", value: status) }
             if let destination = backup.destination { LabeledContent("Storage", value: destination) }
             if let name = backup.s3DestinationName { LabeledContent("S3 destination", value: name) }
-            if let instance = backup.remoteInstanceId, !instance.isEmpty { LabeledContent("Remote instance", value: instance) }
+            if let instance = backup.remoteInstanceId, !instance.isEmpty {
+                LabeledContent("Remote instance", value: instance)
+            }
             if let error = backup.error { Text(error).foregroundStyle(.red) }
             if backup.status == nil || backup.status == "succeeded" {
                 NavigationLink("Browse files") {
-                    BackupFilesView(backupID: backup.id, environmentID: environmentID, volumeName: volumeName, canRestore: canBackup)
+                    BackupFilesView(
+                        backupID: backup.id, environmentID: environmentID, volumeName: volumeName, canRestore: canBackup
+                    )
                 }
                 Button("Download archive") { Task { await download(backup) } }
                 if canBackup {
@@ -80,7 +85,11 @@ struct VolumeBackupsView: View {
             if canBackup {
                 Section {
                     Button("Create backup") { showCreate = true }
-                    if supportsPolicies { NavigationLink("Backup policies") { BackupPolicyEditor(environmentID: environmentID, volumeName: volumeName) } }
+                    if supportsPolicies {
+                        NavigationLink("Backup policies") {
+                            BackupPolicyEditor(environmentID: environmentID, volumeName: volumeName)
+                        }
+                    }
                     if canUpload { Button("Import and restore archive") { showImport = true } }
                 }
                 if !destinations.isEmpty { discoverSection }
@@ -113,30 +122,60 @@ struct VolumeBackupsView: View {
                 Form {
                     Picker("Storage", selection: $destination) {
                         Text("Local").tag("local")
-                        if supportsPolicies { Text("S3").tag("s3"); Text("Local and S3").tag("local_s3") }
+                        if supportsPolicies {
+                            Text("S3").tag("s3")
+                            Text("Local and S3").tag("local_s3")
+                        }
                     }
                     if destination != "local" { BackupDestinationPicker(selection: $s3ID, destinations: destinations) }
                 }
                 .navigationTitle("Create Backup")
-        .modifier(BackupSessionScope())
+                .modifier(BackupSessionScope())
                 .toolbar {
                     AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { showCreate = false } }
-                    AppToolbarItem(placement: .confirmationAction) { Button("Create") { Task { await create() } }.disabled(destination != "local" && s3ID.isEmpty) }
+                    AppToolbarItem(placement: .confirmationAction) {
+                        Button("Create") { Task { await create() } }.disabled(destination != "local" && s3ID.isEmpty)
+                    }
                 }
             }
         }
         .fileImporter(isPresented: $showImport, allowedContentTypes: [.data]) { result in
-            switch result { case .success(let url): importURL = url; case .failure(let error): showToast(.error(friendlyErrorMessage(error))) }
+            switch result {
+            case .success(let url): importURL = url
+            case .failure(let error): showToast(.error(friendlyErrorMessage(error)))
+            }
         }
-        .confirmationDialog("Restore backup to \(volumeName)?", isPresented: Binding(get: { restoreTarget != nil }, set: { if !$0 { restoreTarget = nil } }), titleVisibility: .visible) {
-            Button("Restore volume", role: .destructive) { if let backup = restoreTarget { Task { await restore(backup) } } }
-        } message: { Text("Existing volume contents may be overwritten.") }
-        .confirmationDialog("Delete this backup?", isPresented: Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }), titleVisibility: .visible) {
-            Button("Delete backup", role: .destructive) { if let backup = deleteTarget { Task { await remove(backup) } } }
+        .confirmationDialog(
+            "Restore backup to \(volumeName)?",
+            isPresented: Binding(get: { restoreTarget != nil }, set: { if !$0 { restoreTarget = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Restore volume", role: .destructive) {
+                if let backup = restoreTarget { Task { await restore(backup) } }
+            }
+        } message: {
+            Text("Existing volume contents may be overwritten.")
         }
-        .confirmationDialog("Import archive and restore to \(volumeName)?", isPresented: Binding(get: { importURL != nil }, set: { if !$0 { importURL = nil } }), titleVisibility: .visible) {
-            Button("Import and restore", role: .destructive) { if let url = importURL { Task { await importBackup(url) } } }
-        } message: { Text("Choose a tar.gz volume backup. Existing volume contents may be overwritten.") }
+        .confirmationDialog(
+            "Delete this backup?",
+            isPresented: Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete backup", role: .destructive) {
+                if let backup = deleteTarget { Task { await remove(backup) } }
+            }
+        }
+        .confirmationDialog(
+            "Import archive and restore to \(volumeName)?",
+            isPresented: Binding(get: { importURL != nil }, set: { if !$0 { importURL = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Import and restore", role: .destructive) {
+                if let url = importURL { Task { await importBackup(url) } }
+            }
+        } message: {
+            Text("Choose a tar.gz volume backup. Existing volume contents may be overwritten.")
+        }
         .onDisappear { if let downloadURL { try? FileManager.default.removeItem(at: downloadURL) } }
     }
 
@@ -145,48 +184,61 @@ struct VolumeBackupsView: View {
         loadMoreError = nil
         let scope = BackupRequestScope(manager)
         guard let client = manager.client else { return }
-        busy = true; errorMessage = nil
+        busy = true
+        errorMessage = nil
         defer { busy = false }
         do {
-            let page = try await client.volumes.listBackupsWithWarnings(envID: environmentID, name: volumeName, query: .init(start: more ? backups.count : 0, limit: 50))
+            let page = try await client.volumes.listBackupsWithWarnings(
+                envID: environmentID, name: volumeName, query: .init(start: more ? backups.count : 0, limit: 50))
             try scope.check(manager)
-            backups = more ? backups + page.data : page.data; warnings = page.warnings ?? []; hasMore = backups.count < page.pagination.totalItems
+            backups = more ? backups + page.data : page.data
+            warnings = page.warnings ?? []
+            hasMore = backups.count < page.pagination.totalItems
             if !more {
                 do {
                     _ = try await client.volumes.backupPolicies(envID: environmentID, name: volumeName)
-                    try scope.check(manager); supportsPolicies = true
-                } catch ArcaneError.notFound { supportsPolicies = false; destination = "local" }
-                catch ArcaneError.forbidden { supportsPolicies = false }
+                    try scope.check(manager)
+                    supportsPolicies = true
+                } catch ArcaneError.notFound {
+                    supportsPolicies = false
+                    destination = "local"
+                } catch ArcaneError.forbidden { supportsPolicies = false }
                 if supportsPolicies && manager.permissions.has("s3-destinations:list", in: nil) {
                     let options = try await client.s3Destinations.options()
-                    try scope.check(manager); destinations = options
+                    try scope.check(manager)
+                    destinations = options
                 }
             }
-        } catch is CancellationError {} catch { if more { loadMoreError = friendlyErrorMessage(error) } else { errorMessage = friendlyErrorMessage(error) } }
+        } catch is CancellationError {} catch {
+            if more { loadMoreError = friendlyErrorMessage(error) } else { errorMessage = friendlyErrorMessage(error) }
+        }
     }
 
     private func create() async {
-        let scope = BackupRequestScope(manager)
         guard let client = manager.client, canBackup else { return }
         await perform {
-            _ = try await client.volumes.createBackup(envID: environmentID, name: volumeName, request: .init(destination: destination, s3DestinationId: destination == "local" ? nil : s3ID))
+            _ = try await client.volumes.createBackup(
+                envID: environmentID, name: volumeName,
+                request: .init(destination: destination, s3DestinationId: destination == "local" ? nil : s3ID))
             showCreate = false
         }
     }
     private func restore(_ backup: BackupEntry) async {
-        let scope = BackupRequestScope(manager)
         guard let client = manager.client, canBackup else { return }
-        await perform { _ = try await client.volumes.restoreBackup(envID: environmentID, name: volumeName, backupID: backup.id) }
+        await perform {
+            _ = try await client.volumes.restoreBackup(envID: environmentID, name: volumeName, backupID: backup.id)
+        }
     }
     private func remove(_ backup: BackupEntry) async {
-        let scope = BackupRequestScope(manager)
         guard let client = manager.client, canBackup else { return }
         await perform { _ = try await client.volumes.deleteBackup(envID: environmentID, backupID: backup.id) }
     }
     private func upload(_ backup: BackupEntry, to destinationID: String) async {
-        let scope = BackupRequestScope(manager)
         guard let client = manager.client, canBackup else { return }
-        await perform { _ = try await client.volumes.uploadBackupToS3(envID: environmentID, backupID: backup.id, s3DestinationID: destinationID) }
+        await perform {
+            _ = try await client.volumes.uploadBackupToS3(
+                envID: environmentID, backupID: backup.id, s3DestinationID: destinationID)
+        }
     }
     private func discover() async {
         guard let client = manager.client, canBackup, !discoverID.isEmpty else { return }
@@ -207,36 +259,52 @@ struct VolumeBackupsView: View {
     private func download(_ backup: BackupEntry) async {
         let scope = BackupRequestScope(manager)
         guard let client = manager.client else { return }
-        busy = true; defer { busy = false }
+        busy = true
+        defer { busy = false }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).tar.gz")
         do {
             try await client.volumes.downloadBackup(envID: environmentID, backupID: backup.id, to: url)
             try scope.check(manager)
-            if let old = downloadURL { try? FileManager.default.removeItem(at: old) }; downloadURL = url
-        } catch is CancellationError { try? FileManager.default.removeItem(at: url) } catch { try? FileManager.default.removeItem(at: url); showToast(.error(friendlyErrorMessage(error))) }
+            if let old = downloadURL { try? FileManager.default.removeItem(at: old) }
+            downloadURL = url
+        } catch is CancellationError { try? FileManager.default.removeItem(at: url) } catch {
+            try? FileManager.default.removeItem(at: url)
+            showToast(.error(friendlyErrorMessage(error)))
+        }
     }
     private func importBackup(_ url: URL) async {
         let scope = BackupRequestScope(manager)
         guard let client = manager.client, canUpload else { return }
         let accessed = url.startAccessingSecurityScopedResource()
-        defer { if accessed { url.stopAccessingSecurityScopedResource() }; importURL = nil }
+        defer {
+            if accessed { url.stopAccessingSecurityScopedResource() }
+            importURL = nil
+        }
         await perform {
             let generation = manager.clientGeneration
             if manager.serverCapabilities?.supportsRoleManagement == true {
                 let id = try await client.uploads.uploadFile(envID: environmentID, kind: .volumeBackup, fileURL: url)
                 try scope.check(manager)
-                guard manager.clientGeneration == generation, manager.acceptsEnvironmentContext(environmentID) else { throw CancellationError() }
-                _ = try await client.volumes.uploadAndRestoreBackup(envID: environmentID, name: volumeName, uploadID: id)
+                guard manager.clientGeneration == generation, manager.acceptsEnvironmentContext(environmentID) else {
+                    throw CancellationError()
+                }
+                _ = try await client.volumes.uploadAndRestoreBackup(
+                    envID: environmentID, name: volumeName, uploadID: id)
             } else {
-                _ = try await client.volumes.uploadAndRestoreBackup(envID: environmentID, name: volumeName, fileURL: url)
+                _ = try await client.volumes.uploadAndRestoreBackup(
+                    envID: environmentID, name: volumeName, fileURL: url)
             }
         }
     }
     private func perform(_ operation: () async throws -> Void) async {
         let scope = BackupRequestScope(manager)
         busy = true
-        do { try await operation(); try scope.check(manager); showToast(.info("Backup operation accepted")); await load() }
-        catch is CancellationError {} catch { showToast(.error(friendlyErrorMessage(error))) }
+        do {
+            try await operation()
+            try scope.check(manager)
+            showToast(.info("Backup operation accepted"))
+            await load()
+        } catch is CancellationError {} catch { showToast(.error(friendlyErrorMessage(error))) }
         busy = false
     }
 }

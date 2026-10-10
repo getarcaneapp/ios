@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct DynamicResourceListView: View {
     private static let pageSize = 50
@@ -32,9 +32,8 @@ struct DynamicResourceListView: View {
     private func computeDisplayedItems() -> [DynamicResource] {
         items
             .filter { item in
-                debouncedSearchText.isEmpty ||
-                item.title.localizedCaseInsensitiveContains(debouncedSearchText) ||
-                item.subtitle.localizedCaseInsensitiveContains(debouncedSearchText)
+                debouncedSearchText.isEmpty || item.title.localizedCaseInsensitiveContains(debouncedSearchText)
+                    || item.subtitle.localizedCaseInsensitiveContains(debouncedSearchText)
             }
             .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
@@ -53,7 +52,7 @@ struct DynamicResourceListView: View {
                 } description: {
                     Text(errorMessage)
                 } actions: {
-                    Button("Try Again") { Task { await load(refresh: true) } }
+                    Button("Try Again") { Task { await load() } }
                 }
             } else if items.isEmpty {
                 ContentUnavailableView(emptyTitle ?? "No \(title)", systemImage: systemImage)
@@ -68,12 +67,12 @@ struct DynamicResourceListView: View {
                     Section {
                         ForEach(displayedItems) { item in
                             NavigationLink {
-                                DynamicResourceDetailView(title: item.title, resource: item, actions: actionsForRow(item))
+                                DynamicResourceDetailView(title: item.title, resource: item, actions: actionsForRow())
                             } label: {
                                 DynamicResourceRow(item: item, systemImage: systemImage)
                             }
                             .contextMenu {
-                                ForEach(actionsForRow(item)) { action in
+                                ForEach(actionsForRow()) { action in
                                     Button(role: action.destructive ? .destructive : nil) {
                                         selectedAction = PendingAction(action: action, item: item)
                                     } label: {
@@ -103,21 +102,27 @@ struct DynamicResourceListView: View {
             }
         }
         .navigationTitle(title)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search \(title.lowercased())")
+        .searchable(
+            text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search \(title.lowercased())"
+        )
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) {
             rebuildDisplayedItems()
-            Task { await load(refresh: true) }
+            Task { await load() }
         }
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await load(refresh: true) } } label: {
+                Button {
+                    Task { await load() }
+                } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .accessibilityLabel("Refresh")
             }
             if #available(iOS 26, *),
-               managementDestination != nil || (createPath != nil && !createFields.isEmpty) {
+                managementDestination != nil || (createPath != nil && !createFields.isEmpty)
+            {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             if let managementDestination {
@@ -135,14 +140,17 @@ struct DynamicResourceListView: View {
                 }
             }
             if #available(iOS 26, *),
-               managementDestination != nil,
-               createPath != nil,
-               !createFields.isEmpty {
+                managementDestination != nil,
+                createPath != nil,
+                !createFields.isEmpty
+            {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             if createPath != nil, !createFields.isEmpty {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showCreateSheet = true } label: {
+                    Button {
+                        showCreateSheet = true
+                    } label: {
                         Image(systemName: "plus")
                     }
                     .accessibilityLabel(createTitle ?? "Create")
@@ -171,11 +179,14 @@ struct DynamicResourceListView: View {
             }
         }
         .task { await load() }
-        .refreshable { await load(refresh: true) }
-        .alert(selectedAction?.action.title ?? "Run Action", isPresented: Binding(
-            get: { selectedAction != nil },
-            set: { if !$0 { selectedAction = nil } }
-        )) {
+        .refreshable { await load() }
+        .alert(
+            selectedAction?.action.title ?? "Run Action",
+            isPresented: Binding(
+                get: { selectedAction != nil },
+                set: { if !$0 { selectedAction = nil } }
+            )
+        ) {
             if let selectedAction {
                 Button(selectedAction.action.title, role: selectedAction.action.destructive ? .destructive : nil) {
                     Task { await run(selectedAction) }
@@ -184,7 +195,9 @@ struct DynamicResourceListView: View {
             Button("Cancel", role: .cancel) { selectedAction = nil }
         } message: {
             if let selectedAction {
-                Text(selectedAction.item.map { "\(selectedAction.action.title) \($0.title)?" } ?? "\(selectedAction.action.title)?")
+                Text(
+                    selectedAction.item.map { "\(selectedAction.action.title) \($0.title)?" }
+                        ?? "\(selectedAction.action.title)?")
             }
         }
         .sheet(isPresented: $showCreateSheet) {
@@ -196,19 +209,19 @@ struct DynamicResourceListView: View {
                     guard let client = manager.client else { return }
                     let target = createPath(manager, client)
                     _ = try await ArcaneAPIHelpers.send(client: client, path: target, method: .post, body: data)
-                    await load(refresh: true)
+                    await load()
                 }
             }
         }
     }
 
-    private func actionsForRow(_ item: DynamicResource) -> [BackendListAction] {
+    private func actionsForRow() -> [BackendListAction] {
         actions.filter { action in
             action.requiresSelection && !action.pathSuffix.isEmpty
         }
     }
 
-    private func load(refresh: Bool = false) async {
+    private func load() async {
         guard let client = manager.client else { return }
         let generation = pagination.reset()
         isLoadingMore = false
@@ -269,13 +282,15 @@ struct DynamicResourceListView: View {
         requestedStart: Int,
         generation: Int
     ) {
-        guard pagination.receive(
-            pagination: response.pagination,
-            itemCount: response.data.count,
-            requestedStart: requestedStart,
-            requestedLimit: Self.pageSize,
-            generation: generation
-        ) else { return }
+        guard
+            pagination.receive(
+                pagination: response.pagination,
+                itemCount: response.data.count,
+                requestedStart: requestedStart,
+                requestedLimit: Self.pageSize,
+                generation: generation
+            )
+        else { return }
         items = PaginationLoader.merge(current: items, incoming: response.data, reset: reset)
         rebuildDisplayedItems()
         loadMoreError = nil
@@ -288,7 +303,7 @@ struct DynamicResourceListView: View {
             let target = actionPath(pending, manager: manager, client: client)
             _ = try await ArcaneAPIHelpers.send(client: client, path: target, method: pending.action.method)
             actionMessage = "\(pending.action.title) completed"
-            await load(refresh: true)
+            await load()
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -297,7 +312,8 @@ struct DynamicResourceListView: View {
     private func actionPath(_ pending: PendingAction, manager: ArcaneClientManager, client: ArcaneClient) -> String {
         let base = path(manager, client)
         guard let item = pending.item else {
-            return pending.action.pathSuffix.hasPrefix("/") ? String(base.split(separator: "?").first ?? "") + pending.action.pathSuffix : pending.action.pathSuffix
+            return pending.action.pathSuffix.hasPrefix("/")
+                ? String(base.split(separator: "?").first ?? "") + pending.action.pathSuffix : pending.action.pathSuffix
         }
         let id = ArcaneAPIHelpers.escapedPathComponent(item.id)
         let suffix = pending.action.pathSuffix.replacingOccurrences(of: "{id}", with: id)
@@ -423,7 +439,8 @@ struct DynamicValueRow: View {
         switch value {
         case .object(let object):
             DisclosureGroup(prettyKey(key)) {
-                ForEach(object.sorted(by: { $0.key.localizedStandardCompare($1.key) == .orderedAscending }), id: \.0) { childKey, childValue in
+                ForEach(object.sorted(by: { $0.key.localizedStandardCompare($1.key) == .orderedAscending }), id: \.0) {
+                    childKey, childValue in
                     DynamicValueRow(key: childKey, value: childValue)
                 }
             }
@@ -462,7 +479,8 @@ struct DynamicCreateFormView: View {
 
     private var canSave: Bool {
         fields.allSatisfy { field in
-            !field.required || field.type == .toggle || !(values[field.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            !field.required || field.type == .toggle
+                || !(values[field.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
 
@@ -500,10 +518,12 @@ struct DynamicCreateFormView: View {
     private func fieldView(_ field: BackendFormField) -> some View {
         switch field.type {
         case .toggle:
-            Toggle(field.label, isOn: Binding(
-                get: { toggles[field.id, default: false] },
-                set: { toggles[field.id] = $0 }
-            ))
+            Toggle(
+                field.label,
+                isOn: Binding(
+                    get: { toggles[field.id, default: false] },
+                    set: { toggles[field.id] = $0 }
+                ))
         case .secure:
             FormSecureField(
                 title: field.label,

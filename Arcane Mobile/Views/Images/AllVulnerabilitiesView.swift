@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct AllVulnerabilitiesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -115,8 +115,11 @@ struct AllVulnerabilitiesView: View {
                             )
                         }
                     } else if !isLoading {
-                        ContentUnavailableView("No vulnerabilities", systemImage: "checkmark.shield",
-                                               description: Text("Either no images have been scanned, or all findings have been filtered out."))
+                        ContentUnavailableView(
+                            "No vulnerabilities", systemImage: "checkmark.shield",
+                            description: Text(
+                                "Either no images have been scanned, or all findings have been filtered out.")
+                        )
                         .listRowBackground(Color.clear)
                     }
                 }
@@ -146,8 +149,11 @@ struct AllVulnerabilitiesView: View {
                     Button {
                         showFilterSheet = true
                     } label: {
-                        Image(systemName: filterCount > 0 ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                            .appAccentToolbarSymbol()
+                        Image(
+                            systemName: filterCount > 0
+                                ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                        )
+                        .appAccentToolbarSymbol()
                     }
                     .accessibilityLabel("Filter vulnerabilities")
                 }
@@ -205,7 +211,10 @@ struct AllVulnerabilitiesView: View {
             }
             .padding(.vertical, 4)
         } else {
-            HStack { ProgressView().scaleEffect(0.8); Text("Loading…").foregroundStyle(.secondary) }
+            HStack {
+                ProgressView().scaleEffect(0.8)
+                Text("Loading…").foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -222,7 +231,10 @@ struct AllVulnerabilitiesView: View {
                 Section("Severity") {
                     ForEach(VulnerabilitySeverity.allCases) { sev in
                         Toggle(isOn: bindingForSeverity(sev)) {
-                            HStack { SeverityBadge(severity: sev); Text(sev.displayLabel) }
+                            HStack {
+                                SeverityBadge(severity: sev)
+                                Text(sev.displayLabel)
+                            }
                         }
                     }
                 }
@@ -266,8 +278,7 @@ struct AllVulnerabilitiesView: View {
         Binding(
             get: { selectedSeverities.contains(sev) },
             set: { isOn in
-                if isOn { selectedSeverities.insert(sev) }
-                else { selectedSeverities.remove(sev) }
+                if isOn { selectedSeverities.insert(sev) } else { selectedSeverities.remove(sev) }
             }
         )
     }
@@ -350,7 +361,11 @@ struct AllVulnerabilitiesView: View {
             items = page == 1 ? response.data : items + response.data
             hasMore = Int64(page * 50) < response.pagination.totalItems
         } catch {
-            if page > 1 { loadMoreError = friendlyErrorMessage(error) } else { errorMessage = friendlyErrorMessage(error) }
+            if page > 1 {
+                loadMoreError = friendlyErrorMessage(error)
+            } else {
+                errorMessage = friendlyErrorMessage(error)
+            }
         }
     }
 
@@ -374,7 +389,8 @@ struct AllVulnerabilitiesView: View {
                 fixAvailable: onlyFixAvailable ? true : nil
             )
             let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("vulnerabilities-\(environmentID.rawValue)-\(Int(Date().timeIntervalSince1970)).csv")
+                .appendingPathComponent(
+                    "vulnerabilities-\(environmentID.rawValue)-\(Int(Date().timeIntervalSince1970)).csv")
             try data.write(to: url, options: .atomic)
             if let old = exportURL { try? FileManager.default.removeItem(at: old) }
             exportURL = url
@@ -428,8 +444,12 @@ struct VulnerabilityWithImageDetailView: View {
                 if !record.installedVersion.isEmpty { LabeledContent("Installed", value: record.installedVersion) }
                 if let v = record.fixedVersion, !v.isEmpty { LabeledContent("Fixed in", value: v) }
                 if let cvss = record.preferredCVSS { LabeledContent("CVSS", value: String(format: "%.1f", cvss)) }
-                if let date = record.publishedDate { LabeledContent("Published", value: date.formatted(date: .abbreviated, time: .omitted)) }
-                if let date = record.lastModifiedDate { LabeledContent("Modified", value: date.formatted(date: .abbreviated, time: .omitted)) }
+                if let date = record.publishedDate {
+                    LabeledContent("Published", value: date.formatted(date: .abbreviated, time: .omitted))
+                }
+                if let date = record.lastModifiedDate {
+                    LabeledContent("Modified", value: date.formatted(date: .abbreviated, time: .omitted))
+                }
             }
 
             if let title = record.title, !title.isEmpty {
@@ -452,12 +472,12 @@ struct VulnerabilityWithImageDetailView: View {
     }
 }
 
-private extension Arcane.VulnerabilityWithImage {
-    var mobileSeverity: VulnerabilitySeverity {
+extension Arcane.VulnerabilityWithImage {
+    fileprivate var mobileSeverity: VulnerabilitySeverity {
         VulnerabilitySeverity(rawValue: severity.rawValue) ?? .unknown
     }
 
-    var preferredCVSS: Double? {
+    fileprivate var preferredCVSS: Double? {
         cvss?.v3Score ?? cvss?.v2Score
     }
 }

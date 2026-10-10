@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 nonisolated enum AuthenticationSettingsValidation {
     static let sessionTimeoutMinutes = 15...525_600
@@ -139,7 +139,9 @@ struct AuthenticationSettingsView: View {
                 Label("OIDC Provider", systemImage: "lock.shield")
             } footer: {
                 if oidcEnvForced {
-                    Label("OIDC is managed by server environment variables and can't be edited here.", systemImage: "lock.fill")
+                    Label(
+                        "OIDC is managed by server environment variables and can't be edited here.",
+                        systemImage: "lock.fill")
                 }
             }
             .disabled(oidcEnvForced)
@@ -158,7 +160,9 @@ struct AuthenticationSettingsView: View {
             } header: {
                 Text("OIDC Options")
             } footer: {
-                Text("Groups Claim is the token claim read for group memberships. Map groups to roles in the Arcane web app.")
+                Text(
+                    "Groups Claim is the token claim read for group memberships. Map groups to roles in the Arcane web app."
+                )
             }
             .disabled(oidcEnvForced)
 
@@ -238,7 +242,8 @@ struct AuthenticationSettingsView: View {
     private func loadOidcStatus() async {
         guard let client = manager.client else { return }
         do {
-            let rawData = try await client.transport.rawRequest("oidc/status", body: Optional<String>.none, authorized: false)
+            let rawData = try await client.transport.rawRequest(
+                "oidc/status", body: Optional<String>.none, authorized: false)
             let status = try JSONDecoder().decode(OIDCStatusInfo.self, from: rawData)
             oidcEnvForced = status.envForced
             oidcEnvConfigured = status.envConfigured

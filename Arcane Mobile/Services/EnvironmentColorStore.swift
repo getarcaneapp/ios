@@ -25,7 +25,8 @@ final class EnvironmentColorStore {
         let prefix = key(server: server, environmentID: "")
         var used = Set<String>()
         // Include saved environments that are temporarily absent, so their colors stay reserved.
-        let keys = Set(colors.keys.filter { $0.hasPrefix(prefix) } + environmentIDs.map { key(server: server, environmentID: $0) })
+        let keys = Set(
+            colors.keys.filter { $0.hasPrefix(prefix) } + environmentIDs.map { key(server: server, environmentID: $0) })
         for key in keys.sorted() {
             if let existing = colors[key]?.uppercased(), used.insert(existing).inserted {
                 colors[key] = existing
@@ -41,7 +42,9 @@ final class EnvironmentColorStore {
     func isAvailable(_ hex: String, server: String, environmentID: String) -> Bool {
         let target = key(server: server, environmentID: environmentID)
         let prefix = key(server: server, environmentID: "")
-        return !colors.contains { $0.key.hasPrefix(prefix) && $0.key != target && $0.value.uppercased() == hex.uppercased() }
+        return !colors.contains {
+            $0.key.hasPrefix(prefix) && $0.key != target && $0.value.uppercased() == hex.uppercased()
+        }
     }
 
     @discardableResult
@@ -57,7 +60,10 @@ final class EnvironmentColorStore {
     }
 
     private func availableColor(excluding used: Set<String>) -> String {
-        let palette = ["#2680C2", "#D06820", "#289B66", "#9657CA", "#C64574", "#168D97", "#AB841A", "#646DD6", "#BB5142", "#678B36", "#A453A5", "#477D91"]
+        let palette = [
+            "#2680C2", "#D06820", "#289B66", "#9657CA", "#C64574", "#168D97", "#AB841A", "#646DD6", "#BB5142",
+            "#678B36", "#A453A5", "#477D91",
+        ]
         if let color = palette.first(where: { !used.contains($0) }) { return color }
         // Walk the RGB space without repeating colors when the initial palette is exhausted.
         for index in 1...0xFFFFFF {

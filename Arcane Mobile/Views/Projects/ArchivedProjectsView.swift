@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ArchivedProjectsView: View {
     private static let pageSize = 50
@@ -69,11 +69,11 @@ struct ArchivedProjectsView: View {
                                 }
                         }
 
-            PaginatedListFooter(
-                hasMore: hasMore, loadMoreError: loadMoreError,
-                onRetry: { Task { await loadMore() } },
-                onLoadMore: { Task { await loadMore() } }
-            )
+                        PaginatedListFooter(
+                            hasMore: hasMore, loadMoreError: loadMoreError,
+                            onRetry: { Task { await loadMore() } },
+                            onLoadMore: { Task { await loadMore() } }
+                        )
                     } header: {
                         ResourceCountSectionHeader(
                             "Archived Projects",
@@ -89,16 +89,21 @@ struct ArchivedProjectsView: View {
         .navigationTitle("Archived Projects")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load(reset: true) }
-        .refreshable { await load(reset: true, refresh: true) }
+        .refreshable { await load(reset: true) }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await load(reset: true, refresh: true) }
+            Task { await load(reset: true) }
         }
     }
 
-    private func load(reset: Bool, refresh: Bool = false) async {
+    private func load(reset: Bool) async {
         guard let client = manager.client else { return }
         if !reset && (isLoading || isLoadingMore) { return }
-        if reset { loadMoreError = nil } else { isLoadingMore = true; loadMoreError = nil }
+        if reset {
+            loadMoreError = nil
+        } else {
+            isLoadingMore = true
+            loadMoreError = nil
+        }
         loadGeneration += 1
         let generation = loadGeneration
         if reset {
@@ -131,7 +136,9 @@ struct ArchivedProjectsView: View {
         }
     }
 
-    private func applyProjectsPage(_ response: PaginatedResponse<ProjectDetails>, reset: Bool, start: Int, generation: Int) {
+    private func applyProjectsPage(
+        _ response: PaginatedResponse<ProjectDetails>, reset: Bool, start: Int, generation: Int
+    ) {
         guard loadGeneration == generation else { return }
         projects = PaginationLoader.merge(current: projects, incoming: response.data, reset: reset)
         pagination.receive(
@@ -167,10 +174,12 @@ struct ArchivedProjectsView: View {
 
     private func invalidateProjectCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "projects") + "*",
-            client.rest.environmentPath(environmentID, "projects/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "projects") + "*",
+                client.rest.environmentPath(environmentID, "projects/*"),
+            ])
     }
 }
 

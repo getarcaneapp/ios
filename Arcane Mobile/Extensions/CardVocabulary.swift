@@ -147,7 +147,7 @@ struct DashboardCardBackgroundModifier: ViewModifier {
                             LinearGradient(
                                 colors: [
                                     .white.opacity(colorScheme == .dark ? 0.07 : 0.35),
-                                    .clear
+                                    .clear,
                                 ],
                                 startPoint: .top,
                                 endPoint: .center

@@ -23,9 +23,12 @@ private struct AutomaticWhatsNewPresentationModifier: ViewModifier {
                 presentedWhatsNew = whatsNewEnvironment.whatsNew()
                 if presentedWhatsNew == nil { showsIntroduction = !hasSeenIntroduction }
             }
-            .sheet(item: $presentedWhatsNew, onDismiss: {
-                showsIntroduction = !hasSeenIntroduction
-            }) { whatsNew in
+            .sheet(
+                item: $presentedWhatsNew,
+                onDismiss: {
+                    showsIntroduction = !hasSeenIntroduction
+                }
+            ) { whatsNew in
                 WhatsNewPresentationView(
                     whatsNew: whatsNew,
                     versionStore: whatsNewEnvironment.whatsNewVersionStore
@@ -139,9 +142,11 @@ private struct WhatsNewReleaseContent: View {
         let section = ReleaseNotes.all
             .first { $0.version == whatsNew.version.description }?
             .presentationSections.first { $0.title == feature.title.attributedString.string }
-        let bullets = section?.bullets ?? lines.map { line in
-            ReleaseNote.Bullet(line.hasPrefix("• ") ? String(line.dropFirst(2)) : String(line))
-        }
+        let bullets =
+            section?.bullets
+            ?? lines.map { line in
+                ReleaseNote.Bullet(line.hasPrefix("• ") ? String(line.dropFirst(2)) : String(line))
+            }
 
         return VStack(alignment: .leading, spacing: 8) {
             Text(AttributedString(feature.title.attributedString))

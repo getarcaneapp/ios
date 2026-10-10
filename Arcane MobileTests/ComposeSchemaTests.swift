@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+
 @testable import Arcane_Mobile
 
 @Suite("Compose schema field suggestions")
@@ -9,7 +10,10 @@ struct ComposeSchemaTests {
     @Test func serviceIncludesInheritedAndNewSpecificationFields() throws {
         let fields = ComposeSchema.fields(at: service)
         let names = Set(fields.map(\.name))
-        for expected in ["image", "build", "deploy", "ports", "networks", "healthcheck", "env_file", "models", "post_start", "pre_stop"] {
+        for expected in [
+            "image", "build", "deploy", "ports", "networks", "healthcheck", "env_file", "models", "post_start",
+            "pre_stop",
+        ] {
             #expect(names.contains(expected), "Missing service field: \(expected)")
         }
         #expect(fields.allSatisfy { !$0.kinds.isEmpty })
@@ -38,7 +42,9 @@ struct ComposeSchemaTests {
 
     @Test func rootResourcesAndDictionaryValuesResolve() throws {
         for resource in ["networks", "volumes", "secrets", "configs", "models", "jobs"] {
-            #expect(!ComposeSchema.fields(at: [.key(resource), .key("example")]).isEmpty, "Missing resource schema: \(resource)")
+            #expect(
+                !ComposeSchema.fields(at: [.key(resource), .key("example")]).isEmpty,
+                "Missing resource schema: \(resource)")
         }
         #expect(ComposeSchema.fields(at: [.key("models"), .key("example")]).contains { $0.name == "runtime_flags" })
         #expect(ComposeSchema.fields(at: [.key("configs"), .key("example")]).contains { $0.name == "content" })
@@ -87,8 +93,12 @@ struct ComposeSchemaTests {
                         visit(child, path: path + [.key(sample)], depth: depth + 1)
                     }
                 }
-                if let item = variant["items"] as? [String: Any] { visit(item, path: path + [.index(0)], depth: depth + 1) }
-                if let additional = variant["additionalProperties"] as? [String: Any] { visit(additional, path: path + [.key("example")], depth: depth + 1) }
+                if let item = variant["items"] as? [String: Any] {
+                    visit(item, path: path + [.index(0)], depth: depth + 1)
+                }
+                if let additional = variant["additionalProperties"] as? [String: Any] {
+                    visit(additional, path: path + [.key("example")], depth: depth + 1)
+                }
             }
         }
         visit(root, path: [], depth: 0)
@@ -104,8 +114,12 @@ struct ComposeSchemaTests {
         let restart = ComposeFieldOptions(path: service + [.key("restart")])
         #expect(restart.values == ["no", "always", "on-failure", "unless-stopped"])
         #expect(restart.allowsCustom)
-        #expect(ComposeFieldOptions(path: service + [.key("ports"), .index(0), .key("protocol")]).values == ["tcp", "udp"])
-        #expect(ComposeFieldOptions(path: service + [.key("deploy"), .key("restart_policy"), .key("condition")]).values == ["none", "on-failure", "any"])
+        #expect(
+            ComposeFieldOptions(path: service + [.key("ports"), .index(0), .key("protocol")]).values == ["tcp", "udp"])
+        #expect(
+            ComposeFieldOptions(path: service + [.key("deploy"), .key("restart_policy"), .key("condition")]).values == [
+                "none", "on-failure", "any",
+            ])
         #expect(ComposeFieldOptions(path: service + [.key("labels"), .key("restart")]).values.isEmpty)
         var gpu = ComposeSettingDraft(name: "gpus", schemaPath: service + [.key("gpus")], included: true)
         gpu.kind = .sequence
@@ -124,17 +138,22 @@ struct ComposeSchemaTests {
             ([.key("cap_add"), .index(0)], "NET_ADMIN"),
             ([.key("cap_drop"), .index(0)], "ALL"),
             ([.key("devices"), .index(0), .key("permissions")], "rw"),
-            ([.key("env_file"), .index(0), .key("format")], "raw")
+            ([.key("env_file"), .index(0), .key("format")], "raw"),
         ]
         for (suffix, value) in cases {
             let options = ComposeFieldOptions(path: service + suffix)
             #expect(options.values.contains(value))
             #expect(!options.allowsCustom)
         }
-        #expect(ComposeFieldOptions(path: service + [.key("healthcheck"), .key("test"), .index(0)]).values == ["CMD", "CMD-SHELL", "NONE"])
+        #expect(
+            ComposeFieldOptions(path: service + [.key("healthcheck"), .key("test"), .index(0)]).values == [
+                "CMD", "CMD-SHELL", "NONE",
+            ])
         #expect(ComposeFieldOptions(path: service + [.key("healthcheck"), .key("test"), .index(1)]).values.isEmpty)
         #expect(ComposeFieldOptions(path: service + [.key("stop_signal")]).values.contains("SIGTERM"))
-        #expect(ComposeFieldOptions(path: [.key("jobs"), .key("backup"), .key("deploy"), .key("mode")]).values.contains("replicated-job"))
+        #expect(
+            ComposeFieldOptions(path: [.key("jobs"), .key("backup"), .key("deploy"), .key("mode")]).values.contains(
+                "replicated-job"))
         for name in ["image", "container_name", "command"] {
             #expect(ComposeFieldOptions(path: service + [.key(name)]).values.isEmpty)
         }
@@ -143,11 +162,12 @@ struct ComposeSchemaTests {
 
     private func snapshot() throws -> [String: Any] {
         let bundles = [Bundle.main, Bundle(for: ComposeSchemaResourceMarker.self)]
-        let url = try #require(bundles.lazy.compactMap { bundle in
-            ["ComposeSchema", "Resources/ComposeSchema", ""].lazy.compactMap {
-                bundle.url(forResource: "compose-spec", withExtension: "json", subdirectory: $0)
-            }.first
-        }.first)
+        let url = try #require(
+            bundles.lazy.compactMap { bundle in
+                ["ComposeSchema", "Resources/ComposeSchema", ""].lazy.compactMap {
+                    bundle.url(forResource: "compose-spec", withExtension: "json", subdirectory: $0)
+                }.first
+            }.first)
         return try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
     }
 }

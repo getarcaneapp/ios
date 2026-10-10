@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct TemplateRegistriesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -120,7 +120,11 @@ struct TemplateRegistriesView: View {
         .toolbar {
             if canCreateRegistries {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Template Registry")
+                    Button {
+                        showCreateSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }.accessibilityLabel("Add Template Registry")
                 }
             }
         }
@@ -135,7 +139,9 @@ struct TemplateRegistriesView: View {
         .sheet(isPresented: $showCreateSheet) {
             TemplateRegistryFormView(registry: nil) {
                 if let cached = manager.cached {
-                    await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
+                    await cached.invalidateGlobal(paths: [
+                        "templates/registries", "templates/registries/*", "templates/all",
+                    ])
                 }
                 await loadRegistries(refresh: true)
             }
@@ -143,7 +149,9 @@ struct TemplateRegistriesView: View {
         .sheet(item: $editingRegistry) { registry in
             TemplateRegistryFormView(registry: registry) {
                 if let cached = manager.cached {
-                    await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
+                    await cached.invalidateGlobal(paths: [
+                        "templates/registries", "templates/registries/*", "templates/all",
+                    ])
                 }
                 await loadRegistries(refresh: true)
             }
@@ -187,7 +195,9 @@ struct TemplateRegistriesView: View {
             )
             _ = try await client.templates.createRegistry(body)
             if let cached = manager.cached {
-                await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
+                await cached.invalidateGlobal(paths: [
+                    "templates/registries", "templates/registries/*", "templates/all",
+                ])
             }
             await loadRegistries(refresh: true)
             showToast(.success("Community registry added"))
@@ -204,7 +214,9 @@ struct TemplateRegistriesView: View {
                 registries.removeAll { $0.id == registry.id }
             }
             if let cached = manager.cached {
-                await cached.invalidateGlobal(paths: ["templates/registries", "templates/registries/*", "templates/all"])
+                await cached.invalidateGlobal(paths: [
+                    "templates/registries", "templates/registries/*", "templates/all",
+                ])
             }
             showToast(.success("Template registry deleted"))
         } catch {
@@ -296,8 +308,9 @@ private struct PressableTemplateRegistryRow: View {
                 iconColor: .indigo,
                 title: registry.name,
                 badges: [
-                    .init(text: registry.enabled ? "Enabled" : "Disabled",
-                          color: registry.enabled ? .green : .secondary)
+                    .init(
+                        text: registry.enabled ? "Enabled" : "Disabled",
+                        color: registry.enabled ? .green : .secondary)
                 ],
                 details: detailRows
             )

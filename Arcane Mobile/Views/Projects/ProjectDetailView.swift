@@ -1,6 +1,6 @@
+import Arcane
 import SwiftUI
 import UniformTypeIdentifiers
-import Arcane
 
 struct ProjectDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -64,69 +64,71 @@ struct ProjectDetailView: View {
 
     var body: some View {
         workspace
-        .resourceActionsToolbar(
-            primary: actionPrimary,
-            secondary: actionSecondary,
-            overflow: actionOverflow,
-            runningItemID: runningActionID,
-            isDisabled: isActioning,
-            resourceName: currentProject.displayName
-        )
-        .navigationTitle(currentProject.displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await loadProject() }
-        .task { await loadServices() }
-        .task { await loadProjectFiles() }
-        .refreshable {
-            await loadProject(refresh: true)
-            await loadServices(refresh: true)
-            await loadProjectFiles(refresh: true)
-        }
-        .onChange(of: containerMutationVersion) { _, _ in
-            Task { await loadServices(refresh: true) }
-        }
-        .onChange(of: projectMutationVersion) { _, _ in
-            Task {
-                await loadProject(refresh: true)
+            .resourceActionsToolbar(
+                primary: actionPrimary,
+                secondary: actionSecondary,
+                overflow: actionOverflow,
+                runningItemID: runningActionID,
+                isDisabled: isActioning,
+                resourceName: currentProject.displayName
+            )
+            .navigationTitle(currentProject.displayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .task { await loadProject() }
+            .task { await loadServices() }
+            .task { await loadProjectFiles() }
+            .refreshable {
+                await loadProject()
                 await loadServices(refresh: true)
                 await loadProjectFiles(refresh: true)
             }
-        }
-        .navigationDestination(for: ContainerSummary.self) { container in
-            ContainerDetailView(container: container, environmentID: environmentID)
-        }
-        .sheet(item: $filesSheet) { request in
-            NavigationStack {
-                ProjectFilesWorkspaceView(
-                    project: currentProject,
-                    environmentID: environmentID,
-                    initialSelection: request.selection
-                )
+            .onChange(of: containerMutationVersion) { _, _ in
+                Task { await loadServices(refresh: true) }
             }
-        }
-        .sheet(isPresented: $showDeployOptions) {
-            DeployOptionsSheet(
-                serverOrigin: manager.parsedServerURL.flatMap(
-                    AppGroup.canonicalServerOrigin(for:)
-                ) ?? manager.serverURL,
-                environmentID: environmentID
-            ) { options in
-                startStreamingAction(kind: .up, deployOptions: options)
-            }
-        }
-        .deleteConfirmation(isPresented: $showDeleteConfirm, config: DeleteConfirmationConfig(
-            title: "Delete Project",
-            message: "Remove the project from Arcane, or also remove its files from disk.",
-            icon: "trash",
-            actions: [
-                DeleteConfirmationAction(title: "Delete") {
-                    Task { await deleteProject(removeFiles: false) }
-                },
-                DeleteConfirmationAction(title: "Delete and Remove Files") {
-                    Task { await deleteProject(removeFiles: true) }
+            .onChange(of: projectMutationVersion) { _, _ in
+                Task {
+                    await loadProject()
+                    await loadServices(refresh: true)
+                    await loadProjectFiles(refresh: true)
                 }
-            ]
-        ))
+            }
+            .navigationDestination(for: ContainerSummary.self) { container in
+                ContainerDetailView(container: container, environmentID: environmentID)
+            }
+            .sheet(item: $filesSheet) { request in
+                NavigationStack {
+                    ProjectFilesWorkspaceView(
+                        project: currentProject,
+                        environmentID: environmentID,
+                        initialSelection: request.selection
+                    )
+                }
+            }
+            .sheet(isPresented: $showDeployOptions) {
+                DeployOptionsSheet(
+                    serverOrigin: manager.parsedServerURL.flatMap(
+                        AppGroup.canonicalServerOrigin(for:)
+                    ) ?? manager.serverURL,
+                    environmentID: environmentID
+                ) { options in
+                    startStreamingAction(kind: .up, deployOptions: options)
+                }
+            }
+            .deleteConfirmation(
+                isPresented: $showDeleteConfirm,
+                config: DeleteConfirmationConfig(
+                    title: "Delete Project",
+                    message: "Remove the project from Arcane, or also remove its files from disk.",
+                    icon: "trash",
+                    actions: [
+                        DeleteConfirmationAction(title: "Delete") {
+                            Task { await deleteProject(removeFiles: false) }
+                        },
+                        DeleteConfirmationAction(title: "Delete and Remove Files") {
+                            Task { await deleteProject(removeFiles: true) }
+                        },
+                    ]
+                ))
     }
 
     @ViewBuilder
@@ -246,9 +248,12 @@ struct ProjectDetailView: View {
                     Label {
                         VStack(alignment: .leading) {
                             Text(currentProject.displayName).font(.headline)
-                            Text(verbatim: "\(currentProject.serviceCount) services · \(currentProject.runningCount) running")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                verbatim:
+                                    "\(currentProject.serviceCount) services · \(currentProject.runningCount) running"
+                            )
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                         }
                     } icon: {
                         CachedAsyncImage(url: currentProject.themedIconUrl(for: colorScheme), size: 28) {
@@ -278,10 +283,11 @@ struct ProjectDetailView: View {
         var seen = Set<URL>()
         return (currentProject.urls ?? []).compactMap { value in
             guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  let scheme = url.scheme?.lowercased(),
-                  ["http", "https"].contains(scheme),
-                  let host = url.host, !host.isEmpty,
-                  seen.insert(url).inserted else { return nil }
+                let scheme = url.scheme?.lowercased(),
+                ["http", "https"].contains(scheme),
+                let host = url.host, !host.isEmpty,
+                seen.insert(url).inserted
+            else { return nil }
             return url
         }
     }
@@ -413,14 +419,16 @@ struct ProjectDetailView: View {
 
     private var projectComposeFileName: String {
         guard let value = currentProject.composeFileName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else {
+            !value.isEmpty
+        else {
             return "compose.yml"
         }
         return value
     }
 
     private var fileBrowserEntries: [ManagedProjectFileEntry] {
-        ProjectFileWorkspaceHelpers.apply(projectFiles: fileBrowserFiles ?? currentProject.projectFiles ?? [], changes: [])
+        ProjectFileWorkspaceHelpers.apply(
+            projectFiles: fileBrowserFiles ?? currentProject.projectFiles ?? [], changes: [])
     }
 
     /// Only compose override files earn a pinned row next to compose/.env;
@@ -430,7 +438,7 @@ struct ProjectDetailView: View {
             "compose.override.yaml",
             "compose.override.yml",
             "docker-compose.override.yaml",
-            "docker-compose.override.yml"
+            "docker-compose.override.yml",
         ]
         return fileBrowserEntries.filter { entry in
             ProjectFileWorkspaceHelpers.parentPath(entry.relativePath).isEmpty
@@ -448,7 +456,8 @@ struct ProjectDetailView: View {
     /// State-aware centre action: Deploy when stopped, Stop when running.
     private var actionPrimary: ActionButtonItem {
         if isRunning {
-            return ActionButtonItem(id: "stop", title: "Stop", systemImage: "stop.fill", tint: .red, role: .destructive) {
+            return ActionButtonItem(id: "stop", title: "Stop", systemImage: "stop.fill", tint: .red, role: .destructive)
+            {
                 Task { await performSimpleAction(suffix: "down", label: "Stopping", actionID: "stop") }
             }
         } else {
@@ -461,54 +470,68 @@ struct ProjectDetailView: View {
     private var actionSecondary: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
         if isRunning {
-            items.append(ActionButtonItem(id: "restart", title: "Restart", systemImage: "arrow.clockwise", tint: .orange) {
-                Task { await performSimpleAction(suffix: "restart", label: "Restarting", actionID: "restart") }
-            })
+            items.append(
+                ActionButtonItem(id: "restart", title: "Restart", systemImage: "arrow.clockwise", tint: .orange) {
+                    Task { await performSimpleAction(suffix: "restart", label: "Restarting", actionID: "restart") }
+                })
         }
-        items.append(ActionButtonItem(id: "redeploy", title: "Redeploy", systemImage: "arrow.triangle.2.circlepath", tint: .purple) {
-            startStreamingAction(kind: .redeploy)
-        })
-        items.append(ActionButtonItem(id: "pull", title: "Pull", systemImage: "arrow.down", tint: .accentColor) {
-            startStreamingAction(kind: .pull)
-        })
+        items.append(
+            ActionButtonItem(
+                id: "redeploy", title: "Redeploy", systemImage: "arrow.triangle.2.circlepath", tint: .purple
+            ) {
+                startStreamingAction(kind: .redeploy)
+            })
+        items.append(
+            ActionButtonItem(id: "pull", title: "Pull", systemImage: "arrow.down", tint: .accentColor) {
+                startStreamingAction(kind: .pull)
+            })
         return items
     }
 
     private var actionOverflow: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
         if manager.supportsPost26MobileFeatures {
-            items.append(ActionButtonItem(
-                id: "deploy-options",
-                title: "Deploy Options",
-                systemImage: "slider.horizontal.3",
-                tint: .green
-            ) {
-                showDeployOptions = true
-            })
+            items.append(
+                ActionButtonItem(
+                    id: "deploy-options",
+                    title: "Deploy Options",
+                    systemImage: "slider.horizontal.3",
+                    tint: .green
+                ) {
+                    showDeployOptions = true
+                })
         }
         if hasBuild {
-            items.append(ActionButtonItem(id: "build", title: "Build", systemImage: "hammer.fill", tint: .indigo) {
-                startStreamingAction(kind: .build)
-            })
+            items.append(
+                ActionButtonItem(id: "build", title: "Build", systemImage: "hammer.fill", tint: .indigo) {
+                    startStreamingAction(kind: .build)
+                })
         }
-        items.append(ActionButtonItem(id: "logs", title: "Logs", systemImage: "doc.text.fill", tint: .secondary) {
-            workspaceSection = .logs
-        })
+        items.append(
+            ActionButtonItem(id: "logs", title: "Logs", systemImage: "doc.text.fill", tint: .secondary) {
+                workspaceSection = .logs
+            })
         if currentProject.isArchived {
-            items.append(ActionButtonItem(id: "unarchive", title: "Unarchive Project", systemImage: "tray.and.arrow.up", tint: .accentColor) {
-                Task { await unarchiveProject() }
-            })
+            items.append(
+                ActionButtonItem(
+                    id: "unarchive", title: "Unarchive Project", systemImage: "tray.and.arrow.up", tint: .accentColor
+                ) {
+                    Task { await unarchiveProject() }
+                })
         } else {
-            items.append(ActionButtonItem(id: "archive", title: "Archive Project", systemImage: "archivebox", tint: .accentColor) {
-                Task { await archiveProject() }
-            })
+            items.append(
+                ActionButtonItem(id: "archive", title: "Archive Project", systemImage: "archivebox", tint: .accentColor)
+                {
+                    Task { await archiveProject() }
+                })
         }
         // `role: nil` + red tint: keeps the view's bespoke two-option delete
         // alert (Delete / Delete and Remove Files) while still reading as
         // destructive in the overflow menu.
-        items.append(ActionButtonItem(id: "delete", title: "Delete Project", systemImage: "trash", tint: .red) {
-            showDeleteConfirm = true
-        })
+        items.append(
+            ActionButtonItem(id: "delete", title: "Delete Project", systemImage: "trash", tint: .red) {
+                showDeleteConfirm = true
+            })
         return items
     }
 
@@ -552,7 +575,7 @@ struct ProjectDetailView: View {
             actionStatus = "Done."
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
-            await loadProject(refresh: true)
+            await loadProject()
             await loadServices(refresh: true)
             showToast(.success("Action complete"))
             ReviewPrompter.shared.recordSuccess()
@@ -620,7 +643,7 @@ struct ProjectDetailView: View {
         }
     }
 
-    private func loadProject(refresh: Bool = false) async {
+    private func loadProject() async {
         guard let client = manager.client else { return }
         if refreshedProject == nil { isLoading = true }
         defer { isLoading = false }
@@ -749,7 +772,9 @@ struct ProjectDetailView: View {
                             Button("Restart", systemImage: "arrow.clockwise") { onAction(.restart) }
                         }
                         if manager.permissions.has(Permission.Containers.delete, in: environmentID) {
-                            Button(role: .destructive) { showRemoveConfirmation = true } label: {
+                            Button(role: .destructive) {
+                                showRemoveConfirmation = true
+                            } label: {
                                 DestructiveLabel(text: "Remove")
                             }
                             .tint(.red)
@@ -850,12 +875,14 @@ struct ProjectDetailView: View {
 
     private func invalidateProjectCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "projects") + "*",
-            client.rest.environmentPath(environmentID, "projects/*"),
-            client.rest.environmentPath(environmentID, "containers"),
-            client.rest.environmentPath(environmentID, "containers/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "projects") + "*",
+                client.rest.environmentPath(environmentID, "projects/*"),
+                client.rest.environmentPath(environmentID, "containers"),
+                client.rest.environmentPath(environmentID, "containers/*"),
+            ])
     }
 }
 
@@ -896,10 +923,11 @@ struct DeployOptionsSheet: View {
             serverOrigin: serverOrigin,
             environmentID: environmentID
         )
-        _draft = State(initialValue: ProjectDeployOptionsDraft(
-            pullPolicy: stored.pullPolicy,
-            forceRecreate: stored.forceRecreate
-        ))
+        _draft = State(
+            initialValue: ProjectDeployOptionsDraft(
+                pullPolicy: stored.pullPolicy,
+                forceRecreate: stored.forceRecreate
+            ))
     }
 
     var body: some View {
@@ -1041,7 +1069,8 @@ struct CreateProjectView: View {
     private var baselineSnapshot: ProjectDraftSnapshot { .init(compose: baselineCompose, environment: baselineEnv) }
 
     private var hasDraftChanges: Bool {
-        name != (prefilledName ?? "") || composeContent != (prefilledCompose ?? Self.defaultCompose) || envContent != (prefilledEnv ?? "")
+        name != (prefilledName ?? "") || composeContent != (prefilledCompose ?? Self.defaultCompose)
+            || envContent != (prefilledEnv ?? "")
     }
     private var sessionIsCurrent: Bool {
         sessionIdentity == manager.cacheSessionIdentity && manager.acceptsEnvironmentContext(environmentID)
@@ -1049,12 +1078,14 @@ struct CreateProjectView: View {
 
     private static let defaultCompose = "services:\n  app:\n    image: \n    ports:\n      - \"8080:80\"\n"
 
-    init(environmentID: EnvironmentID,
-         prefilledName: String? = nil,
-         prefilledCompose: String? = nil,
-         prefilledEnv: String? = nil,
-         templateLabel: String? = nil,
-         onSuccess: @escaping () async -> Void) {
+    init(
+        environmentID: EnvironmentID,
+        prefilledName: String? = nil,
+        prefilledCompose: String? = nil,
+        prefilledEnv: String? = nil,
+        templateLabel: String? = nil,
+        onSuccess: @escaping () async -> Void
+    ) {
         self.environmentID = environmentID
         self.prefilledName = prefilledName
         self.prefilledCompose = prefilledCompose
@@ -1110,15 +1141,20 @@ struct CreateProjectView: View {
                             Text("No templates available")
                                 .foregroundStyle(.secondary)
                         } else {
-                            Picker("Use Template", selection: Binding(get: { selectedTemplateID }, set: { value in
-                                if previewEnabled && draftSnapshot != baselineSnapshot {
-                                    pendingTemplateID = value
-                                    showReplaceTemplate = true
-                                } else {
-                                    selectedTemplateID = value
-                                    Task { await applyTemplate(id: value) }
-                                }
-                            })) {
+                            Picker(
+                                "Use Template",
+                                selection: Binding(
+                                    get: { selectedTemplateID },
+                                    set: { value in
+                                        if previewEnabled && draftSnapshot != baselineSnapshot {
+                                            pendingTemplateID = value
+                                            showReplaceTemplate = true
+                                        } else {
+                                            selectedTemplateID = value
+                                            Task { await applyTemplate(id: value) }
+                                        }
+                                    })
+                            ) {
                                 Text("Blank").tag("")
                                 ForEach(templates) { template in
                                     Text(template.name).tag(template.id)
@@ -1144,29 +1180,29 @@ struct CreateProjectView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 } else {
-                Section {
-                    CodeEditorView(text: $composeContent, language: .yaml)
-                        .frame(height: 220)
-                        .listRowInsets(EdgeInsets())
-                } header: {
-                    HStack {
-                        Text("Compose File")
-                        Spacer()
-                        Button {
-                            showRender = true
-                        } label: {
-                            Label("Variables", systemImage: "curlybraces")
-                                .font(.caption)
+                    Section {
+                        CodeEditorView(text: $composeContent, language: .yaml)
+                            .frame(height: 220)
+                            .listRowInsets(EdgeInsets())
+                    } header: {
+                        HStack {
+                            Text("Compose File")
+                            Spacer()
+                            Button {
+                                showRender = true
+                            } label: {
+                                Label("Variables", systemImage: "curlybraces")
+                                    .font(.caption)
+                            }
+                            .disabled(composeContent.isEmpty)
                         }
-                        .disabled(composeContent.isEmpty)
                     }
-                }
 
-                Section(".env") {
-                    CodeEditorView(text: $envContent, language: .env)
-                        .frame(height: 140)
-                        .listRowInsets(EdgeInsets())
-                }
+                    Section(".env") {
+                        CodeEditorView(text: $envContent, language: .env)
+                            .frame(height: 140)
+                            .listRowInsets(EdgeInsets())
+                    }
 
                 }
                 if let error = errorMessage {
@@ -1176,34 +1212,58 @@ struct CreateProjectView: View {
             .navigationTitle("Create Project")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { if previewEnabled && hasDraftChanges { showDiscard = true } else { dismiss() } } }
+                AppToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { if previewEnabled && hasDraftChanges { showDiscard = true } else { dismiss() } }
+                }
                 AppToolbarItem(placement: .confirmationAction) {
                     if isLoading {
                         ProgressView().scaleEffect(0.8)
                     } else {
-                        Button(previewEnabled ? "Review" : "Create") { if previewEnabled { showReview = true } else { Task { await createProject() } } }
-                            .disabled(name.isEmpty || !sessionIsCurrent || !manager.permissions.has(Permission.Projects.create, in: environmentID))
+                        Button(previewEnabled ? "Review" : "Create") {
+                            if previewEnabled { showReview = true } else { Task { await createProject() } }
+                        }
+                        .disabled(
+                            name.isEmpty || !sessionIsCurrent
+                                || !manager.permissions.has(Permission.Projects.create, in: environmentID))
                     }
                 }
             }
             .disabled(isLoading)
             .interactiveDismissDisabled(previewEnabled && hasDraftChanges)
-            .deleteConfirmation(isPresented: $showDiscard, title: "Discard project draft?", confirmTitle: "Discard", dismissOnConfirm: false) {
+            .deleteConfirmation(
+                isPresented: $showDiscard, title: "Discard project draft?", confirmTitle: "Discard",
+                dismissOnConfirm: false
+            ) {
                 dismiss()
             }
-            .deleteConfirmation(isPresented: $showReplaceTemplate, title: "Replace Compose and environment drafts?", confirmTitle: "Replace", dismissOnConfirm: false) {
-                if let id = pendingTemplateID { selectedTemplateID = id; Task { await applyTemplate(id: id) } }
+            .deleteConfirmation(
+                isPresented: $showReplaceTemplate, title: "Replace Compose and environment drafts?",
+                confirmTitle: "Replace", dismissOnConfirm: false
+            ) {
+                if let id = pendingTemplateID {
+                    selectedTemplateID = id
+                    Task { await applyTemplate(id: id) }
+                }
             }
-            .sheet(isPresented: $showReview, onDismiss: {
-                guard let deploy = reviewedDeploy else { return }
-                reviewedDeploy = nil
-                if deploy && manager.supportsPost26MobileFeatures { showCreateDeployOptions = true }
-                else { Task { await createProject(deploy: deploy) } }
-            }) {
-                ProjectDraftReviewView(originalCompose: "", compose: composeContent, environmentChanged: !envContent.isEmpty,
-                    saveTitle: "Create Project", canDeploy: manager.permissions.has(Permission.Projects.deploy, in: environmentID)) { deploy in
-                        reviewedDeploy = deploy
+            .sheet(
+                isPresented: $showReview,
+                onDismiss: {
+                    guard let deploy = reviewedDeploy else { return }
+                    reviewedDeploy = nil
+                    if deploy && manager.supportsPost26MobileFeatures {
+                        showCreateDeployOptions = true
+                    } else {
+                        Task { await createProject(deploy: deploy) }
                     }
+                }
+            ) {
+                ProjectDraftReviewView(
+                    originalCompose: "", compose: composeContent, environmentChanged: !envContent.isEmpty,
+                    saveTitle: "Create Project",
+                    canDeploy: manager.permissions.has(Permission.Projects.deploy, in: environmentID)
+                ) { deploy in
+                    reviewedDeploy = deploy
+                }
             }
             .sheet(isPresented: $showCreateDeployOptions) {
                 DeployOptionsSheet(serverOrigin: manager.serverOrigin ?? "", environmentID: environmentID) { options in
@@ -1214,12 +1274,17 @@ struct CreateProjectView: View {
             .sheet(isPresented: $showDockerRun) {
                 NavigationStack {
                     Form {
-                        Section("Docker Run Command") { TextEditor(text: $dockerRun).frame(minHeight: 180).font(.system(.body, design: .monospaced)) }
+                        Section("Docker Run Command") {
+                            TextEditor(text: $dockerRun).frame(minHeight: 180).font(.system(.body, design: .monospaced))
+                        }
                         Text("Conversion replaces the Compose and environment drafts after you confirm.")
-                        Button("Convert and Replace Draft") { Task { await convertDockerRun() } }.disabled(dockerRun.isEmpty || isLoading)
+                        Button("Convert and Replace Draft") { Task { await convertDockerRun() } }.disabled(
+                            dockerRun.isEmpty || isLoading)
                     }
                     .navigationTitle("Import Command")
-                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showDockerRun = false } } }
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showDockerRun = false } }
+                    }
                 }
             }
             .fileImporter(isPresented: $showImport, allowedContentTypes: [.item]) { result in
@@ -1230,17 +1295,24 @@ struct CreateProjectView: View {
                     defer { if access { url.stopAccessingSecurityScopedResource() } }
                     let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
                     guard size <= RemoteDataLimits.maximumTemplateBytes else {
-                        showToast(.error("The YAML file exceeds the template size limit.")); return
+                        showToast(.error("The YAML file exceeds the template size limit."))
+                        return
                     }
                     let data = try Data(contentsOf: url, options: .mappedIfSafe)
-                    guard data.count <= RemoteDataLimits.maximumTemplateBytes, let text = String(data: data, encoding: .utf8) else {
-                        showToast(.error("Choose a UTF-8 YAML file within the template size limit.")); return
+                    guard data.count <= RemoteDataLimits.maximumTemplateBytes,
+                        let text = String(data: data, encoding: .utf8)
+                    else {
+                        showToast(.error("Choose a UTF-8 YAML file within the template size limit."))
+                        return
                     }
                     importedCompose = text
                     showReplaceImport = true
                 } catch { showToast(.error(friendlyErrorMessage(error))) }
             }
-            .deleteConfirmation(isPresented: $showReplaceImport, title: "Replace the Compose draft?", confirmTitle: "Replace", dismissOnConfirm: false) {
+            .deleteConfirmation(
+                isPresented: $showReplaceImport, title: "Replace the Compose draft?", confirmTitle: "Replace",
+                dismissOnConfirm: false
+            ) {
                 if sessionIsCurrent { composeContent = importedCompose }
             }
             .sheet(isPresented: $showRender) {
@@ -1276,11 +1348,14 @@ struct CreateProjectView: View {
         let session = manager.cacheSessionIdentity
         // Optional on older servers; retain the local starter when unavailable.
         guard let defaults = try? await client.templates.getDefaults(), sessionIsCurrent,
-              draftSnapshot.canApplyLoadedContent(requestedFrom: requestedFrom, session: session, currentSession: manager.cacheSessionIdentity),
-              selectedTemplateID.isEmpty else { return }
+            draftSnapshot.canApplyLoadedContent(
+                requestedFrom: requestedFrom, session: session, currentSession: manager.cacheSessionIdentity),
+            selectedTemplateID.isEmpty
+        else { return }
         if !defaults.composeTemplate.isEmpty { composeContent = defaults.composeTemplate }
         envContent = defaults.envTemplate
-        baselineCompose = composeContent; baselineEnv = envContent
+        baselineCompose = composeContent
+        baselineEnv = envContent
     }
 
     private func loadTemplates() async {
@@ -1299,8 +1374,10 @@ struct CreateProjectView: View {
     private func applyTemplate(id: String) async {
         guard sessionIsCurrent else { return }
         if id.isEmpty {
-            composeContent = Self.defaultCompose; envContent = ""
-            baselineCompose = composeContent; baselineEnv = envContent
+            composeContent = Self.defaultCompose
+            envContent = ""
+            baselineCompose = composeContent
+            baselineEnv = envContent
             return
         }
         guard canBrowseTemplates, let client = manager.client else { return }
@@ -1317,7 +1394,8 @@ struct CreateProjectView: View {
             guard sessionIsCurrent else { return }
             composeContent = content.content
             envContent = content.envContent
-            baselineCompose = composeContent; baselineEnv = envContent
+            baselineCompose = composeContent
+            baselineEnv = envContent
             if name.isEmpty {
                 name = content.template.name
                     .lowercased()
@@ -1331,8 +1409,12 @@ struct CreateProjectView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let result = try await client.system.convertDockerRun(.init(dockerRunCommand: dockerRun), envID: environmentID)
-            guard sessionIsCurrent, result.success else { showToast(.error("Command conversion failed.")); return }
+            let result = try await client.system.convertDockerRun(
+                .init(dockerRunCommand: dockerRun), envID: environmentID)
+            guard sessionIsCurrent, result.success else {
+                showToast(.error("Command conversion failed."))
+                return
+            }
             composeContent = result.dockerCompose
             envContent = result.envVars
             if name.isEmpty { name = result.serviceName }
@@ -1341,33 +1423,40 @@ struct CreateProjectView: View {
     }
 
     private func createProject(deploy: Bool = false) async {
-        guard sessionIsCurrent, manager.permissions.has(Permission.Projects.create, in: environmentID), let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+        guard sessionIsCurrent, manager.permissions.has(Permission.Projects.create, in: environmentID),
+            let client = manager.client
+        else { return }
+        isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             if previewEnabled { try draftSnapshot.validateSyntax() }
             let body: [String: JSONValue] = [
                 "name": JSONValue(name),
                 "composeContent": JSONValue(composeContent),
-                "envContent": JSONValue(envContent)
+                "envContent": JSONValue(envContent),
             ]
             let path = client.rest.environmentPath(environmentID, "projects")
             let created: ProjectDetails = try await client.rest.post(path, body: body)
             guard sessionIsCurrent else { return }
             if deploy && manager.permissions.has(Permission.Projects.deploy, in: environmentID) {
-                let started = DeploymentActivityStore.shared.start(kind: .up, envID: environmentID, targetID: created.id,
+                let started = DeploymentActivityStore.shared.start(
+                    kind: .up, envID: environmentID, targetID: created.id,
                     targetName: created.displayName, environmentName: manager.activeEnvironmentName,
                     manager: manager, mutationStore: mutationStore, deployOptions: requestedDeployOptions)
                 if !started { showToast(.info("Project created. Open the project to retry deployment.")) }
             }
             if let cached = manager.cached {
-                await cached.invalidate(envID: environmentID, paths: [
-                    client.rest.environmentPath(environmentID, "projects") + "*",
-                    client.rest.environmentPath(environmentID, "projects/*")
-                ])
+                await cached.invalidate(
+                    envID: environmentID,
+                    paths: [
+                        client.rest.environmentPath(environmentID, "projects") + "*",
+                        client.rest.environmentPath(environmentID, "projects/*"),
+                    ])
             }
             mutationStore.markChanged(kind: .projects, envID: environmentID)
-            await onSuccess(); dismiss()
+            await onSuccess()
+            dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }

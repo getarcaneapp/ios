@@ -21,7 +21,10 @@ private actor SessionGate {
         return false
     }
 
-    func release() { continuation?.resume(); continuation = nil }
+    func release() {
+        continuation?.resume()
+        continuation = nil
+    }
 }
 
 private actor SuspendedCredentialStore: TokenStore {
@@ -64,10 +67,14 @@ struct CredentialLifecycleTests {
         let pending = Task { try await persistence.save(old, to: store, lease: oldLease) { bindings.record("old") } }
         #expect(await gate.waitUntilStarted())
         oldLease.retire()
-        let replacement = Task { try await persistence.save(next, to: store, lease: nextLease) { bindings.record("next") } }
+        let replacement = Task {
+            try await persistence.save(next, to: store, lease: nextLease) { bindings.record("next") }
+        }
         await gate.release()
-        do { try await pending.value; Issue.record("Retired authentication persisted") }
-        catch is CancellationError {}
+        do {
+            try await pending.value
+            Issue.record("Retired authentication persisted")
+        } catch is CancellationError {}
         try await replacement.value
         #expect(try await store.loadTokens() == next)
         #expect(bindings.recorded == ["next"])
@@ -75,7 +82,8 @@ struct CredentialLifecycleTests {
 
     @Test func retiredLogoutCannotClearReplacementCredentials() async throws {
         let persistence = CredentialPersistenceCoordinator()
-        let store = InMemoryTokenStore(tokens: .init(accessToken: "next", refreshToken: "next", expiresAt: .distantFuture))
+        let store = InMemoryTokenStore(
+            tokens: .init(accessToken: "next", refreshToken: "next", expiresAt: .distantFuture))
         let lease = CredentialLease()
         lease.retire()
         let bindings = BindingRecorder()
@@ -108,7 +116,9 @@ struct CredentialLifecycleTests {
         #expect(AnyJSONValue.number(Double(Int64.min)).displayString == String(Int64.min))
         #expect(AnyJSONValue.number(42).displayString == "42")
         #expect(AnyJSONValue.number(1e30).displayString == "1e+30")
-        let info = DockerInfo(success: true, apiVersion: "", gitCommit: "", goVersion: "", os: "", arch: "", buildTime: "", info: ["Containers": .number(1e30), "Images": .number(4.9)])
+        let info = DockerInfo(
+            success: true, apiVersion: "", gitCommit: "", goVersion: "", os: "", arch: "", buildTime: "",
+            info: ["Containers": .number(1e30), "Images": .number(4.9)])
         #expect(info.containers == 0)
         #expect(info.images == 4)
     }
@@ -126,7 +136,7 @@ private nonisolated final class LifecycleURLProtocol: URLProtocol, @unchecked Se
         configuration.httpAdditionalHeaders = ["Lifecycle-Test": key]
         return URLSession(configuration: configuration)
     }
-    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canInit(with _: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     private var loadingTask: Task<Void, Never>?
     override func startLoading() {
@@ -143,7 +153,10 @@ private nonisolated final class LifecycleURLProtocol: URLProtocol, @unchecked Se
             } catch { client?.urlProtocol(self, didFailWithError: error) }
         }
     }
-    override func stopLoading() { loadingTask?.cancel(); loadingTask = nil }
+    override func stopLoading() {
+        loadingTask?.cancel()
+        loadingTask = nil
+    }
 }
 
 @Suite("Authentication session ownership", .serialized)
@@ -152,11 +165,13 @@ struct SessionLifecycleTests {
     @Test func failedRecoveryCodeRetainsTheMFAChallengeForRetry() async throws {
         let savedURL = UserDefaults.standard.string(forKey: "arcane.serverURL")
         defer { UserDefaults.standard.set(savedURL, forKey: "arcane.serverURL") }
-        let manager = ArcaneClientManager(serverURL: "https://localhost", sessionFactory: { _ in
-            LifecycleURLProtocol.session { _ in
-                Data(#"{"success":false,"data":null,"error":"Invalid recovery code"}"#.utf8)
-            }
-        }, tokenStoreFactory: { _ in InMemoryTokenStore() })
+        let manager = ArcaneClientManager(
+            serverURL: "https://localhost",
+            sessionFactory: { _ in
+                LifecycleURLProtocol.session { _ in
+                    Data(#"{"success":false,"data":null,"error":"Invalid recovery code"}"#.utf8)
+                }
+            }, tokenStoreFactory: { _ in InMemoryTokenStore() })
         let challenge = MFAChallenge(transactionId: "transaction", expiresAt: .distantFuture)
         manager.pendingMFAChallenge = challenge
         manager.authState = .login
@@ -169,28 +184,44 @@ struct SessionLifecycleTests {
     @Test func delayedPushStatusCannotRemoveTheNextServersBinding() async throws {
         let gate = SessionGate()
         let tokens = InMemoryTokenStore()
-        let login = LoginResponse(token: "old", refreshToken: "old", expiresAt: .distantFuture, user: User(id: "old-user", username: "old-user"))
-        let loginData = Data("{\"success\":true,\"data\":".utf8)
+        let login = LoginResponse(
+            token: "old", refreshToken: "old", expiresAt: .distantFuture,
+            user: User(id: "old-user", username: "old-user"))
+        let loginData =
+            Data("{\"success\":true,\"data\":".utf8)
             + (try ArcaneJSON.makeEncoder().encode(login)) + Data("}".utf8)
-        let versionData = try ArcaneJSON.makeEncoder().encode(VersionInfo(currentVersion: "v2.15.0", revision: "test", shortRevision: "test", goVersion: "test", enabledFeatures: ["mobile-push-v1"], displayVersion: "v2.15.0", isSemverVersion: true, updateAvailable: false))
+        let versionData = try ArcaneJSON.makeEncoder().encode(
+            VersionInfo(
+                currentVersion: "v2.15.0", revision: "test", shortRevision: "test", goVersion: "test",
+                enabledFeatures: ["mobile-push-v1"], displayVersion: "v2.15.0", isSemverVersion: true,
+                updateAvailable: false))
         let savedURL = UserDefaults.standard.string(forKey: "arcane.serverURL")
         defer { UserDefaults.standard.set(savedURL, forKey: "arcane.serverURL") }
-        let manager = ArcaneClientManager(serverURL: "https://localhost", sessionFactory: { _ in
-            LifecycleURLProtocol.session { request in
-                let path = request.url!.path
-                if path.hasSuffix("auth/login") { return loginData }
-                if path.hasSuffix("app-version") { return versionData }
-                if path.hasSuffix("apns/status") {
-                    await gate.suspend()
-                    return Data(#"{"success":true,"data":{"enabled":false,"relayUrl":"https://relay.example","devices":[]}}"#.utf8)
+        let manager = ArcaneClientManager(
+            serverURL: "https://localhost",
+            sessionFactory: { _ in
+                LifecycleURLProtocol.session { request in
+                    let path = request.url!.path
+                    if path.hasSuffix("auth/login") { return loginData }
+                    if path.hasSuffix("app-version") { return versionData }
+                    if path.hasSuffix("apns/status") {
+                        await gate.suspend()
+                        return Data(
+                            #"{"success":true,"data":{"enabled":false,"relayUrl":"https://relay.example","devices":[]}}"#
+                                .utf8)
+                    }
+                    return Data(#"{"success":true,"data":[]}"#.utf8)
                 }
-                return Data(#"{"success":true,"data":[]}"#.utf8)
-            }
-        }, tokenStoreFactory: { _ in tokens })
+            }, tokenStoreFactory: { _ in tokens })
         await manager.login(username: "old-user", password: "password")
         try #require(manager.supportsMobilePush)
         let nextOrigin = "https://127.0.0.1:443"
-        let coordinator = PushNotificationCoordinator(credentials: .init(relayURL: "https://relay.example", installationId: "installation", installationSecret: "test", deviceToken: "token", apnsEnvironment: "sandbox", bindings: [nextOrigin: .init(recipientId: "recipient", channelId: "channel", deviceId: "device")]), persistCredentials: { _ in })
+        let coordinator = PushNotificationCoordinator(
+            credentials: .init(
+                relayURL: "https://relay.example", installationId: "installation", installationSecret: "test",
+                deviceToken: "token", apnsEnvironment: "sandbox",
+                bindings: [nextOrigin: .init(recipientId: "recipient", channelId: "channel", deviceId: "device")]),
+            persistCredentials: { _ in })
         let pending = Task { await coordinator.refreshServerStatus(manager: manager) }
         defer { pending.cancel() }
         try #require(await gate.waitUntilStarted())
@@ -209,7 +240,10 @@ struct SessionLifecycleTests {
         }
         let origin = "https://localhost:443"
         let coordinator = PushNotificationCoordinator(
-            credentials: .init(relayURL: "https://relay.example", installationId: "installation", installationSecret: "test", deviceToken: "old", apnsEnvironment: "sandbox", bindings: [origin: .init(recipientId: "recipient", channelId: "channel", deviceId: "device")]),
+            credentials: .init(
+                relayURL: "https://relay.example", installationId: "installation", installationSecret: "test",
+                deviceToken: "old", apnsEnvironment: "sandbox",
+                bindings: [origin: .init(recipientId: "recipient", channelId: "channel", deviceId: "device")]),
             relaySession: session, persistCredentials: { _ in }
         )
         coordinator.didRegister(deviceToken: Data([1, 2]))
@@ -226,15 +260,18 @@ struct SessionLifecycleTests {
 
     @Test func delayedAvatarCannotReplaceTheNextServersAvatar() async throws {
         let gate = SessionGate()
-        let tokens = InMemoryTokenStore(tokens: .init(accessToken: "old", refreshToken: "old", expiresAt: .distantFuture))
+        let tokens = InMemoryTokenStore(
+            tokens: .init(accessToken: "old", refreshToken: "old", expiresAt: .distantFuture))
         let savedURL = UserDefaults.standard.string(forKey: "arcane.serverURL")
         defer { UserDefaults.standard.set(savedURL, forKey: "arcane.serverURL") }
-        let manager = ArcaneClientManager(serverURL: "https://localhost", sessionFactory: { _ in
-            LifecycleURLProtocol.session { request in
-                if request.url?.path.hasSuffix("avatar") == true { await gate.suspend() }
-                return Data("old avatar".utf8)
-            }
-        }, tokenStoreFactory: { _ in tokens })
+        let manager = ArcaneClientManager(
+            serverURL: "https://localhost",
+            sessionFactory: { _ in
+                LifecycleURLProtocol.session { request in
+                    if request.url?.path.hasSuffix("avatar") == true { await gate.suspend() }
+                    return Data("old avatar".utf8)
+                }
+            }, tokenStoreFactory: { _ in tokens })
         manager.currentUser = User(id: "old-user", username: "old-user")
         let pending = Task { await manager.refreshCurrentUserAvatar() }
         defer { pending.cancel() }
@@ -247,15 +284,20 @@ struct SessionLifecycleTests {
 
     @Test func retiredFleetLoadCannotPopulateTheReplacementStore() async throws {
         let gate = SessionGate()
-        let tokens = InMemoryTokenStore(tokens: .init(accessToken: "old", refreshToken: "old", expiresAt: .distantFuture))
+        let tokens = InMemoryTokenStore(
+            tokens: .init(accessToken: "old", refreshToken: "old", expiresAt: .distantFuture))
         let savedURL = UserDefaults.standard.string(forKey: "arcane.serverURL")
         defer { UserDefaults.standard.set(savedURL, forKey: "arcane.serverURL") }
-        let manager = ArcaneClientManager(serverURL: "https://localhost", sessionFactory: { _ in
-            LifecycleURLProtocol.session { request in
-                if request.url?.path.hasSuffix("environments") == true { await gate.suspend() }
-                return Data(#"{"success":true,"data":[{"id":"old-env","name":"Old","apiUrl":"","status":"online"}],"pagination":{"totalItems":1,"totalPages":1,"currentPage":1,"itemsPerPage":50}}"#.utf8)
-            }
-        }, tokenStoreFactory: { _ in tokens })
+        let manager = ArcaneClientManager(
+            serverURL: "https://localhost",
+            sessionFactory: { _ in
+                LifecycleURLProtocol.session { request in
+                    if request.url?.path.hasSuffix("environments") == true { await gate.suspend() }
+                    return Data(
+                        #"{"success":true,"data":[{"id":"old-env","name":"Old","apiUrl":"","status":"online"}],"pagination":{"totalItems":1,"totalPages":1,"currentPage":1,"itemsPerPage":50}}"#
+                            .utf8)
+                }
+            }, tokenStoreFactory: { _ in tokens })
         manager.currentUser = User(id: "old-user", username: "old-user")
         let fleet = FleetStore()
         let pending = Task { await fleet.load(manager: manager) }
@@ -274,23 +316,29 @@ struct SessionLifecycleTests {
     func switchingServerRetiresLoginAndBootstrap(_ delayedPath: String, logout: Bool) async throws {
         let gate = SessionGate()
         let tokens = InMemoryTokenStore()
-        let response = LoginResponse(token: "old", refreshToken: "old-refresh", expiresAt: .distantFuture, user: User(id: "old-user", username: "old-user", roleAssignments: []))
-        let loginData = Data("{\"success\":true,\"data\":".utf8)
+        let response = LoginResponse(
+            token: "old", refreshToken: "old-refresh", expiresAt: .distantFuture,
+            user: User(id: "old-user", username: "old-user", roleAssignments: []))
+        let loginData =
+            Data("{\"success\":true,\"data\":".utf8)
             + (try ArcaneJSON.makeEncoder().encode(response)) + Data("}".utf8)
         let savedURL = UserDefaults.standard.string(forKey: "arcane.serverURL")
         defer { UserDefaults.standard.set(savedURL, forKey: "arcane.serverURL") }
-        let manager = ArcaneClientManager(serverURL: "https://localhost", sessionFactory: { _ in
-            LifecycleURLProtocol.session { request in
-                if request.url?.path.hasSuffix(delayedPath) == true { await gate.suspend() }
-                if request.url?.path.hasSuffix("auth/login") == true { return loginData }
-                return Data(#"{"success":true,"data":[]}"#.utf8)
-            }
-        }, tokenStoreFactory: { _ in tokens })
+        let manager = ArcaneClientManager(
+            serverURL: "https://localhost",
+            sessionFactory: { _ in
+                LifecycleURLProtocol.session { request in
+                    if request.url?.path.hasSuffix(delayedPath) == true { await gate.suspend() }
+                    if request.url?.path.hasSuffix("auth/login") == true { return loginData }
+                    return Data(#"{"success":true,"data":[]}"#.utf8)
+                }
+            }, tokenStoreFactory: { _ in tokens })
         let pending = Task { await manager.login(username: "old-user", password: "password") }
         defer { pending.cancel() }
-        try #require(await gate.waitUntilStarted(), "Authentication did not reach \(delayedPath): \(manager.errorMessage ?? "no error")")
-        if logout { await manager.logout() }
-        else { manager.configure(serverURL: "https://127.0.0.1") }
+        try #require(
+            await gate.waitUntilStarted(),
+            "Authentication did not reach \(delayedPath): \(manager.errorMessage ?? "no error")")
+        if logout { await manager.logout() } else { manager.configure(serverURL: "https://127.0.0.1") }
         let nextClient = manager.client?.transport
         await gate.release()
         await pending.value
@@ -307,7 +355,9 @@ struct SessionLifecycleTests {
 struct SDKMigrationIntegrationTests {
     @Test @MainActor
     func proxyAndCredentialErrorsHaveDistinctMessages() {
-        #expect(friendlyErrorMessage(ArcaneError.proxyAuthenticationRequired) == "Sign in to the proxy protecting this server")
+        #expect(
+            friendlyErrorMessage(ArcaneError.proxyAuthenticationRequired)
+                == "Sign in to the proxy protecting this server")
         #expect(friendlyErrorMessage(ArcaneError.authenticationRejected) == "The server rejected authentication")
     }
 
@@ -320,15 +370,19 @@ struct SDKMigrationIntegrationTests {
                 if cleanupFails { throw URLError(.cannotConnectToHost) }
                 return Data()
             }
-            return Data(#"{"success":true,"data":{"id":"session","kind":"volume-backup","filename":"backup.tar","size":5,"chunkSize":3,"totalChunks":2,"receivedChunks":[],"complete":false,"createdAt":"2026-09-04T12:00:00Z"}}"#.utf8)
+            return Data(
+                #"{"success":true,"data":{"id":"session","kind":"volume-backup","filename":"backup.tar","size":5,"chunkSize":3,"totalChunks":2,"receivedChunks":[],"complete":false,"createdAt":"2026-09-04T12:00:00Z"}}"#
+                    .utf8)
         }
         defer { session.invalidateAndCancel() }
-        let client = ArcaneClient(configuration: .init(
-            baseURL: URL(string: "https://upload.example.test")!,
-            tokenStore: InMemoryTokenStore(tokens: .init(accessToken: "accepted", refreshToken: "refresh", expiresAt: .distantFuture)),
-            urlSession: session,
-            retryPolicy: .init(maxAttempts: 1, baseBackoff: .zero, maxBackoff: .zero)
-        ))
+        let client = ArcaneClient(
+            configuration: .init(
+                baseURL: URL(string: "https://upload.example.test")!,
+                tokenStore: InMemoryTokenStore(
+                    tokens: .init(accessToken: "accepted", refreshToken: "refresh", expiresAt: .distantFuture)),
+                urlSession: session,
+                retryPolicy: .init(maxAttempts: 1, baseBackoff: .zero, maxBackoff: .zero)
+            ))
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data([0, 1, 2, 3, 4]).write(to: file)
         defer { try? FileManager.default.removeItem(at: file) }

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct RunEndpointButton: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager

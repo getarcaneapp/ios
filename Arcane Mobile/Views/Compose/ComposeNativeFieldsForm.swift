@@ -15,7 +15,10 @@ struct ComposeNativeFieldsForm: View {
     @State private var adding = false
     @State private var error: String?
 
-    init(text: Binding<String>, path: [String], title: String, readOnly: Bool, excluding: Set<String> = [], schemaPath: [ComposeFieldPathComponent]? = nil) {
+    init(
+        text: Binding<String>, path: [String], title: String, readOnly: Bool, excluding: Set<String> = [],
+        schemaPath: [ComposeFieldPathComponent]? = nil
+    ) {
         _text = text
         fieldPath = path.map(ComposeFieldPathComponent.key)
         self.title = title
@@ -24,7 +27,10 @@ struct ComposeNativeFieldsForm: View {
         self.schemaPath = schemaPath ?? fieldPath
     }
 
-    private init(text: Binding<String>, fieldPath: [ComposeFieldPathComponent], schemaPath: [ComposeFieldPathComponent], title: String, readOnly: Bool) {
+    private init(
+        text: Binding<String>, fieldPath: [ComposeFieldPathComponent], schemaPath: [ComposeFieldPathComponent],
+        title: String, readOnly: Bool
+    ) {
         _text = text
         self.fieldPath = fieldPath
         self.schemaPath = schemaPath
@@ -50,7 +56,9 @@ struct ComposeNativeFieldsForm: View {
                             guard !readOnly else { return }
                             mutate { document in
                                 var result = document.source
-                                for index in indices.reversed() { result = try ComposeDocument(result).removingNative(at: fields[index].path) }
+                                for index in indices.reversed() {
+                                    result = try ComposeDocument(result).removingNative(at: fields[index].path)
+                                }
                                 return result
                             }
                         }.deleteDisabled(readOnly || simpleEditing != nil)
@@ -80,13 +88,16 @@ struct ComposeNativeFieldsForm: View {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button("Add", systemImage: "plus") { adding = true }
-                    } label: { Image(systemName: "ellipsis") }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
                     .accessibilityLabel("Configuration actions")
                 }
             }
         }
         .sheet(item: $editing) { field in
-            ComposeNativeValueSheet(title: field.name, kind: field.kind, value: field.value, needsName: false) { _, kind, value in
+            ComposeNativeValueSheet(title: field.name, kind: field.kind, value: field.value, needsName: false) {
+                _, kind, value in
                 save(field, kind: kind, value: value)
             }
             .presentationDetents([.medium, .large])
@@ -100,7 +111,9 @@ struct ComposeNativeFieldsForm: View {
         switch field.kind {
         case .mapping, .sequence:
             NavigationLink {
-                ComposeNativeFieldsForm(text: $text, fieldPath: field.path, schemaPath: schemaPath + field.path.dropFirst(fieldPath.count), title: field.name, readOnly: readOnly)
+                ComposeNativeFieldsForm(
+                    text: $text, fieldPath: field.path, schemaPath: schemaPath + field.path.dropFirst(fieldPath.count),
+                    title: field.name, readOnly: readOnly)
             } label: {
                 LabeledContent(ComposeDisplayText.title(field.name), value: field.kind.rawValue)
             }
@@ -111,23 +124,31 @@ struct ComposeNativeFieldsForm: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
         case .boolean:
-            Toggle(ComposeDisplayText.title(field.name), isOn: Binding(
-                get: { document?.nativeField(at: field.path).value.lowercased() == "true" },
-                set: { value in mutate { try $0.settingNative(String(value), kind: .boolean, at: field.path) } }
-            )).disabled(readOnly)
+            Toggle(
+                ComposeDisplayText.title(field.name),
+                isOn: Binding(
+                    get: { document?.nativeField(at: field.path).value.lowercased() == "true" },
+                    set: { value in mutate { try $0.settingNative(String(value), kind: .boolean, at: field.path) } }
+                )
+            ).disabled(readOnly)
         default:
             let options = ComposeFieldOptions(path: schemaPath + field.path.dropFirst(fieldPath.count))
-            if simpleEditing?.id != field.id, (field.kind == .string || field.kind == .number), !options.values.isEmpty {
-                Picker(ComposeDisplayText.title(field.name), selection: Binding(
-                    get: { document?.nativeField(at: field.path).value ?? field.value },
-                    set: { value in
-                        if value == "__custom__" {
-                            simpleValue = field.value
-                            simpleEditing = field
-                            valueFocused = true
-                        } else { mutate { try $0.settingNative(value, kind: field.kind, at: field.path) } }
-                    }
-                )) {
+            if simpleEditing?.id != field.id, field.kind == .string || field.kind == .number, !options.values.isEmpty {
+                Picker(
+                    ComposeDisplayText.title(field.name),
+                    selection: Binding(
+                        get: { document?.nativeField(at: field.path).value ?? field.value },
+                        set: { value in
+                            if value == "__custom__" {
+                                simpleValue = field.value
+                                simpleEditing = field
+                                valueFocused = true
+                            } else {
+                                mutate { try $0.settingNative(value, kind: field.kind, at: field.path) }
+                            }
+                        }
+                    )
+                ) {
                     if !options.values.contains(field.value) { Text(field.value).tag(field.value) }
                     ForEach(options.values, id: \.self) { Text(options.label($0)).tag($0) }
                     if options.allowsCustom { Text("Custom value…").tag("__custom__") }
@@ -135,15 +156,15 @@ struct ComposeNativeFieldsForm: View {
             } else if simpleEditing?.id == field.id {
                 VStack(alignment: .leading, spacing: 10) {
                     LabeledContent(ComposeDisplayText.title(field.name)) {
-                    TextField("Value", text: $simpleValue)
-                        .textFieldStyle(.plain)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(field.kind == .number ? .numbersAndPunctuation : .default)
-                        .focused($valueFocused)
-                        .accessibilityLabel(ComposeDisplayText.title(field.name))
-                        .disabled(readOnly)
+                        TextField("Value", text: $simpleValue)
+                            .textFieldStyle(.plain)
+                            .multilineTextAlignment(.trailing)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(field.kind == .number ? .numbersAndPunctuation : .default)
+                            .focused($valueFocused)
+                            .accessibilityLabel(ComposeDisplayText.title(field.name))
+                            .disabled(readOnly)
                     }
                     HStack {
                         Spacer()
@@ -164,7 +185,9 @@ struct ComposeNativeFieldsForm: View {
                 }.padding(.vertical, 4)
             } else {
                 Button {
-                    if (field.kind == .string || field.kind == .number), !field.value.contains("\n"), !field.value.contains("\r"), field.value.count <= 160 {
+                    if field.kind == .string || field.kind == .number, !field.value.contains("\n"),
+                        !field.value.contains("\r"), field.value.count <= 160
+                    {
                         simpleValue = field.value
                         simpleEditing = field
                         valueFocused = true
@@ -172,9 +195,11 @@ struct ComposeNativeFieldsForm: View {
                         editing = field
                     }
                 } label: {
-                    LabeledContent(ComposeDisplayText.title(field.name), value: field.kind == .null ? "Empty" : field.value)
-                        .lineLimit(3)
-                        .foregroundStyle(Color.primary)
+                    LabeledContent(
+                        ComposeDisplayText.title(field.name), value: field.kind == .null ? "Empty" : field.value
+                    )
+                    .lineLimit(3)
+                    .foregroundStyle(Color.primary)
                 }.disabled(readOnly || simpleEditing != nil)
             }
         }
@@ -184,14 +209,18 @@ struct ComposeNativeFieldsForm: View {
         guard !readOnly else { return nil }
         return apply { document in
             guard document.nativeField(at: field.path).kind == field.kind,
-                  document.nativeField(at: field.path).value == field.value else { throw ComposeFormError.changed }
+                document.nativeField(at: field.path).value == field.value
+            else { throw ComposeFormError.changed }
             return try document.settingNative(value, kind: kind, at: field.path)
         }
     }
 
     private func apply(_ action: (ComposeDocument) throws -> String) -> String? {
-        do { text = try action(ComposeDocument(text)); error = nil; return nil }
-        catch { return error.localizedDescription }
+        do {
+            text = try action(ComposeDocument(text))
+            error = nil
+            return nil
+        } catch { return error.localizedDescription }
     }
     private func mutate(_ action: (ComposeDocument) throws -> String) {
         error = apply(action)
@@ -208,7 +237,10 @@ private struct ComposeNativeValueSheet: View {
     @State private var value: String
     @State private var error: String?
 
-    init(title: String, kind: ComposeNativeKind, value: String, needsName: Bool, save: @escaping (String, ComposeNativeKind, String) -> String?) {
+    init(
+        title: String, kind: ComposeNativeKind, value: String, needsName: Bool,
+        save: @escaping (String, ComposeNativeKind, String) -> String?
+    ) {
         self.title = title
         self.needsName = needsName
         self.save = save

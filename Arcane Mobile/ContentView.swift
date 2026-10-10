@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ContentView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -78,10 +78,10 @@ struct ContentView: View {
     }
 }
 
-private extension ContentView {
+extension ContentView {
     /// External routes wait for an authenticated session so the tab
     /// and environment switch land on a bootstrapped client.
-    func consumePendingRoute() {
+    fileprivate func consumePendingRoute() {
         guard let route = QuickActionRouter.shared.pendingRoute else { return }
         guard case .authenticated = manager.authState else { return }
         let router = QuickActionRouter.shared

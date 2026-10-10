@@ -38,9 +38,15 @@ struct ProjectDraftReviewView: View {
                     }
                 }
                 Section {
-                    Button(saveTitle) { dismiss(); save(false) }
+                    Button(saveTitle) {
+                        dismiss()
+                        save(false)
+                    }
                     if canDeploy {
-                        Button("Save and deploy") { dismiss(); save(true) }
+                        Button("Save and deploy") {
+                            dismiss()
+                            save(true)
+                        }
                     }
                 } footer: {
                     Text("Saving stores your files. Deployment is a separate operation.")

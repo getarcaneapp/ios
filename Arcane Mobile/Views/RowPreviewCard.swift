@@ -74,9 +74,11 @@ struct RowPreviewCard: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                             Text(detail.value)
-                                .font(detail.monospaced
-                                      ? .system(.caption, design: .monospaced)
-                                      : .subheadline)
+                                .font(
+                                    detail.monospaced
+                                        ? .system(.caption, design: .monospaced)
+                                        : .subheadline
+                                )
                                 .foregroundStyle(.primary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

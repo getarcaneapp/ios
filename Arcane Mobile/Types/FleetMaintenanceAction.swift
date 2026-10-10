@@ -35,8 +35,10 @@ enum FleetMaintenanceAction: String, Identifiable {
     }
     var explanation: String {
         switch self {
-        case .update: "Run the configured container and project updater on every enabled environment. Containers may restart during updates."
-        case .checkImages: "Check images in every enabled environment for available updates. This does not install updates."
+        case .update:
+            "Run the configured container and project updater on every enabled environment. Containers may restart during updates."
+        case .checkImages:
+            "Check images in every enabled environment for available updates. This does not install updates."
         }
     }
 }

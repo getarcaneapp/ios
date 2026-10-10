@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// The Updates page: a card-based, cross-environment view of pending image
 /// updates. Rows stay minimal — name, what changed, one-tap update icon —
@@ -41,10 +41,11 @@ struct AllEnvironmentsImageUpdatesView: View {
 
     private var imageMutationVersion: Int {
         buckets.reduce(0) { version, bucket in
-            version &+ mutationStore.version(
-                kind: .images,
-                envID: EnvironmentID(rawValue: bucket.id)
-            )
+            version
+                &+ mutationStore.version(
+                    kind: .images,
+                    envID: EnvironmentID(rawValue: bucket.id)
+                )
         }
     }
 
@@ -356,8 +357,9 @@ struct AllEnvironmentsImageUpdatesView: View {
     @ViewBuilder
     private func imageDetailSheet(for target: ImageDetailTarget) -> some View {
         if let bucket = buckets.first(where: { $0.id == target.envID }),
-           let image = bucket.images.first(where: { $0.id == target.imageID }),
-           let ref = primaryRef(of: image) {
+            let image = bucket.images.first(where: { $0.id == target.imageID }),
+            let ref = primaryRef(of: image)
+        {
             let info = resolvedInfo(for: image, ref: ref, in: bucket)
             imageDetailContent(
                 item: OutdatedImage(image: image, ref: ref, info: info ?? ImageUpdateResponse()),
@@ -448,7 +450,8 @@ struct AllEnvironmentsImageUpdatesView: View {
                             }
                         }
                         .padding(.horizontal, 16)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: Radius.standard))
+                        .background(
+                            Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: Radius.standard))
                     }
                 } else if !item.image.inUse {
                     Label("Not used by any container", systemImage: "moon.zzz")
@@ -456,7 +459,8 @@ struct AllEnvironmentsImageUpdatesView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: Radius.standard))
+                        .background(
+                            Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: Radius.standard))
                 }
 
                 // Actions
@@ -562,7 +566,9 @@ struct AllEnvironmentsImageUpdatesView: View {
     }
 
     @ViewBuilder
-    private func consumerRow(_ consumer: ImageUsedBy, of item: OutdatedImage, in bucket: EnvUpdateBucket, canUpdate: Bool) -> some View {
+    private func consumerRow(
+        _ consumer: ImageUsedBy, of item: OutdatedImage, in bucket: EnvUpdateBucket, canUpdate: Bool
+    ) -> some View {
         let isProject = consumer.type == "project"
         let tint: Color = isProject ? .purple : .blue
         let consumerKey = consumer.id.map { key(bucket, $0) }
@@ -629,8 +635,8 @@ struct AllEnvironmentsImageUpdatesView: View {
     private func outdatedImages(in bucket: EnvUpdateBucket) -> [OutdatedImage] {
         bucket.images.compactMap { image -> OutdatedImage? in
             guard let ref = primaryRef(of: image),
-                  let info = resolvedInfo(for: image, ref: ref, in: bucket),
-                  info.hasUpdate
+                let info = resolvedInfo(for: image, ref: ref, in: bucket),
+                info.hasUpdate
             else { return nil }
             return OutdatedImage(image: image, ref: ref, info: info)
         }
@@ -641,7 +647,8 @@ struct AllEnvironmentsImageUpdatesView: View {
         image.repoTags.first { $0 != "<none>:<none>" }
     }
 
-    private func resolvedInfo(for image: ImageSummary, ref: String, in bucket: EnvUpdateBucket) -> ImageUpdateResponse? {
+    private func resolvedInfo(for image: ImageSummary, ref: String, in bucket: EnvUpdateBucket) -> ImageUpdateResponse?
+    {
         if let cached = bucket.byRef[ref] { return cached }
         if let inline = image.updateInfo, inline.hasCheckResult { return inline.asUpdateResponse }
         return nil
@@ -690,7 +697,8 @@ struct AllEnvironmentsImageUpdatesView: View {
 
     /// Update a single consumer — one container, or every container of a
     /// compose project — from the detail sheet.
-    private func startConsumerUpdate(_ consumer: ImageUsedBy, of item: OutdatedImage, in bucket: EnvUpdateBucket) async {
+    private func startConsumerUpdate(_ consumer: ImageUsedBy, of item: OutdatedImage, in bucket: EnvUpdateBucket) async
+    {
         let targets = await resolveUpdateTargets(for: [consumer], of: item, in: bucket)
         guard !targets.isEmpty else {
             showToast(.error("No matching containers found for \(consumer.name) — try refreshing"))
@@ -723,8 +731,9 @@ struct AllEnvironmentsImageUpdatesView: View {
                 // If none of the project's containers still run this image
                 // (already mid-update, or the list was stale), fall back to
                 // the whole project — the server reports per-container truth.
-                targets.append(contentsOf: (runningThisImage.isEmpty ? inProject : runningThisImage)
-                    .map { .init(id: $0.id, name: displayName(of: $0)) })
+                targets.append(
+                    contentsOf: (runningThisImage.isEmpty ? inProject : runningThisImage)
+                        .map { .init(id: $0.id, name: displayName(of: $0)) })
             } else if let match = fresh.first(where: {
                 $0.id == consumer.id || displayName(of: $0) == consumer.name
             }) {
@@ -746,17 +755,18 @@ struct AllEnvironmentsImageUpdatesView: View {
         guard let client = manager.client, let cached = manager.cached else { return [] }
         let envID = EnvironmentID(rawValue: bucket.env.id)
         let path = client.rest.environmentPath(envID, "containers")
-        return (try? await cached.getAllPages(
-            path: path, elementType: ContainerSummary.self, policy: .containersList,
-            envID: envID, refresh: true,
-            fetchPage: { start, limit in
-                let response = try await client.containers.list(
-                    envID: envID,
-                    query: .init(start: start, limit: limit)
-                )
-                return ResourcePage(items: response.data, pagination: response.pagination)
-            }
-        )) ?? []
+        return
+            (try? await cached.getAllPages(
+                path: path, elementType: ContainerSummary.self, policy: .containersList,
+                envID: envID, refresh: true,
+                fetchPage: { start, limit in
+                    let response = try await client.containers.list(
+                        envID: envID,
+                        query: .init(start: start, limit: limit)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
+                }
+            )) ?? []
     }
 
     private func matches(_ container: ContainerSummary, image item: OutdatedImage) -> Bool {
@@ -814,19 +824,20 @@ struct AllEnvironmentsImageUpdatesView: View {
 
         let envs: [Arcane.Environment]
         do {
-            envs = try await cached.getAllPagesGlobal(
-                path: "environments", elementType: Arcane.Environment.self,
-                policy: .environments,
-                maximumItems: RemoteDataLimits.maximumEnvironments,
-                refresh: refresh,
-                onFresh: { _ in },
-                fetchPage: { start, limit in
-                    let response = try await client.environments.list(
-                        query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
-                    )
-                    return ResourcePage(items: response.data, pagination: response.pagination)
-                }
-            ) ?? []
+            envs =
+                try await cached.getAllPagesGlobal(
+                    path: "environments", elementType: Arcane.Environment.self,
+                    policy: .environments,
+                    maximumItems: RemoteDataLimits.maximumEnvironments,
+                    refresh: refresh,
+                    onFresh: { _ in },
+                    fetchPage: { start, limit in
+                        let response = try await client.environments.list(
+                            query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
+                        )
+                        return ResourcePage(items: response.data, pagination: response.pagination)
+                    }
+                ) ?? []
             guard envs.count <= RemoteDataLimits.maximumEnvironments else {
                 throw RemoteDataLimitError.collectionTooLarge(
                     maximumItems: RemoteDataLimits.maximumEnvironments
@@ -1041,7 +1052,8 @@ private struct OutdatedImage: Identifiable {
     var versionChange: String {
         let current = info.currentVersion.isEmpty ? ref.splitRefTag().tag : info.currentVersion
         if let latest = info.latestVersion, !latest.isEmpty,
-           let current, !current.isEmpty, latest != current {
+            let current, !current.isEmpty, latest != current
+        {
             return "\(current) → \(latest)"
         }
         if info.updateType.lowercased() == "digest" {
@@ -1081,10 +1093,10 @@ private struct EnvLoadResult: Sendable {
     }
 }
 
-private extension String {
+extension String {
     /// Splits `registry/repo:tag` into repo and tag, ignoring colons that
     /// belong to a registry port (`localhost:5000/foo`).
-    nonisolated func splitRefTag() -> (repo: String, tag: String?) {
+    fileprivate nonisolated func splitRefTag() -> (repo: String, tag: String?) {
         guard let colon = lastIndex(of: ":") else { return (self, nil) }
         let afterColon = index(after: colon)
         let tail = self[afterColon...]

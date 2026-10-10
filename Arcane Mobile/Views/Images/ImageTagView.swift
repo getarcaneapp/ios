@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ImageTagView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -28,8 +28,14 @@ struct ImageTagView: View {
                 }
             }
             .interactiveDismissDisabled(saving)
-            .onChange(of: manager.clientGeneration) { saveTask?.cancel(); dismiss() }
-            .onChange(of: manager.activeEnvironmentID) { saveTask?.cancel(); dismiss() }
+            .onChange(of: manager.clientGeneration) {
+                saveTask?.cancel()
+                dismiss()
+            }
+            .onChange(of: manager.activeEnvironmentID) {
+                saveTask?.cancel()
+                dismiss()
+            }
         }
     }
     private func save() async {
@@ -38,12 +44,15 @@ struct ImageTagView: View {
         saving = true
         defer { saving = false }
         do {
-            _ = try await client.images.tag(envID: environmentID, imageID: imageID,
-                request: .init(repository: repository.trimmingCharacters(in: .whitespacesAndNewlines),
+            _ = try await client.images.tag(
+                envID: environmentID, imageID: imageID,
+                request: .init(
+                    repository: repository.trimmingCharacters(in: .whitespacesAndNewlines),
                     tag: tag.isEmpty ? nil : tag.trimmingCharacters(in: .whitespacesAndNewlines)))
             guard !Task.isCancelled, generation == manager.clientGeneration else { return }
             mutations.markChanged(kind: .images, envID: environmentID)
-            showToast(.success("Image tagged")); dismiss()
+            showToast(.success("Image tagged"))
+            dismiss()
         } catch { showToast(.error(error.localizedDescription)) }
     }
 }

@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 import Observation
 
 @Observable
@@ -44,7 +44,8 @@ final class PinnedItemsStore {
 
     private func loadFromDefaults(key: String) -> Set<String> {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let array = try? JSONDecoder().decode([String].self, from: data) else {
+            let array = try? JSONDecoder().decode([String].self, from: data)
+        else {
             return []
         }
         return Set(array)

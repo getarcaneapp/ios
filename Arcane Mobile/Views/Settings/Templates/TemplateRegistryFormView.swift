@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct TemplateRegistryFormView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -96,7 +96,8 @@ struct TemplateRegistryFormView: View {
 
     private func saveRegistry() async {
         guard let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+        isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             if let registry {
@@ -116,7 +117,8 @@ struct TemplateRegistryFormView: View {
                 )
                 _ = try await client.templates.createRegistry(body)
             }
-            await onSuccess(); dismiss()
+            await onSuccess()
+            dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }

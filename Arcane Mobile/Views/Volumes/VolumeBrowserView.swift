@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct VolumeBrowserView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -24,7 +24,8 @@ struct VolumeBrowserView: View {
 
     private var displayedEntries: [FileEntry] {
         let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let filtered = query.isEmpty
+        let filtered =
+            query.isEmpty
             ? entries
             : entries.filter { $0.name.localizedCaseInsensitiveContains(query) }
         return filtered.sorted { lhs, rhs in
@@ -89,7 +90,8 @@ struct VolumeBrowserView: View {
             AppToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     if manager.serverCapabilities?.supportsRoleManagement == true,
-                       manager.permissions.has(Permission.Volumes.read, in: environmentID) {
+                        manager.permissions.has(Permission.Volumes.read, in: environmentID)
+                    {
                         NavigationLink {
                             VolumeWorkspaceView(environmentID: environmentID, volumeName: volumeName)
                         } label: {

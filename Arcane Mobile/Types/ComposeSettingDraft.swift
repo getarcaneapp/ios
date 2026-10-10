@@ -30,7 +30,9 @@ nonisolated struct ComposeSettingDraft: Identifiable {
         if kind == .mapping {
             children = fields.map { Self(name: $0.name, schemaPath: schemaPath + [.key($0.name)]) }
             if children.isEmpty { appendEntry() }
-        } else if kind == .sequence { appendEntry() }
+        } else if kind == .sequence {
+            appendEntry()
+        }
     }
 
     mutating func appendEntry() {
@@ -42,9 +44,13 @@ nonisolated struct ComposeSettingDraft: Identifiable {
         children.append(entry)
     }
 
-    func adding(to source: String, at parent: [ComposeFieldPathComponent], newService: String? = nil, listItem: Bool = false) throws -> String {
+    func adding(
+        to source: String, at parent: [ComposeFieldPathComponent], newService: String? = nil, listItem: Bool = false
+    ) throws -> String {
         let value = kind == .boolean && value.isEmpty ? "false" : value
-        if (kind == .string || kind == .number), let options = schema?.enumValues, !options.isEmpty, !options.contains(value) {
+        if kind == .string || kind == .number, let options = schema?.enumValues, !options.isEmpty,
+            !options.contains(value)
+        {
             throw ComposeFormError.invalid("Choose a value for \(name).")
         }
         let document = try ComposeDocument(source)

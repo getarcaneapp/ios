@@ -35,10 +35,18 @@ struct FleetResourceFilterSheet: View {
                 case .vulnerabilities:
                     Section("Severity") {
                         ForEach(VulnerabilitySeverity.allCases) { severity in
-                            Toggle(severity.displayLabel, isOn: Binding(
-                                get: { filters.severities.contains(severity) },
-                                set: { if $0 { filters.severities.insert(severity) } else { filters.severities.remove(severity) } }
-                            ))
+                            Toggle(
+                                severity.displayLabel,
+                                isOn: Binding(
+                                    get: { filters.severities.contains(severity) },
+                                    set: {
+                                        if $0 {
+                                            filters.severities.insert(severity)
+                                        } else {
+                                            filters.severities.remove(severity)
+                                        }
+                                    }
+                                ))
                         }
                     }
                     Section("Image") {
@@ -61,10 +69,13 @@ struct FleetResourceFilterSheet: View {
     }
 
     private var imageNames: [String] {
-        Array(Set(buckets.flatMap(\.resources).compactMap { resource -> String? in
-            if case .vulnerability(let item) = resource { return item.imageName }
-            return nil
-        })).sorted()
+        Array(
+            Set(
+                buckets.flatMap(\.resources).compactMap { resource -> String? in
+                    if case .vulnerability(let item) = resource { return item.imageName }
+                    return nil
+                })
+        ).sorted()
     }
 
     private var updates: some View {
@@ -75,7 +86,9 @@ struct FleetResourceFilterSheet: View {
         }
     }
 
-    private func choices<T: RawRepresentable & CaseIterable & Hashable>(_ title: String, selection: Binding<T>) -> some View where T.RawValue == String, T.AllCases: RandomAccessCollection {
+    private func choices<T: RawRepresentable & CaseIterable & Hashable>(_ title: String, selection: Binding<T>)
+        -> some View where T.RawValue == String, T.AllCases: RandomAccessCollection
+    {
         Section(title) {
             Picker(title, selection: selection) {
                 ForEach(T.allCases, id: \.self) { Text($0.rawValue).tag($0) }

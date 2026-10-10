@@ -6,7 +6,13 @@ nonisolated enum ComposeFieldPathComponent: Hashable {
 }
 
 nonisolated enum ComposeNativeKind: String, CaseIterable, Identifiable {
-    case string = "Text", number = "Number", boolean = "Boolean", null = "Empty", mapping = "Object", sequence = "List", unsupported = "Preserved"
+    case string = "Text"
+    case number = "Number"
+    case boolean = "Boolean"
+    case null = "Empty"
+    case mapping = "Object"
+    case sequence = "List"
+    case unsupported = "Preserved"
     var id: String { rawValue }
     static var editableCases: [Self] { allCases.filter { $0 != .unsupported } }
 }

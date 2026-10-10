@@ -19,9 +19,9 @@
 //  activity view for queued and running server work.
 //
 
+import Arcane
 import SwiftUI
 import UIKit
-import Arcane
 
 // MARK: - Store
 
@@ -102,16 +102,18 @@ final class DeploymentActivityStore {
     /// Starts an operation. Returns false (with an info toast) when another
     /// operation is already running, or when no client is configured.
     @discardableResult
-    func start(kind: DeploymentActionKind,
-               envID: EnvironmentID,
-               targetID: String,
-               targetName: String,
-               environmentName: String,
-               manager: ArcaneClientManager,
-               mutationStore: ResourceMutationStore,
-               updateTargets: [DeploymentOperation.UpdateTarget] = [],
-               deployOptions: DeployOptions? = nil,
-               presentSheet: Bool? = nil) -> Bool {
+    func start(
+        kind: DeploymentActionKind,
+        envID: EnvironmentID,
+        targetID: String,
+        targetName: String,
+        environmentName: String,
+        manager: ArcaneClientManager,
+        mutationStore: ResourceMutationStore,
+        updateTargets: [DeploymentOperation.UpdateTarget] = [],
+        deployOptions: DeployOptions? = nil,
+        presentSheet: Bool? = nil
+    ) -> Bool {
         guard !isRunning else {
             showToast(.info("Another deployment is running"))
             return false
@@ -186,9 +188,10 @@ final class DeploymentActivityStore {
         followerTask = nil
 
         guard serverSyncSupported,
-              let client = activeClient,
-              let manager = activeManager,
-              let mutationStore = activeMutationStore else {
+            let client = activeClient,
+            let manager = activeManager,
+            let mutationStore = activeMutationStore
+        else {
             markFailed("Cancelled", operation: operation)
             return
         }
@@ -247,17 +250,21 @@ final class DeploymentActivityStore {
     /// dead stream loose so the normal re-attach path completes right away.
     private func probeServerStateAfterResume() {
         guard isRunning, serverSyncSupported,
-              let operation, !operation.isServerSynced,
-              let client = activeClient,
-              let activityID = operation.serverActivityID else { return }
+            let operation, !operation.isServerSynced,
+            let client = activeClient,
+            let activityID = operation.serverActivityID
+        else { return }
         resumeProbeTask?.cancel()
         resumeProbeTask = Task { [weak self] in
-            guard let detail = try? await client.activities.detail(
-                envID: operation.envID, activityID: activityID, limit: 1
-            ) else { return }
+            guard
+                let detail = try? await client.activities.detail(
+                    envID: operation.envID, activityID: activityID, limit: 1
+                )
+            else { return }
             guard let self, !Task.isCancelled,
-                  self.operation?.id == operation.id,
-                  !operation.status.isTerminal else { return }
+                self.operation?.id == operation.id,
+                !operation.status.isTerminal
+            else { return }
             switch detail.activity.status {
             case .success, .failed, .cancelled:
                 // Finished while suspended. Mark the handoff before cancelling
@@ -266,7 +273,8 @@ final class DeploymentActivityStore {
                 operation.isServerSynced = true
                 self.streamTask?.cancel()
                 guard let manager = self.activeManager,
-                      let mutationStore = self.activeMutationStore else { return }
+                    let mutationStore = self.activeMutationStore
+                else { return }
                 self.startFollowingServerActivity(
                     operation,
                     activityID: activityID,
@@ -284,10 +292,12 @@ final class DeploymentActivityStore {
 
     // MARK: Stream
 
-    private func run(_ operation: DeploymentOperation,
-                     client: ArcaneClient,
-                     manager: ArcaneClientManager,
-                     mutationStore: ResourceMutationStore) async {
+    private func run(
+        _ operation: DeploymentOperation,
+        client: ArcaneClient,
+        manager: ArcaneClientManager,
+        mutationStore: ResourceMutationStore
+    ) async {
         var handedOffToFollower = false
         defer {
             streamTask = nil
@@ -303,8 +313,9 @@ final class DeploymentActivityStore {
                 // Per-target POSTs with partial-failure reporting; each
                 // response is authoritative, so this path terminates the
                 // operation itself instead of falling through.
-                await runContainerUpdate(operation, client: client,
-                                         manager: manager, mutationStore: mutationStore)
+                await runContainerUpdate(
+                    operation, client: client,
+                    manager: manager, mutationStore: mutationStore)
                 return
             } else {
                 let stream = try makeStream(for: operation, client: client)
@@ -320,7 +331,8 @@ final class DeploymentActivityStore {
 
             if operation.kind.isRequestBacked
                 || operation.receivedTerminalSuccess
-                || !serverSyncSupported {
+                || !serverSyncSupported
+            {
                 withAnimation(Motion.state) {
                     operation.status = .success
                     operation.currentPhase = "Complete"
@@ -338,8 +350,9 @@ final class DeploymentActivityStore {
                 // Activity (or the fallback resolver's match on older v2) to
                 // its persisted terminal state.
                 guard self.operation?.id == operation.id,
-                      !operation.status.isTerminal,
-                      !userCancelRequested else { return }
+                    !operation.status.isTerminal,
+                    !userCancelRequested
+                else { return }
                 handedOffToFollower = true
                 startFollowingServerActivity(
                     operation,
@@ -362,13 +375,15 @@ final class DeploymentActivityStore {
                 // typed failure. It is authoritative and should surface now.
                 markFailed(message, operation: operation)
             } else if serverSyncSupported,
-                      let activityID = await resolveServerActivity(for: operation, client: client) {
+                let activityID = await resolveServerActivity(for: operation, client: client)
+            {
                 // The stream died but the server-side operation continues (the
                 // backend detaches jobs from the request lifecycle) — follow
                 // the activity record until it lands.
                 guard self.operation?.id == operation.id,
-                      !operation.status.isTerminal,
-                      !userCancelRequested else { return }
+                    !operation.status.isTerminal,
+                    !userCancelRequested
+                else { return }
                 handedOffToFollower = true
                 startFollowingServerActivity(
                     operation,
@@ -395,30 +410,34 @@ final class DeploymentActivityStore {
         HapticsManager.warning()
         if !isSheetPresented {
             let cancelled = message == "Cancelled"
-            let title = cancelled
+            let title =
+                cancelled
                 ? "\(operation.title) cancelled"
                 : "\(operation.title) failed: \(message)"
             // "View" opens the full log so the complete error is reachable —
             // the toast itself only fits a couple of lines.
-            showToast(Toast(
-                title: title,
-                duration: 5,
-                symbol: "exclamationmark.triangle.fill",
-                symbolTint: .red,
-                actionTitle: "View",
-                haptic: .error,
-                action: { [weak self] in
-                    guard let self, self.operation != nil else { return true }
-                    self.isSheetPresented = true
-                    return true
-                }
-            ))
+            showToast(
+                Toast(
+                    title: title,
+                    duration: 5,
+                    symbol: "exclamationmark.triangle.fill",
+                    symbolTint: .red,
+                    actionTitle: "View",
+                    haptic: .error,
+                    action: { [weak self] in
+                        guard let self, self.operation != nil else { return true }
+                        self.isSheetPresented = true
+                        return true
+                    }
+                ))
         }
         finishPresentation(for: operation)
     }
 
-    private func makeStream(for operation: DeploymentOperation,
-                            client: ArcaneClient) throws -> NDJSONStream<OperationStreamEvent> {
+    private func makeStream(
+        for operation: DeploymentOperation,
+        client: ArcaneClient
+    ) throws -> NDJSONStream<OperationStreamEvent> {
         switch operation.kind {
         case .up:
             try client.projects.deployStream(
@@ -453,7 +472,8 @@ final class DeploymentActivityStore {
         // The last ':' is a tag separator only when nothing after it contains
         // '/' (otherwise it's the registry host:port).
         if let colonIdx = beforeDigest.lastIndex(of: ":"),
-           !beforeDigest[colonIdx...].contains("/") {
+            !beforeDigest[colonIdx...].contains("/")
+        {
             let name = String(beforeDigest[..<colonIdx])
             let tag = String(beforeDigest[beforeDigest.index(after: colonIdx)...])
             return (name, tag.isEmpty ? nil : tag)
@@ -461,8 +481,10 @@ final class DeploymentActivityStore {
         return (beforeDigest, nil)
     }
 
-    private func runContainerRedeploy(_ operation: DeploymentOperation,
-                                      client: ArcaneClient) async throws {
+    private func runContainerRedeploy(
+        _ operation: DeploymentOperation,
+        client: ArcaneClient
+    ) async throws {
         append(text: "Requesting redeploy…", isError: false, to: operation)
         updatePhase("Redeploying", on: operation)
         let details = try await client.containers.redeploy(
@@ -478,10 +500,12 @@ final class DeploymentActivityStore {
     /// compose containers via their project). Each POST response is
     /// authoritative, so success/failure is decided here — no server
     /// re-attach.
-    private func runContainerUpdate(_ operation: DeploymentOperation,
-                                    client: ArcaneClient,
-                                    manager: ArcaneClientManager,
-                                    mutationStore: ResourceMutationStore) async {
+    private func runContainerUpdate(
+        _ operation: DeploymentOperation,
+        client: ArcaneClient,
+        manager: ArcaneClientManager,
+        mutationStore: ResourceMutationStore
+    ) async {
         let targets = operation.updateTargets
         var failures: [String] = []
 
@@ -568,9 +592,9 @@ final class DeploymentActivityStore {
         let new = item.newImages ?? [:]
         guard let key = new.keys.first ?? old.keys.first else { return nil }
         switch (old[key], new[key]) {
-        case let (.some(from), .some(to)) where from != to: return "\(from) → \(to)"
-        case let (_, .some(to)): return to
-        case let (.some(from), _): return from
+        case (.some(let from), .some(let to)) where from != to: return "\(from) → \(to)"
+        case (_, .some(let to)): return to
+        case (.some(let from), _): return from
         default: return nil
         }
     }
@@ -584,7 +608,8 @@ final class DeploymentActivityStore {
             operation.receivedTerminalSuccess = true
         }
 
-        let isError = event.error?
+        let isError =
+            event.error?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty == false
         if let display = displayText(for: event) {
@@ -593,7 +618,8 @@ final class DeploymentActivityStore {
         if !isError {
             if let phase = (event.phase ?? event.status)?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
-               !phase.isEmpty {
+                !phase.isEmpty
+            {
                 updatePhase(phase, on: operation)
             }
             updateProgress(from: event, on: operation)
@@ -615,7 +641,8 @@ final class DeploymentActivityStore {
             return log
         }
         if let error = event.error?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !error.isEmpty {
+            !error.isEmpty
+        {
             return error
         }
         if let stream = event.stream {
@@ -641,10 +668,11 @@ final class DeploymentActivityStore {
     }
 
     private func append(text: String, isError: Bool, to operation: DeploymentOperation) {
-        operation.lines.append(InstallStreamLine(
-            text: RemoteDataLimits.boundedText(text, maximumBytes: RemoteDataLimits.maximumStreamLineBytes),
-            isError: isError
-        ))
+        operation.lines.append(
+            InstallStreamLine(
+                text: RemoteDataLimits.boundedText(text, maximumBytes: RemoteDataLimits.maximumStreamLineBytes),
+                isError: isError
+            ))
         if operation.lines.count > Self.maxLines {
             operation.lines.removeFirst(Self.lineTrim)
         }
@@ -656,7 +684,8 @@ final class DeploymentActivityStore {
         withAnimation(Motion.state) {
             operation.currentPhase = boundedPhase
             if operation.seenPhases.count < Self.maxPhases,
-               !operation.seenPhases.contains(boundedPhase) {
+                !operation.seenPhases.contains(boundedPhase)
+            {
                 operation.seenPhases.append(boundedPhase)
             }
         }
@@ -666,22 +695,27 @@ final class DeploymentActivityStore {
 
     /// Statuses Docker emits when a layer needs no further download work.
     private static let layerDoneStatuses: Set<String> = [
-        "Pull complete", "Already exists", "Download complete"
+        "Pull complete", "Already exists", "Download complete",
     ]
 
-    private func updateProgress(from event: OperationStreamEvent,
-                                on operation: DeploymentOperation) {
+    private func updateProgress(
+        from event: OperationStreamEvent,
+        on operation: DeploymentOperation
+    ) {
         guard let rawLayerID = event.id, !rawLayerID.isEmpty else { return }
         let layerID = RemoteDataLimits.boundedText(rawLayerID, maximumBytes: 512)
         if let detail = event.progressDetail, let total = detail.total, total > 0 {
-            guard operation.pullLayers[layerID] != nil || operation.pullLayers.count < Self.maxPullLayers else { return }
+            guard operation.pullLayers[layerID] != nil || operation.pullLayers.count < Self.maxPullLayers else {
+                return
+            }
             let boundedTotal = RemoteDataLimits.nonnegative(total)
             operation.pullLayers[layerID] = (
                 current: min(RemoteDataLimits.nonnegative(detail.current ?? 0), boundedTotal),
                 total: boundedTotal
             )
         } else if let status = event.status, Self.layerDoneStatuses.contains(status),
-                  let known = operation.pullLayers[layerID] {
+            let known = operation.pullLayers[layerID]
+        {
             operation.pullLayers[layerID] = (current: known.total, total: known.total)
         }
 
@@ -700,29 +734,36 @@ final class DeploymentActivityStore {
 
     // MARK: Server activity sync
 
-    private func captureStreamActivityID(_ rawID: String?,
-                                         for operation: DeploymentOperation) {
+    private func captureStreamActivityID(
+        _ rawID: String?,
+        for operation: DeploymentOperation
+    ) {
         guard operation.serverActivityID == nil,
-              let id = rawID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !id.isEmpty else { return }
+            let id = rawID?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !id.isEmpty
+        else { return }
         operation.serverActivityID = id
         resolverTask?.cancel()
         resolverTask = nil
     }
 
-    private func captureResponseActivityID(_ rawID: String?,
-                                           for operation: DeploymentOperation) {
+    private func captureResponseActivityID(
+        _ rawID: String?,
+        for operation: DeploymentOperation
+    ) {
         resolverTask?.cancel()
         resolverTask = nil
         guard let id = rawID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !id.isEmpty else { return }
+            !id.isEmpty
+        else { return }
         operation.serverActivityID = id
     }
 
     private func explicitOperationFailureMessage(_ error: Error) -> String? {
         guard let arcaneError = error as? ArcaneError,
-              case .server(let code, let message) = arcaneError,
-              code == "OPERATION_FAILED" else { return nil }
+            case .server(let code, let message) = arcaneError,
+            code == "OPERATION_FAILED"
+        else { return nil }
         return message
     }
 
@@ -738,8 +779,10 @@ final class DeploymentActivityStore {
         }
     }
 
-    private func startActivityResolver(for operation: DeploymentOperation,
-                                       client: ArcaneClient) {
+    private func startActivityResolver(
+        for operation: DeploymentOperation,
+        client: ArcaneClient
+    ) {
         resolverTask?.cancel()
         resolverTask = Task { [weak self] in
             _ = await self?.resolveServerActivity(for: operation, client: client)
@@ -749,8 +792,10 @@ final class DeploymentActivityStore {
     /// Fallback for older v2 streams that omit `activityId`, plus
     /// request-backed operations before their response returns. Current
     /// project/image streams capture the direct ID and never need this path.
-    private func resolveServerActivity(for operation: DeploymentOperation,
-                                       client: ArcaneClient) async -> String? {
+    private func resolveServerActivity(
+        for operation: DeploymentOperation,
+        client: ArcaneClient
+    ) async -> String? {
         if let id = operation.serverActivityID { return id }
         let type = Self.activityType(for: operation.kind)
         let target = operation.activityLookupTargetID
@@ -875,13 +920,15 @@ final class DeploymentActivityStore {
     /// Polls a captured Activity through its persisted terminal state and
     /// backfills output. This is used after stream loss and after a server
     /// cancellation request.
-    private func followServerActivity(_ operation: DeploymentOperation,
-                                      activityID: String,
-                                      client: ArcaneClient,
-                                      manager: ArcaneClientManager,
-                                      mutationStore: ResourceMutationStore,
-                                      fallbackFailureMessage: String?,
-        announceReconnect: Bool) async -> Bool {
+    private func followServerActivity(
+        _ operation: DeploymentOperation,
+        activityID: String,
+        client: ArcaneClient,
+        manager: ArcaneClientManager,
+        mutationStore: ResourceMutationStore,
+        fallbackFailureMessage: String?,
+        announceReconnect: Bool
+    ) async -> Bool {
         operation.isServerSynced = true
         if operation.serverSyncCursor == nil {
             operation.serverSyncCursor = operation.startedAt.addingTimeInterval(-2)
@@ -978,9 +1025,11 @@ final class DeploymentActivityStore {
 
     // MARK: Completion
 
-    private func completeSuccessfully(_ operation: DeploymentOperation,
-                                      manager: ArcaneClientManager,
-                                      mutationStore: ResourceMutationStore) async {
+    private func completeSuccessfully(
+        _ operation: DeploymentOperation,
+        manager: ArcaneClientManager,
+        mutationStore: ResourceMutationStore
+    ) async {
         await invalidateCaches(for: operation, manager: manager)
         if operation.kind == .containerUpdate || operation.kind == .imagePull {
             await ImageUpdateCountStore.shared.refreshCount(
@@ -1011,35 +1060,45 @@ final class DeploymentActivityStore {
         finishPresentation(for: operation)
     }
 
-    private func invalidateCaches(for operation: DeploymentOperation,
-                                  manager: ArcaneClientManager) async {
+    private func invalidateCaches(
+        for operation: DeploymentOperation,
+        manager: ArcaneClientManager
+    ) async {
         guard let cached = manager.cached, let client = manager.client else { return }
         let envID = operation.envID
         switch operation.kind {
         case .containerRedeploy:
-            await cached.invalidate(envID: envID, paths: [
-                client.rest.environmentPath(envID, "containers"),
-                client.rest.environmentPath(envID, "containers/*")
-            ])
+            await cached.invalidate(
+                envID: envID,
+                paths: [
+                    client.rest.environmentPath(envID, "containers"),
+                    client.rest.environmentPath(envID, "containers/*"),
+                ])
         case .containerUpdate:
-            await cached.invalidate(envID: envID, paths: [
-                client.rest.environmentPath(envID, "containers"),
-                client.rest.environmentPath(envID, "containers/*"),
-                client.rest.environmentPath(envID, "images") + "*",
-                client.rest.environmentPath(envID, "images/*")
-            ])
+            await cached.invalidate(
+                envID: envID,
+                paths: [
+                    client.rest.environmentPath(envID, "containers"),
+                    client.rest.environmentPath(envID, "containers/*"),
+                    client.rest.environmentPath(envID, "images") + "*",
+                    client.rest.environmentPath(envID, "images/*"),
+                ])
         case .imagePull:
-            await cached.invalidate(envID: envID, paths: [
-                client.rest.environmentPath(envID, "images") + "*",
-                client.rest.environmentPath(envID, "images/*")
-            ])
+            await cached.invalidate(
+                envID: envID,
+                paths: [
+                    client.rest.environmentPath(envID, "images") + "*",
+                    client.rest.environmentPath(envID, "images/*"),
+                ])
         default:
-            await cached.invalidate(envID: envID, paths: [
-                client.rest.environmentPath(envID, "projects") + "*",
-                client.rest.environmentPath(envID, "projects/*"),
-                client.rest.environmentPath(envID, "containers"),
-                client.rest.environmentPath(envID, "containers/*")
-            ])
+            await cached.invalidate(
+                envID: envID,
+                paths: [
+                    client.rest.environmentPath(envID, "projects") + "*",
+                    client.rest.environmentPath(envID, "projects/*"),
+                    client.rest.environmentPath(envID, "containers"),
+                    client.rest.environmentPath(envID, "containers/*"),
+                ])
         }
     }
 

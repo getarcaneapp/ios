@@ -1,6 +1,6 @@
+import Arcane
 import Foundation
 import os
-import Arcane
 
 // Decodes a JSON array element-by-element, dropping (and logging) elements
 // whose decode fails so a single malformed item can't take down a whole list.

@@ -13,7 +13,7 @@ struct EventHistoryTests {
         let incoming = [
             event(id: "a", title: "updated", date: now),
             event(id: "b", title: "second", date: now.addingTimeInterval(-1)),
-            event(id: "c", title: "trimmed", date: now.addingTimeInterval(-2))
+            event(id: "c", title: "trimmed", date: now.addingTimeInterval(-2)),
         ]
 
         let merged = EventHistory.merged(current: current, incoming: incoming, limit: 2)

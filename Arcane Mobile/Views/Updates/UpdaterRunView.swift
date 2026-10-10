@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct UpdaterRunSheet: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
@@ -531,9 +531,9 @@ private struct UpdaterRunItemRow: View {
         let oldTag = oldVersions[key]
         let newTag = newVersions[key]
         switch (oldTag, newTag) {
-        case let (.some(old), .some(new)) where old != new: return "\(old) → \(new)"
-        case let (.some(old), _): return old
-        case let (_, .some(new)): return new
+        case (.some(let old), .some(let new)) where old != new: return "\(old) → \(new)"
+        case (.some(let old), _): return old
+        case (_, .some(let new)): return new
         default: return nil
         }
     }

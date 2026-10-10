@@ -30,9 +30,16 @@ nonisolated enum FleetResourceKind: String, CaseIterable, Sendable {
 }
 
 nonisolated enum FleetResource: Identifiable, Sendable {
-    case container(ContainerSummary), project(ProjectDetails), image(ImageSummary)
-    case network(NetworkSummary), volume(Volume), port(PortMapping), job(JobStatus)
-    case gitOps(DynamicResource), vulnerability(Arcane.VulnerabilityWithImage), topology
+    case container(ContainerSummary)
+    case project(ProjectDetails)
+    case image(ImageSummary)
+    case network(NetworkSummary)
+    case volume(Volume)
+    case port(PortMapping)
+    case job(JobStatus)
+    case gitOps(DynamicResource)
+    case vulnerability(Arcane.VulnerabilityWithImage)
+    case topology
 
     var id: String {
         switch self {
@@ -44,7 +51,8 @@ nonisolated enum FleetResource: Identifiable, Sendable {
         case .port(let item): item.id
         case .job(let item): item.id
         case .gitOps(let item): item.id
-        case .vulnerability(let item): [item.imageId, item.vulnerabilityId, item.pkgName, item.installedVersion].joined(separator: "\u{0}")
+        case .vulnerability(let item):
+            [item.imageId, item.vulnerabilityId, item.pkgName, item.installedVersion].joined(separator: "\u{0}")
         case .topology: "topology"
         }
     }

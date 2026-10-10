@@ -36,7 +36,8 @@ enum LogViewerFormatting {
 
     static func levelLabel(_ level: String?) -> String? {
         guard let level = level?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !level.isEmpty else { return nil }
+            !level.isEmpty
+        else { return nil }
 
         switch severity(for: level) {
         case .error: return "ERROR"
@@ -56,12 +57,14 @@ enum LogViewerFormatting {
     static func exportText(for line: LogLine, showTimestamps: Bool) -> String {
         var metadata: [String] = []
         if showTimestamps,
-           let timestamp = line.timestamp?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !timestamp.isEmpty {
+            let timestamp = line.timestamp?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !timestamp.isEmpty
+        {
             metadata.append("[\(timestamp)]")
         }
         if let service = line.service?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !service.isEmpty {
+            !service.isEmpty
+        {
             metadata.append("[\(service)]")
         }
         if let level = levelLabel(line.level) {
@@ -74,12 +77,14 @@ enum LogViewerFormatting {
     static func accessibilityText(for line: LogLine, showTimestamps: Bool) -> String {
         var components: [String] = []
         if showTimestamps,
-           let timestamp = line.timestamp?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !timestamp.isEmpty {
+            let timestamp = line.timestamp?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !timestamp.isEmpty
+        {
             components.append(displayTimestamp(timestamp))
         }
         if let service = line.service?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !service.isEmpty {
+            !service.isEmpty
+        {
             components.append("Service \(service)")
         }
         if let level = levelLabel(line.level) {

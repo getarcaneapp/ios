@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct SystemInfoDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -242,6 +242,6 @@ struct SystemInfoDetailView: View {
     }
 }
 
-private extension String {
-    func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self }
+extension String {
+    fileprivate func ifEmpty(_ fallback: String) -> String { isEmpty ? fallback : self }
 }

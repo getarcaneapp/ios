@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 private struct BuildSettingsFormState: Equatable {
     let buildProvider: String

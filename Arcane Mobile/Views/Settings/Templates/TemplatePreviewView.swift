@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct TemplatePreviewView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -57,7 +57,7 @@ struct TemplatePreviewView: View {
                                 title: ".env",
                                 systemImage: "key.fill",
                                 tint: .orange
-                            )
+                            ),
                         ],
                         accessibilityLabel: "Template files"
                     )
@@ -80,12 +80,16 @@ struct TemplatePreviewView: View {
                             Button("Edit Template", systemImage: "pencil") { editorMode = .edit(displayedTemplate) }
                         }
                         if canDelete {
-                            Button(role: .destructive) { confirmDelete = true } label: {
+                            Button(role: .destructive) {
+                                confirmDelete = true
+                            } label: {
                                 DestructiveLabel(text: "Delete Template")
                             }
                             .tint(.red)
                         }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                     .disabled(content == nil || isDeleting)
                     .accessibilityLabel("Template Actions")
                 }
@@ -107,9 +111,10 @@ struct TemplatePreviewView: View {
             }
 
             if #available(iOS 26, *),
-               displayedTemplate.isRemote,
-               canDownload,
-               canDeploy {
+                displayedTemplate.isRemote,
+                canDownload,
+                canDeploy
+            {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
 
@@ -131,7 +136,10 @@ struct TemplatePreviewView: View {
                 await onChange()
             }
         }
-        .deleteConfirmation(isPresented: $confirmDelete, title: "Delete this local template?", confirmTitle: "Delete Template", dismissOnConfirm: false) {
+        .deleteConfirmation(
+            isPresented: $confirmDelete, title: "Delete this local template?", confirmTitle: "Delete Template",
+            dismissOnConfirm: false
+        ) {
             Task { await deleteTemplate() }
         }
         .sheet(item: $deployment) { deployment in
@@ -312,7 +320,8 @@ private struct TemplateContentSummary: View {
 
     private var accessibilitySummary: String {
         let source = template.isRemote ? "Remote" : "Local"
-        return "\(source) template. \(content.services.count) services. \(content.envVariables.count) environment variables."
+        return
+            "\(source) template. \(content.services.count) services. \(content.envVariables.count) environment variables."
     }
 }
 

@@ -81,8 +81,9 @@ struct ResponseCacheLifecycleTests {
     }
 
     private func key() -> CacheKey {
-        CacheKey(serverIdentity: "https://cache.test:443", userID: "one", sessionIdentity: UUID().uuidString,
-                 envID: "one", pathWithQuery: "containers")
+        CacheKey(
+            serverIdentity: "https://cache.test:443", userID: "one", sessionIdentity: UUID().uuidString,
+            envID: "one", pathWithQuery: "containers")
     }
 }
 

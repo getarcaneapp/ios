@@ -13,11 +13,17 @@ struct AccentColorMenu: View {
     var body: some View {
         Menu {
             ForEach(AccentColorOption.allCases) { option in
-                Toggle(isOn: Binding(
-                    get: { selectedOption == option },
-                    set: { if $0 { selection = option.hex } }
-                )) {
-                    Label { Text(option.displayName) } icon: { Image(uiImage: option.menuDot) }
+                Toggle(
+                    isOn: Binding(
+                        get: { selectedOption == option },
+                        set: { if $0 { selection = option.hex } }
+                    )
+                ) {
+                    Label {
+                        Text(option.displayName)
+                    } icon: {
+                        Image(uiImage: option.menuDot)
+                    }
                 }
                 .disabled(!isAvailable(option.hex))
             }

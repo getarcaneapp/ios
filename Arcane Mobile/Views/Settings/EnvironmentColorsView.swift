@@ -9,11 +9,17 @@ struct EnvironmentColorsView: View {
     var body: some View {
         List {
             Section {
-                ForEach(fleet.environments.sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }) { environment in
-                    EnvironmentColorPicker(environment: environment)
-                    .swipeActions {
-                        Button("Reset") { colors.set(nil, server: manager.serverURL, environmentID: environment.id) }
+                ForEach(
+                    fleet.environments.sorted {
+                        $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
                     }
+                ) { environment in
+                    EnvironmentColorPicker(environment: environment)
+                        .swipeActions {
+                            Button("Reset") {
+                                colors.set(nil, server: manager.serverURL, environmentID: environment.id)
+                            }
+                        }
                 }
             } footer: {
                 Text("Colors apply to environment names and icons in resource lists. Swipe a row to reset its color.")
@@ -52,18 +58,23 @@ struct EnvironmentColorPicker: View {
         HStack {
             Text(environment.displayName)
             Spacer()
-            AccentColorMenu(selection: Binding(get: { selectedHex }, set: save),
+            AccentColorMenu(
+                selection: Binding(get: { selectedHex }, set: save),
                 isAvailable: { colors.isAvailable($0, server: manager.serverURL, environmentID: environment.id) },
                 onCustom: { showCustomColor = true })
         }
         .sheet(isPresented: $showCustomColor) {
-            CustomAccentColorPicker(selection: Binding(
-                get: { Color(hex: selectedHex) ?? .blue },
-                set: { color in
-                    let resolved = color.resolve(in: EnvironmentValues())
-                    save(String(format: "#%02X%02X%02X", Int(max(0, min(1, resolved.red)) * 255), Int(max(0, min(1, resolved.green)) * 255), Int(max(0, min(1, resolved.blue)) * 255)))
-                }
-            ))
+            CustomAccentColorPicker(
+                selection: Binding(
+                    get: { Color(hex: selectedHex) ?? .blue },
+                    set: { color in
+                        let resolved = color.resolve(in: EnvironmentValues())
+                        save(
+                            String(
+                                format: "#%02X%02X%02X", Int(max(0, min(1, resolved.red)) * 255),
+                                Int(max(0, min(1, resolved.green)) * 255), Int(max(0, min(1, resolved.blue)) * 255)))
+                    }
+                ))
         }
     }
 }

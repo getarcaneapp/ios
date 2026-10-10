@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ImageHistoryView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -44,7 +44,9 @@ struct ImageHistoryView: View {
                             }
                             HStack {
                                 if item.created > 0 {
-                                    Text(Date(timeIntervalSince1970: TimeInterval(item.created)), format: .dateTime.year().month().day())
+                                    Text(
+                                        Date(timeIntervalSince1970: TimeInterval(item.created)),
+                                        format: .dateTime.year().month().day())
                                 }
                                 if !item.tags.isEmpty {
                                     Text(item.tags.joined(separator: ", "))

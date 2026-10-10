@@ -17,7 +17,7 @@ struct EnvPreviewEditor: View {
                 selection: $raw,
                 options: [
                     ScrollableTabOption(false, title: "Editor", systemImage: "slider.horizontal.3"),
-                    ScrollableTabOption(true, title: "Text", systemImage: "chevron.left.forwardslash.chevron.right")
+                    ScrollableTabOption(true, title: "Text", systemImage: "chevron.left.forwardslash.chevron.right"),
                 ],
                 accessibilityLabel: "Environment editor mode"
             )
@@ -30,7 +30,8 @@ struct EnvPreviewEditor: View {
                     }.listRowBackground(Color.clear)
                     ForEach(document.entries) { entry in
                         Section(entry.name) {
-                            let layout = dynamicTypeSize.isAccessibilitySize
+                            let layout =
+                                dynamicTypeSize.isAccessibilitySize
                                 ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
                             layout {
                                 if revealed.contains(entry.name) {
@@ -40,7 +41,8 @@ struct EnvPreviewEditor: View {
                                 }
                                 Button(revealed.contains(entry.name) ? "Hide" : "Reveal") {
                                     if !revealed.insert(entry.name).inserted { revealed.remove(entry.name) }
-                                }.accessibilityLabel("\(revealed.contains(entry.name) ? "Hide" : "Reveal") \(entry.name)")
+                                }.accessibilityLabel(
+                                    "\(revealed.contains(entry.name) ? "Hide" : "Reveal") \(entry.name)")
                             }.privacySensitive().disabled(readOnly)
                         }
                         .contextMenu {
@@ -54,7 +56,9 @@ struct EnvPreviewEditor: View {
                         for index in indices.reversed() { text = EnvDocument(text).removing(entries[index]) }
                     }.deleteDisabled(readOnly)
                     if document.entries.isEmpty {
-                        ContentUnavailableView("No environment variables", systemImage: "list.bullet", description: Text("Use Add to create a variable."))
+                        ContentUnavailableView(
+                            "No environment variables", systemImage: "list.bullet",
+                            description: Text("Use Add to create a variable."))
                     }
                     if document.unsupportedLines > 0 {
                         Section {
@@ -72,25 +76,35 @@ struct EnvPreviewEditor: View {
                     Menu {
                         if !readOnly && !raw { Button("Add variable", systemImage: "plus") { adding = true } }
                         if let menuActions { menuActions }
-                    } label: { Image(systemName: "ellipsis") }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
                     .accessibilityLabel("Editor actions")
                 }
             }
         }
         .sheet(isPresented: $adding) {
             ComposeNameSheet(title: "Add variable", placeholder: "Variable name") { name in
-                do { text = try document.adding(name); error = nil; return nil }
-                catch { return error.localizedDescription }
+                do {
+                    text = try document.adding(name)
+                    error = nil
+                    return nil
+                } catch { return error.localizedDescription }
             }
         }
     }
 
     private func binding(_ entry: EnvEntry) -> Binding<String> {
-        Binding(get: { document.entries.first { $0.name == entry.name }?.value ?? entry.value }, set: { value in
-            do {
-                guard let current = document.entries.first(where: { $0.name == entry.name }) else { throw ComposeFormError.changed }
-                text = try document.setting(value, entry: current); error = nil
-            } catch { self.error = error.localizedDescription }
-        })
+        Binding(
+            get: { document.entries.first { $0.name == entry.name }?.value ?? entry.value },
+            set: { value in
+                do {
+                    guard let current = document.entries.first(where: { $0.name == entry.name }) else {
+                        throw ComposeFormError.changed
+                    }
+                    text = try document.setting(value, entry: current)
+                    error = nil
+                } catch { self.error = error.localizedDescription }
+            })
     }
 }

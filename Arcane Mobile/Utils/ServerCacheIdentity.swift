@@ -3,8 +3,9 @@ import Foundation
 nonisolated enum ServerCacheIdentity {
     static func canonical(for url: URL) -> String {
         guard let components = URLComponents(url: url.standardized, resolvingAgainstBaseURL: false),
-              let rawScheme = components.scheme,
-              let rawHost = components.host else {
+            let rawScheme = components.scheme,
+            let rawHost = components.host
+        else {
             return url.absoluteString
         }
 

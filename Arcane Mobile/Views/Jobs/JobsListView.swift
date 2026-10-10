@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct JobsListView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -40,9 +40,9 @@ struct JobsListView: View {
         let trimmed = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return jobs }
         return jobs.filter { job in
-            job.name.localizedCaseInsensitiveContains(trimmed) ||
-            job.description.localizedCaseInsensitiveContains(trimmed) ||
-            job.category.localizedCaseInsensitiveContains(trimmed)
+            job.name.localizedCaseInsensitiveContains(trimmed)
+                || job.description.localizedCaseInsensitiveContains(trimmed)
+                || job.category.localizedCaseInsensitiveContains(trimmed)
         }
     }
 
@@ -140,7 +140,9 @@ struct JobsListView: View {
         .onChange(of: debouncedSearchText) { rebuildGroups() }
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { Task { await load(refresh: true) } } label: {
+                Button {
+                    Task { await load(refresh: true) }
+                } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .accessibilityLabel("Refresh")

@@ -1,6 +1,6 @@
+import Arcane
 import Foundation
 import Observation
-import Arcane
 
 nonisolated enum EventSeverityFilter: String, CaseIterable, Identifiable, Hashable, Sendable {
     case info

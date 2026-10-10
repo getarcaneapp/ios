@@ -15,8 +15,10 @@ struct BoundedLogStreamTests {
         defer { session.invalidateAndCancel() }
         let stream = try await makeStream(server: server, session: session)
         let consumer = Task {
-            do { return try await stream.makeAsyncIterator().next() }
-            catch { Issue.record(error); throw error }
+            do { return try await stream.makeAsyncIterator().next() } catch {
+                Issue.record(error)
+                throw error
+            }
         }
         try await server.waitForConnection()
         let socket = try #require(await session.allTasks.first as? URLSessionWebSocketTask)
@@ -114,22 +116,24 @@ struct BoundedLogStreamTests {
     }
 
     private func makeStream(server: LogSocketServer, session: URLSession) async throws -> BoundedLogStream {
-        let client = ArcaneClient(configuration: .init(
-            baseURL: try await server.baseURL(),
-            tokenStore: InMemoryTokenStore(tokens: .init(accessToken: "token", refreshToken: "refresh", expiresAt: .distantFuture)),
-            urlSession: session,
-            proxySession: LogProxySession()
-        ))
+        let client = ArcaneClient(
+            configuration: .init(
+                baseURL: try await server.baseURL(),
+                tokenStore: InMemoryTokenStore(
+                    tokens: .init(accessToken: "token", refreshToken: "refresh", expiresAt: .distantFuture)),
+                urlSession: session,
+                proxySession: LogProxySession()
+            ))
         return client.boundedContainerLogs(envID: EnvironmentID(rawValue: "test"), id: "container", timestamps: true)
     }
 }
 
 private actor LogProxySession: ArcaneProxySession {
     private var receivedGenerations: [UInt64] = []
-    func requestContext(for url: URL) -> ArcaneProxyRequestContext {
+    func requestContext(for _: URL) -> ArcaneProxyRequestContext {
         .init(headers: ["Cookie": "proxy=session"], generation: 1)
     }
-    func receive(response: HTTPURLResponse, for url: URL, generation: UInt64) {
+    func receive(response _: HTTPURLResponse, for _: URL, generation: UInt64) {
         receivedGenerations.append(generation)
     }
 }
@@ -156,8 +160,14 @@ private final class LogSocketServer: Sendable {
         parameters.defaultProtocolStack.applicationProtocols.insert(websocket, at: 0)
         listener = try NWListener(using: parameters, on: .any)
         listener.newConnectionHandler = { [weak self] connection in
-            guard let self else { connection.cancel(); return }
-            state.withLock { $0.connection = connection; $0.connectionCount += 1 }
+            guard let self else {
+                connection.cancel()
+                return
+            }
+            state.withLock {
+                $0.connection = connection
+                $0.connectionCount += 1
+            }
             connection.stateUpdateHandler = { [weak self] status in
                 if case .ready = status { self?.state.withLock { $0.ready = true } }
             }
@@ -170,8 +180,10 @@ private final class LogSocketServer: Sendable {
     private static func receiveControlFrames(_ connection: NWConnection) {
         connection.receiveMessage { _, context, _, error in
             guard error == nil else { return }
-            if let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata,
-               metadata.opcode == .close {
+            if let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition)
+                as? NWProtocolWebSocket.Metadata,
+                metadata.opcode == .close
+            {
                 connection.cancel()
             } else {
                 receiveControlFrames(connection)
@@ -198,12 +210,14 @@ private final class LogSocketServer: Sendable {
     func send(_ text: String) async throws {
         try await waitForConnection()
         let connection = try #require(state.withLock { $0.connection })
-        let context = NWConnection.ContentContext(identifier: "log", metadata: [NWProtocolWebSocket.Metadata(opcode: .text)])
+        let context = NWConnection.ContentContext(
+            identifier: "log", metadata: [NWProtocolWebSocket.Metadata(opcode: .text)])
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            connection.send(content: Data(text.utf8), contentContext: context, completion: .contentProcessed { error in
-                if let error { continuation.resume(throwing: error) }
-                else { continuation.resume() }
-            })
+            connection.send(
+                content: Data(text.utf8), contentContext: context,
+                completion: .contentProcessed { error in
+                    if let error { continuation.resume(throwing: error) } else { continuation.resume() }
+                })
         }
     }
 

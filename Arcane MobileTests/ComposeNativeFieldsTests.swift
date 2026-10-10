@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Arcane_Mobile
 
 @Suite struct ComposeNativeFieldsTests {
@@ -23,7 +24,8 @@ import Testing
     }
 
     @Test func draftCreatesServiceWithConfiguredListAndDefaultBoolean() throws {
-        var draft = ComposeSettingDraft(name: "cap_add", schemaPath: [.key("services"), .key("web"), .key("cap_add")], included: true)
+        var draft = ComposeSettingDraft(
+            name: "cap_add", schemaPath: [.key("services"), .key("web"), .key("cap_add")], included: true)
         draft.prepareFields()
         draft.children[0].value = "NET_ADMIN"
         let result = try draft.adding(to: "# keep\nservices: {}\n", at: [], newService: "web")
@@ -36,11 +38,16 @@ import Testing
     }
 
     @Test func createsServiceWithItsFirstSettingAndPreservesProjectFields() throws {
-        for source in ["# keep\nnetworks:\n  shared: {}\n", "# keep\nservices: {existing: {image: alpine}}\nnetworks: {shared: {}}\n"] {
-            let result = try ComposeDocument(source).addingService("worker", field: "image", value: "busybox:latest", kind: .string)
+        for source in [
+            "# keep\nnetworks:\n  shared: {}\n",
+            "# keep\nservices: {existing: {image: alpine}}\nnetworks: {shared: {}}\n",
+        ] {
+            let result = try ComposeDocument(source).addingService(
+                "worker", field: "image", value: "busybox:latest", kind: .string)
             let document = try ComposeDocument(result)
             #expect(document.services.contains("worker"))
-            #expect(document.nativeField(at: [.key("services"), .key("worker"), .key("image")]).value == "busybox:latest")
+            #expect(
+                document.nativeField(at: [.key("services"), .key("worker"), .key("image")]).value == "busybox:latest")
             #expect(document.nativeField(at: [.key("networks"), .key("shared")]).kind == .mapping)
             #expect(result.contains("# keep"))
             if source.contains("existing") { #expect(document.services.contains("existing")) }
@@ -62,7 +69,8 @@ import Testing
     }
 
     @Test func nestedBlockFieldsPreserveUnrelatedSource() throws {
-        let source = "# header\r\nservices:\r\n  web:\r\n    healthcheck:\r\n      retries: 3 # attempts\r\n      test:\r\n        - CMD\r\n        - curl\r\nx-extra: ${KEEP}\r\n"
+        let source =
+            "# header\r\nservices:\r\n  web:\r\n    healthcheck:\r\n      retries: 3 # attempts\r\n      test:\r\n        - CMD\r\n        - curl\r\nx-extra: ${KEEP}\r\n"
         let path: [ComposeFieldPathComponent] = [.key("services"), .key("web"), .key("healthcheck"), .key("retries")]
         let changed = try ComposeDocument(source).settingNative("5", kind: .number, at: path)
         #expect(changed == source.replacingOccurrences(of: "retries: 3", with: "retries: 5"))
@@ -76,7 +84,8 @@ import Testing
         let path: [ComposeFieldPathComponent] = [.key("settings"), .key("values"), .index(1), .key("name")]
         let changed = try ComposeDocument(source).settingNative("new", kind: .string, at: path)
         #expect(changed == source.replacingOccurrences(of: "'old'", with: "\"new\""))
-        let added = try ComposeDocument(changed).addingNative("false", kind: .boolean, key: "other", at: [.key("settings")])
+        let added = try ComposeDocument(changed).addingNative(
+            "false", kind: .boolean, key: "other", at: [.key("settings")])
         #expect(try ComposeDocument(added).nativeField(at: [.key("settings"), .key("other")]).kind == .boolean)
         let removed = try ComposeDocument(added).removingNative(at: [.key("settings"), .key("enabled")])
         #expect(removed.contains("# keep"))
@@ -84,7 +93,8 @@ import Testing
     }
     @Test func nullAndMissingObjectsCanBeFilled() throws {
         for source in ["settings: null # keep\n", "settings: # keep\n", "# keep\n"] {
-            let updated = try ComposeDocument(source).addingNative("value", kind: .string, key: "name", at: [.key("settings")])
+            let updated = try ComposeDocument(source).addingNative(
+                "value", kind: .string, key: "name", at: [.key("settings")])
             #expect(try ComposeDocument(updated).nativeField(at: [.key("settings"), .key("name")]).value == "value")
             #expect(updated.contains("# keep"))
         }
@@ -96,10 +106,13 @@ import Testing
         #expect(try ComposeDocument(text).nativeField(at: [.key("enabled")]).kind == .string)
         let number = try ComposeDocument(text).settingNative("12", kind: .number, at: [.key("count")])
         #expect(try ComposeDocument(number).nativeField(at: [.key("count")]).kind == .number)
-        #expect(throws: (any Error).self) { try ComposeDocument(number).settingNative("12 # comment", kind: .number, at: [.key("count")]) }
+        #expect(throws: (any Error).self) {
+            try ComposeDocument(number).settingNative("12 # comment", kind: .number, at: [.key("count")])
+        }
     }
     @Test func nativeMultilineTextRemainsEditable() throws {
-        let text = try ComposeDocument("value: initial\n").settingNative("first\nsecond", kind: .string, at: [.key("value")])
+        let text = try ComposeDocument("value: initial\n").settingNative(
+            "first\nsecond", kind: .string, at: [.key("value")])
         let field = try ComposeDocument(text).nativeField(at: [.key("value")])
         #expect(field.kind == .string)
         #expect(field.value == "first\nsecond")
@@ -112,7 +125,10 @@ import Testing
         #expect(throws: (any Error).self) { try ComposeDocument("options: {key: one, key: two}") }
     }
     @Test func shortNetworksConvertAndAcceptStaticOptions() throws {
-        for source in ["services:\n  web:\n    networks:\n      - front # first\n      - back\n", "services:\r\n  web:\r\n    networks: [front, # first\r\n      back] # networks\r\n"] {
+        for source in [
+            "services:\n  web:\n    networks:\n      - front # first\n      - back\n",
+            "services:\r\n  web:\r\n    networks: [front, # first\r\n      back] # networks\r\n",
+        ] {
             let path = ["services", "web", "networks"]
             let converted = try ComposeDocument(source).convertingNetworkAttachments(at: path)
             let changed = try ComposeDocument(converted).setting("'172.20.0.2'", at: path + ["front", "ipv4_address"])
@@ -122,7 +138,9 @@ import Testing
     }
     @Test func duplicateNetworksDoNotConvert() throws {
         let source = "services:\n  web:\n    networks: [front, front]\n"
-        #expect(throws: (any Error).self) { try ComposeDocument(source).convertingNetworkAttachments(at: ["services", "web", "networks"]) }
+        #expect(throws: (any Error).self) {
+            try ComposeDocument(source).convertingNetworkAttachments(at: ["services", "web", "networks"])
+        }
     }
 
     @Test func emptyNetworksConvertToAnEditableMapping() throws {
@@ -155,7 +173,9 @@ import Testing
         let token: [ComposeFieldPathComponent] = [.key("environment"), .key("TOKEN")]
         #expect(document.nativeFields(at: [.key("environment")]).map(\.name) == ["TOKEN", "OTHER"])
         #expect(try document.settingNative("", kind: .null, at: token) == source)
-        #expect(try document.settingNative("secret", kind: .string, at: token) == "environment: {TOKEN: \"secret\", OTHER: explicit} # keep\n")
+        #expect(
+            try document.settingNative("secret", kind: .string, at: token)
+                == "environment: {TOKEN: \"secret\", OTHER: explicit} # keep\n")
         #expect(throws: (any Error).self) { try ComposeDocument("environment: {TOKEN, TOKEN: duplicate}\n") }
     }
 }

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 import UIKit
 
 struct ContainerTerminalView: View {
@@ -234,9 +234,9 @@ struct ContainerTerminalView: View {
     }
 }
 
-private extension ContainerTerminalView {
+extension ContainerTerminalView {
     @concurrent
-    func consumeOutput(
+    fileprivate func consumeOutput(
         from terminalSession: BoundedTerminalSession,
         processor: TerminalOutputProcessor
     ) async {
@@ -272,7 +272,7 @@ private extension ContainerTerminalView {
         await MainActor.run { isConnected = false }
     }
 
-    nonisolated func waitForFlushInterval(
+    fileprivate nonisolated func waitForFlushInterval(
         after lastFlush: ContinuousClock.Instant?,
         clock: ContinuousClock
     ) async {
@@ -284,13 +284,13 @@ private extension ContainerTerminalView {
         }
     }
 
-    func publish(_ lines: [TerminalOutputLine]) {
+    fileprivate func publish(_ lines: [TerminalOutputLine]) {
         guard lines != outputLines else { return }
         outputLines = lines
         outputRevision &+= 1
     }
 
-    func copyAllOutput() async {
+    fileprivate func copyAllOutput() async {
         let snapshot = await outputProcessor.snapshot()
         let text = snapshot.fullText
         guard !text.isEmpty else { return }
@@ -298,14 +298,14 @@ private extension ContainerTerminalView {
         showToast(.copied())
     }
 
-    func clearOutput() async {
+    fileprivate func clearOutput() async {
         await outputProcessor.clear()
         outputLines = []
         followBehavior.resume()
         outputRevision &+= 1
     }
 
-    func teardown() async {
+    fileprivate func teardown() async {
         outputTask?.cancel()
         outputTask = nil
         await session?.close()

@@ -135,7 +135,8 @@ nonisolated struct TerminalFrameDecoder: Sendable {
             guard utf8ContinuationCount == 0 else { return }
 
             let scalar = utf8Value
-            let valid = scalar >= utf8Minimum
+            let valid =
+                scalar >= utf8Minimum
                 && scalar <= 0x10FFFF
                 && !(0xD800...0xDFFF).contains(scalar)
             if valid {

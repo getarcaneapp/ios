@@ -18,22 +18,42 @@ nonisolated struct ComposeSchemaField: Identifiable {
 
 /// Immutable JSON nodes allow schema lookup outside the main actor.
 nonisolated indirect enum ComposeSchemaValue: Decodable, Sendable {
-    case object([String: ComposeSchemaValue]), array([ComposeSchemaValue]), string(String)
-    case number(Double), boolean(Bool), null
+    case object([String: ComposeSchemaValue])
+    case array([ComposeSchemaValue])
+    case string(String)
+    case number(Double)
+    case boolean(Bool)
+    case null
 
     init(from decoder: any Decoder) throws {
         let value = try decoder.singleValueContainer()
-        if value.decodeNil() { self = .null }
-        else if let object = try? value.decode([String: ComposeSchemaValue].self) { self = .object(object) }
-        else if let array = try? value.decode([ComposeSchemaValue].self) { self = .array(array) }
-        else if let string = try? value.decode(String.self) { self = .string(string) }
-        else if let boolean = try? value.decode(Bool.self) { self = .boolean(boolean) }
-        else { self = .number(try value.decode(Double.self)) }
+        if value.decodeNil() {
+            self = .null
+        } else if let object = try? value.decode([String: ComposeSchemaValue].self) {
+            self = .object(object)
+        } else if let array = try? value.decode([ComposeSchemaValue].self) {
+            self = .array(array)
+        } else if let string = try? value.decode(String.self) {
+            self = .string(string)
+        } else if let boolean = try? value.decode(Bool.self) {
+            self = .boolean(boolean)
+        } else {
+            self = .number(try value.decode(Double.self))
+        }
     }
 
-    var object: [String: ComposeSchemaValue] { if case .object(let value) = self { return value }; return [:] }
-    var array: [ComposeSchemaValue] { if case .array(let value) = self { return value }; return [] }
-    var string: String? { if case .string(let value) = self { return value }; return nil }
+    var object: [String: ComposeSchemaValue] {
+        if case .object(let value) = self { return value }
+        return [:]
+    }
+    var array: [ComposeSchemaValue] {
+        if case .array(let value) = self { return value }
+        return []
+    }
+    var string: String? {
+        if case .string(let value) = self { return value }
+        return nil
+    }
     var literal: String? {
         switch self {
         case .string(let value): value

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// Swarm management is temporarily a placeholder while the screen is reworked
 /// (see ReleaseNotes 0.1.9). The tab stays in navigation; the prior cluster

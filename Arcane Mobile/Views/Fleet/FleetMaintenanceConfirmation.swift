@@ -2,7 +2,9 @@ import Arcane
 import SwiftUI
 
 extension View {
-    func fleetMaintenanceConfirmation(action: Binding<FleetMaintenanceAction?>, environments: [Arcane.Environment]) -> some View {
+    func fleetMaintenanceConfirmation(action: Binding<FleetMaintenanceAction?>, environments: [Arcane.Environment])
+        -> some View
+    {
         modifier(FleetMaintenanceConfirmation(action: action, environments: environments))
     }
 }
@@ -21,7 +23,8 @@ private struct FleetMaintenanceConfirmation: ViewModifier {
                 actions: [
                     DeleteConfirmationAction(title: action.buttonTitle, role: nil, tint: .accentColor) {
                         Task {
-                            await FleetOperationStore.shared.performMaintenance(action, environments: environments, manager: manager)
+                            await FleetOperationStore.shared.performMaintenance(
+                                action, environments: environments, manager: manager)
                         }
                     }
                 ],

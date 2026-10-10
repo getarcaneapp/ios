@@ -23,10 +23,14 @@ nonisolated extension ComposeDocument {
                 rows.append(indent + substring(range(comment)))
             }
             for (index, item) in items.enumerated() {
-                guard Self.isScalar(item), let name = Self.decode(fragment(item)), !name.isEmpty, names.insert(name).inserted else { throw ComposeDocumentError.unsupported }
+                guard Self.isScalar(item), let name = Self.decode(fragment(item)), !name.isEmpty,
+                    names.insert(name).inserted
+                else { throw ComposeDocumentError.unsupported }
                 var row = indent + Self.quoted(name) + ": {}"
                 let next = index + 1 < items.count ? range(items[index + 1]).location : NSMaxRange(range(sequence))
-                let attached = comments.filter { range($0).location >= NSMaxRange(range(item)) && range($0).location < next }
+                let attached = comments.filter {
+                    range($0).location >= NSMaxRange(range(item)) && range($0).location < next
+                }
                 if let first = attached.first { row += " " + substring(range(first)) }
                 rows.append(row)
                 rows += attached.dropFirst().map { indent + substring(range($0)) }
@@ -39,7 +43,8 @@ nonisolated extension ComposeDocument {
             // Keep the attachment key's trailing comment on its original line.
             let insertion = lineEnd(NSMaxRange(range(pair)))
             let prefix = insertion > 0 && substring(NSRange(location: insertion - 1, length: 1)) == "\n" ? "" : newline
-            var result = (source as NSString).replacingCharacters(in: NSRange(location: insertion, length: 0), with: prefix + rows.joined(separator: newline) + newline)
+            var result = (source as NSString).replacingCharacters(
+                in: NSRange(location: insertion, length: 0), with: prefix + rows.joined(separator: newline) + newline)
             result = (result as NSString).replacingCharacters(in: range(sequence), with: "")
             _ = try ComposeDocument(result)
             return result
@@ -54,14 +59,21 @@ nonisolated extension ComposeDocument {
             edits.append((NSRange(location: NSMaxRange(bounds) - 1, length: 1), "}"))
         } else if let sequence = Self.sequence(node) {
             entries = Self.children(sequence).filter { $0.nodeType == "block_sequence_item" }
-        } else { throw ComposeDocumentError.unsupported }
+        } else {
+            throw ComposeDocumentError.unsupported
+        }
         var names = Set<String>()
         for item in entries {
-            guard let content = Self.content(item), Self.isScalar(content), let name = Self.decode(fragment(content)), !name.isEmpty,
-                  names.insert(name).inserted else { throw ComposeDocumentError.unsupported }
+            guard let content = Self.content(item), Self.isScalar(content), let name = Self.decode(fragment(content)),
+                !name.isEmpty,
+                names.insert(name).inserted
+            else { throw ComposeDocumentError.unsupported }
             let bounds = range(item)
             let contentBounds = range(content)
-            let replacementRange = isFlow ? contentBounds : NSRange(location: bounds.location, length: NSMaxRange(contentBounds) - bounds.location)
+            let replacementRange =
+                isFlow
+                ? contentBounds
+                : NSRange(location: bounds.location, length: NSMaxRange(contentBounds) - bounds.location)
             edits.append((replacementRange, Self.quoted(name) + ": {}"))
         }
         var result = source as NSString

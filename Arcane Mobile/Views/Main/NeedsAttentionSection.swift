@@ -126,9 +126,11 @@ struct AttentionToolbarButton: View {
             }
         )
         .sensoryFeedback(.impact(weight: .medium), trigger: longPressPulse)
-        .accessibilityLabel(items.isEmpty
-            ? "Attention Center, all clear"
-            : "Attention Center, \(items.count) items")
+        .accessibilityLabel(
+            items.isEmpty
+                ? "Attention Center, all clear"
+                : "Attention Center, \(items.count) items"
+        )
         .accessibilityHint("Tap for a summary. Hold to open the Attention Center.")
         .accessibilityAction(named: "Open Attention Center") { onOpenCenter() }
         .popover(isPresented: $isPresented, arrowEdge: .top) {

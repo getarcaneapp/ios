@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ActivitiesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -92,15 +92,15 @@ struct ActivitiesView: View {
                             )
                         }
 
-                    PaginatedListFooter(
-                        hasMore: store.hasMore && store.searchText.isEmpty,
-                        loadMoreError: store.loadMoreError,
-                        onRetry: { Task { await store.loadMore() } },
-                        onLoadMore: {
-                            guard !store.isLoading, !store.isLoadingMore else { return }
-                            Task { await store.loadMore() }
-                        }
-                    )
+                        PaginatedListFooter(
+                            hasMore: store.hasMore && store.searchText.isEmpty,
+                            loadMoreError: store.loadMoreError,
+                            onRetry: { Task { await store.loadMore() } },
+                            onLoadMore: {
+                                guard !store.isLoading, !store.isLoadingMore else { return }
+                                Task { await store.loadMore() }
+                            }
+                        )
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -127,7 +127,9 @@ struct ActivitiesView: View {
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await store.retryLiveUpdates() } } label: {
+                    Button {
+                        Task { await store.retryLiveUpdates() }
+                    } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh")
@@ -138,7 +140,9 @@ struct ActivitiesView: View {
                         ToolbarSpacer(.fixed, placement: .topBarTrailing)
                     }
                     AppToolbarItem(placement: .navigationBarTrailing) {
-                        Button(role: .destructive) { showClearConfirm = true } label: {
+                        Button(role: .destructive) {
+                            showClearConfirm = true
+                        } label: {
                             Image(systemName: "trash")
                                 .foregroundStyle(.red)
                         }
@@ -215,7 +219,9 @@ struct ActivitiesView: View {
                 }
             }
         } label: {
-            Image(systemName: activeFilterCount == 0 ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+            Image(
+                systemName: activeFilterCount == 0
+                    ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
         }
         .accessibilityLabel("Filter activities")
     }
@@ -295,7 +301,6 @@ private struct ActivityBatchRow: View {
                     Text(batch.displayTitle)
                         .font(.body)
 
-
                     Spacer(minLength: 0)
 
                     ResourceStatusBadge(status: batch.status.rawValue)
@@ -311,7 +316,8 @@ private struct ActivityBatchRow: View {
                         .foregroundStyle(.red)
                 }
 
-                ActivityProgressView(progress: batch.progress, isActive: batch.isActive,
+                ActivityProgressView(
+                    progress: batch.progress, isActive: batch.isActive,
                     tint: batch.status.activityTint)
 
                 HStack(spacing: 6) {
@@ -350,7 +356,8 @@ private struct ActivityBatchMemberRow: View {
                     .foregroundStyle(.secondary)
 
                 if activity.isCancellable {
-                    ActivityProgressView(progress: activity.displayProgress, isActive: true,
+                    ActivityProgressView(
+                        progress: activity.displayProgress, isActive: true,
                         tint: activity.statusTint)
                 }
 
@@ -381,7 +388,6 @@ private struct ActivityRow: View {
                     Text(activity.displayTitle)
                         .font(.body)
 
-
                     Spacer(minLength: 0)
 
                     ResourceStatusBadge(status: activity.status.rawValue)
@@ -391,7 +397,6 @@ private struct ActivityRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-
                 if !activity.latestMessage.isEmpty {
                     Text(activity.latestMessage)
                         .font(.subheadline)
@@ -400,7 +405,8 @@ private struct ActivityRow: View {
                 }
 
                 if activity.isCancellable {
-                    ActivityProgressView(progress: activity.displayProgress, isActive: true,
+                    ActivityProgressView(
+                        progress: activity.displayProgress, isActive: true,
                         tint: activity.statusTint)
                 }
 
@@ -475,12 +481,14 @@ struct ActivityDetailView: View {
         List {
             if let streamError = store.streamErrorMessage {
                 Section {
-                    ErrorBanner(message: streamError, severity: .warning, retry: {
-                        Task {
-                            store.startStream()
-                            await loadDetail()
-                        }
-                    })
+                    ErrorBanner(
+                        message: streamError, severity: .warning,
+                        retry: {
+                            Task {
+                                store.startStream()
+                                await loadDetail()
+                            }
+                        })
                 }
             }
             Section {
@@ -498,7 +506,8 @@ struct ActivityDetailView: View {
                 }
                 .padding(.vertical, 4)
 
-                ActivityProgressView(progress: activity.displayProgress, isActive: activity.isCancellable,
+                ActivityProgressView(
+                    progress: activity.displayProgress, isActive: activity.isCancellable,
                     tint: activity.statusTint, showsPercentage: true)
 
                 if let error = activity.error, !error.isEmpty {
@@ -573,15 +582,20 @@ struct ActivityDetailView: View {
             store.startStream()
             await loadDetail()
         }
-        .deleteConfirmation(isPresented: $showCancelConfirm, config: DeleteConfirmationConfig(
-            title: "Cancel Activity?",
-            message: "Arcane will request cancellation. Work that already finished cannot be undone.",
-            icon: "xmark.circle",
-            actions: [DeleteConfirmationAction(title: "Cancel Activity") {
-                Task { await cancelActivity() }
-            }],
-            cancelTitle: "Keep Running"
-        ))
+        .deleteConfirmation(
+            isPresented: $showCancelConfirm,
+            config: DeleteConfirmationConfig(
+                title: "Cancel Activity?",
+                message: "Arcane will request cancellation. Work that already finished cannot be undone.",
+                icon: "xmark.circle",
+                actions: [
+                    DeleteConfirmationAction(title: "Cancel Activity") {
+                        Task { await cancelActivity() }
+                    }
+                ],
+                cancelTitle: "Keep Running"
+            )
+        )
         .alert(
             "Error",
             isPresented: Binding(

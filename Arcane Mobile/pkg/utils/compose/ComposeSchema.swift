@@ -25,7 +25,9 @@ nonisolated enum ComposeSchema {
         for bundle in bundles {
             for directory in ["ComposeSchema", "Resources/ComposeSchema", ""] {
                 if let url = bundle.url(forResource: resource, withExtension: "json", subdirectory: directory),
-                   let data = try? Data(contentsOf: url), let schema = try? JSONDecoder().decode(ComposeSchemaValue.self, from: data) {
+                    let data = try? Data(contentsOf: url),
+                    let schema = try? JSONDecoder().decode(ComposeSchemaValue.self, from: data)
+                {
                     return schema
                 }
             }
@@ -62,8 +64,11 @@ nonisolated enum ComposeSchema {
                         if key.range(of: pattern, options: .regularExpression) != nil { matches.append(value) }
                     }
                     if matches.isEmpty, let additional = node["additionalProperties"] {
-                        if case .object = additional { matches.append(additional) }
-                        else if case .boolean(true) = additional { matches.append(.object([:])) }
+                        if case .object = additional {
+                            matches.append(additional)
+                        } else if case .boolean(true) = additional {
+                            matches.append(.object([:]))
+                        }
                     }
                     return matches.flatMap { expanded($0) }
                 case .index(let index):
@@ -126,7 +131,8 @@ nonisolated enum ComposeSchema {
             }
             if node["properties"] != nil, !kinds.contains(.mapping) { kinds.append(.mapping) }
             if node["items"] != nil, !kinds.contains(.sequence) { kinds.append(.sequence) }
-            let literals = (node["enum"]?.array.compactMap(\.literal) ?? []) + (node["const"]?.literal.map { [$0] } ?? [])
+            let literals =
+                (node["enum"]?.array.compactMap(\.literal) ?? []) + (node["const"]?.literal.map { [$0] } ?? [])
             for choice in literals where !choices.contains(choice) { choices.append(choice) }
         }
         if kinds.isEmpty { kinds = ComposeNativeKind.editableCases }

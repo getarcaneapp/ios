@@ -1,6 +1,7 @@
 import Foundation
+
 #if canImport(UIKit)
-import UIKit
+    import UIKit
 #endif
 
 struct DemoSession {
@@ -152,35 +153,35 @@ final class DemoService {
 
     private func installLifecycleObservers() {
         #if canImport(UIKit)
-        removeLifecycleObservers()
-        let center = NotificationCenter.default
-        let resign = center.addObserver(
-            forName: UIApplication.willResignActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in self?.heartbeatTask?.cancel() }
-        }
-        let active = center.addObserver(
-            forName: UIApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                if self.heartbeatTask == nil || self.heartbeatTask?.isCancelled == true {
-                    self.heartbeatTask = Task { [weak self] in
-                        await self?.sendHeartbeat()
-                        while true {
-                            // Task.sleep throws CancellationError when cancelled.
-                            do { try await Task.sleep(for: .seconds(15)) } catch { break }
+            removeLifecycleObservers()
+            let center = NotificationCenter.default
+            let resign = center.addObserver(
+                forName: UIApplication.willResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.heartbeatTask?.cancel() }
+            }
+            let active = center.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if self.heartbeatTask == nil || self.heartbeatTask?.isCancelled == true {
+                        self.heartbeatTask = Task { [weak self] in
                             await self?.sendHeartbeat()
+                            while true {
+                                // Task.sleep throws CancellationError when cancelled.
+                                do { try await Task.sleep(for: .seconds(15)) } catch { break }
+                                await self?.sendHeartbeat()
+                            }
                         }
                     }
                 }
             }
-        }
-        lifecycleObservers = [resign, active]
+            lifecycleObservers = [resign, active]
         #endif
     }
 

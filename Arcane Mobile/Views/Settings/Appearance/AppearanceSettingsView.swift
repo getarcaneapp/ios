@@ -131,9 +131,11 @@ struct AppearanceSettingsView: View {
                 Section {
                     NavigationLink(destination: AppIconPickerView()) {
                         HStack(spacing: 12) {
-                            if let image = UIImage(named: AppIconPreviewAsset.name(
-                                for: UIApplication.shared.alternateIconName
-                            )) {
+                            if let image = UIImage(
+                                named: AppIconPreviewAsset.name(
+                                    for: UIApplication.shared.alternateIconName
+                                ))
+                            {
                                 Image(uiImage: image)
                                     .resizable()
                                     .interpolation(.high)

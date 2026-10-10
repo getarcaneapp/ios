@@ -1,6 +1,6 @@
+import Arcane
 import SwiftUI
 import UIKit
-import Arcane
 
 nonisolated struct DashboardGlobalOverview: Decodable, Sendable {
     let summary: DashboardEnvironmentsSummary
@@ -185,7 +185,9 @@ struct DashboardView: View {
 
     private var canPrune: Bool {
         manager.allEnvironmentsPreview
-            ? allEnvironments.filter(\.enabled).contains { manager.permissions.has(Permission.System.prune, in: EnvironmentID(rawValue: $0.id)) }
+            ? allEnvironments.filter(\.enabled).contains {
+                manager.permissions.has(Permission.System.prune, in: EnvironmentID(rawValue: $0.id))
+            }
             : manager.permissions.has(Permission.System.prune, in: envID)
     }
 
@@ -214,271 +216,280 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView {
-                LazyVStack(alignment: .leading, spacing: 36) {
-                    if showsSkeleton {
-                        skeletonContent
-                    } else if showsEmptyState {
-                        ContentUnavailableView {
-                            Label("No Environments", systemImage: "server.rack")
-                        } description: {
-                            Text("Connect an environment to see live container, image, and system stats here.")
-                        }
-                        .padding(.top, 48)
-                    } else {
-                        overviewSection
-
-                        if hasPinnedDashboardResources {
-                            DashboardPinnedSection(
-                                refreshToken: cardRefreshToken,
-                                onOpenContainer: { containerRoute = $0 },
-                                onOpenProject: { projectRoute = $0 }
-                            )
-                            .cardEntrance(id: "dashboard.pinned", index: 4)
-                            .scrollEdgeFade()
-                        }
-
-                        environmentsSection
+            LazyVStack(alignment: .leading, spacing: 36) {
+                if showsSkeleton {
+                    skeletonContent
+                } else if showsEmptyState {
+                    ContentUnavailableView {
+                        Label("No Environments", systemImage: "server.rack")
+                    } description: {
+                        Text("Connect an environment to see live container, image, and system stats here.")
                     }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
-            }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .softTopScrollEdgeEffectCompat()
-            .navigationTitle("Dashboard")
-            .navigationBarTitleDisplayMode(.large)
-            .modifier(DashboardDateSubtitle())
-            .toolbar {
-                // Needs Attention lives in the toolbar: the button expands into
-                // a compact summary popover, which opens the full Attention
-                // Center sheet.
-                if isNavigationRoot {
-                    AppToolbarItem(placement: .topBarLeading) {
-                        AttentionToolbarButton(
-                            items: needsAttentionItems,
-                            isPresented: $showAttentionSummary,
-                            onSelect: { item in performAttentionAction(item.action, presentsSheet: item.presentsSheet) },
-                            onOpenCenter: { performAttentionAction({ showAttentionCenter = true }, presentsSheet: true) }
+                    .padding(.top, 48)
+                } else {
+                    overviewSection
+
+                    if hasPinnedDashboardResources {
+                        DashboardPinnedSection(
+                            refreshToken: cardRefreshToken,
+                            onOpenContainer: { containerRoute = $0 },
+                            onOpenProject: { projectRoute = $0 }
                         )
+                        .cardEntrance(id: "dashboard.pinned", index: 4)
+                        .scrollEdgeFade()
                     }
-                    if !manager.allEnvironmentsPreview {
-                        if #available(iOS 26, *) {
-                            ToolbarSpacer(.fixed, placement: .topBarLeading)
-                        }
-                        AppToolbarItem(placement: .topBarLeading) {
-                            EnvironmentSwitcherToolbarButton()
-                        }
+
+                    environmentsSection
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .softTopScrollEdgeEffectCompat()
+        .navigationTitle("Dashboard")
+        .navigationBarTitleDisplayMode(.large)
+        .modifier(DashboardDateSubtitle())
+        .toolbar {
+            // Needs Attention lives in the toolbar: the button expands into
+            // a compact summary popover, which opens the full Attention
+            // Center sheet.
+            if isNavigationRoot {
+                AppToolbarItem(placement: .topBarLeading) {
+                    AttentionToolbarButton(
+                        items: needsAttentionItems,
+                        isPresented: $showAttentionSummary,
+                        onSelect: { item in performAttentionAction(item.action, presentsSheet: item.presentsSheet) },
+                        onOpenCenter: { performAttentionAction({ showAttentionCenter = true }, presentsSheet: true) }
+                    )
+                }
+                if !manager.allEnvironmentsPreview {
+                    if #available(iOS 26, *) {
+                        ToolbarSpacer(.fixed, placement: .topBarLeading)
                     }
-                }
-
-                // The dashboard toolbar is the standing entry point for the
-                // Activity Center.
-                if isNavigationRoot, manager.supportsActivities {
-                    AppToolbarItem(placement: .navigationBarTrailing) {
-                        DashboardActivityToolbarButton {
-                            quickActionRouter.openActivityCenter()
-                        }
-                    }
-                }
-
-                // Keep Activity Center and Prune as two separate glass
-                // buttons instead of one shared pill.
-                if #available(iOS 26, *), isNavigationRoot, manager.supportsActivities, canPrune {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                }
-
-                if canPrune {
-                    AppToolbarItem(placement: .navigationBarTrailing) {
-                        Button { showPruneSheet = true } label: {
-                            Image(systemName: "trash")
-                                .foregroundStyle(.red)
-                        }
-                        .accessibilityLabel("System Prune")
+                    AppToolbarItem(placement: .topBarLeading) {
+                        EnvironmentSwitcherToolbarButton()
                     }
                 }
             }
-            .sheet(isPresented: $showAttentionCenter, onDismiss: {
+
+            // The dashboard toolbar is the standing entry point for the
+            // Activity Center.
+            if isNavigationRoot, manager.supportsActivities {
+                AppToolbarItem(placement: .navigationBarTrailing) {
+                    DashboardActivityToolbarButton {
+                        quickActionRouter.openActivityCenter()
+                    }
+                }
+            }
+
+            // Keep Activity Center and Prune as two separate glass
+            // buttons instead of one shared pill.
+            if #available(iOS 26, *), isNavigationRoot, manager.supportsActivities, canPrune {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+
+            if canPrune {
+                AppToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showPruneSheet = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.red)
+                    }
+                    .accessibilityLabel("System Prune")
+                }
+            }
+        }
+        .sheet(
+            isPresented: $showAttentionCenter,
+            onDismiss: {
                 pendingAttentionAction?()
                 pendingAttentionAction = nil
-            }) {
-                AttentionCenterView(items: needsAttentionItems) { item in
-                    performAttentionAction(item.action, presentsSheet: item.presentsSheet)
-                }
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showUpdateAll) {
-                NavigationStack {
-                    UpdateAllEnvironmentsView(environmentCount: rawEnvironmentCount, startsImmediately: true)
-                }
-                .presentationDetents([.medium, .large])
-                .presentationContentInteraction(.resizes)
-                .presentationDragIndicator(.visible)
+        ) {
+            AttentionCenterView(items: needsAttentionItems) { item in
+                performAttentionAction(item.action, presentsSheet: item.presentsSheet)
             }
-            .sheet(isPresented: $showPruneSheet) {
-                SystemPruneView(environmentID: envID, environments: manager.allEnvironmentsPreview ? allEnvironments.filter(\.enabled) : nil)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showUpdateAll) {
+            NavigationStack {
+                UpdateAllEnvironmentsView(environmentCount: rawEnvironmentCount, startsImmediately: true)
             }
-            .sheet(isPresented: $showVolumes) {
-                NavigationStack {
-                    if manager.allEnvironmentsPreview {
-                        AllEnvironmentsResourcesView(kind: .volumes)
-                    } else {
-                        VolumesView(environmentID: envID, environmentName: manager.activeEnvironmentName)
-                    }
-                }
-                .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showImageUpdates) {
-                NavigationStack {
-                    // Starting an update dismisses this sheet so the root
-                    // pill (above the tab bar) becomes the progress surface.
-                    AllEnvironmentsImageUpdatesView(dismissOnOperationStart: true)
-                }
-                // Pre-flight error toasts must be visible while the sheet is
-                // up — the root toast host is covered by it.
-                .toastHost(reservesTabBarSpace: false)
-                .presentationDragIndicator(.visible)
-            }
-            .navigationDestination(item: $detailRoute) { route in
-                SystemInfoDetailView(
-                    environmentID: EnvironmentID(rawValue: route.id),
-                    environmentName: route.name
-                )
-            }
-            .navigationDestination(item: $containerRoute) { container in
-                ContainerDetailView(container: container, environmentID: manager.activeEnvironmentID)
-            }
-            .navigationDestination(item: $projectRoute) { project in
-                ProjectDetailView(project: project, environmentID: manager.activeEnvironmentID)
-            }
-            .navigationDestination(item: $vulnerabilityRoute) { route in
+            .presentationDetents([.medium, .large])
+            .presentationContentInteraction(.resizes)
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showPruneSheet) {
+            SystemPruneView(
+                environmentID: envID,
+                environments: manager.allEnvironmentsPreview ? allEnvironments.filter(\.enabled) : nil
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showVolumes) {
+            NavigationStack {
                 if manager.allEnvironmentsPreview {
-                    AllEnvironmentsResourcesView(kind: .vulnerabilities)
+                    AllEnvironmentsResourcesView(kind: .volumes)
                 } else {
-                    AllVulnerabilitiesView(environmentID: EnvironmentID(rawValue: route.id))
+                    VolumesView(environmentID: envID, environmentName: manager.activeEnvironmentName)
                 }
             }
-            .navigationDestination(isPresented: $showAPIKeys) {
-                APIKeysView()
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showImageUpdates) {
+            NavigationStack {
+                // Starting an update dismisses this sheet so the root
+                // pill (above the tab bar) becomes the progress surface.
+                AllEnvironmentsImageUpdatesView(dismissOnOperationStart: true)
             }
-            .task { await loadData() }
-            .refreshable { await refreshDashboard() }
-            .onChange(of: manager.activeEnvironmentID.rawValue) {
-                environments = dashboardEnvironments(from: allEnvironments.isEmpty ? environments : allEnvironments)
-                // The active environment moved to the front, which can change
-                // which environments fall inside the history-stream cap.
-                fleet.prioritizeStats(activeEnvironmentID: manager.activeEnvironmentID.rawValue)
+            // Pre-flight error toasts must be visible while the sheet is
+            // up — the root toast host is covered by it.
+            .toastHost(reservesTabBarSpace: false)
+            .presentationDragIndicator(.visible)
+        }
+        .navigationDestination(item: $detailRoute) { route in
+            SystemInfoDetailView(
+                environmentID: EnvironmentID(rawValue: route.id),
+                environmentName: route.name
+            )
+        }
+        .navigationDestination(item: $containerRoute) { container in
+            ContainerDetailView(container: container, environmentID: manager.activeEnvironmentID)
+        }
+        .navigationDestination(item: $projectRoute) { project in
+            ProjectDetailView(project: project, environmentID: manager.activeEnvironmentID)
+        }
+        .navigationDestination(item: $vulnerabilityRoute) { route in
+            if manager.allEnvironmentsPreview {
+                AllEnvironmentsResourcesView(kind: .vulnerabilities)
+            } else {
+                AllVulnerabilitiesView(environmentID: EnvironmentID(rawValue: route.id))
             }
-            .onChange(of: fleet.environmentCatalogRevision, initial: true) {
-                updateEnvironmentCatalogFromStore()
+        }
+        .navigationDestination(isPresented: $showAPIKeys) {
+            APIKeysView()
+        }
+        .task { await loadData() }
+        .refreshable { await refreshDashboard() }
+        .onChange(of: manager.activeEnvironmentID.rawValue) {
+            environments = dashboardEnvironments(from: allEnvironments.isEmpty ? environments : allEnvironments)
+            // The active environment moved to the front, which can change
+            // which environments fall inside the history-stream cap.
+            fleet.prioritizeStats(activeEnvironmentID: manager.activeEnvironmentID.rawValue)
+        }
+        .onChange(of: fleet.environmentCatalogRevision, initial: true) {
+            updateEnvironmentCatalogFromStore()
+        }
+        .onChange(of: fleet.dockerInformationRevision, initial: true) {
+            updateFleetLiveStateFromStore()
+        }
+        // The aggregated dashboard stream covers all environments over one
+        // connection. v1 servers never get the endpoint, so don't attempt
+        // it there; v2 servers that predate it 404 once and the store
+        // latches into silent legacy mode.
+        .task(id: manager.client.map { ObjectIdentifier($0.transport) }) {
+            fleet.configure(client: manager.client)
+        }
+        .onAppear {
+            isDashboardVisible = true
+            // Cold launch can mount this view while the scene is still
+            // inactive. Start now rather than depending on a later active
+            // transition that may have already been delivered.
+            if scenePhase != .background {
+                fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
             }
-            .onChange(of: fleet.dockerInformationRevision, initial: true) {
-                updateFleetLiveStateFromStore()
+            // Tab switches stop the fleet streams (see onDisappear) and
+            // the auto-refresh guards skip while hidden — without this the
+            // toolbar badge and tiles stay frozen after coming back.
+            if hasLoadedOnce {
+                Task { await refreshDashboard(reconnectStream: false) }
             }
-            // The aggregated dashboard stream covers all environments over one
-            // connection. v1 servers never get the endpoint, so don't attempt
-            // it there; v2 servers that predate it 404 once and the store
-            // latches into silent legacy mode.
-            .task(id: manager.client.map { ObjectIdentifier($0.transport) }) {
-                fleet.configure(client: manager.client)
-            }
-            .onAppear {
-                isDashboardVisible = true
-                // Cold launch can mount this view while the scene is still
-                // inactive. Start now rather than depending on a later active
-                // transition that may have already been delivered.
-                if scenePhase != .background {
-                    fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
-                }
-                // Tab switches stop the fleet streams (see onDisappear) and
-                // the auto-refresh guards skip while hidden — without this the
-                // toolbar badge and tiles stay frozen after coming back.
-                if hasLoadedOnce {
-                    Task { await refreshDashboard(reconnectStream: false) }
-                }
-            }
-            .onDisappear {
-                isDashboardVisible = false
+        }
+        .onDisappear {
+            isDashboardVisible = false
+            liveCountsRefreshTask?.cancel()
+            liveCountsRefreshTask = nil
+            mutationRefreshTask?.cancel()
+            mutationRefreshTask = nil
+            fleet.setVisible(false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
+        }
+        .onChange(of: streamStore.aggregate) { previous, current in
+            publishWidgetSnapshot()
+            guard current != nil, current != previous else { return }
+            // liveCounts comes from docker info, not the stream — skip the
+            // full docker refetch when only the update count changed.
+            let containersChanged =
+                previous?.runningContainers != current?.runningContainers
+                || previous?.stoppedContainers != current?.stoppedContainers
+                || previous?.totalContainers != current?.totalContainers
+                || previous?.totalImages != current?.totalImages
+            guard containersChanged else { return }
+            liveCountsRefreshTask?.cancel()
+            liveCountsRefreshTask = Task { await refreshLiveCounts() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background:
                 liveCountsRefreshTask?.cancel()
                 liveCountsRefreshTask = nil
                 mutationRefreshTask?.cancel()
                 mutationRefreshTask = nil
                 fleet.setVisible(false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
-            }
-            .onChange(of: streamStore.aggregate) { previous, current in
                 publishWidgetSnapshot()
-                guard current != nil, current != previous else { return }
-                // liveCounts comes from docker info, not the stream — skip the
-                // full docker refetch when only the update count changed.
-                let containersChanged =
-                    previous?.runningContainers != current?.runningContainers
-                    || previous?.stoppedContainers != current?.stoppedContainers
-                    || previous?.totalContainers != current?.totalContainers
-                    || previous?.totalImages != current?.totalImages
-                guard containersChanged else { return }
-                liveCountsRefreshTask?.cancel()
-                liveCountsRefreshTask = Task { await refreshLiveCounts() }
-            }
-            .onChange(of: scenePhase) { _, phase in
-                switch phase {
-                case .background:
-                    liveCountsRefreshTask?.cancel()
-                    liveCountsRefreshTask = nil
-                    mutationRefreshTask?.cancel()
-                    mutationRefreshTask = nil
-                    fleet.setVisible(false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
-                    publishWidgetSnapshot()
-                    WidgetSnapshotPublisher.shared.flush()
-                case .active:
-                    if isDashboardVisible {
-                        fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
-                        // Returning from background (or relaunch-adjacent
-                        // foreground) must show fresh counts — the stream
-                        // replays snapshots but volumes/updates/history don't.
-                        // No reconnect: setVisible already restarts the
-                        // streams, and a second teardown would flap the cards.
-                        if hasLoadedOnce {
-                            Task { await refreshDashboard(reconnectStream: false) }
-                        }
+                WidgetSnapshotPublisher.shared.flush()
+            case .active:
+                if isDashboardVisible {
+                    fleet.setVisible(
+                        true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
+                    // Returning from background (or relaunch-adjacent
+                    // foreground) must show fresh counts — the stream
+                    // replays snapshots but volumes/updates/history don't.
+                    // No reconnect: setVisible already restarts the
+                    // streams, and a second teardown would flap the cards.
+                    if hasLoadedOnce {
+                        Task { await refreshDashboard(reconnectStream: false) }
                     }
-                default:
-                    break
                 }
+            default:
+                break
             }
-            // Capabilities can resolve after authentication when the restore
-            // request raced a transient network failure — start the stream
-            // once the server is known to be v2.
-            .onChange(of: manager.supportsActivities) { _, supported in
-                if supported, isDashboardVisible {
-                    fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: true)
-                }
+        }
+        // Capabilities can resolve after authentication when the restore
+        // request raced a transient network failure — start the stream
+        // once the server is known to be v2.
+        .onChange(of: manager.supportsActivities) { _, supported in
+            if supported, isDashboardVisible {
+                fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: true)
             }
-            .onChange(of: historyMutationStore.latestClear) { _, event in
-                guard let event else { return }
-                failedActivities = ActivityHistoryClearFilter.retainingActiveActivities(
-                    in: failedActivities,
-                    clearedEnvironmentIDs: event.environmentIDs
-                )
+        }
+        .onChange(of: historyMutationStore.latestClear) { _, event in
+            guard let event else { return }
+            failedActivities = ActivityHistoryClearFilter.retainingActiveActivities(
+                in: failedActivities,
+                clearedEnvironmentIDs: event.environmentIDs
+            )
+        }
+        // Mutations elsewhere (prune, container/image/volume actions,
+        // finished deployment operations) change the counts this page
+        // shows. Debounce rapid bursts into one refresh.
+        .onChange(of: mutationStore.versions) {
+            guard hasLoadedOnce, isDashboardVisible else { return }
+            mutationRefreshTask?.cancel()
+            mutationRefreshTask = Task {
+                try? await Task.sleep(for: .milliseconds(800))
+                guard !Task.isCancelled else { return }
+                await refreshDashboard(reconnectStream: false)
             }
-            // Mutations elsewhere (prune, container/image/volume actions,
-            // finished deployment operations) change the counts this page
-            // shows. Debounce rapid bursts into one refresh.
-            .onChange(of: mutationStore.versions) {
-                guard hasLoadedOnce, isDashboardVisible else { return }
-                mutationRefreshTask?.cancel()
-                mutationRefreshTask = Task {
-                    try? await Task.sleep(for: .milliseconds(800))
-                    guard !Task.isCancelled else { return }
-                    await refreshDashboard(reconnectStream: false)
-                }
-            }
-            .onChange(of: DeploymentActivityStore.shared.isRunning) { _, running in
-                guard !running, hasLoadedOnce, isDashboardVisible else { return }
-                Task { await refreshDashboard(reconnectStream: false) }
-            }
+        }
+        .onChange(of: DeploymentActivityStore.shared.isRunning) { _, running in
+            guard !running, hasLoadedOnce, isDashboardVisible else { return }
+            Task { await refreshDashboard(reconnectStream: false) }
+        }
         .onChange(of: isNavigationRoot, initial: true) { _, isRoot in
             onNavigationRootChange(isRoot)
         }
@@ -497,8 +508,8 @@ struct DashboardView: View {
     }
 
     private var hasPinnedDashboardResources: Bool {
-        !pinnedStore.pinnedIDs(kind: .container, envID: envID).isEmpty ||
-            !pinnedStore.pinnedIDs(kind: .project, envID: envID).isEmpty
+        !pinnedStore.pinnedIDs(kind: .container, envID: envID).isEmpty
+            || !pinnedStore.pinnedIDs(kind: .project, envID: envID).isEmpty
     }
 
     /// Dismisses the summary popover / center before running an item action.
@@ -588,7 +599,8 @@ struct DashboardView: View {
     private var arcaneUpgradeCount: Int? {
         let loaded = environments.compactMap { env -> Bool? in
             guard let state = streamStore.state(for: env.id), state.hasLoaded,
-                  let info = state.snapshot?.versionInfo else { return nil }
+                let info = state.snapshot?.versionInfo
+            else { return nil }
             return info.updateAvailable
         }
         guard !loaded.isEmpty else { return nil }
@@ -613,8 +625,11 @@ struct DashboardView: View {
             }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: isUpToDate ? "checkmark" : (isUpdateAllArmed ? "checkmark.circle.fill" : "arrow.up.circle.fill"))
-                    .contentTransition(.symbolEffect(.replace))
+                Image(
+                    systemName: isUpToDate
+                        ? "checkmark" : (isUpdateAllArmed ? "checkmark.circle.fill" : "arrow.up.circle.fill")
+                )
+                .contentTransition(.symbolEffect(.replace))
                 if isUpdateAllArmed {
                     Text("Confirm Update")
                         .fixedSize()
@@ -636,11 +651,13 @@ struct DashboardView: View {
         .disabled(isUpToDate)
         .sensoryFeedback(.selection, trigger: isUpdateAllArmed)
         .onDisappear { disarmUpdateAll() }
-        .accessibilityLabel(isUpToDate
-            ? "All environments are up to date"
-            : (isUpdateAllArmed
-                ? "Confirm update of all environments"
-                : "Update All\(upgrades.map { ", \($0) environments have upgrades" } ?? "")"))
+        .accessibilityLabel(
+            isUpToDate
+                ? "All environments are up to date"
+                : (isUpdateAllArmed
+                    ? "Confirm update of all environments"
+                    : "Update All\(upgrades.map { ", \($0) environments have upgrades" } ?? "")")
+        )
         .accessibilityHint(isUpdateAllArmed ? "Starts updating every environment" : "Tap again to confirm")
     }
 
@@ -686,7 +703,6 @@ struct DashboardView: View {
         .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
     }
 
-
     /// Triage rows for the Needs Attention card, folded from data the
     /// dashboard already holds — no extra fetches. Empty means all clear
     /// (the card simply doesn't render).
@@ -698,26 +714,29 @@ struct DashboardView: View {
         // Offline / erroring environments from the live stream states.
         let erroring = allEnvironments.filter { streamStore.state(for: $0.id)?.streamError == true }
         if let first = erroring.first {
-            items.append(NeedsAttentionItem(
-                id: "offline-environments",
-                detail: "Live data is unavailable until the environment reconnects.",
-                severity: .critical,
-                icon: "wifi.exclamationmark",
-                title: erroring.count == 1
-                    ? "\(first.name ?? first.id) unreachable"
-                    : "Environments unreachable",
-                count: erroring.count,
-                action: {
-                    detailRoute = EnvironmentDetailRoute(id: first.id, name: first.name ?? first.id)
-                }
-            ))
+            items.append(
+                NeedsAttentionItem(
+                    id: "offline-environments",
+                    detail: "Live data is unavailable until the environment reconnects.",
+                    severity: .critical,
+                    icon: "wifi.exclamationmark",
+                    title: erroring.count == 1
+                        ? "\(first.name ?? first.id) unreachable"
+                        : "Environments unreachable",
+                    count: erroring.count,
+                    action: {
+                        detailRoute = EnvironmentDetailRoute(id: first.id, name: first.name ?? first.id)
+                    }
+                ))
         }
 
         // Fold server-computed action items across every environment. Prefer
         // the fleet store's REST snapshots (fresh on every pull-to-refresh)
         // and fall back to the live stream snapshot — the stream can lag the
         // server reconcile tick, fail, or be unsupported on older servers.
-        var stopped = 0, updates = 0, expiringKeys = 0
+        var stopped = 0
+        var updates = 0
+        var expiringKeys = 0
         var vulnerabilities = 0
         var vulnerabilityEnv: (id: String, name: String, count: Int)?
         var criticalVulns = false
@@ -747,28 +766,32 @@ struct DashboardView: View {
         }
 
         if vulnerabilities > 0, let target = vulnerabilityEnv {
-            items.append(NeedsAttentionItem(
-                id: "vulnerabilities",
-                detail: manager.allEnvironmentsPreview ? "Open vulnerability reports across all enabled environments." : "Open the vulnerability report for the most affected environment.",
-                severity: criticalVulns ? .critical : .warning,
-                icon: "exclamationmark.shield.fill",
-                title: "Actionable vulnerabilities",
-                count: vulnerabilities,
-                action: {
-                    vulnerabilityRoute = EnvironmentDetailRoute(id: target.id, name: target.name)
-                }
-            ))
+            items.append(
+                NeedsAttentionItem(
+                    id: "vulnerabilities",
+                    detail: manager.allEnvironmentsPreview
+                        ? "Open vulnerability reports across all enabled environments."
+                        : "Open the vulnerability report for the most affected environment.",
+                    severity: criticalVulns ? .critical : .warning,
+                    icon: "exclamationmark.shield.fill",
+                    title: "Actionable vulnerabilities",
+                    count: vulnerabilities,
+                    action: {
+                        vulnerabilityRoute = EnvironmentDetailRoute(id: target.id, name: target.name)
+                    }
+                ))
         }
         if stopped > 0 {
-            items.append(NeedsAttentionItem(
-                id: "stopped-containers",
-                detail: "Review containers that are not running.",
-                severity: .warning,
-                icon: "stop.fill",
-                title: "Stopped containers",
-                count: stopped,
-                action: { selectedTab = AppTab.containers.id }
-            ))
+            items.append(
+                NeedsAttentionItem(
+                    id: "stopped-containers",
+                    detail: "Review containers that are not running.",
+                    severity: .warning,
+                    icon: "stop.fill",
+                    title: "Stopped containers",
+                    count: stopped,
+                    action: { selectedTab = AppTab.containers.id }
+                ))
         }
         // Prefer the summary-based image count (same source as the Updates
         // tile) so this row, the tile, and the image list they both open all
@@ -776,39 +799,42 @@ struct DashboardView: View {
         // several outdated images counts once), which reads as a mismatch.
         let imageUpdates = imageUpdatesTotal ?? updates
         if imageUpdates > 0 {
-            items.append(NeedsAttentionItem(
-                id: "image-updates",
-                detail: "Newer images are available to pull.",
-                severity: .warning,
-                icon: "arrow.triangle.2.circlepath",
-                title: "Image updates available",
-                count: imageUpdates,
-                action: { showImageUpdates = true },
-                presentsSheet: true
-            ))
+            items.append(
+                NeedsAttentionItem(
+                    id: "image-updates",
+                    detail: "Newer images are available to pull.",
+                    severity: .warning,
+                    icon: "arrow.triangle.2.circlepath",
+                    title: "Image updates available",
+                    count: imageUpdates,
+                    action: { showImageUpdates = true },
+                    presentsSheet: true
+                ))
         }
         if expiringKeys > 0 {
-            items.append(NeedsAttentionItem(
-                id: "expiring-keys",
-                detail: "Rotate API keys before they expire.",
-                severity: .warning,
-                icon: "key.fill",
-                title: "API keys expiring soon",
-                count: expiringKeys,
-                action: { showAPIKeys = true }
-            ))
+            items.append(
+                NeedsAttentionItem(
+                    id: "expiring-keys",
+                    detail: "Rotate API keys before they expire.",
+                    severity: .warning,
+                    icon: "key.fill",
+                    title: "API keys expiring soon",
+                    count: expiringKeys,
+                    action: { showAPIKeys = true }
+                ))
         }
         if !failedActivities.isEmpty {
-            items.append(NeedsAttentionItem(
-                id: "failed-activities",
-                detail: "Open the Activity Center to inspect failures.",
-                severity: .critical,
-                icon: "exclamationmark.triangle.fill",
-                title: "Failed activities",
-                count: failedActivities.count,
-                action: { quickActionRouter.openActivityCenter() },
-                presentsSheet: true
-            ))
+            items.append(
+                NeedsAttentionItem(
+                    id: "failed-activities",
+                    detail: "Open the Activity Center to inspect failures.",
+                    severity: .critical,
+                    icon: "exclamationmark.triangle.fill",
+                    title: "Failed activities",
+                    count: failedActivities.count,
+                    action: { quickActionRouter.openActivityCenter() },
+                    presentsSheet: true
+                ))
         }
         return items
     }
@@ -885,51 +911,51 @@ struct DashboardView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 8) {
-                DashboardStatTile(
-                    title: "Updates",
-                    value: imageUpdatesTotal.map { "\($0)" } ?? "—",
-                    icon: "arrow.triangle.2.circlepath",
-                    tint: .green
-                ) { showImageUpdates = true }
-                .cardEntrance(id: "dashboard.tile.updates", index: 0)
-                DashboardStatTile(
-                    title: "Containers",
-                    value: running.flatMap { running in
-                        total.map { "\(running) / \($0)" }
-                    } ?? "—",
-                    icon: "cube.box.fill",
-                    tint: .orange
-                ) { selectedTab = AppTab.containers.id }
-                .cardEntrance(id: "dashboard.tile.containers", index: 1)
-                DashboardStatTile(
-                    title: "Images",
-                    value: images.map { "\($0)" } ?? "—",
-                    icon: "photo.stack.fill",
-                    tint: .purple
-                ) { selectedTab = AppTab.images.id }
-                .cardEntrance(id: "dashboard.tile.images", index: 2)
-                DashboardStatTile(
-                    title: "Volumes",
-                    value: volumesTotal.map { "\($0)" } ?? "—",
-                    icon: "externaldrive.fill",
-                    tint: .teal
-                ) { showVolumes = true }
-                .cardEntrance(id: "dashboard.tile.volumes", index: 3)
-            }
-            if manager.allEnvironmentsPreview {
-                DisclosureGroup(overviewExpanded ? "" : "By Environment", isExpanded: $overviewExpanded) {
-                    let environments = allEnvironments.filter(\.enabled)
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(environments.enumerated()), id: \.element.id) { index, environment in
-                            if index > 0 { Divider() }
-                            environmentCountBreakdown(environment)
+                HStack(alignment: .top, spacing: 8) {
+                    DashboardStatTile(
+                        title: "Updates",
+                        value: imageUpdatesTotal.map { "\($0)" } ?? "—",
+                        icon: "arrow.triangle.2.circlepath",
+                        tint: .green
+                    ) { showImageUpdates = true }
+                    .cardEntrance(id: "dashboard.tile.updates", index: 0)
+                    DashboardStatTile(
+                        title: "Containers",
+                        value: running.flatMap { running in
+                            total.map { "\(running) / \($0)" }
+                        } ?? "—",
+                        icon: "cube.box.fill",
+                        tint: .orange
+                    ) { selectedTab = AppTab.containers.id }
+                    .cardEntrance(id: "dashboard.tile.containers", index: 1)
+                    DashboardStatTile(
+                        title: "Images",
+                        value: images.map { "\($0)" } ?? "—",
+                        icon: "photo.stack.fill",
+                        tint: .purple
+                    ) { selectedTab = AppTab.images.id }
+                    .cardEntrance(id: "dashboard.tile.images", index: 2)
+                    DashboardStatTile(
+                        title: "Volumes",
+                        value: volumesTotal.map { "\($0)" } ?? "—",
+                        icon: "externaldrive.fill",
+                        tint: .teal
+                    ) { showVolumes = true }
+                    .cardEntrance(id: "dashboard.tile.volumes", index: 3)
+                }
+                if manager.allEnvironmentsPreview {
+                    DisclosureGroup(overviewExpanded ? "" : "By Environment", isExpanded: $overviewExpanded) {
+                        let environments = allEnvironments.filter(\.enabled)
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(Array(environments.enumerated()), id: \.element.id) { index, environment in
+                                if index > 0 { Divider() }
+                                environmentCountBreakdown(environment)
+                            }
                         }
                     }
+                    .font(.subheadline)
+                    .accessibilityLabel("Environment breakdown")
                 }
-                .font(.subheadline)
-                .accessibilityLabel("Environment breakdown")
-            }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -944,8 +970,11 @@ struct DashboardView: View {
 
     private func environmentCountBreakdown(_ environment: Arcane.Environment) -> some View {
         let info = fleet.dockerInfoByEnvironmentID[environment.id]
-        let updates = imageUpdateCountStore.count(environmentID: environment.id, client: manager.client, userID: manager.currentUser?.id)
-        let color = EnvironmentColorStore.shared.hex(server: manager.serverURL, environmentID: environment.id).flatMap(Color.init(hex:)) ?? .secondary
+        let updates = imageUpdateCountStore.count(
+            environmentID: environment.id, client: manager.client, userID: manager.currentUser?.id)
+        let color =
+            EnvironmentColorStore.shared.hex(server: manager.serverURL, environmentID: environment.id).flatMap(
+                Color.init(hex:)) ?? .secondary
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 4) {
                 Image(systemName: "server.rack")
@@ -970,7 +999,8 @@ struct DashboardView: View {
             .accessibilityLabel("Updates: " + (updates.map(String.init) ?? "Unavailable"))
         Text(info.map { "\($0.containersRunning) / \($0.containers)" } ?? "—")
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityLabel("Containers: " + (info.map { "\($0.containersRunning) running of \($0.containers)" } ?? "Unavailable"))
+            .accessibilityLabel(
+                "Containers: " + (info.map { "\($0.containersRunning) running of \($0.containers)" } ?? "Unavailable"))
         Text(info.map { String($0.images) } ?? "—")
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityLabel("Images: " + (info.map { String($0.images) } ?? "Unavailable"))
@@ -1008,37 +1038,43 @@ struct DashboardView: View {
         }
     }
 
-
     private var countAvailabilityIssues: [DashboardCountIssue] {
         guard hasLoadedFleetCounts else { return [] }
         var issues: [DashboardCountIssue] = []
 
-        let dockerUnavailableIDs = allEnvironments
+        let dockerUnavailableIDs =
+            allEnvironments
             .filter(\.enabled)
             .filter { environmentLiveStates[$0.id]?.dockerInfo == nil }
             .map(\.id)
         if liveCounts == nil, !dockerUnavailableIDs.isEmpty {
-            issues.append(DashboardCountIssue(
-                id: "docker",
-                title: "Container and image counts",
-                detail: "Docker information could not be loaded from \(environmentSummary(for: dockerUnavailableIDs))."
-            ))
+            issues.append(
+                DashboardCountIssue(
+                    id: "docker",
+                    title: "Container and image counts",
+                    detail:
+                        "Docker information could not be loaded from \(environmentSummary(for: dockerUnavailableIDs))."
+                ))
         }
 
         if !volumeCountUnavailableEnvironmentIDs.isEmpty {
-            issues.append(DashboardCountIssue(
-                id: "volumes",
-                title: "Volume count",
-                detail: "Volume totals could not be loaded from \(environmentSummary(for: volumeCountUnavailableEnvironmentIDs))."
-            ))
+            issues.append(
+                DashboardCountIssue(
+                    id: "volumes",
+                    title: "Volume count",
+                    detail:
+                        "Volume totals could not be loaded from \(environmentSummary(for: volumeCountUnavailableEnvironmentIDs))."
+                ))
         }
 
         if streamStore.aggregate == nil, !updateCountUnavailableEnvironmentIDs.isEmpty {
-            issues.append(DashboardCountIssue(
-                id: "updates",
-                title: "Update count",
-                detail: "Image update totals could not be loaded from \(environmentSummary(for: updateCountUnavailableEnvironmentIDs))."
-            ))
+            issues.append(
+                DashboardCountIssue(
+                    id: "updates",
+                    title: "Update count",
+                    detail:
+                        "Image update totals could not be loaded from \(environmentSummary(for: updateCountUnavailableEnvironmentIDs))."
+                ))
         }
 
         return issues
@@ -1156,7 +1192,8 @@ struct DashboardView: View {
         let reqData = try? await rawReq
         if Task.isCancelled { return }
         if let reqData {
-            overview = (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
+            overview =
+                (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
                 ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
         }
         if refresh {
@@ -1170,7 +1207,8 @@ struct DashboardView: View {
         var activities = await loadFailedWork()
         if !Task.isCancelled {
             if let clearEvent = historyMutationStore.latestClear,
-               clearEvent.sequence != clearSequence {
+                clearEvent.sequence != clearSequence
+            {
                 activities = ActivityHistoryClearFilter.retainingActiveActivities(
                     in: activities,
                     clearedEnvironmentIDs: clearEvent.environmentIDs
@@ -1198,12 +1236,14 @@ struct DashboardView: View {
         let summaries: [WidgetSnapshot.EnvSummary] = enabledEnvironments.map { env in
             let state = streamStore.state(for: env.id)
             let snapshot = (state?.hasLoaded == true) ? state?.snapshot : nil
-            let updates = snapshot?.actionItems.items
+            let updates =
+                snapshot?.actionItems.items
                 .first(where: {
                     if case .imageUpdates = $0.kind { return true }
                     return false
                 })?.count ?? previousByID[env.id]?.updatesAvailable ?? 0
-            let vulnerabilities = snapshot?.actionItems.items
+            let vulnerabilities =
+                snapshot?.actionItems.items
                 .first(where: {
                     if case .actionableVulnerabilities = $0.kind { return true }
                     return false
@@ -1231,16 +1271,17 @@ struct DashboardView: View {
                 actionableVulnerabilities: vulnerabilities
             )
         }
-        WidgetSnapshotPublisher.shared.schedule(WidgetSnapshot(
-            generatedAt: Date(),
-            serverConfigured: true,
-            serverOrigin: manager.parsedServerURL.flatMap(AppGroup.canonicalServerOrigin(for:)),
-            isDemo: manager.isDemoActive,
-            accentHex: UserDefaults.standard.string(forKey: "accentColorHex"),
-            activeEnvironmentID: manager.activeEnvironmentID.rawValue,
-            environments: summaries,
-            suggestedContainers: []
-        ))
+        WidgetSnapshotPublisher.shared.schedule(
+            WidgetSnapshot(
+                generatedAt: Date(),
+                serverConfigured: true,
+                serverOrigin: manager.parsedServerURL.flatMap(AppGroup.canonicalServerOrigin(for:)),
+                isDemo: manager.isDemoActive,
+                accentHex: UserDefaults.standard.string(forKey: "accentColorHex"),
+                activeEnvironmentID: manager.activeEnvironmentID.rawValue,
+                environments: summaries,
+                suggestedContainers: []
+            ))
     }
 
     private func loadFailedWork() async -> [Activity] {
@@ -1268,10 +1309,14 @@ struct DashboardView: View {
                     )
                     return (response?.data ?? []).map { activity in
                         var normalized = activity
-                        if normalized.sourceEnvironmentID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                        if normalized.sourceEnvironmentID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            != false
+                        {
                             normalized.sourceEnvironmentID = environment.id.rawValue
                         }
-                        if normalized.sourceEnvironmentName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+                        if normalized.sourceEnvironmentName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            != false
+                        {
                             normalized.sourceEnvironmentName = environment.name
                         }
                         return normalized
@@ -1283,7 +1328,8 @@ struct DashboardView: View {
             }
         }
 
-        return merged
+        return
+            merged
             .sorted { lhs, rhs in
                 return lhs.sortTime > rhs.sortTime
             }
@@ -1746,7 +1792,9 @@ struct DashboardInfoGroup<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline).padding(.leading, 4)
             VStack(spacing: 0) { content }
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
+                .background(
+                    Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
         }
     }
 }
@@ -1846,13 +1894,17 @@ struct SystemPruneView: View {
                         ForEach(environments.filter(\.enabled)) { environment in
                             VStack(alignment: .leading) {
                                 Text(environment.displayName)
-                                if !manager.permissions.has(Permission.System.prune, in: EnvironmentID(rawValue: environment.id)) {
+                                if !manager.permissions.has(
+                                    Permission.System.prune, in: EnvironmentID(rawValue: environment.id))
+                                {
                                     Text("No prune permission").font(.caption).foregroundStyle(.orange)
                                 }
                             }
                         }
-                        Text("The selected cleanup runs on every environment listed above. Removed data cannot be recovered.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                        Text(
+                            "The selected cleanup runs on every environment listed above. Removed data cannot be recovered."
+                        )
+                        .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
                 Section("Containers") {
@@ -1916,10 +1968,13 @@ struct SystemPruneView: View {
                         Button {
                             showPruneConfirmation = true
                         } label: {
-                            DestructiveLabel(text: environments != nil ? "Prune All" : (selectedCount > 0 ? "Prune (\(selectedCount))" : "Prune"))
+                            DestructiveLabel(
+                                text: environments != nil
+                                    ? "Prune All" : (selectedCount > 0 ? "Prune (\(selectedCount))" : "Prune"))
                         }
                         .tint(.red)
-                        .disabled(selectedCount == 0 || FleetOperationStore.shared.isRunning || environments?.isEmpty == true)
+                        .disabled(
+                            selectedCount == 0 || FleetOperationStore.shared.isRunning || environments?.isEmpty == true)
                     }
                 }
             }
@@ -1948,7 +2003,8 @@ struct SystemPruneView: View {
         hasLoadedServerDefaults = true
         let path = client.rest.environmentPath(environmentID, "settings")
         guard let raw = try? await client.transport.rawRequest(path, body: Optional<String>.none),
-              let dtos = try? JSONDecoder().decode([PublicSetting].self, from: raw) else { return }
+            let dtos = try? JSONDecoder().decode([PublicSetting].self, from: raw)
+        else { return }
         var dict: [String: String] = [:]
         for dto in dtos { dict[dto.key] = dto.value }
 
@@ -1993,31 +2049,39 @@ struct SystemPruneView: View {
         defer { isPruning = false }
 
         let request = PruneAllRequest(
-            containers: containerMode != .none ? PruneContainersOptions(
-                mode: containerMode,
-                until: containerMode == .olderThan ? containerAge : nil
-            ) : nil,
-            images: imageMode != .none ? PruneImagesOptions(
-                mode: imageMode,
-                until: imageMode == .olderThan ? imageAge : nil
-            ) : nil,
-            volumes: volumeMode != .none ? PruneVolumesOptions(
-                mode: volumeMode
-            ) : nil,
-            networks: networkMode != .none ? PruneNetworksOptions(
-                mode: networkMode,
-                until: networkMode == .olderThan ? networkAge : nil
-            ) : nil,
-            buildCache: buildCacheMode != .none ? PruneBuildCacheOptions(
-                mode: buildCacheMode,
-                until: buildCacheMode == .olderThan ? buildCacheAge : nil
-            ) : nil
+            containers: containerMode != .none
+                ? PruneContainersOptions(
+                    mode: containerMode,
+                    until: containerMode == .olderThan ? containerAge : nil
+                ) : nil,
+            images: imageMode != .none
+                ? PruneImagesOptions(
+                    mode: imageMode,
+                    until: imageMode == .olderThan ? imageAge : nil
+                ) : nil,
+            volumes: volumeMode != .none
+                ? PruneVolumesOptions(
+                    mode: volumeMode
+                ) : nil,
+            networks: networkMode != .none
+                ? PruneNetworksOptions(
+                    mode: networkMode,
+                    until: networkMode == .olderThan ? networkAge : nil
+                ) : nil,
+            buildCache: buildCacheMode != .none
+                ? PruneBuildCacheOptions(
+                    mode: buildCacheMode,
+                    until: buildCacheMode == .olderThan ? buildCacheAge : nil
+                ) : nil
         )
 
         if let environments {
             let session = manager.clientGeneration
             dismiss()
-            await FleetOperationStore.shared.runWithToast(title: "Cleaning up…", completionTitle: "Cleanup complete", symbol: "trash", isDestructive: true, environments: environments, isCurrent: { session == manager.clientGeneration }) { id in
+            await FleetOperationStore.shared.runWithToast(
+                title: "Cleaning up…", completionTitle: "Cleanup complete", symbol: "trash", isDestructive: true,
+                environments: environments, isCurrent: { session == manager.clientGeneration }
+            ) { id in
                 guard manager.permissions.has(Permission.System.prune, in: id) else {
                     throw ArcaneError.transport("Not run: no prune permission")
                 }

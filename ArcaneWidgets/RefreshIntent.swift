@@ -1,6 +1,6 @@
 import AppIntents
-import WidgetKit
 import Arcane
+import WidgetKit
 
 /// The only widget-button intent: refetches authoritative Docker counts plus
 /// dashboard action metadata, rewrites the App-Group snapshot, and reloads
@@ -48,19 +48,21 @@ struct RefreshDashboardIntent: AppIntent {
             previousByID: previousByID
         )
         guard !Task.isCancelled,
-              origin == IntentClientFactory.serverOrigin,
-              session == AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity),
-              SharedKeychain.credentialOrigin == origin else { return .result() }
-        WidgetSnapshotStore.saveAndReloadIfChanged(WidgetSnapshot(
-            generatedAt: Date(),
-            serverConfigured: true,
-            serverOrigin: origin,
-            isDemo: previous?.isDemo ?? false,
-            accentHex: AppGroup.defaults?.string(forKey: AppGroup.Keys.accentColorHex),
-            activeEnvironmentID: activeEnvironmentID,
-            environments: summaries,
-            suggestedContainers: previous?.suggestedContainers ?? []
-        ))
+            origin == IntentClientFactory.serverOrigin,
+            session == AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity),
+            SharedKeychain.credentialOrigin == origin
+        else { return .result() }
+        WidgetSnapshotStore.saveAndReloadIfChanged(
+            WidgetSnapshot(
+                generatedAt: Date(),
+                serverConfigured: true,
+                serverOrigin: origin,
+                isDemo: previous?.isDemo ?? false,
+                accentHex: AppGroup.defaults?.string(forKey: AppGroup.Keys.accentColorHex),
+                activeEnvironmentID: activeEnvironmentID,
+                environments: summaries,
+                suggestedContainers: previous?.suggestedContainers ?? []
+            ))
         return .result()
     }
 
@@ -132,14 +134,16 @@ struct RefreshDashboardIntent: AppIntent {
         }
 
         let dashboard = try? await client.dashboard.snapshot(envID: environmentID)
-        let updates = dashboard?.actionItems.items.first(where: {
-            if case .imageUpdates = $0.kind { return true }
-            return false
-        })?.count ?? previous?.updatesAvailable ?? 0
-        let vulnerabilities = dashboard?.actionItems.items.first(where: {
-            if case .actionableVulnerabilities = $0.kind { return true }
-            return false
-        })?.count ?? previous?.actionableVulnerabilities
+        let updates =
+            dashboard?.actionItems.items.first(where: {
+                if case .imageUpdates = $0.kind { return true }
+                return false
+            })?.count ?? previous?.updatesAvailable ?? 0
+        let vulnerabilities =
+            dashboard?.actionItems.items.first(where: {
+                if case .actionableVulnerabilities = $0.kind { return true }
+                return false
+            })?.count ?? previous?.actionableVulnerabilities
 
         return .init(
             id: environment.id,
@@ -167,7 +171,8 @@ struct RefreshDashboardIntent: AppIntent {
         let path = client.rest.environmentPath(environmentID, "system/docker/info")
         let (bytes, response) = try await client.transport.byteStream(path: path)
         guard (200..<300).contains(response.statusCode),
-              response.expectedContentLength <= Int64(maximumBytes) else {
+            response.expectedContentLength <= Int64(maximumBytes)
+        else {
             throw IntentClientError.notConfigured
         }
         var data = Data()

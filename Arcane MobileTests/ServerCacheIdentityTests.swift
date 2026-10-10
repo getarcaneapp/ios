@@ -21,7 +21,7 @@ struct ServerCacheIdentityTests {
         let urls = try [
             "https://host:443/",
             "https://host:8443/",
-            "https://host:443/arcane/"
+            "https://host:443/arcane/",
         ].map { try #require(URL(string: $0)) }
         let identities = urls.map(ServerCacheIdentity.canonical(for:))
 

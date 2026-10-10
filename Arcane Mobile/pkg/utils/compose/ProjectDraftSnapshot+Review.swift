@@ -25,12 +25,15 @@ nonisolated extension ProjectDraftSnapshot {
         let after = compose.components(separatedBy: "\n")
         let difference = after.difference(from: before)
         let removed = difference.removals.compactMap { change -> Int? in
-            if case .remove(let offset, _, _) = change { return offset }; return nil
+            if case .remove(let offset, _, _) = change { return offset }
+            return nil
         }
         let inserted = difference.insertions.compactMap { change -> Int? in
-            if case .insert(let offset, _, _) = change { return offset }; return nil
+            if case .insert(let offset, _, _) = change { return offset }
+            return nil
         }
-        return (removed.sorted().map { "- \(before[$0])" }
+        return
+            (removed.sorted().map { "- \(before[$0])" }
             + inserted.sorted().map { "+ \(after[$0])" }).joined(separator: "\n")
     }
 
@@ -43,7 +46,9 @@ nonisolated extension ProjectDraftSnapshot {
         }
     }
 
-    func canApplyLoadedContent(requestedFrom snapshot: ProjectDraftSnapshot, session: String, currentSession: String) -> Bool {
+    func canApplyLoadedContent(requestedFrom snapshot: ProjectDraftSnapshot, session: String, currentSession: String)
+        -> Bool
+    {
         self == snapshot && session == currentSession
     }
 }

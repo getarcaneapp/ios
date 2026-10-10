@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct RolesView: View {
     private static let pageSize = 50
@@ -45,7 +45,7 @@ struct RolesView: View {
                 } description: {
                     Text(error)
                 } actions: {
-                    Button("Try Again") { Task { await load(refresh: true) } }
+                    Button("Try Again") { Task { await load() } }
                 }
             } else {
                 List {
@@ -54,7 +54,10 @@ struct RolesView: View {
                     if !builtIns.isEmpty {
                         Section {
                             ForEach(builtIns) { role in
-                                NavigationLink(destination: RoleDetailView(role: role, manifest: manifest, mode: .readOnly, onUpdate: { await load(refresh: true) })) {
+                                NavigationLink(
+                                    destination: RoleDetailView(
+                                        role: role, manifest: manifest, mode: .readOnly, onUpdate: { await load() })
+                                ) {
                                     RoleRow(role: role)
                                 }
                             }
@@ -70,7 +73,10 @@ struct RolesView: View {
                     if !customs.isEmpty {
                         Section {
                             ForEach(customs) { role in
-                                NavigationLink(destination: RoleDetailView(role: role, manifest: manifest, mode: .edit, onUpdate: { await load(refresh: true) })) {
+                                NavigationLink(
+                                    destination: RoleDetailView(
+                                        role: role, manifest: manifest, mode: .edit, onUpdate: { await load() })
+                                ) {
                                     RoleRow(role: role)
                                 }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -114,7 +120,7 @@ struct RolesView: View {
         )
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) {
-            Task { await load(refresh: true) }
+            Task { await load() }
         }
         .toolbar {
             if manager.canAccess(.oidcRoleMappings) {
@@ -128,22 +134,27 @@ struct RolesView: View {
                 }
             }
             if #available(iOS 26, *),
-               rbacAvailable,
-               manager.permissions.canManageRoles,
-               manager.canAccess(.oidcRoleMappings) {
+                rbacAvailable,
+                manager.permissions.canManageRoles,
+                manager.canAccess(.oidcRoleMappings)
+            {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             if rbacAvailable && manager.permissions.canManageRoles {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Create Role")
+                    Button {
+                        showCreateSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }.accessibilityLabel("Create Role")
                 }
             }
         }
         .task { await load() }
-        .refreshable { await load(refresh: true) }
+        .refreshable { await load() }
         .sheet(isPresented: $showCreateSheet) {
             NavigationStack {
-                RoleDetailView(role: nil, manifest: manifest, mode: .create, onUpdate: { await load(refresh: true) })
+                RoleDetailView(role: nil, manifest: manifest, mode: .create, onUpdate: { await load() })
             }
         }
         .alert(
@@ -168,7 +179,7 @@ struct RolesView: View {
         }
     }
 
-    private func load(refresh: Bool = false) async {
+    private func load() async {
         guard rbacAvailable, let client = manager.client else { return }
         let generation = pagination.reset()
         isLoadingMore = false
@@ -226,13 +237,15 @@ struct RolesView: View {
         requestedStart: Int,
         generation: Int
     ) {
-        guard pagination.receive(
-            pagination: response.pagination,
-            itemCount: response.data.count,
-            requestedStart: requestedStart,
-            requestedLimit: Self.pageSize,
-            generation: generation
-        ) else { return }
+        guard
+            pagination.receive(
+                pagination: response.pagination,
+                itemCount: response.data.count,
+                requestedStart: requestedStart,
+                requestedLimit: Self.pageSize,
+                generation: generation
+            )
+        else { return }
         roles = PaginationLoader.merge(current: roles, incoming: response.data, reset: reset)
         loadMoreError = nil
     }
@@ -244,9 +257,10 @@ struct RolesView: View {
             withAnimation {
                 roles.removeAll { $0.id == role.id }
             }
-            await load(refresh: true)
+            await load()
         } catch let ArcaneError.conflict(message) {
-            actionErrorMessage = message ?? "This role can't be deleted because it would leave the system with no administrators."
+            actionErrorMessage =
+                message ?? "This role can't be deleted because it would leave the system with no administrators."
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -376,13 +390,19 @@ struct RoleDetailView: View {
                 )
             } else {
                 Section {
-                    HStack { Spacer(); ProgressView().scaleEffect(0.8); Spacer() }
+                    HStack {
+                        Spacer()
+                        ProgressView().scaleEffect(0.8)
+                        Spacer()
+                    }
                 }
             }
-            Section {} footer: {
-                Text(isReadOnly
-                    ? "Built-in roles cannot be edited."
-                    : "Select which actions this role can perform.")
+            Section {
+            } footer: {
+                Text(
+                    isReadOnly
+                        ? "Built-in roles cannot be edited."
+                        : "Select which actions this role can perform.")
             }
             if let error = errorMessage {
                 Section {

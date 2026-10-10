@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// In-toto attestation browser for an image — the iOS counterpart of the
 /// web's attestations panel: filter by predicate type, tap a row for the
@@ -80,9 +80,10 @@ struct ImageAttestationsView: View {
                             }
                         }
                     } label: {
-                        Image(systemName: selectedPredicateType == nil
-                            ? "line.3.horizontal.decrease.circle"
-                            : "line.3.horizontal.decrease.circle.fill")
+                        Image(
+                            systemName: selectedPredicateType == nil
+                                ? "line.3.horizontal.decrease.circle"
+                                : "line.3.horizontal.decrease.circle.fill")
                     }
                     .accessibilityLabel("Filter by predicate type")
                 }
@@ -216,7 +217,7 @@ private struct ImageAttestationDetailView: View {
                                 Text("\(algorithm):\(value)")
                                     .font(.caption2.monospaced())
                                     .foregroundStyle(.secondary)
-                                                    .truncationMode(.middle)
+                                    .truncationMode(.middle)
                             }
                         }
                     }
@@ -275,7 +276,8 @@ private struct ImageAttestationDetailView: View {
                 includeStatement: true
             )
             guard let match = list.attestations.first(where: { $0.digest == attestation.digest }),
-                  let statement = match.statement else {
+                let statement = match.statement
+            else {
                 statementError = "No statement payload returned."
                 return
             }

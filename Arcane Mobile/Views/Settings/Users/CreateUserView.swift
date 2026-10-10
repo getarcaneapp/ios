@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct CreateUserView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -99,7 +99,8 @@ struct CreateUserView: View {
 
     private func createUser() async {
         guard let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+        isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         let supportsRBAC = supportsRoleManagement
         do {
@@ -123,7 +124,8 @@ struct CreateUserView: View {
                     return
                 }
             }
-            await onSuccess(); dismiss()
+            await onSuccess()
+            dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 
@@ -138,7 +140,8 @@ struct CreateUserView: View {
             }
             availableRoles = roles
             if selectedRoleId.isEmpty {
-                selectedRoleId = roles.first(where: { $0.id == Role.BuiltIn.viewer })?.id
+                selectedRoleId =
+                    roles.first(where: { $0.id == Role.BuiltIn.viewer })?.id
                     ?? roles.first?.id
                     ?? ""
             }

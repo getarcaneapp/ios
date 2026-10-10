@@ -200,7 +200,7 @@ nonisolated extension ArcaneClient {
             query: [
                 URLQueryItem(name: "follow", value: "true"),
                 URLQueryItem(name: "tail", value: tail),
-                URLQueryItem(name: "timestamps", value: timestamps ? "true" : "false")
+                URLQueryItem(name: "timestamps", value: timestamps ? "true" : "false"),
             ]
         )
     }

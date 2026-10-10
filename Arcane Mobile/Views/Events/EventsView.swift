@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct EventsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -35,7 +35,6 @@ struct EventsView: View {
                                 onSelectAll: store.clearSeverities,
                                 onToggle: store.toggle
                             )
-
 
                         }
                     }
@@ -325,7 +324,6 @@ private struct EventRow: View {
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(severityTint)
                 .frame(width: 28)
-
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.title)

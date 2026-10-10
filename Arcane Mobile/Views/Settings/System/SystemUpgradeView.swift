@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct SystemUpgradeView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -73,7 +73,9 @@ struct SystemUpgradeView: View {
         .toolbar {
             if isAdmin, case .ready = phase {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button { Task { await checkUpgrade() } } label: {
+                    Button {
+                        Task { await checkUpgrade() }
+                    } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh")
@@ -132,7 +134,8 @@ struct SystemUpgradeView: View {
                     icon: "info.circle.fill",
                     tint: .blue,
                     title: "What happens next",
-                    body: "A new Arcane container will be created from the latest image and replace this one. The mobile app will briefly lose connection while it restarts."
+                    body:
+                        "A new Arcane container will be created from the latest image and replace this one. The mobile app will briefly lose connection while it restarts."
                 )
 
                 Button(role: .destructive) {
@@ -149,7 +152,8 @@ struct SystemUpgradeView: View {
                     icon: "exclamationmark.triangle.fill",
                     tint: .orange,
                     title: "Self-upgrade is not supported here",
-                    body: "Arcane can only self-upgrade when running in a Docker container with access to the Docker socket. Update Arcane from your deployment instead."
+                    body:
+                        "Arcane can only self-upgrade when running in a Docker container with access to the Docker socket. Update Arcane from your deployment instead."
                 )
             }
         }
@@ -191,7 +195,8 @@ struct SystemUpgradeView: View {
                 icon: "antenna.radiowaves.left.and.right",
                 tint: .blue,
                 title: "Reconnecting shortly",
-                body: "A new Arcane container is starting. The mobile app may briefly lose connection — pull to refresh once it's back."
+                body:
+                    "A new Arcane container is starting. The mobile app may briefly lose connection — pull to refresh once it's back."
             )
             ProgressView()
                 .controlSize(.regular)

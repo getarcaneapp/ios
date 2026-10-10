@@ -1,6 +1,6 @@
-import SwiftUI
-import Observation
 import Arcane
+import Observation
+import SwiftUI
 
 struct VariablesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -86,7 +86,9 @@ struct VariablesView: View {
             }
         }
         .navigationTitle("Variables")
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search variables")
+        .searchable(
+            text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search variables"
+        )
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) { rebuildDisplayedVariables() }
         .onChange(of: store.variables) { rebuildDisplayedVariables() }
@@ -114,7 +116,9 @@ struct VariablesView: View {
 
                 if canCreate {
                     AppToolbarItem(placement: .navigationBarTrailing) {
-                        Button { editorRoute = .create } label: {
+                        Button {
+                            editorRoute = .create
+                        } label: {
                             Image(systemName: "plus")
                         }
                         .accessibilityLabel("Create variable")
@@ -429,8 +433,11 @@ private struct DeleteVariableView: View {
         NavigationStack {
             Form {
                 Section {
-                    Label("Delete “\(variable.key)” and remove it from its environments?", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                    Label(
+                        "Delete “\(variable.key)” and remove it from its environments?",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
                 } footer: {
                     Text("This action cannot be undone.")
                 }
@@ -526,9 +533,10 @@ private struct VariableEditorView: View {
             VariableEnvironmentOption(id: $0.id, name: $0.name?.nilIfEmpty ?? $0.id)
         }
         let known = Set(options.map(\.id))
-        options.append(contentsOf: selectedEnvironmentIDs.subtracting(known).map {
-            VariableEnvironmentOption(id: $0, name: $0)
-        })
+        options.append(
+            contentsOf: selectedEnvironmentIDs.subtracting(known).map {
+                VariableEnvironmentOption(id: $0, name: $0)
+            })
         return options.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
@@ -835,9 +843,10 @@ private final class VariablesStore {
     }
 
     private func rebuildEnvironmentNames() {
-        environmentNamesByID = Dictionary(uniqueKeysWithValues: environments.map {
-            ($0.id, $0.name?.nilIfEmpty ?? $0.id)
-        })
+        environmentNamesByID = Dictionary(
+            uniqueKeysWithValues: environments.map {
+                ($0.id, $0.name?.nilIfEmpty ?? $0.id)
+            })
     }
 
     private func mergeSyncStatuses(_ statuses: [EnvironmentSyncStatus]) {
@@ -861,20 +870,20 @@ private final class VariablesStore {
     }
 }
 
-private extension VariableSyncState {
-    var displayName: String {
+extension VariableSyncState {
+    fileprivate var displayName: String {
         let value = rawValue.replacingOccurrences(of: "_", with: " ").capitalized
         return value.isEmpty ? "Unknown" : value
     }
 
-    var isUnknown: Bool {
+    fileprivate var isUnknown: Bool {
         if case .unknown = self { return true }
         return false
     }
 }
 
-private extension String {
-    var nilIfEmpty: String? {
+extension String {
+    fileprivate var nilIfEmpty: String? {
         isEmpty ? nil : self
     }
 }

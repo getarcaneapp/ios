@@ -30,10 +30,10 @@ enum HapticKind {
     @MainActor
     func play() {
         switch self {
-        case .none:    break
-        case .light:   HapticsManager.light()
+        case .none: break
+        case .light: HapticsManager.light()
         case .success: HapticsManager.success()
-        case .error:   HapticsManager.error()
+        case .error: HapticsManager.error()
         }
     }
 }
@@ -99,14 +99,16 @@ extension Toast {
 
     /// Success confirmation — green check.
     static func success(_ title: String) -> Toast {
-        Toast(title: title, duration: 2.5, symbol: "checkmark.circle.fill",
-              symbolTint: .green, haptic: .success)
+        Toast(
+            title: title, duration: 2.5, symbol: "checkmark.circle.fill",
+            symbolTint: .green, haptic: .success)
     }
 
     /// Failure notice — red triangle. Longer so a two-line message can be read.
     static func error(_ title: String) -> Toast {
-        Toast(title: title, duration: 5, symbol: "exclamationmark.triangle.fill",
-              symbolTint: .red, haptic: .error)
+        Toast(
+            title: title, duration: 5, symbol: "exclamationmark.triangle.fill",
+            symbolTint: .red, haptic: .error)
     }
 
     /// Neutral informational message.
@@ -309,8 +311,9 @@ private struct ToastHost: View {
         .padding(.bottom, barClearance)
         .allowsHitTesting(presenter.activeToast != nil)
         .animation(
-            reduceMotion ? Motion.reducedFallback
-                         : Motion.toast,
+            reduceMotion
+                ? Motion.reducedFallback
+                : Motion.toast,
             value: presenter.activeToast?.id
         )
     }

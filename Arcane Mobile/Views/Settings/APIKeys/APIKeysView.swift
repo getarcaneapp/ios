@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 private enum APIKeySortField: String, CaseIterable, Identifiable {
     case name
@@ -60,7 +60,7 @@ struct APIKeysView: View {
                 } description: {
                     Text(errorMessage)
                 } actions: {
-                    Button("Try Again") { Task { await loadKeys(refresh: true) } }
+                    Button("Try Again") { Task { await loadKeys() } }
                 }
             } else if apiKeys.isEmpty && !debouncedSearchText.isEmpty {
                 ContentUnavailableView {
@@ -113,23 +113,23 @@ struct APIKeysView: View {
         )
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) {
-            Task { await loadKeys(refresh: true) }
+            Task { await loadKeys() }
         }
         .onChange(of: sortField) {
-            Task { await loadKeys(refresh: true) }
+            Task { await loadKeys() }
         }
         .onChange(of: sortOrder) {
-            Task { await loadKeys(refresh: true) }
+            Task { await loadKeys() }
         }
         .toolbar { toolbarContent }
         .task { await loadKeys() }
-        .refreshable { await loadKeys(refresh: true) }
+        .refreshable { await loadKeys() }
         .sheet(isPresented: $showCreateSheet) {
             CreateAPIKeyView { created in
                 revealedKey = .created(created.key)
                 Task {
                     await invalidateAPIKeyCache()
-                    await loadKeys(refresh: true)
+                    await loadKeys()
                 }
             }
         }
@@ -163,7 +163,9 @@ struct APIKeysView: View {
 
         if canCreate {
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { showCreateSheet = true } label: {
+                Button {
+                    showCreateSheet = true
+                } label: {
                     Image(systemName: "plus")
                 }
                 .accessibilityLabel("Create API Key")
@@ -175,7 +177,7 @@ struct APIKeysView: View {
         let user = key.userId.flatMap { assignedUsers[$0] }
         return NavigationLink {
             APIKeyDetailView(apiKey: key, assignedUser: user) {
-                await loadKeys(refresh: true)
+                await loadKeys()
             }
         } label: {
             APIKeyRow(apiKey: key, assignedUser: user)
@@ -202,14 +204,16 @@ struct APIKeysView: View {
                 ],
                 details: [
                     .init(icon: "number", label: "Key Prefix", value: "\(key.keyPrefix)…", monospaced: true),
-                    .init(icon: "person.fill", label: "Assigned To", value: APIKeyOwnerText.title(user: user, userID: key.userId)),
-                    .init(icon: "calendar", label: "Expires", value: APIKeyDateText.expiration(key.expiresAt))
+                    .init(
+                        icon: "person.fill", label: "Assigned To",
+                        value: APIKeyOwnerText.title(user: user, userID: key.userId)),
+                    .init(icon: "calendar", label: "Expires", value: APIKeyDateText.expiration(key.expiresAt)),
                 ]
             )
         }
     }
 
-    private func loadKeys(refresh: Bool = false) async {
+    private func loadKeys() async {
         guard let client = manager.client else { return }
         let generation = pagination.reset()
         let shouldLoadUsers = canListUsers
@@ -281,13 +285,15 @@ struct APIKeysView: View {
         requestedStart: Int,
         generation: Int
     ) -> Bool {
-        guard pagination.receive(
-            pagination: response.pagination,
-            itemCount: response.data.count,
-            requestedStart: requestedStart,
-            requestedLimit: Self.pageSize,
-            generation: generation
-        ) else { return false }
+        guard
+            pagination.receive(
+                pagination: response.pagination,
+                itemCount: response.data.count,
+                requestedStart: requestedStart,
+                requestedLimit: Self.pageSize,
+                generation: generation
+            )
+        else { return false }
 
         apiKeys = PaginationLoader.merge(current: apiKeys, incoming: response.data, reset: reset)
         loadMoreError = nil

@@ -1,8 +1,8 @@
-import SwiftUI
-import UIKit
-import TipKit
-import UserNotifications
 import Arcane
+import SwiftUI
+import TipKit
+import UIKit
+import UserNotifications
 import WhatsNewKit
 
 @main
@@ -96,8 +96,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     var pendingNotificationUserInfo: [AnyHashable: Any]?
 
     func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+        _: UIApplication,
+        didFinishLaunchingWithOptions _: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         configureLegacyBarAppearance()
         publishVersionToSettingsBundle()
@@ -105,11 +105,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    func application(_: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         PushNotificationCoordinator.shared.didRegister(deviceToken: deviceToken)
     }
 
-    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    func application(_: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         PushNotificationCoordinator.shared.didFailToRegister(error: error)
     }
 
@@ -119,10 +119,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     private func publishVersionToSettingsBundle() {
         let info = Bundle.main.infoDictionary
         let defaults = UserDefaults.standard
-        defaults.set(info?["CFBundleShortVersionString"] as? String ?? "—",
-                     forKey: "arcane.settings.appVersion")
-        defaults.set(info?["CFBundleVersion"] as? String ?? "—",
-                     forKey: "arcane.settings.appBuild")
+        defaults.set(
+            info?["CFBundleShortVersionString"] as? String ?? "—",
+            forKey: "arcane.settings.appVersion")
+        defaults.set(
+            info?["CFBundleVersion"] as? String ?? "—",
+            forKey: "arcane.settings.appBuild")
     }
 
     /// On iOS 18 the traditional tab bar flips between its transparent scroll-edge
@@ -145,7 +147,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func application(
-        _ application: UIApplication,
+        _: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
         options: UIScene.ConnectionOptions
     ) -> UISceneConfiguration {
@@ -160,7 +162,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
+        _: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         let content = notification.request.content
@@ -169,7 +171,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     }
 
     func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
+        _: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
@@ -184,7 +186,7 @@ extension Notification.Name {
 
 final class SceneDelegate: NSObject, UIWindowSceneDelegate {
     func windowScene(
-        _ windowScene: UIWindowScene,
+        _: UIWindowScene,
         performActionFor shortcutItem: UIApplicationShortcutItem,
         completionHandler: @escaping (Bool) -> Void
     ) {

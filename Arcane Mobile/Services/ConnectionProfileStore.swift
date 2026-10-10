@@ -79,10 +79,11 @@ nonisolated enum ConnectionProfileSync {
 
         let value = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
         guard var components = URLComponents(string: value),
-              let scheme = components.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              let host = components.host?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !host.isEmpty else {
+            let scheme = components.scheme?.lowercased(),
+            scheme == "http" || scheme == "https",
+            let host = components.host?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !host.isEmpty
+        else {
             throw ConnectionProfileValidationError.invalidServerURL
         }
 
@@ -94,7 +95,8 @@ nonisolated enum ConnectionProfileSync {
         components.fragment = nil
 
         if (scheme == "https" && components.port == 443)
-            || (scheme == "http" && components.port == 80) {
+            || (scheme == "http" && components.port == 80)
+        {
             components.port = nil
         }
 
@@ -129,7 +131,8 @@ nonisolated enum ConnectionProfileSync {
                 result.unicodeScalars.append(scalar)
             }
         }
-        let collapsed = prepared
+        let collapsed =
+            prepared
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
         let fallback = defaultName(for: serverURL)
@@ -276,9 +279,10 @@ nonisolated struct ConnectionProfileKeychainStore {
 
         let records = items.compactMap { item -> ConnectionProfileRecord? in
             guard let data = item[kSecValueData as String] as? Data,
-                  let account = item[kSecAttrAccount as String] as? String,
-                  let record = Self.decode(data),
-                  record.id.uuidString == account else {
+                let account = item[kSecAttrAccount as String] as? String,
+                let record = Self.decode(data),
+                record.id.uuidString == account
+            else {
                 return nil
             }
             return record
@@ -307,7 +311,7 @@ nonisolated struct ConnectionProfileKeychainStore {
             kSecAttrSynchronizable as String: kCFBooleanTrue as Any,
         ]
         let update: [String: Any] = [
-            kSecValueData as String: data,
+            kSecValueData as String: data
         ]
 
         let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
@@ -553,8 +557,9 @@ final class ConnectionProfileStore {
         let id = profileID ?? existingByURL?.id ?? UUID()
 
         if existingByURL == nil,
-           profileID == nil,
-           profiles.count >= ConnectionProfileSync.maximumActiveProfiles {
+            profileID == nil,
+            profiles.count >= ConnectionProfileSync.maximumActiveProfiles
+        {
             throw ConnectionProfileValidationError.profileLimitReached
         }
 
@@ -574,8 +579,10 @@ final class ConnectionProfileStore {
         }
 
         try commit(candidate)
-        guard let saved = profiles.first(where: { $0.id == id })
-            ?? profiles.first(where: { $0.serverURL == normalized }) else {
+        guard
+            let saved = profiles.first(where: { $0.id == id })
+                ?? profiles.first(where: { $0.serverURL == normalized })
+        else {
             throw ConnectionProfileValidationError.persistenceFailed
         }
         return saved
@@ -615,7 +622,8 @@ final class ConnectionProfileStore {
 
         for profile in profiles where storedProfileIDs.contains(profile.id) {
             guard let record = try credentialStore.load(profileID: profile.id),
-                  record.credential(for: profile) != nil else {
+                record.credential(for: profile) != nil
+            else {
                 try credentialStore.delete(profileID: profile.id)
                 continue
             }

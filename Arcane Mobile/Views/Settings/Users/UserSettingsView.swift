@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct UserSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -36,7 +36,9 @@ struct UserSettingsView: View {
             } header: {
                 Label("User Avatars", systemImage: "person.crop.circle")
             } footer: {
-                Text("Gravatar supplies a profile picture when a user has no uploaded avatar. These settings are stored on the Arcane manager.")
+                Text(
+                    "Gravatar supplies a profile picture when a user has no uploaded avatar. These settings are stored on the Arcane manager."
+                )
             }
 
             if let errorMessage {
@@ -124,7 +126,8 @@ struct UserSettingsView: View {
             changedSettings["enableGravatar"] = String(enableGravatar)
         }
         if supportsAvatarUploadLimit,
-           avatarMaxUploadSizeMb != originalAvatarMaxUploadSizeMb {
+            avatarMaxUploadSizeMb != originalAvatarMaxUploadSizeMb
+        {
             changedSettings["avatarMaxUploadSizeMb"] = avatarMaxUploadSizeMb
         }
         guard !changedSettings.isEmpty else { return }

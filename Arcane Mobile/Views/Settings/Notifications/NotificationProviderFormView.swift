@@ -498,8 +498,8 @@ struct NotificationProviderFormView: View {
     }
 }
 
-private extension NotificationTestType {
-    var displayName: String {
+extension NotificationTestType {
+    fileprivate var displayName: String {
         switch self {
         case .simple: "Simple"
         case .imageUpdate: "Image Update"

@@ -1,6 +1,6 @@
-import SwiftUI
-import Observation
 import Arcane
+import Observation
+import SwiftUI
 
 @MainActor
 @Observable
@@ -19,10 +19,12 @@ final class ActivityToastMonitor {
     private let presenter: ToastPresenter
     private let ownsActivity: (Activity, String) -> Bool
 
-    init(presenter: ToastPresenter = .shared,
-         ownsActivity: @escaping (Activity, String) -> Bool = {
-             DeploymentActivityStore.shared.ownsActivity($0, environmentID: $1)
-         }) {
+    init(
+        presenter: ToastPresenter = .shared,
+        ownsActivity: @escaping (Activity, String) -> Bool = {
+            DeploymentActivityStore.shared.ownsActivity($0, environmentID: $1)
+        }
+    ) {
         self.presenter = presenter
         self.ownsActivity = ownsActivity
     }
@@ -95,10 +97,11 @@ final class ActivityToastMonitor {
         for activity in event.activities {
             let sourceEnvironmentID = event.environmentID ?? activity.sourceEnvironmentKey
             if isInitialSnapshot,
-               !ActivityToastInitialSnapshotPolicy.shouldPresent(
-                   status: activity.status,
-                   scope: scope
-               ) {
+                !ActivityToastInitialSnapshotPolicy.shouldPresent(
+                    status: activity.status,
+                    scope: scope
+                )
+            {
                 _ = remember(key(for: activity, environmentID: sourceEnvironmentID))
             } else {
                 handle(activity, environmentID: sourceEnvironmentID, scope: scope)
@@ -172,7 +175,8 @@ final class ActivityToastMonitor {
 
     private func dismissTrackedToast() {
         guard let activityID = presenter.currentToast?.activityID,
-              notifiedActivityKeys.contains(activityID) else { return }
+            notifiedActivityKeys.contains(activityID)
+        else { return }
         presenter.dismiss()
     }
 
@@ -233,7 +237,8 @@ final class ActivityToastMonitor {
 
     private func serverTargetName(for activity: Activity) -> String {
         if let name = activity.resourceName?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !name.isEmpty {
+            !name.isEmpty
+        {
             return name
         }
         return activity.type.displayName

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct NetworksView: View {
     private static let pageSize = 50
@@ -8,7 +8,6 @@ struct NetworksView: View {
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
     let environmentName: String
-
 
     @State private var networks: [NetworkSummary] = []
     @State private var isLoading = false
@@ -29,9 +28,6 @@ struct NetworksView: View {
     @State private var loadGeneration = 0
     @State private var systemNetworks: [NetworkSummary] = []
     @State private var userNetworks: [NetworkSummary] = []
-
-
-
 
     /// Both destructive confirmations on this screen route through a single
     /// `.deleteConfirmation` cover (one full-screen cover per view).
@@ -57,10 +53,11 @@ struct NetworksView: View {
     private func computePartition() -> (system: [NetworkSummary], user: [NetworkSummary]) {
         let query = debouncedSearchText
         let filtered = networks.filter { network in
-            let matchesSearch = query.isEmpty ||
-                network.name.localizedCaseInsensitiveContains(query) ||
-                network.driver.localizedCaseInsensitiveContains(query)
-            let matchesType = typeFilter == .all
+            let matchesSearch =
+                query.isEmpty || network.name.localizedCaseInsensitiveContains(query)
+                || network.driver.localizedCaseInsensitiveContains(query)
+            let matchesType =
+                typeFilter == .all
                 || (typeFilter == .standard && !network.isInternal)
                 || (typeFilter == .internalOnly && network.isInternal)
             return matchesSearch && matchesType
@@ -201,7 +198,9 @@ struct NetworksView: View {
                     Button {
                         showFilterSheet = true
                     } label: {
-                        Label(activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…", systemImage: "line.3.horizontal.decrease.circle")
+                        Label(
+                            activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
+                            systemImage: "line.3.horizontal.decrease.circle")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -213,7 +212,9 @@ struct NetworksView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { showCreateSheet = true } label: {
+                Button {
+                    showCreateSheet = true
+                } label: {
                     Image(systemName: "plus")
                         .appAccentToolbarSymbol()
                 }
@@ -223,7 +224,9 @@ struct NetworksView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button(role: .destructive) { pendingDestructive = .prune } label: {
+                Button(role: .destructive) {
+                    pendingDestructive = .prune
+                } label: {
                     Image(systemName: "trash")
                         .foregroundStyle(.red)
                 }
@@ -231,7 +234,7 @@ struct NetworksView: View {
             }
         }
         .task { await loadNetworks(reset: true) }
-        .refreshable { await loadNetworks(reset: true, refresh: true) }
+        .refreshable { await loadNetworks(reset: true) }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: NetworkSummary.self) { network in
             NetworkDetailView(network: network, environmentID: environmentID)
@@ -248,18 +251,22 @@ struct NetworksView: View {
                     title: "Prune Networks",
                     message: "Remove all unused networks.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Prune") {
-                        Task { await pruneNetworks() }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Prune") {
+                            Task { await pruneNetworks() }
+                        }
+                    ]
                 )
             case .delete(let network):
                 return DeleteConfirmationConfig(
                     title: "Delete Network",
                     message: "Delete “\(network.name)”? This cannot be undone.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Delete") {
-                        Task { await deleteNetwork(network) }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Delete") {
+                            Task { await deleteNetwork(network) }
+                        }
+                    ]
                 )
             }
         }
@@ -299,7 +306,7 @@ struct NetworksView: View {
             .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadNetworks(reset: true, refresh: true) }
+            Task { await loadNetworks(reset: true) }
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: typeFilter) { rebuildSections() }
@@ -317,11 +324,12 @@ struct NetworksView: View {
             .init(icon: "globe", label: "Scope", value: network.scope.capitalized)
         ]
         if network.containerCount > 0 {
-            details.insert(.init(
-                icon: "shippingbox",
-                label: "Connected Containers",
-                value: "\(network.containerCount)"
-            ), at: 0)
+            details.insert(
+                .init(
+                    icon: "shippingbox",
+                    label: "Connected Containers",
+                    value: "\(network.containerCount)"
+                ), at: 0)
         }
         details.append(.init(icon: "number", label: "ID", value: network.id, monospaced: true))
         return RowPreviewCard(
@@ -333,7 +341,7 @@ struct NetworksView: View {
         )
     }
 
-    private func loadNetworks(reset: Bool, refresh: Bool = false) async {
+    private func loadNetworks(reset: Bool) async {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
@@ -361,12 +369,13 @@ struct NetworksView: View {
             applyNetworksPage(response, reset: reset, start: start, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
-            if reset { errorMessage = friendlyErrorMessage(error) }
-            else { loadMoreError = friendlyErrorMessage(error) }
+            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 
-    private func applyNetworksPage(_ response: PaginatedResponse<NetworkSummary>, reset: Bool, start: Int, generation: Int) {
+    private func applyNetworksPage(
+        _ response: PaginatedResponse<NetworkSummary>, reset: Bool, start: Int, generation: Int
+    ) {
         guard loadGeneration == generation else { return }
         networks = PaginationLoader.merge(current: networks, incoming: response.data, reset: reset)
         pagination.receive(
@@ -416,10 +425,12 @@ struct NetworksView: View {
 
     private func invalidateNetworkCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "networks"),
-            client.rest.environmentPath(environmentID, "networks/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "networks"),
+                client.rest.environmentPath(environmentID, "networks/*"),
+            ])
     }
 }
 
@@ -434,7 +445,6 @@ struct NetworkRow: View {
                 .font(.title3)
                 .foregroundStyle(.teal)
                 .frame(width: 36, height: 36)
-
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(network.name)
@@ -499,11 +509,11 @@ struct NetworkDetailView: View {
             connectedContainersSection
 
             if let inspect, !inspect.labels.isEmpty {
-                keyValueSection("Labels", systemImage: "tag", pairs: inspect.labels)
+                keyValueSection("Labels", pairs: inspect.labels)
             }
 
             if let inspect, !inspect.options.isEmpty {
-                keyValueSection("Options", systemImage: "slider.horizontal.3", pairs: inspect.options)
+                keyValueSection("Options", pairs: inspect.options)
             }
 
             if isLoadingInspect && inspect == nil {
@@ -579,7 +589,6 @@ struct NetworkDetailView: View {
 
     private func infoSection<Content: View>(
         title: String,
-        systemImage: String,
         count: Int? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -591,7 +600,7 @@ struct NetworkDetailView: View {
     }
 
     private var detailsSection: some View {
-        infoSection(title: "Details", systemImage: "info.circle") {
+        infoSection(title: "Details") {
             ForEach(networkMetadata) { item in
                 LabeledContent(item.label, value: item.value)
             }
@@ -611,7 +620,7 @@ struct NetworkDetailView: View {
     @ViewBuilder
     private func peersSection(_ inspect: NetworkInspect) -> some View {
         if !inspect.peerList.isEmpty {
-            infoSection(title: "Peers", systemImage: "globe", count: inspect.peerList.count) {
+            infoSection(title: "Peers", count: inspect.peerList.count) {
                 ForEach(Array(inspect.peerList.enumerated()), id: \.element.name) { _, peer in
                     infoRow(peer.name) { MonospacedValue(value: peer.address) }
                 }
@@ -622,7 +631,7 @@ struct NetworkDetailView: View {
     @ViewBuilder
     private func servicesSection(_ inspect: NetworkInspect) -> some View {
         if !inspect.serviceList.isEmpty {
-            infoSection(title: "Services", systemImage: "square.stack.3d.up", count: inspect.serviceList.count) {
+            infoSection(title: "Services", count: inspect.serviceList.count) {
                 ForEach(Array(inspect.serviceList.enumerated()), id: \.element.name) { _, service in
                     VStack(alignment: .leading, spacing: 5) {
                         MonospacedValue(value: service.name)
@@ -647,11 +656,14 @@ struct NetworkDetailView: View {
         let hasDriver = ipam.driver.map { !$0.isEmpty } == true
         let hasConfigs = !(ipam.config ?? []).isEmpty
         if hasDriver || hasConfigs {
-            infoSection(title: "IPAM", systemImage: "tablecells") {
+            infoSection(title: "IPAM") {
                 // Identity derived from content (offset only disambiguates duplicates)
                 // so rows keep stable identity if the config list reorders.
                 let ipamConfigs = (ipam.config ?? []).enumerated().map { offset, config in
-                    (id: "\(config.subnet ?? "")|\(config.gateway ?? "")|\(config.ipRange ?? "")#\(offset)", config: config)
+                    (
+                        id: "\(config.subnet ?? "")|\(config.gateway ?? "")|\(config.ipRange ?? "")#\(offset)",
+                        config: config
+                    )
                 }
                 ForEach(ipamConfigs, id: \.id) { item in
                     let config = item.config
@@ -674,16 +686,16 @@ struct NetworkDetailView: View {
         let endpoints = inspect?.containersList ?? []
         let rawContainers = inspect?.containers ?? [:]
         if !endpoints.isEmpty {
-            infoSection(title: "Connected Containers", systemImage: "shippingbox.fill", count: endpoints.count) {
+            infoSection(title: "Connected Containers", count: endpoints.count) {
                 ForEach(endpoints, id: \.id) { endpoint in
                     NetworkContainerRow(endpoint: endpoint)
-                    }
+                }
             }
         } else if !rawContainers.isEmpty {
             let sortedKeys = Array(rawContainers.keys.sorted())
-            infoSection(title: "Connected Containers", systemImage: "shippingbox.fill", count: sortedKeys.count) {
+            infoSection(title: "Connected Containers", count: sortedKeys.count) {
                 ForEach(sortedKeys, id: \.self) { key in
-                    if case let .object(obj) = rawContainers[key] {
+                    if case .object(let obj) = rawContainers[key] {
                         NetworkContainerRow(
                             id: key,
                             name: obj["Name"]?.stringValue ?? "",
@@ -696,8 +708,8 @@ struct NetworkDetailView: View {
         }
     }
 
-    private func keyValueSection(_ title: String, systemImage: String, pairs: [String: String]) -> some View {
-        infoSection(title: title, systemImage: systemImage) {
+    private func keyValueSection(_ title: String, pairs: [String: String]) -> some View {
+        infoSection(title: title) {
             ForEach(pairs.keys.sorted(), id: \.self) { key in
                 infoRow(key) { rowText(pairs[key] ?? "") }
             }
@@ -714,7 +726,6 @@ struct NetworkDetailView: View {
             .multilineTextAlignment(.trailing)
     }
 
-
     private func detailLink<Destination: View>(
         _ title: String,
         systemImage: String,
@@ -729,8 +740,12 @@ struct NetworkDetailView: View {
         [
             ResourceMetadataItem(label: "Driver", value: network.driver, systemImage: "gearshape"),
             ResourceMetadataItem(label: "Scope", value: network.scope.capitalized, systemImage: "scope"),
-            ResourceMetadataItem(label: "Created", value: network.created.formatted(date: .abbreviated, time: .shortened), systemImage: "calendar"),
-            ResourceMetadataItem(label: "Status", value: network.inUse ? "In use" : "Unused", systemImage: "circle.fill", tint: network.inUse ? .green : .secondary)
+            ResourceMetadataItem(
+                label: "Created", value: network.created.formatted(date: .abbreviated, time: .shortened),
+                systemImage: "calendar"),
+            ResourceMetadataItem(
+                label: "Status", value: network.inUse ? "In use" : "Unused", systemImage: "circle.fill",
+                tint: network.inUse ? .green : .secondary),
         ]
     }
 
@@ -754,10 +769,12 @@ struct NetworkDetailView: View {
             let path = client.rest.environmentPath(environmentID, "networks/\(network.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
             if let cached = manager.cached {
-                await cached.invalidate(envID: environmentID, paths: [
-                    client.rest.environmentPath(environmentID, "networks"),
-                    client.rest.environmentPath(environmentID, "networks/*")
-                ])
+                await cached.invalidate(
+                    envID: environmentID,
+                    paths: [
+                        client.rest.environmentPath(environmentID, "networks"),
+                        client.rest.environmentPath(environmentID, "networks/*"),
+                    ])
             }
             mutationStore.markChanged(kind: .networks, envID: environmentID)
             dismiss()
@@ -832,8 +849,12 @@ struct CreateNetworkView: View {
                         helper: "Optional sub-range carved from the subnet."
                     )
                 }
-                Section {} footer: {
-                    Text(isInternal ? "Internal networks block external connectivity for attached containers." : "Bridge is the standard single-host Docker network driver.")
+                Section {
+                } footer: {
+                    Text(
+                        isInternal
+                            ? "Internal networks block external connectivity for attached containers."
+                            : "Bridge is the standard single-host Docker network driver.")
                 }
                 if let error = errorMessage {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
@@ -853,13 +874,14 @@ struct CreateNetworkView: View {
 
     private func createNetwork() async {
         guard let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+        isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             var body: [String: JSONValue] = [
                 "name": JSONValue(name),
                 "driver": JSONValue(driver),
-                "internal": JSONValue(isInternal)
+                "internal": JSONValue(isInternal),
             ]
             let trimmedSubnet = subnet.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedGateway = gateway.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -874,13 +896,16 @@ struct CreateNetworkView: View {
             let path = client.rest.environmentPath(environmentID, "networks")
             let _: NetworkSummary = try await client.rest.post(path, body: body)
             if let cached = manager.cached {
-                await cached.invalidate(envID: environmentID, paths: [
-                    client.rest.environmentPath(environmentID, "networks"),
-                    client.rest.environmentPath(environmentID, "networks/*")
-                ])
+                await cached.invalidate(
+                    envID: environmentID,
+                    paths: [
+                        client.rest.environmentPath(environmentID, "networks"),
+                        client.rest.environmentPath(environmentID, "networks/*"),
+                    ])
             }
             mutationStore.markChanged(kind: .networks, envID: environmentID)
-            await onSuccess(); dismiss()
+            await onSuccess()
+            dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }

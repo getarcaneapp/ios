@@ -165,7 +165,8 @@ struct CodeEditorView: UIViewRepresentable {
 
         private func applyKeyboardInset(notification: Notification) {
             guard let tv = textView else { return }
-            let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
+            let duration =
+                notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
             let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 0
             let options = UIView.AnimationOptions(rawValue: curve << 16)
 
@@ -203,9 +204,10 @@ struct CodeEditorView: UIViewRepresentable {
             let line = ns.substring(with: NSRange(location: lineStart, length: range.location - lineStart))
             let indent = String(line.prefix(while: { $0 == " " }))
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            let extra = (trimmed.hasSuffix(":") || trimmed == "-"
-                || trimmed.hasSuffix("|-") || trimmed.hasSuffix("|")
-                || trimmed.hasSuffix(">")) ? "  " : ""
+            let extra =
+                (trimmed.hasSuffix(":") || trimmed == "-"
+                    || trimmed.hasSuffix("|-") || trimmed.hasSuffix("|")
+                    || trimmed.hasSuffix(">")) ? "  " : ""
             tv.insertText("\n" + indent + extra)
             return false
         }
@@ -234,7 +236,8 @@ struct CodeEditorView: UIViewRepresentable {
             guard let tv = textView else { return }
             let ns = tv.text as NSString
             let lineRange = ns.lineRange(for: NSRange(location: tv.selectedRange.location, length: 0))
-            let lineText = ns.substring(with: NSRange(location: lineRange.location, length: tv.selectedRange.location - lineRange.location))
+            let lineText = ns.substring(
+                with: NSRange(location: lineRange.location, length: tv.selectedRange.location - lineRange.location))
             let indent = String(lineText.prefix(while: { $0 == " " }))
             if lineText.trimmingCharacters(in: .whitespaces).isEmpty {
                 tv.insertText("- ")
@@ -260,11 +263,11 @@ struct CodeEditorView: UIViewRepresentable {
     }
 }
 
-private extension CodeEditorView {
-    static let quickKeysBarHeight: CGFloat = 48
-    static let quickKeysScrollGap: CGFloat = 12
+extension CodeEditorView {
+    fileprivate static let quickKeysBarHeight: CGFloat = 48
+    fileprivate static let quickKeysScrollGap: CGFloat = 12
 
-    func accessoryInset(for textView: UITextView) -> CGFloat {
+    fileprivate func accessoryInset(for textView: UITextView) -> CGFloat {
         let accessoryHeight = textView.inputAccessoryView?.bounds.height ?? Self.quickKeysBarHeight
         return accessoryHeight + Self.quickKeysScrollGap
     }
@@ -316,7 +319,9 @@ struct EditorQuickKeysBar: View {
                                 .font(.callout.weight(.medium).monospaced())
                                 .foregroundStyle(.primary)
                                 .frame(minWidth: 44, minHeight: 34)
-                                .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: Radius.nested, style: .continuous))
+                                .background(
+                                    Color(.tertiarySystemFill),
+                                    in: .rect(cornerRadius: Radius.nested, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -344,22 +349,22 @@ struct EditorQuickKeysBar: View {
 // MARK: - YAML Syntax Highlighting
 
 private enum YAMLHighlighter {
-    static let keyColor     = adaptive(dark: (0.50, 0.82, 1.00), light: (0.05, 0.40, 0.78))
+    static let keyColor = adaptive(dark: (0.50, 0.82, 1.00), light: (0.05, 0.40, 0.78))
     static let commentColor = adaptive(dark: (0.47, 0.72, 0.47), light: (0.20, 0.55, 0.20))
-    static let stringColor  = adaptive(dark: (0.98, 0.75, 0.50), light: (0.75, 0.35, 0.05))
-    static let numberColor  = adaptive(dark: (0.82, 0.65, 1.00), light: (0.50, 0.20, 0.80))
-    static let boolColor    = adaptive(dark: (1.00, 0.60, 0.60), light: (0.78, 0.10, 0.10))
-    static let anchorColor  = adaptive(dark: (1.00, 0.87, 0.45), light: (0.70, 0.50, 0.00))
+    static let stringColor = adaptive(dark: (0.98, 0.75, 0.50), light: (0.75, 0.35, 0.05))
+    static let numberColor = adaptive(dark: (0.82, 0.65, 1.00), light: (0.50, 0.20, 0.80))
+    static let boolColor = adaptive(dark: (1.00, 0.60, 0.60), light: (0.78, 0.10, 0.10))
+    static let anchorColor = adaptive(dark: (1.00, 0.87, 0.45), light: (0.70, 0.50, 0.00))
 
     // (pattern, captureGroup) — group 0 means use full match
     private static let rules: [(String, Int, UIColor)] = [
         (#"(?m)^(\s*)([\w\-\.\/]+)(?=\s*:)"#, 2, keyColor),
-        (#"'[^'\n]*'"#,                         0, stringColor),
-        (#"\"[^\"\n]*\""#,                      0, stringColor),
-        (#"(?<=:\s)\d+\.?\d*\b"#,               0, numberColor),
+        (#"'[^'\n]*'"#, 0, stringColor),
+        (#"\"[^\"\n]*\""#, 0, stringColor),
+        (#"(?<=:\s)\d+\.?\d*\b"#, 0, numberColor),
         (#"(?<=:\s)\b(true|false|yes|no|null|~|True|False|Yes|No|Null)\b"#, 0, boolColor),
-        (#"[&*][\w\-]+"#,                       0, anchorColor),
-        (#"(?m)#.*$"#,                          0, commentColor),
+        (#"[&*][\w\-]+"#, 0, anchorColor),
+        (#"(?m)#.*$"#, 0, commentColor),
     ]
 
     static func highlight(_ text: String, font: UIFont) -> NSAttributedString {
@@ -380,14 +385,14 @@ private enum YAMLHighlighter {
 // MARK: - .env Syntax Highlighting
 
 private enum EnvHighlighter {
-    static let keyColor     = adaptive(dark: (0.50, 0.82, 1.00), light: (0.05, 0.40, 0.78))
-    static let valueColor   = adaptive(dark: (0.98, 0.75, 0.50), light: (0.75, 0.35, 0.05))
+    static let keyColor = adaptive(dark: (0.50, 0.82, 1.00), light: (0.05, 0.40, 0.78))
+    static let valueColor = adaptive(dark: (0.98, 0.75, 0.50), light: (0.75, 0.35, 0.05))
     static let commentColor = adaptive(dark: (0.47, 0.72, 0.47), light: (0.20, 0.55, 0.20))
 
     private static let rules: [(String, UIColor)] = [
         (#"(?m)^[A-Z_][A-Z0-9_]*(?==)"#, keyColor),
-        (#"(?m)(?<==).*$"#,               valueColor),
-        (#"(?m)#.*$"#,                    commentColor),
+        (#"(?m)(?<==).*$"#, valueColor),
+        (#"(?m)#.*$"#, commentColor),
     ]
 
     static func highlight(_ text: String, font: UIFont) -> NSAttributedString {
@@ -418,8 +423,9 @@ private enum PlainTextHighlighter {
 // MARK: - Helpers
 
 private func adaptive(dark d: (CGFloat, CGFloat, CGFloat), light l: (CGFloat, CGFloat, CGFloat)) -> UIColor {
-    UIColor { $0.userInterfaceStyle == .dark
-        ? UIColor(red: d.0, green: d.1, blue: d.2, alpha: 1)
-        : UIColor(red: l.0, green: l.1, blue: l.2, alpha: 1)
+    UIColor {
+        $0.userInterfaceStyle == .dark
+            ? UIColor(red: d.0, green: d.1, blue: d.2, alpha: 1)
+            : UIColor(red: l.0, green: l.1, blue: l.2, alpha: 1)
     }
 }

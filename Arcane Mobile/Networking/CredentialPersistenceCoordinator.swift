@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 import Synchronization
 
 /// A synchronous retirement fence shared by every client in an authentication attempt.
@@ -49,8 +49,7 @@ actor CredentialPersistenceCoordinator {
                 if try await store.loadTokens() == tokens { try await store.clearTokens() }
                 throw CancellationError()
             }
-            do { try lease.whileActive(bind) }
-            catch {
+            do { try lease.whileActive(bind) } catch {
                 if try await store.loadTokens() == tokens { try await store.clearTokens() }
                 throw error
             }
@@ -71,8 +70,7 @@ actor CredentialPersistenceCoordinator {
             var firstError: Error?
             for store in stores {
                 guard lease.canClear else { throw CancellationError() }
-                do { try await store.clearTokens() }
-                catch { if firstError == nil { firstError = error } }
+                do { try await store.clearTokens() } catch { if firstError == nil { firstError = error } }
             }
             if lease.canClear { unbind() }
             if let firstError { throw firstError }

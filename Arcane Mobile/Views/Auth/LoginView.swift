@@ -1,10 +1,10 @@
-import SwiftUI
 import Arcane
 import AuthenticationServices
+import SwiftUI
 
 enum LoginMode {
-    case setup   // First-time server URL entry
-    case login   // Credentials entry
+    case setup  // First-time server URL entry
+    case login  // Credentials entry
 }
 
 struct LoginView: View {
@@ -207,12 +207,13 @@ struct LoginView: View {
         }
         .onChange(of: profileStore.syncedCredentialProfileIDs) { previousIDs, currentIDs in
             guard !isSetupMode,
-                  !isLaunchSplashPresented,
-                  username.isEmpty,
-                  password.isEmpty,
-                  let profile = profileStore.profile(matching: manager.serverURL),
-                  !previousIDs.contains(profile.id),
-                  currentIDs.contains(profile.id) else { return }
+                !isLaunchSplashPresented,
+                username.isEmpty,
+                password.isEmpty,
+                let profile = profileStore.profile(matching: manager.serverURL),
+                !previousIDs.contains(profile.id),
+                currentIDs.contains(profile.id)
+            else { return }
             offerSavedCredential(for: profile)
         }
         .task(id: oidcRefreshTaskID) {
@@ -356,19 +357,21 @@ struct LoginView: View {
         Group {
             if isSetupMode {
                 serverURLForm
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .leading).combined(with: .opacity),
-                        removal: .move(edge: .trailing).combined(with: .opacity)
-                    ))
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .leading).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
             } else if manager.pendingMFAChallenge != nil {
                 mfaForm
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else if shouldShowPasswordFields {
                 credentialsForm
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    ))
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
             }
         }
     }
@@ -890,8 +893,9 @@ struct LoginView: View {
     private func savePasswordSignIn(_ pendingChange: PendingPasswordCredentialChange) {
         guard manager.authState == .authenticated else { return }
         guard let currentURL = try? ConnectionProfileSync.normalizedServerURL(manager.serverURL),
-              let attemptedURL = try? ConnectionProfileSync.normalizedServerURL(pendingChange.serverURL),
-              currentURL == attemptedURL else { return }
+            let attemptedURL = try? ConnectionProfileSync.normalizedServerURL(pendingChange.serverURL),
+            currentURL == attemptedURL
+        else { return }
 
         do {
             let credential = try SyncedConnectionCredential(

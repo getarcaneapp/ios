@@ -1,6 +1,6 @@
-import WidgetKit
-import SwiftUI
 import AppIntents
+import SwiftUI
+import WidgetKit
 
 // MARK: - Environment entity (configuration)
 
@@ -20,7 +20,8 @@ struct EnvironmentEntity: AppEntity {
 struct EnvironmentEntityQuery: EntityQuery {
     func entities(for identifiers: [String]) async throws -> [EnvironmentEntity] {
         let environments = WidgetSnapshotStore.load()?.environments ?? []
-        return environments
+        return
+            environments
             .filter { identifiers.contains($0.id) }
             .map { EnvironmentEntity(id: $0.id, name: $0.name) }
     }
@@ -61,9 +62,10 @@ struct StatusEntry: TimelineEntry {
                 accentHex: nil,
                 activeEnvironmentID: "0",
                 environments: [
-                    .init(id: "0", name: "Local Docker", online: true,
-                          running: 12, stopped: 2, total: 14, images: 31,
-                          updatesAvailable: 3, actionableVulnerabilities: 5)
+                    .init(
+                        id: "0", name: "Local Docker", online: true,
+                        running: 12, stopped: 2, total: 14, images: 31,
+                        updatesAvailable: 3, actionableVulnerabilities: 5)
                 ],
                 suggestedContainers: []
             ),
@@ -73,7 +75,7 @@ struct StatusEntry: TimelineEntry {
 }
 
 struct StatusProvider: AppIntentTimelineProvider {
-    func placeholder(in context: Context) -> StatusEntry {
+    func placeholder(in _: Context) -> StatusEntry {
         .placeholderEntry()
     }
 
@@ -86,7 +88,7 @@ struct StatusProvider: AppIntentTimelineProvider {
         )
     }
 
-    func timeline(for configuration: StatusWidgetConfigurationIntent, in context: Context) async -> Timeline<StatusEntry> {
+    func timeline(for configuration: StatusWidgetConfigurationIntent, in _: Context) async -> Timeline<StatusEntry> {
         // Single entry; the app rewrites the snapshot and reloads timelines on
         // material changes. The .after policy is just a staleness backstop.
         let entry = StatusEntry(

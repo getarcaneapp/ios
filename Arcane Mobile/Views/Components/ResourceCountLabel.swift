@@ -16,8 +16,8 @@ struct ResourceCountLabel: View {
             .monospacedDigit()
             .textCase(nil)
             .foregroundStyle(.secondary)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityText)
     }
 
     @ViewBuilder

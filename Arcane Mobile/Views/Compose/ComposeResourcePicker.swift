@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// Selects an existing resource name without changing the Compose document.
 struct ComposeResourcePicker: View {
@@ -17,8 +17,9 @@ struct ComposeResourcePicker: View {
     private var isVolume: Bool { kind == .mount }
     private var canList: Bool {
         (kind == .mount || kind == .network)
-            && manager.permissions.has(isVolume ? Permission.Volumes.list : Permission.Networks.list,
-                                       in: manager.activeEnvironmentID)
+            && manager.permissions.has(
+                isVolume ? Permission.Volumes.list : Permission.Networks.list,
+                in: manager.activeEnvironmentID)
     }
     private var queryKey: String {
         "\(manager.cacheSessionIdentity)|\(manager.activeEnvironmentID)|\(canList)|\(search)"
@@ -33,8 +34,9 @@ struct ComposeResourcePicker: View {
                         .foregroundStyle(.secondary)
                 }
                 if !canList {
-                    ContentUnavailableView("Listing Access Required", systemImage: "lock.fill",
-                                           description: Text("You can close this picker and enter a name manually."))
+                    ContentUnavailableView(
+                        "Listing Access Required", systemImage: "lock.fill",
+                        description: Text("You can close this picker and enter a name manually."))
                 } else {
                     ForEach(names, id: \.self) { name in
                         Button {
@@ -79,8 +81,7 @@ struct ComposeResourcePicker: View {
                 errorMessage = nil
                 loadedQuery = nil
                 guard canList else { return }
-                do { try await Task.sleep(for: ListUX.searchDebounce) }
-                catch { return }
+                do { try await Task.sleep(for: ListUX.searchDebounce) } catch { return }
                 await load(reset: true)
             }
         }
@@ -92,8 +93,9 @@ struct ComposeResourcePicker: View {
         let generation = reset ? pagination.reset() : pagination.generation
         let start = reset ? 0 : pagination.nextStart
         let environmentID = manager.activeEnvironmentID
-        let query = SearchPaginationSort(search: search.isEmpty ? nil : search, start: start,
-                                         limit: ListUX.pageSizeDefault, sortBy: "name", sortOrder: .ascending)
+        let query = SearchPaginationSort(
+            search: search.isEmpty ? nil : search, start: start,
+            limit: ListUX.pageSizeDefault, sortBy: "name", sortOrder: .ascending)
         isLoading = true
         errorMessage = nil
         defer { if pagination.accepts(generation) { isLoading = false } }
@@ -103,15 +105,17 @@ struct ComposeResourcePicker: View {
                 try Task.checkCancellation()
                 guard requestedQuery == queryKey, pagination.accepts(generation) else { return }
                 merge(response.data.map(\.name), reset: reset)
-                pagination.receive(pagination: response.pagination, itemCount: response.data.count,
-                                   requestedStart: start, requestedLimit: ListUX.pageSizeDefault, generation: generation)
+                pagination.receive(
+                    pagination: response.pagination, itemCount: response.data.count,
+                    requestedStart: start, requestedLimit: ListUX.pageSizeDefault, generation: generation)
             } else {
                 let response = try await client.networks.list(envID: environmentID, query: query)
                 try Task.checkCancellation()
                 guard requestedQuery == queryKey, pagination.accepts(generation) else { return }
                 merge(response.data.map(\.name), reset: reset)
-                pagination.receive(pagination: response.pagination, itemCount: response.data.count,
-                                   requestedStart: start, requestedLimit: ListUX.pageSizeDefault, generation: generation)
+                pagination.receive(
+                    pagination: response.pagination, itemCount: response.data.count,
+                    requestedStart: start, requestedLimit: ListUX.pageSizeDefault, generation: generation)
             }
             loadedQuery = requestedQuery
         } catch is CancellationError {

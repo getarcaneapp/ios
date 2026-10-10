@@ -1,6 +1,6 @@
-import SwiftUI
-import Charts
 import Arcane
+import Charts
+import SwiftUI
 
 struct SecurityOverviewView: View {
     let overview: VulnerabilityRiskOverview
@@ -93,14 +93,18 @@ struct SecurityOverviewView: View {
             }
 
             Section {
-                driverRow("Known exploited", count: overview.drivers.knownExploited,
-                          previous: overview.drivers7dAgo?.knownExploited, requiresThreatData: true)
-                driverRow("High exploit probability", count: overview.drivers.highEpss,
-                          previous: overview.drivers7dAgo?.highEpss, requiresThreatData: true)
-                driverRow("Exposed critical and high", count: overview.drivers.exposedCriticalHigh,
-                          previous: overview.drivers7dAgo?.exposedCriticalHigh)
-                driverRow("Overdue known exploited", count: overview.drivers.overdueKnownExploited,
-                          previous: overview.drivers7dAgo?.overdueKnownExploited, requiresThreatData: true)
+                driverRow(
+                    "Known exploited", count: overview.drivers.knownExploited,
+                    previous: overview.drivers7dAgo?.knownExploited, requiresThreatData: true)
+                driverRow(
+                    "High exploit probability", count: overview.drivers.highEpss,
+                    previous: overview.drivers7dAgo?.highEpss, requiresThreatData: true)
+                driverRow(
+                    "Exposed critical and high", count: overview.drivers.exposedCriticalHigh,
+                    previous: overview.drivers7dAgo?.exposedCriticalHigh)
+                driverRow(
+                    "Overdue known exploited", count: overview.drivers.overdueKnownExploited,
+                    previous: overview.drivers7dAgo?.overdueKnownExploited, requiresThreatData: true)
                 LabeledContent("Images scanned") {
                     Text(verbatim: "\(overview.drivers.imagesScanned) / \(overview.drivers.imagesTotal)")
                         .monospacedDigit()
@@ -109,7 +113,9 @@ struct SecurityOverviewView: View {
                 Text("Risk drivers")
             } footer: {
                 if !overview.threatIntel.enabled {
-                    Text("Threat intelligence is disabled. Known exploited and exploit probability counts are unavailable.")
+                    Text(
+                        "Threat intelligence is disabled. Known exploited and exploit probability counts are unavailable."
+                    )
                 } else if overview.threatIntel.lastSyncedAt == nil {
                     Text("Threat intelligence has not synced yet.")
                 } else if overview.threatIntel.stale {
@@ -181,7 +187,9 @@ struct SecurityOverviewView: View {
             }
             .frame(width: 170, height: 170)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(scoreUnavailable ? "Patch priority unavailable" : "Patch priority \(overview.riskScore) out of 100, \(bandLabel)")
+            .accessibilityLabel(
+                scoreUnavailable
+                    ? "Patch priority unavailable" : "Patch priority \(overview.riskScore) out of 100, \(bandLabel)")
 
             Text(bandLabel)
                 .font(.subheadline.weight(.semibold))
@@ -232,10 +240,12 @@ struct SecurityOverviewView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 if let delta = overview.delta7d {
-                    Label(delta == 0 ? "No change in 7 days" : "\(abs(delta)) in 7 days",
-                          systemImage: delta > 0 ? "arrow.up.right" : delta < 0 ? "arrow.down.right" : "minus")
-                        .font(.caption)
-                        .foregroundStyle(delta > 0 ? .orange : .secondary)
+                    Label(
+                        delta == 0 ? "No change in 7 days" : "\(abs(delta)) in 7 days",
+                        systemImage: delta > 0 ? "arrow.up.right" : delta < 0 ? "arrow.down.right" : "minus"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(delta > 0 ? .orange : .secondary)
                 }
                 Spacer()
                 Picker("Range", selection: $trendDays) {

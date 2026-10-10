@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct NewAPIKeyView: View {
     @SwiftUI.Environment(\.dismiss) private var dismiss
@@ -162,7 +162,10 @@ struct CreateAPIKeyView: View {
             } header: {
                 Text("Expiration")
             } footer: {
-                Text(hasExpiration ? "The key stops working after this date." : "The key remains active until it is deleted or rotated.")
+                Text(
+                    hasExpiration
+                        ? "The key stops working after this date."
+                        : "The key remains active until it is deleted or rotated.")
             }
 
             if supportsRBAC {
@@ -172,7 +175,8 @@ struct CreateAPIKeyView: View {
                         selected: $selectedPermissions,
                         search: permissionSearch
                     )
-                    Section {} footer: {
+                    Section {
+                    } footer: {
                         Text("Select at least one permission. API keys cannot exceed your own access.")
                     }
                 } else {
@@ -207,7 +211,8 @@ struct CreateAPIKeyView: View {
         errorMessage = nil
         defer { isLoading = false }
 
-        let permissions: [ApiKeyPermissionGrant]? = supportsRBAC
+        let permissions: [ApiKeyPermissionGrant]? =
+            supportsRBAC
             ? selectedPermissions.sorted().map { ApiKeyPermissionGrant(permission: $0) }
             : nil
         let body = APIKeyMutationRequest(
@@ -270,7 +275,8 @@ struct EditAPIKeyView: View {
         self.apiKey = apiKey
         self.metadata = metadata
         self.onSaved = onSaved
-        let initialExpiresAt = apiKey.expiresAt
+        let initialExpiresAt =
+            apiKey.expiresAt
             ?? Calendar.current.date(byAdding: .day, value: 90, to: Date())
             ?? Date()
         self.initialExpiresAt = initialExpiresAt
@@ -381,8 +387,11 @@ struct EditAPIKeyView: View {
             if supportsRBAC {
                 if isPersonal {
                     Section {
-                        Label("Personal keys inherit the assigned user's role permissions.", systemImage: "person.badge.key.fill")
-                            .foregroundStyle(.secondary)
+                        Label(
+                            "Personal keys inherit the assigned user's role permissions.",
+                            systemImage: "person.badge.key.fill"
+                        )
+                        .foregroundStyle(.secondary)
                     } header: {
                         Text("Permissions")
                     }
@@ -392,7 +401,8 @@ struct EditAPIKeyView: View {
                         selected: $selectedPermissions,
                         search: permissionSearch
                     )
-                    Section {} footer: {
+                    Section {
+                    } footer: {
                         Text("Select at least one permission. API keys cannot exceed your own access.")
                     }
                 } else {
@@ -400,7 +410,8 @@ struct EditAPIKeyView: View {
                         if isLoadingPermissions {
                             ProgressView("Loading permissions…")
                         } else {
-                            PartialDataNotice(message: "Existing permissions will be preserved because they could not be loaded.")
+                            PartialDataNotice(
+                                message: "Existing permissions will be preserved because they could not be loaded.")
                         }
                     } header: {
                         Text("Permissions")
@@ -433,7 +444,8 @@ struct EditAPIKeyView: View {
         errorMessage = nil
         defer { isSaving = false }
 
-        let permissions: [ApiKeyPermissionGrant]? = showsPermissionPicker
+        let permissions: [ApiKeyPermissionGrant]? =
+            showsPermissionPicker
             ? selectedPermissions.sorted().map { ApiKeyPermissionGrant(permission: $0) }
             : nil
         let body = APIKeyMutationRequest(

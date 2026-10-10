@@ -1,6 +1,6 @@
-import SwiftUI
 import CryptoKit
 import ImageIO
+import SwiftUI
 
 // MARK: - Shared URL image cache
 
@@ -16,14 +16,15 @@ actor ImageCache {
     // Disk tier — survives app termination. iOS may evict the Caches directory
     // under storage pressure; that's the intended semantic.
     private let diskDirectory: URL
-    private let diskByteCap: Int = 200 * 1024 * 1024          // 200 MB
+    private let diskByteCap: Int = 200 * 1024 * 1024  // 200 MB
     private let diskMaxAge: TimeInterval = 30 * 24 * 60 * 60  // 30 days
     private var didTrim = false
 
     private init() {
         cache.countLimit = 200
         cache.totalCostLimit = 50 * 1024 * 1024
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        let caches =
+            FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         diskDirectory = caches.appendingPathComponent("ImageCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
@@ -57,7 +58,9 @@ actor ImageCache {
         NotificationCenter.default.post(name: .imageCacheDidClear, object: nil)
     }
 
-    func load(_ urlString: String, maxPixelSize: Int = 0, using fetcher: @escaping @Sendable (String) async -> Data?) async -> UIImage? {
+    func load(_ urlString: String, maxPixelSize: Int = 0, using fetcher: @escaping @Sendable (String) async -> Data?)
+        async -> UIImage?
+    {
         let keyString = Self.memoryKey(url: urlString, maxPixel: maxPixelSize)
         if let cached = cache.object(forKey: keyString as NSString) { return cached }
         if let existing = inFlight[keyString] { return await existing.value }
@@ -76,7 +79,8 @@ actor ImageCache {
                 return img
             }
             guard let data = await fetcher(urlString),
-                  data.count <= RemoteDataLimits.maximumImageBytes else { return nil }
+                data.count <= RemoteDataLimits.maximumImageBytes
+            else { return nil }
             self.writeToDisk(urlString, data: data)
             guard let img = Self.decode(data: data, maxPixelSize: maxPixelSize) else { return nil }
             let cost = Self.approximateCost(of: img)
@@ -92,14 +96,16 @@ actor ImageCache {
     nonisolated static func decode(data: Data, maxPixelSize: Int) -> UIImage? {
         guard data.count <= RemoteDataLimits.maximumImageBytes else { return nil }
         guard maxPixelSize > 0 else { return UIImage(data: data) }
-        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else {
+        guard
+            let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary)
+        else {
             return UIImage(data: data)
         }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
         ]
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             return UIImage(data: data)
@@ -124,10 +130,11 @@ actor ImageCache {
     private nonisolated func loadFromDisk(_ key: String, maxPixelSize: Int) -> (UIImage, Int)? {
         let url = diskURL(for: key)
         guard let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
-              let fileSize = values.fileSize,
-              fileSize <= RemoteDataLimits.maximumImageBytes,
-              let data = try? Data(contentsOf: url, options: .mappedIfSafe),
-              let img = Self.decode(data: data, maxPixelSize: maxPixelSize) else { return nil }
+            let fileSize = values.fileSize,
+            fileSize <= RemoteDataLimits.maximumImageBytes,
+            let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+            let img = Self.decode(data: data, maxPixelSize: maxPixelSize)
+        else { return nil }
         // Touch mtime so LRU-by-mtime trim keeps recently-used files alive.
         try? FileManager.default.setAttributes(
             [.modificationDate: Date()], ofItemAtPath: url.path
@@ -142,15 +149,18 @@ actor ImageCache {
 
     private nonisolated func diskBytesOnDisk() -> Int {
         let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(
-            at: diskDirectory,
-            includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
+        guard
+            let entries = try? fm.contentsOfDirectory(
+                at: diskDirectory,
+                includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+                options: [.skipsHiddenFiles]
+            )
+        else { return 0 }
         var total = 0
         for url in entries {
             if let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]),
-               let size = v.totalFileAllocatedSize {
+                let size = v.totalFileAllocatedSize
+            {
                 total = RemoteDataLimits.saturatingAdd(total, size, maximum: Int.max)
             }
         }
@@ -160,11 +170,13 @@ actor ImageCache {
     nonisolated func trimDiskCache() {
         let fm = FileManager.default
         let keys: [URLResourceKey] = [.contentModificationDateKey, .totalFileAllocatedSizeKey]
-        guard let entries = try? fm.contentsOfDirectory(
-            at: diskDirectory,
-            includingPropertiesForKeys: keys,
-            options: [.skipsHiddenFiles]
-        ) else { return }
+        guard
+            let entries = try? fm.contentsOfDirectory(
+                at: diskDirectory,
+                includingPropertiesForKeys: keys,
+                options: [.skipsHiddenFiles]
+            )
+        else { return }
         let now = Date()
         var alive: [(url: URL, mtime: Date, size: Int)] = []
         for url in entries {
@@ -241,8 +253,8 @@ struct CachedAsyncImage<Fallback: View>: View {
         let resolved: String
         if urlString.hasPrefix("/") {
             guard let manager,
-                  let base = manager.parsedServerURL,
-                  let combined = URL(string: urlString, relativeTo: base)?.absoluteURL
+                let base = manager.parsedServerURL,
+                let combined = URL(string: urlString, relativeTo: base)?.absoluteURL
             else { return nil }
             resolved = combined.absoluteString
         } else {
@@ -256,13 +268,15 @@ struct CachedAsyncImage<Fallback: View>: View {
         guard url.hasSuffix(".svg") else { return url }
         // homarr-labs / walkxcode dashboard-icons CDN pattern
         if url.contains("/dashboard-icons/svg/") {
-            return url
+            return
+                url
                 .replacingOccurrences(of: "/svg/", with: "/png/")
                 .replacingOccurrences(of: ".svg", with: ".png")
         }
         // Generic: try swapping /svg/ → /png/ and .svg → .png for any jsDelivr CDN icon path
         if url.contains("cdn.jsdelivr.net") && url.contains("/svg/") {
-            return url
+            return
+                url
                 .replacingOccurrences(of: "/svg/", with: "/png/")
                 .replacingOccurrences(of: ".svg", with: ".png")
         }

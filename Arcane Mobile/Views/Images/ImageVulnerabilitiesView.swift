@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ImageVulnerabilitiesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -40,7 +40,7 @@ struct ImageVulnerabilitiesView: View {
     var body: some View {
         Group {
             if let status, !status.available {
-                scannerUnavailableView(status: status)
+                scannerUnavailableView()
             } else {
                 scanList
             }
@@ -87,54 +87,58 @@ struct ImageVulnerabilitiesView: View {
 
     private var scanList: some View {
         List {
-                if let summary {
-                    VStack(alignment: .leading, spacing: 10) {
-                        SectionHeader("Summary", systemImage: "chart.bar.doc.horizontal")
-                        SeveritySummaryRow(summary: summary.summary, scanTime: summary.scanTime, status: summary.status, error: summary.error)
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                }
-
-                severityFilterChips
-
-                Button {
-                    Task { await runScan() }
-                } label: {
-                    HStack {
-                        Label(isScanning ? "Scanning…" : "Re-scan now", systemImage: "magnifyingglass")
-                            .font(.subheadline.weight(.semibold))
-                        Spacer(minLength: 8)
-                        if isScanning { ProgressView().scaleEffect(0.8) }
-                    }
-                    .padding(14)
-                    .contentShape(.rect)
-                }
-                .disabled(isScanning)
-
-                if displayedVulnerabilities.isEmpty && !isLoading {
-                    ContentUnavailableView(
-                        "No vulnerabilities",
-                        systemImage: "checkmark.shield",
-                        description: Text(summary == nil ? "Run a scan to see results." : "Nothing matches the current filter.")
+            if let summary {
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionHeader("Summary", systemImage: "chart.bar.doc.horizontal")
+                    SeveritySummaryRow(
+                        summary: summary.summary, scanTime: summary.scanTime, status: summary.status,
+                        error: summary.error
                     )
-                    .padding(.top, 24)
-                } else {
-                    ResourceCountSectionHeader(
-                        "Findings",
-                        loadedCount: displayedVulnerabilities.count
-                    )
-
-                    ForEach(displayedVulnerabilities) { vuln in
-                        vulnerabilityLink(vuln)
-                    }
-
-            PaginatedListFooter(
-                hasMore: hasMore, loadMoreError: loadMoreError,
-                onRetry: { Task { await loadMore() } },
-                onLoadMore: { Task { await loadMore() } }
-            )
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            }
+
+            severityFilterChips
+
+            Button {
+                Task { await runScan() }
+            } label: {
+                HStack {
+                    Label(isScanning ? "Scanning…" : "Re-scan now", systemImage: "magnifyingglass")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 8)
+                    if isScanning { ProgressView().scaleEffect(0.8) }
+                }
+                .padding(14)
+                .contentShape(.rect)
+            }
+            .disabled(isScanning)
+
+            if displayedVulnerabilities.isEmpty && !isLoading {
+                ContentUnavailableView(
+                    "No vulnerabilities",
+                    systemImage: "checkmark.shield",
+                    description: Text(
+                        summary == nil ? "Run a scan to see results." : "Nothing matches the current filter.")
+                )
+                .padding(.top, 24)
+            } else {
+                ResourceCountSectionHeader(
+                    "Findings",
+                    loadedCount: displayedVulnerabilities.count
+                )
+
+                ForEach(displayedVulnerabilities) { vuln in
+                    vulnerabilityLink(vuln)
+                }
+
+                PaginatedListFooter(
+                    hasMore: hasMore, loadMoreError: loadMoreError,
+                    onRetry: { Task { await loadMore() } },
+                    onLoadMore: { Task { await loadMore() } }
+                )
+            }
         }
         .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
@@ -189,7 +193,9 @@ struct ImageVulnerabilitiesView: View {
             )
             .overlay {
                 Capsule()
-                    .strokeBorder((showIgnored ? Color.accentColor : Color.secondary).opacity(showIgnored ? 0.4 : 0.2), lineWidth: 0.75)
+                    .strokeBorder(
+                        (showIgnored ? Color.accentColor : Color.secondary).opacity(showIgnored ? 0.4 : 0.2),
+                        lineWidth: 0.75)
             }
         }
         .accessibilityLabel(showIgnored ? "Showing ignored vulnerabilities" : "Ignoring hidden vulnerabilities")
@@ -229,7 +235,7 @@ struct ImageVulnerabilitiesView: View {
         }
     }
 
-    private func scannerUnavailableView(status: ScannerStatus) -> some View {
+    private func scannerUnavailableView() -> some View {
         ContentUnavailableView {
             Label("Scanner unavailable", systemImage: "shield.slash")
         } description: {
@@ -267,8 +273,9 @@ struct ImageVulnerabilitiesView: View {
     private func loadSummary() async {
         guard let client = manager.client else { return }
         do {
-            summary = ScanSummary(try await client.vulnerabilities.scanSummary(
-                envID: environmentID, imageId: imageID))
+            summary = ScanSummary(
+                try await client.vulnerabilities.scanSummary(
+                    envID: environmentID, imageId: imageID))
         } catch {
             // Likely 404 (no scan yet) — leave summary nil.
             summary = nil
@@ -488,7 +495,9 @@ struct VulnerabilityDetailView: View {
                 LabeledContent("Package", value: record.pkgName)
                 if let v = record.installedVersion { LabeledContent("Installed", value: v) }
                 if let v = record.fixedVersion, !v.isEmpty { LabeledContent("Fixed in", value: v) }
-                if let cvss = record.cvss?.preferredScore { LabeledContent("CVSS", value: String(format: "%.1f", cvss)) }
+                if let cvss = record.cvss?.preferredScore {
+                    LabeledContent("CVSS", value: String(format: "%.1f", cvss))
+                }
                 if let date = record.publishedDate { LabeledContent("Published", value: date) }
                 if let date = record.lastModifiedDate { LabeledContent("Modified", value: date) }
             }

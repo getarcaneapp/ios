@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct WebhooksView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -43,10 +43,10 @@ struct WebhooksView: View {
                                         DestructiveLabel(text: "Delete")
                                     }
                                     .tint(.red)
-                                 } preview: {
-                                     webhookPreview(webhook)
-                                         .environment(manager)
-                                 }
+                                } preview: {
+                                    webhookPreview(webhook)
+                                        .environment(manager)
+                                }
                         }
                     } header: {
                         ResourceCountSectionHeader("Webhooks", loadedCount: webhooks.count)
@@ -59,7 +59,11 @@ struct WebhooksView: View {
         .navigationTitle("Webhooks")
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Webhook")
+                Button {
+                    showCreateSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                }.accessibilityLabel("Add Webhook")
             }
         }
         .task { await loadWebhooks() }
@@ -142,15 +146,17 @@ struct WebhooksView: View {
 
     private func invalidateWebhookCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: manager.activeEnvironmentID, paths: [
-            client.rest.environmentPath(manager.activeEnvironmentID, "webhooks") + "*"
-        ])
+        await cached.invalidate(
+            envID: manager.activeEnvironmentID,
+            paths: [
+                client.rest.environmentPath(manager.activeEnvironmentID, "webhooks") + "*"
+            ])
     }
 
     private func webhookPreview(_ webhook: Webhook) -> some View {
         var details: [RowPreviewCard.PreviewDetail] = [
             .init(icon: "arrow.right.circle", label: "Action", value: webhook.actionType.capitalized),
-            .init(icon: "key", label: "Token", value: webhook.tokenPrefix + "…")
+            .init(icon: "key", label: "Token", value: webhook.tokenPrefix + "…"),
         ]
         if let targetName = webhook.targetName, !targetName.isEmpty {
             details.insert(.init(icon: "scope", label: "Target", value: targetName), at: 0)
@@ -160,9 +166,10 @@ struct WebhooksView: View {
             iconColor: .accentColor,
             title: webhook.name,
             badges: [
-                .init(text: webhook.enabled ? "Enabled" : "Disabled",
-                      color: webhook.enabled ? .green : .secondary),
-                .init(text: webhook.targetType.capitalized, color: .accentColor)
+                .init(
+                    text: webhook.enabled ? "Enabled" : "Disabled",
+                    color: webhook.enabled ? .green : .secondary),
+                .init(text: webhook.targetType.capitalized, color: .accentColor),
             ],
             details: details
         )

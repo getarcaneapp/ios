@@ -32,7 +32,7 @@ struct Post26ParityTests {
         state.method = "PATCH"
         state.headers = [
             StableHeaderRow(name: "X-Environment", value: "production"),
-            StableHeaderRow(name: "X-Empty", value: "")
+            StableHeaderRow(name: "X-Empty", value: ""),
         ]
         state.payloadTemplate = #"{"title":"{{ title }}"}"#
         state.successBodyContains = "accepted"
@@ -86,10 +86,12 @@ struct Post26ParityTests {
         generic.payloadTemplate = #"{"subject":"{{ title }}"}"#
         generic.headers = [StableHeaderRow(name: "X-Environment", value: "production")]
 
-        guard case .generic(let legacyConfig) = generic.configuration(
-            for: .generic,
-            supportsPost26Features: false
-        ) else {
+        guard
+            case .generic(let legacyConfig) = generic.configuration(
+                for: .generic,
+                supportsPost26Features: false
+            )
+        else {
             Issue.record("Expected generic configuration")
             return
         }

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ImagesView: View {
     private static let pageSize = 50
@@ -8,7 +8,6 @@ struct ImagesView: View {
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
     let environmentName: String
-
 
     @State private var images: [ImageSummary] = []
     @State private var isLoading = false
@@ -37,8 +36,6 @@ struct ImagesView: View {
     @State private var isBulkRunning = false
     @State private var bulkRunningActionID: String?
 
-
-
     /// Quick prune and per-image delete share one `.deleteConfirmation` cover
     /// (one full-screen cover per view). The Prune Options form is separate.
     private enum ImageDestructive {
@@ -54,11 +51,12 @@ struct ImagesView: View {
     private func computeSections() -> [StableListSection<String, ImageRowModel>] {
         let query = debouncedSearchText
         let filtered = images.filter { image in
-            let matchesSearch = query.isEmpty ||
-                image.displayName.localizedCaseInsensitiveContains(query) ||
-                image.id.localizedCaseInsensitiveContains(query)
+            let matchesSearch =
+                query.isEmpty || image.displayName.localizedCaseInsensitiveContains(query)
+                || image.id.localizedCaseInsensitiveContains(query)
             let isTagged = image.repoTags.contains(where: { $0 != "<none>:<none>" })
-            let matchesTags = tagsFilter == .all
+            let matchesTags =
+                tagsFilter == .all
                 || (tagsFilter == .tagged && isTagged)
                 || (tagsFilter == .untagged && !isTagged)
             return matchesSearch && matchesTags
@@ -83,7 +81,7 @@ struct ImagesView: View {
         }
         return [
             .init(id: "used", title: "Used", items: used),
-            .init(id: "unused", title: "Unused", items: unused)
+            .init(id: "unused", title: "Unused", items: unused),
         ]
     }
 
@@ -105,7 +103,6 @@ struct ImagesView: View {
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove animates too.
-
 
     private var selectedImageIDs: [String] {
         images.filter { selection.contains($0.id) }.map(\.id)
@@ -258,7 +255,9 @@ struct ImagesView: View {
 
             if !isSelecting {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showPullSheet = true } label: {
+                    Button {
+                        showPullSheet = true
+                    } label: {
                         Image(systemName: "arrow.down.circle")
                             .appAccentToolbarSymbol()
                     }
@@ -273,27 +272,33 @@ struct ImagesView: View {
                     title: "Prune Dangling Images",
                     message: "Remove all dangling images. This cannot be undone.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Prune") {
-                        Task { await pruneImages() }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Prune") {
+                            Task { await pruneImages() }
+                        }
+                    ]
                 )
             case .delete(let image):
                 return DeleteConfirmationConfig(
                     title: "Delete Image",
                     message: "Delete “\(image.displayName)”? This removes the image from the host.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Delete") {
-                        Task { await removeImage(image) }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Delete") {
+                            Task { await removeImage(image) }
+                        }
+                    ]
                 )
             case .bulkDelete(let ids):
                 return DeleteConfirmationConfig(
                     title: "Delete Images",
                     message: "Delete \(ids.count) selected image\(ids.count == 1 ? "" : "s") from the host.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Delete") {
-                        Task { await bulkDeleteImages(ids: ids) }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Delete") {
+                            Task { await bulkDeleteImages(ids: ids) }
+                        }
+                    ]
                 )
             }
         }
@@ -336,7 +341,7 @@ struct ImagesView: View {
             .presentationDragIndicator(.visible)
         }
         .task { await loadImages(reset: true) }
-        .refreshable { await loadImages(reset: true, refresh: true) }
+        .refreshable { await loadImages(reset: true) }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: ImageSummary.self) { image in
             ImageDetailView(image: image, environmentID: environmentID)
@@ -352,7 +357,7 @@ struct ImagesView: View {
                 .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadImages(reset: true, refresh: true) }
+            Task { await loadImages(reset: true) }
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: tagsFilter) { rebuildSections() }
@@ -414,8 +419,9 @@ struct ImagesView: View {
 
     private func imagePreview(_ image: ImageSummary, state: ImageUpdateState) -> some View {
         var badges: [RowPreviewCard.PreviewBadge] = [
-            .init(text: image.inUse ? "In Use" : "Unused",
-                  color: image.inUse ? .green : .secondary)
+            .init(
+                text: image.inUse ? "In Use" : "Unused",
+                color: image.inUse ? .green : .secondary)
         ]
         switch state {
         case .upToDate:
@@ -434,12 +440,12 @@ struct ImagesView: View {
             badges: badges,
             details: [
                 .init(icon: "internaldrive", label: "Size", value: image.size.byteString),
-                .init(icon: "number", label: "ID", value: image.id, monospaced: true)
+                .init(icon: "number", label: "ID", value: image.id, monospaced: true),
             ]
         )
     }
 
-    private func loadImages(reset: Bool, refresh: Bool = false) async {
+    private func loadImages(reset: Bool) async {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
@@ -469,8 +475,7 @@ struct ImagesView: View {
             await loadUpdateInfo(for: response.data)
         } catch {
             guard loadGeneration == generation else { return }
-            if reset { errorMessage = friendlyErrorMessage(error) }
-            else { loadMoreError = friendlyErrorMessage(error) }
+            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
         }
     }
 
@@ -490,24 +495,28 @@ struct ImagesView: View {
 
     private func invalidateImageCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "images") + "*",
-            client.rest.environmentPath(environmentID, "images/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "images") + "*",
+                client.rest.environmentPath(environmentID, "images/*"),
+            ])
     }
 
     private func loadUpdateInfo(for newImages: [ImageSummary]) async {
         guard let client = manager.client else { return }
         let generation = loadGeneration
         let clientGeneration = manager.clientGeneration
-        let refs = newImages
+        let refs =
+            newImages
             .flatMap { $0.repoTags }
             .filter { $0 != "<none>:<none>" }
         guard !refs.isEmpty else { return }
         do {
             let map = try await client.images.updateInfoByRefs(envID: environmentID, imageRefs: refs)
             guard !Task.isCancelled, generation == loadGeneration,
-                  clientGeneration == manager.clientGeneration else { return }
+                clientGeneration == manager.clientGeneration
+            else { return }
             updateInfo.merge(ImageUpdateState.checkedResults(map)) { _, new in new }
             rebuildSections()
         } catch {
@@ -671,7 +680,9 @@ struct PullImageView: View {
                     if searching { ProgressView() }
                     if let searchError { Text(searchError).foregroundStyle(.secondary) }
                     ForEach(searchResults) { result in
-                        Button { imageName = result.name } label: {
+                        Button {
+                            imageName = result.name
+                        } label: {
                             VStack(alignment: .leading) {
                                 Text(result.name)
                                 Text(result.description).font(.caption).lineLimit(2)
@@ -683,7 +694,8 @@ struct PullImageView: View {
                 }
             }
             .task(id: "\(manager.serverURL)|\(manager.clientGeneration)|\(environmentID.rawValue)|\(searchTerm)") {
-                searchResults = []; searchError = nil
+                searchResults = []
+                searchError = nil
                 let term = searchTerm.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !term.isEmpty, let client = manager.client else { return }
                 searching = true
@@ -693,9 +705,9 @@ struct PullImageView: View {
                     let results = try await client.images.search(envID: environmentID, term: term)
                     guard !Task.isCancelled else { return }
                     searchResults = results
-                } catch is CancellationError { }
-                catch ArcaneError.notFound { searchError = "Image search is not available on this server." }
-                catch { searchError = error.localizedDescription }
+                } catch is CancellationError {} catch ArcaneError.notFound {
+                    searchError = "Image search is not available on this server."
+                } catch { searchError = error.localizedDescription }
             }
             .onChange(of: manager.clientGeneration) { dismiss() }
             .onChange(of: manager.activeEnvironmentID) { dismiss() }
@@ -715,7 +727,9 @@ struct PullImageView: View {
 
     private func startPull() {
         let reference = imageName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !reference.isEmpty, manager.permissions.has("images:pull", in: environmentID), manager.acceptsEnvironmentContext(environmentID) else { return }
+        guard !reference.isEmpty, manager.permissions.has("images:pull", in: environmentID),
+            manager.acceptsEnvironmentContext(environmentID)
+        else { return }
         dismiss()
         DeploymentActivityStore.shared.start(
             kind: .imagePull,

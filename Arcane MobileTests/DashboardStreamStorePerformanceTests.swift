@@ -1,7 +1,7 @@
+import Arcane
 import Observation
 import Synchronization
 import Testing
-import Arcane
 
 @testable import Arcane_Mobile
 
@@ -34,24 +34,27 @@ struct DashboardStreamStorePerformanceTests {
         first.snapshot = snapshot(running: 2, stopped: 1, images: 4, updates: 3)
         first.hasLoaded = true
 
-        #expect(DashboardStreamStore.resolvedAggregate(from: [
-            first.id: first,
-            second.id: second,
-        ]) == nil)
+        #expect(
+            DashboardStreamStore.resolvedAggregate(from: [
+                first.id: first,
+                second.id: second,
+            ]) == nil)
 
         second.snapshot = snapshot(running: 5, stopped: 2, images: 6, updates: 1)
         second.hasLoaded = true
 
-        #expect(DashboardStreamStore.resolvedAggregate(from: [
-            first.id: first,
-            second.id: second,
-        ]) == DashboardStreamStore.AggregateCounts(
-            runningContainers: 7,
-            stoppedContainers: 3,
-            totalContainers: 10,
-            totalImages: 10,
-            imageUpdates: 4
-        ))
+        #expect(
+            DashboardStreamStore.resolvedAggregate(from: [
+                first.id: first,
+                second.id: second,
+            ])
+                == DashboardStreamStore.AggregateCounts(
+                    runningContainers: 7,
+                    stoppedContainers: 3,
+                    totalContainers: 10,
+                    totalImages: 10,
+                    imageUpdates: 4
+                ))
     }
 
     private func snapshot(
@@ -78,7 +81,7 @@ struct DashboardStreamStorePerformanceTests {
             images: DashboardSnapshotImages(pagination: pagination),
             imageUsageCounts: ImageUsageCounts(totalImages: images),
             actionItems: ActionItems(items: [
-                ActionItem(kind: .imageUpdates, count: updates, severity: .warning),
+                ActionItem(kind: .imageUpdates, count: updates, severity: .warning)
             ]),
             settings: DashboardSnapshotSettings()
         )

@@ -76,7 +76,8 @@ struct ArcaneLaunchSplash: View {
             isExiting = true
         }
 
-        let exitDuration = reduceMotion
+        let exitDuration =
+            reduceMotion
             ? Motion.reducedFallbackDuration
             : Motion.splashExitDuration
         do {
@@ -98,7 +99,8 @@ private enum LaunchLogoColor {
     static let defaultHex = "#007AFF"
 
     static func normalizedHex(_ rawValue: String) -> String {
-        let cleaned = rawValue
+        let cleaned =
+            rawValue
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "#", with: "")
         guard cleaned.count == 6, UInt64(cleaned, radix: 16) != nil else {
@@ -163,7 +165,8 @@ private struct ArcaneAnimatedLogoWebView: UIViewRepresentable {
             return webView
         }
 
-        let coloredLogo = logo
+        let coloredLogo =
+            logo
             .replacingOccurrences(of: "fill:#6d28d9", with: "fill:\(accentColorHex)")
             .replacingOccurrences(of: "stroke:#6d28d9", with: "stroke:\(accentColorHex)")
         let html = template.replacingOccurrences(of: "{{ARCANE_LOGO}}", with: coloredLogo)
@@ -171,7 +174,7 @@ private struct ArcaneAnimatedLogoWebView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
+    func updateUIView(_: WKWebView, context: Context) {
         context.coordinator.loadState = $loadState
     }
 
@@ -186,22 +189,22 @@ private struct ArcaneAnimatedLogoWebView: UIViewRepresentable {
             self.loadState = loadState
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        func webView(_: WKWebView, didFinish _: WKNavigation!) {
             loadState.wrappedValue = .ready
         }
 
         func webView(
-            _ webView: WKWebView,
-            didFail navigation: WKNavigation!,
-            withError error: Error
+            _: WKWebView,
+            didFail _: WKNavigation!,
+            withError _: Error
         ) {
             loadState.wrappedValue = .failed
         }
 
         func webView(
-            _ webView: WKWebView,
-            didFailProvisionalNavigation navigation: WKNavigation!,
-            withError error: Error
+            _: WKWebView,
+            didFailProvisionalNavigation _: WKNavigation!,
+            withError _: Error
         ) {
             loadState.wrappedValue = .failed
         }

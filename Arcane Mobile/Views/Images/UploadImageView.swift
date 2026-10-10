@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 import UniformTypeIdentifiers
 
 struct UploadImageView: View {
@@ -92,8 +92,7 @@ struct UploadImageView: View {
                         Button {
                             Task { await startUpload() }
                         } label: {
-                            if isUploading { ProgressView().scaleEffect(0.8) }
-                            else { Text("Upload") }
+                            if isUploading { ProgressView().scaleEffect(0.8) } else { Text("Upload") }
                         }
                         .disabled(pickedURL == nil || isUploading)
                     }
@@ -141,7 +140,8 @@ struct UploadImageView: View {
 
     private func startUpload() async {
         guard let client = manager.client,
-              let url = pickedURL else {
+            let url = pickedURL
+        else {
             errorMessage = "Invalid configuration"
             return
         }
@@ -174,10 +174,12 @@ struct UploadImageView: View {
                 let serverOutput = result.stream.trimmingCharacters(in: .whitespacesAndNewlines)
                 output = serverOutput.isEmpty ? "Upload complete." : serverOutput
                 if let cached {
-                    await cached.invalidate(envID: envID, paths: [
-                        client.rest.environmentPath(envID, "images") + "*",
-                        client.rest.environmentPath(envID, "images/*")
-                    ])
+                    await cached.invalidate(
+                        envID: envID,
+                        paths: [
+                            client.rest.environmentPath(envID, "images") + "*",
+                            client.rest.environmentPath(envID, "images/*"),
+                        ])
                 }
                 mutationStore.markChanged(kind: .images, envID: envID)
                 await onComplete()

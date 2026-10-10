@@ -91,7 +91,9 @@ nonisolated struct DynamicResource: Codable, Hashable, Sendable, Identifiable {
     }
 
     var title: String {
-        for key in ["name", "Name", "title", "Title", "id", "ID", "serviceName", "containerName", "repositoryUrl", "url"] {
+        for key in [
+            "name", "Name", "title", "Title", "id", "ID", "serviceName", "containerName", "repositoryUrl", "url",
+        ] {
             if let value = values[key]?.displayString, !value.isEmpty { return value }
         }
         return id
@@ -113,7 +115,11 @@ nonisolated struct DynamicResource: Codable, Hashable, Sendable, Identifiable {
 
     var sortedDetails: [(String, AnyJSONValue)] {
         values
-            .filter { !$0.key.localizedCaseInsensitiveContains("password") && !$0.key.localizedCaseInsensitiveContains("token") && !$0.key.localizedCaseInsensitiveContains("secret") }
+            .filter {
+                !$0.key.localizedCaseInsensitiveContains("password")
+                    && !$0.key.localizedCaseInsensitiveContains("token")
+                    && !$0.key.localizedCaseInsensitiveContains("secret")
+            }
             .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
     }
 
@@ -122,7 +128,8 @@ nonisolated struct DynamicResource: Codable, Hashable, Sendable, Identifiable {
             if let value = values[key]?.displayString, !value.isEmpty { return value }
         }
         if let data = try? JSONEncoder().encode(values),
-           let text = String(data: data, encoding: .utf8) {
+            let text = String(data: data, encoding: .utf8)
+        {
             return String(text.hashValue)
         }
         return UUID().uuidString
@@ -138,7 +145,10 @@ nonisolated struct DynamicListEnvelope: Decodable, Sendable {
             return
         }
         let object = try [String: AnyJSONValue](from: decoder)
-        for key in ["data", "items", "results", "services", "nodes", "tasks", "stacks", "configs", "secrets", "backups", "files", "repositories", "syncs", "jobs", "schedules"] {
+        for key in [
+            "data", "items", "results", "services", "nodes", "tasks", "stacks", "configs", "secrets", "backups",
+            "files", "repositories", "syncs", "jobs", "schedules",
+        ] {
             if let array = object[key]?.arrayValue {
                 self.items = array.compactMap { value in
                     guard let object = value.objectValue else { return nil }
@@ -198,7 +208,10 @@ nonisolated struct BackendListAction: Identifiable, Hashable, Sendable {
     let destructive: Bool
     let requiresSelection: Bool
 
-    init(id: String, title: String, systemImage: String, method: Method, pathSuffix: String, destructive: Bool = false, requiresSelection: Bool = true) {
+    init(
+        id: String, title: String, systemImage: String, method: Method, pathSuffix: String, destructive: Bool = false,
+        requiresSelection: Bool = true
+    ) {
         self.id = id
         self.title = title
         self.systemImage = systemImage

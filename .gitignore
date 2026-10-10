@@ -53,3 +53,6 @@ fastlane/test_output
 # Misc
 *.swp
 *.log
+
+# SwiftLint
+.swiftlint_cache/

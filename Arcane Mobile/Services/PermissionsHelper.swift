@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 /// Lightweight value type that wraps `ArcaneClientManager` and exposes
 /// ergonomic permission checks against the current user + active environment.

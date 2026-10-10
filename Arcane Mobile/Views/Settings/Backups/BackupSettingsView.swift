@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct BackupSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -37,7 +37,11 @@ struct BackupSettingsView: View {
             if canManage || manager.permissions.has("system-backups:recovery-key", in: nil) {
                 Section("Recovery") {
                     if manager.permissions.has("system-backups:recovery-key", in: nil) {
-                        NavigationLink { BackupRecoveryKeyView() } label: { Label("Recovery Key", systemImage: "key") }
+                        NavigationLink {
+                            BackupRecoveryKeyView()
+                        } label: {
+                            Label("Recovery Key", systemImage: "key")
+                        }
                     }
                     if canManage {
                         NavigationLink {

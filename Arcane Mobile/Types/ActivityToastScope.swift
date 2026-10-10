@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 nonisolated enum ActivityToastScope: String, CaseIterable, Identifiable, Sendable {
     case userInitiated

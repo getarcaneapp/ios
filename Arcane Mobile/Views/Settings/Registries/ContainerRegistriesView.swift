@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ContainerRegistriesView: View {
     private static let pageSize = 50
@@ -21,7 +21,9 @@ struct ContainerRegistriesView: View {
     var body: some View {
         Group {
             if manager.currentUser?.isAdmin != true {
-                ContentUnavailableView("Admin Required", systemImage: "lock.fill", description: Text("Only administrators can manage container registries."))
+                ContentUnavailableView(
+                    "Admin Required", systemImage: "lock.fill",
+                    description: Text("Only administrators can manage container registries."))
             } else if isLoading && registries.isEmpty {
                 ProgressView("Loading registries...").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, registries.isEmpty {
@@ -30,7 +32,7 @@ struct ContainerRegistriesView: View {
                 } description: {
                     Text(errorMessage)
                 } actions: {
-                    Button("Try Again") { Task { await loadRegistries(refresh: true) } }
+                    Button("Try Again") { Task { await loadRegistries() } }
                 }
             } else if registries.isEmpty {
                 ContentUnavailableView {
@@ -77,7 +79,7 @@ struct ContainerRegistriesView: View {
         )
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .onChange(of: debouncedSearchText) {
-            Task { await loadRegistries(refresh: true) }
+            Task { await loadRegistries() }
         }
         .deleteConfirmation(
             item: $pendingDeleteRegistry,
@@ -91,7 +93,11 @@ struct ContainerRegistriesView: View {
         .toolbar {
             if manager.currentUser?.isAdmin == true {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showCreateRegistrySheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Registry")
+                    Button {
+                        showCreateRegistrySheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }.accessibilityLabel("Add Registry")
                 }
             }
         }
@@ -101,14 +107,14 @@ struct ContainerRegistriesView: View {
         }
         .refreshable {
             guard manager.currentUser?.isAdmin == true else { return }
-            await loadRegistries(refresh: true)
+            await loadRegistries()
         }
         .sheet(isPresented: $showCreateRegistrySheet) {
             RegistryFormView(registry: nil) {
                 if let cached = manager.cached {
                     await cached.invalidateGlobal(paths: ["container-registries", "container-registries/*"])
                 }
-                await loadRegistries(refresh: true)
+                await loadRegistries()
             }
         }
         .sheet(item: $editingRegistry) { registry in
@@ -116,7 +122,7 @@ struct ContainerRegistriesView: View {
                 if let cached = manager.cached {
                     await cached.invalidateGlobal(paths: ["container-registries", "container-registries/*"])
                 }
-                await loadRegistries(refresh: true)
+                await loadRegistries()
             }
         }
         .alert(
@@ -132,7 +138,7 @@ struct ContainerRegistriesView: View {
         }
     }
 
-    private func loadRegistries(refresh: Bool = false) async {
+    private func loadRegistries() async {
         guard manager.currentUser?.isAdmin == true, let client = manager.client else { return }
         let generation = pagination.reset()
         isLoadingMore = false
@@ -187,13 +193,15 @@ struct ContainerRegistriesView: View {
         requestedStart: Int,
         generation: Int
     ) {
-        guard pagination.receive(
-            pagination: response.pagination,
-            itemCount: response.data.count,
-            requestedStart: requestedStart,
-            requestedLimit: Self.pageSize,
-            generation: generation
-        ) else { return }
+        guard
+            pagination.receive(
+                pagination: response.pagination,
+                itemCount: response.data.count,
+                requestedStart: requestedStart,
+                requestedLimit: Self.pageSize,
+                generation: generation
+            )
+        else { return }
         registries = PaginationLoader.merge(
             current: registries,
             incoming: response.data,
@@ -213,7 +221,7 @@ struct ContainerRegistriesView: View {
             if let cached = manager.cached {
                 await cached.invalidateGlobal(paths: ["container-registries", "container-registries/*"])
             }
-            await loadRegistries(refresh: true)
+            await loadRegistries()
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -286,8 +294,9 @@ private struct RegistryActionRow: View {
                 iconColor: .accentColor,
                 title: registry.name ?? registry.id,
                 badges: [
-                    .init(text: registry.enabled ? "Enabled" : "Disabled",
-                          color: registry.enabled ? .green : .secondary)
+                    .init(
+                        text: registry.enabled ? "Enabled" : "Disabled",
+                        color: registry.enabled ? .green : .secondary)
                 ],
                 details: [
                     .init(icon: "link", label: "URL", value: registry.url)

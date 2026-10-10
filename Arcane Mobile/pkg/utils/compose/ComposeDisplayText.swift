@@ -4,7 +4,10 @@ import Foundation
 nonisolated enum ComposeDisplayText {
     static func title(_ value: String) -> String {
         if value == "x-arcane" { return "Arcane Metadata" }
-        let acronyms = ["dns": "DNS", "url": "URL", "urls": "URLs", "ip": "IP", "ipv4": "IPv4", "ipv6": "IPv6", "pid": "PID", "ipc": "IPC", "cpu": "CPU", "cpus": "CPUs", "io": "IO", "mac": "MAC"]
+        let acronyms = [
+            "dns": "DNS", "url": "URL", "urls": "URLs", "ip": "IP", "ipv4": "IPv4", "ipv6": "IPv6", "pid": "PID",
+            "ipc": "IPC", "cpu": "CPU", "cpus": "CPUs", "io": "IO", "mac": "MAC",
+        ]
         return value.replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
             .split(separator: " ")

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// Account/profile page mirroring the web's Account view: identity header,
 /// editable display name + email, password change, and a disabled language
@@ -166,21 +166,25 @@ struct ProfileView: View {
                     title: "Sign Out",
                     message: "You'll be signed out of this server.",
                     icon: "rectangle.portrait.and.arrow.right",
-                    actions: [DeleteConfirmationAction(title: "Sign Out") {
-                        Task { await manager.logout() }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Sign Out") {
+                            Task { await manager.logout() }
+                        }
+                    ]
                 )
             case .signOutAndChangeServer:
                 return DeleteConfirmationConfig(
                     title: "Change Server",
                     message: "You'll be signed out and asked for a new server URL.",
                     icon: "link",
-                    actions: [DeleteConfirmationAction(title: "Sign Out & Change Server") {
-                        Task {
-                            await manager.logout()
-                            manager.authState = .setup
+                    actions: [
+                        DeleteConfirmationAction(title: "Sign Out & Change Server") {
+                            Task {
+                                await manager.logout()
+                                manager.authState = .setup
+                            }
                         }
-                    }]
+                    ]
                 )
             }
         }

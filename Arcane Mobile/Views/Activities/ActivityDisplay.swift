@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 nonisolated enum ActivityStatusFilter: String, CaseIterable, Identifiable, Sendable {
     case all

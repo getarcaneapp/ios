@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct OIDCRoleMappingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -50,17 +50,18 @@ struct OIDCRoleMappingsView: View {
                 List {
                     Section {
                         ForEach(mappings) { mapping in
-                        Button {
-                            if mapping.sourceKind == .manual {
-                                editingMapping = mapping
+                            Button {
+                                if mapping.sourceKind == .manual {
+                                    editingMapping = mapping
+                                }
+                            } label: {
+                                MappingRow(
+                                    mapping: mapping,
+                                    role: availableRoles.first(where: { $0.id == mapping.roleId }),
+                                    environmentLabel: displayScopeLabel(
+                                        for: mapping.environmentId, environments: availableEnvironments)
+                                )
                             }
-                        } label: {
-                            MappingRow(
-                                mapping: mapping,
-                                role: availableRoles.first(where: { $0.id == mapping.roleId }),
-                                environmentLabel: displayScopeLabel(for: mapping.environmentId, environments: availableEnvironments)
-                            )
-                        }
                             .buttonStyle(.plain)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if mapping.sourceKind == .manual {
@@ -87,18 +88,22 @@ struct OIDCRoleMappingsView: View {
         .toolbar {
             if rbacAvailable && manager.permissions.canManageOIDCMappings {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showCreateSheet = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add Role Mapping")
+                    Button {
+                        showCreateSheet = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }.accessibilityLabel("Add Role Mapping")
                 }
             }
         }
         .task { await load() }
-        .refreshable { await load(refresh: true) }
+        .refreshable { await load() }
         .sheet(isPresented: $showCreateSheet) {
             OIDCMappingFormSheet(
                 editing: nil,
                 availableRoles: availableRoles,
                 availableEnvironments: availableEnvironments,
-                onSaved: { await load(refresh: true) }
+                onSaved: { await load() }
             )
         }
         .sheet(item: $editingMapping) { mapping in
@@ -106,7 +111,7 @@ struct OIDCRoleMappingsView: View {
                 editing: mapping,
                 availableRoles: availableRoles,
                 availableEnvironments: availableEnvironments,
-                onSaved: { await load(refresh: true) }
+                onSaved: { await load() }
             )
         }
         .alert(
@@ -123,7 +128,9 @@ struct OIDCRoleMappingsView: View {
         .deleteConfirmation(
             item: $pendingDeleteMapping,
             title: { _ in "Delete Mapping" },
-            message: { "Delete the mapping for “\($0.claimValue)”? Users won't receive this role on their next login." },
+            message: {
+                "Delete the mapping for “\($0.claimValue)”? Users won't receive this role on their next login."
+            },
             icon: "trash",
             confirmTitle: "Delete"
         ) { mapping in
@@ -131,7 +138,7 @@ struct OIDCRoleMappingsView: View {
         }
     }
 
-    private func load(refresh: Bool = false) async {
+    private func load() async {
         guard rbacAvailable, let client = manager.client else { return }
         if mappings.isEmpty { isLoading = true }
         errorMessage = nil

@@ -19,7 +19,7 @@ struct ComposePreviewEditor: View {
                 selection: $yaml,
                 options: [
                     ScrollableTabOption(false, title: "Editor", systemImage: "slider.horizontal.3"),
-                    ScrollableTabOption(true, title: "YAML", systemImage: "chevron.left.forwardslash.chevron.right")
+                    ScrollableTabOption(true, title: "YAML", systemImage: "chevron.left.forwardslash.chevron.right"),
                 ],
                 accessibilityLabel: "Compose editor mode"
             )
@@ -31,7 +31,8 @@ struct ComposePreviewEditor: View {
                         serviceList(document)
                     } detail: {
                         if let selectedService, document.services.contains(selectedService) {
-                            ComposeServiceForm(text: $text, service: selectedService, readOnly: readOnly, menuActions: menuActions)
+                            ComposeServiceForm(
+                                text: $text, service: selectedService, readOnly: readOnly, menuActions: menuActions)
                         } else {
                             ContentUnavailableView("Select a service", systemImage: "square.stack.3d.up")
                         }
@@ -53,15 +54,21 @@ struct ComposePreviewEditor: View {
         .toolbar {
             if yaml, let menuActions {
                 AppToolbarItem(placement: .topBarTrailing) {
-                    Menu { menuActions } label: { Image(systemName: "ellipsis") }
+                    Menu {
+                        menuActions
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
                 }
             }
         }
     }
 
     private var parseError: String {
-        do { _ = try ComposeDocument(text); return "This document requires YAML editing." }
-        catch { return error.localizedDescription }
+        do {
+            _ = try ComposeDocument(text)
+            return "This document requires YAML editing."
+        } catch { return error.localizedDescription }
     }
 
     private func serviceList(_ document: ComposeDocument) -> some View {
@@ -70,10 +77,15 @@ struct ComposePreviewEditor: View {
                 ForEach(document.services, id: \.self) { service in
                     Group {
                         if sizeClass == .regular {
-                            Button { selectedService = service } label: { serviceRow(service, document: document) }
+                            Button {
+                                selectedService = service
+                            } label: {
+                                serviceRow(service, document: document)
+                            }
                         } else {
                             NavigationLink {
-                                ComposeServiceForm(text: $text, service: service, readOnly: readOnly, menuActions: menuActions)
+                                ComposeServiceForm(
+                                    text: $text, service: service, readOnly: readOnly, menuActions: menuActions)
                             } label: {
                                 serviceRow(service, document: document)
                             }
@@ -82,7 +94,9 @@ struct ComposePreviewEditor: View {
                     .contextMenu {
                         if !readOnly {
                             Button("Delete", role: .destructive) {
-                                mutate { try ComposeDocument(text).removingNative(at: [.key("services"), .key(service)]) }
+                                mutate {
+                                    try ComposeDocument(text).removingNative(at: [.key("services"), .key(service)])
+                                }
                             }
                         }
                     }
@@ -91,13 +105,17 @@ struct ComposePreviewEditor: View {
                     mutate {
                         var source = text
                         for index in indices.reversed() {
-                            source = try ComposeDocument(source).removingNative(at: [.key("services"), .key(document.services[index])])
+                            source = try ComposeDocument(source).removingNative(at: [
+                                .key("services"), .key(document.services[index]),
+                            ])
                         }
                         return source
                     }
                 }.deleteDisabled(readOnly)
                 if document.services.isEmpty {
-                    ContentUnavailableView("No services", systemImage: "square.stack.3d.up", description: Text("Add a service to configure its container."))
+                    ContentUnavailableView(
+                        "No services", systemImage: "square.stack.3d.up",
+                        description: Text("Add a service to configure its container."))
                 }
             } header: {
                 HStack {
@@ -110,12 +128,18 @@ struct ComposePreviewEditor: View {
             if !rootFields.isDisjoint(with: ["volumes", "networks"]) {
                 Section("Project resources") {
                     if rootFields.contains("volumes") {
-                        DynamicNavigationRow(title: "Named volumes", subtitle: resourceSummary("volumes", document: document), systemImage: "externaldrive.fill") {
+                        DynamicNavigationRow(
+                            title: "Named volumes", subtitle: resourceSummary("volumes", document: document),
+                            systemImage: "externaldrive.fill"
+                        ) {
                             ComposeResourceDefinitionList(text: $text, kind: "volumes", readOnly: readOnly)
                         }
                     }
                     if rootFields.contains("networks") {
-                        DynamicNavigationRow(title: "Networks", subtitle: resourceSummary("networks", document: document), systemImage: "network") {
+                        DynamicNavigationRow(
+                            title: "Networks", subtitle: resourceSummary("networks", document: document),
+                            systemImage: "network"
+                        ) {
                             ComposeResourceDefinitionList(text: $text, kind: "networks", readOnly: readOnly)
                         }
                     }
@@ -123,15 +147,26 @@ struct ComposePreviewEditor: View {
             }
             if rootFields.contains("x-arcane") {
                 Section {
-                    DynamicNavigationRow(title: "Arcane metadata", subtitle: "Icons, visibility, links and updates", systemImage: "square.stack.3d.up.fill") {
-                        ComposeNativeFieldsForm(text: $text, path: ["x-arcane"], title: "Arcane metadata", readOnly: readOnly)
+                    DynamicNavigationRow(
+                        title: "Arcane metadata", subtitle: "Icons, visibility, links and updates",
+                        systemImage: "square.stack.3d.up.fill"
+                    ) {
+                        ComposeNativeFieldsForm(
+                            text: $text, path: ["x-arcane"], title: "Arcane metadata", readOnly: readOnly)
                     }
                 }
             }
             if !rootFields.subtracting(["services", "volumes", "networks", "build", "deploy", "x-arcane"]).isEmpty {
                 Section {
-                    DynamicNavigationRow(title: "Project settings", subtitle: document.nativeFields(at: []).filter { !["services", "volumes", "networks", "build", "deploy", "x-arcane"].contains($0.name) }.map(\.name).joined(separator: ", "), systemImage: "slider.horizontal.3") {
-                        ComposeNativeFieldsForm(text: $text, path: [], title: "Project settings", readOnly: readOnly, excluding: ["services", "volumes", "networks", "build", "deploy", "x-arcane"])
+                    DynamicNavigationRow(
+                        title: "Project settings",
+                        subtitle: document.nativeFields(at: []).filter {
+                            !["services", "volumes", "networks", "build", "deploy", "x-arcane"].contains($0.name)
+                        }.map(\.name).joined(separator: ", "), systemImage: "slider.horizontal.3"
+                    ) {
+                        ComposeNativeFieldsForm(
+                            text: $text, path: [], title: "Project settings", readOnly: readOnly,
+                            excluding: ["services", "volumes", "networks", "build", "deploy", "x-arcane"])
                     }
                 }
             }
@@ -142,16 +177,21 @@ struct ComposePreviewEditor: View {
                 AppToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if !readOnly && !yaml {
-                            Button("Add configuration", systemImage: "slider.horizontal.3") { addingConfiguration = true }
+                            Button("Add configuration", systemImage: "slider.horizontal.3") {
+                                addingConfiguration = true
+                            }
                         }
                         if let menuActions { menuActions }
-                    } label: { Image(systemName: "ellipsis") }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
                     .accessibilityLabel("Editor actions")
                 }
             }
         }
         .sheet(isPresented: $addingConfiguration) {
-            ComposeAddFieldsSheet(text: $text, path: [], includesProjectSettings: true, preferredService: selectedService)
+            ComposeAddFieldsSheet(
+                text: $text, path: [], includesProjectSettings: true, preferredService: selectedService)
         }
     }
 
@@ -181,7 +221,10 @@ struct ComposePreviewEditor: View {
     }
 
     private func mutate(_ change: () throws -> String) {
-        do { text = try change(); error = nil } catch { self.error = error.localizedDescription }
+        do {
+            text = try change()
+            error = nil
+        } catch { self.error = error.localizedDescription }
     }
 }
 
@@ -199,114 +242,202 @@ struct ComposeServiceForm: View {
     private var existingFields: Set<String> {
         Set((document?.nativeFields(at: path.map(ComposeFieldPathComponent.key)) ?? []).map(\.name))
     }
-    private let primaryFields: Set<String> = ["image", "pull_policy", "ports", "volumes", "networks", "environment", "env_file", "labels", "healthcheck", "restart", "command", "entrypoint", "container_name", "hostname", "domainname", "extra_hosts", "dns", "dns_opt", "dns_search"]
-    private var additionalFields: [String] { existingFields.subtracting(primaryFields).subtracting(["x-arcane"]).sorted() }
+    private let primaryFields: Set<String> = [
+        "image", "pull_policy", "ports", "volumes", "networks", "environment", "env_file", "labels", "healthcheck",
+        "restart", "command", "entrypoint", "container_name", "hostname", "domainname", "extra_hosts", "dns", "dns_opt",
+        "dns_search",
+    ]
+    private var additionalFields: [String] {
+        existingFields.subtracting(primaryFields).subtracting(["x-arcane"]).sorted()
+    }
     private func has(_ key: String) -> Bool { existingFields.contains(key) }
     private func hasAny(_ keys: Set<String>) -> Bool { !existingFields.isDisjoint(with: keys) }
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), alignment: .topLeading), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2)
+        Array(
+            repeating: GridItem(.flexible(), alignment: .topLeading), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
+        )
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if has("image") {
-                NavigationLink {
-                    Form {
-                        Section("Image") { scalar("Image", key: "image") }
-                        if has("pull_policy") { Section { policy("Pull policy", key: "pull_policy") } }
-                        if let error { Text(error).foregroundStyle(.red) }
-                    }.navigationTitle("Image settings")
-                } label: {
-                    let layout = dynamicTypeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
-                        : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
-                    layout {
-                        Image(systemName: "shippingbox.fill").font(.title2).foregroundStyle(.tint)
-                            .padding(12).background(Color.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: Radius.nested, style: .continuous))
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Container image").font(.subheadline).foregroundStyle(.secondary)
-                            Text(value("image") ?? "Choose an image").font(.headline).multilineTextAlignment(.leading).textSelection(.enabled)
-                            if has("pull_policy") { Text("Pull policy: " + (value("pull_policy") ?? "Default")).font(.caption).foregroundStyle(.secondary) }
-                        }
-                        if !dynamicTypeSize.isAccessibilitySize {
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                        }
-                    }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-                }.buttonStyle(PressableButtonStyle())
+                    NavigationLink {
+                        Form {
+                            Section("Image") { scalar("Image", key: "image") }
+                            if has("pull_policy") { Section { policy("Pull policy", key: "pull_policy") } }
+                            if let error { Text(error).foregroundStyle(.red) }
+                        }.navigationTitle("Image settings")
+                    } label: {
+                        let layout =
+                            dynamicTypeSize.isAccessibilitySize
+                            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
+                            : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+                        layout {
+                            Image(systemName: "shippingbox.fill").font(.title2).foregroundStyle(.tint)
+                                .padding(12).background(
+                                    Color.accentColor.opacity(0.09),
+                                    in: RoundedRectangle(cornerRadius: Radius.nested, style: .continuous))
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Container image").font(.subheadline).foregroundStyle(.secondary)
+                                Text(value("image") ?? "Choose an image").font(.headline).multilineTextAlignment(
+                                    .leading
+                                ).textSelection(.enabled)
+                                if has("pull_policy") {
+                                    Text("Pull policy: " + (value("pull_policy") ?? "Default")).font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(
+                                    .tertiary)
+                            }
+                        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                Color(uiColor: .secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                    }.buttonStyle(PressableButtonStyle())
                 }
 
                 if hasAny(["ports", "volumes", "networks", "environment", "env_file", "labels"]) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Configuration").font(.headline)
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                        if has("ports") { tile("Ports", icon: "arrow.left.arrow.right", tint: .blue, summary: countSummary("ports", singular: "port", plural: "ports")) { collection("ports", title: "Ports", kind: .port) } }
-                        if has("volumes") { tile("Mounts", icon: "externaldrive", tint: .orange, summary: countSummary("volumes", singular: "mount", plural: "mounts")) { collection("volumes", title: "Mounts", kind: .mount) } }
-                        if has("networks") { tile("Networks", icon: "network", tint: .teal, summary: countSummary("networks", singular: "attachment", plural: "attachments")) { ComposeNetworkAttachmentsForm(text: $text, path: path + ["networks"], readOnly: readOnly) } }
-                        if has("environment") { tile("Environment", icon: "key.horizontal", tint: .purple, summary: countSummary("environment", singular: "variable", plural: "variables")) { keyValues("environment", title: "Environment variables") } }
-                        if has("env_file") { tile("Environment files", icon: "doc.text", tint: .indigo, summary: countSummary("env_file", singular: "file", plural: "files")) { strings("env_file", title: "Environment files") } }
-                        if has("labels") { tile("Labels", icon: "tag", tint: .brown, summary: countSummary("labels", singular: "label", plural: "labels")) { keyValues("labels", title: "Labels") } }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Configuration").font(.headline)
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
+                            if has("ports") {
+                                tile(
+                                    "Ports", icon: "arrow.left.arrow.right", tint: .blue,
+                                    summary: countSummary("ports", singular: "port", plural: "ports")
+                                ) { collection("ports", title: "Ports", kind: .port) }
+                            }
+                            if has("volumes") {
+                                tile(
+                                    "Mounts", icon: "externaldrive", tint: .orange,
+                                    summary: countSummary("volumes", singular: "mount", plural: "mounts")
+                                ) { collection("volumes", title: "Mounts", kind: .mount) }
+                            }
+                            if has("networks") {
+                                tile(
+                                    "Networks", icon: "network", tint: .teal,
+                                    summary: countSummary("networks", singular: "attachment", plural: "attachments")
+                                ) {
+                                    ComposeNetworkAttachmentsForm(
+                                        text: $text, path: path + ["networks"], readOnly: readOnly)
+                                }
+                            }
+                            if has("environment") {
+                                tile(
+                                    "Environment", icon: "key.horizontal", tint: .purple,
+                                    summary: countSummary("environment", singular: "variable", plural: "variables")
+                                ) { keyValues("environment", title: "Environment variables") }
+                            }
+                            if has("env_file") {
+                                tile(
+                                    "Environment files", icon: "doc.text", tint: .indigo,
+                                    summary: countSummary("env_file", singular: "file", plural: "files")
+                                ) { strings("env_file", title: "Environment files") }
+                            }
+                            if has("labels") {
+                                tile(
+                                    "Labels", icon: "tag", tint: .brown,
+                                    summary: countSummary("labels", singular: "label", plural: "labels")
+                                ) { keyValues("labels", title: "Labels") }
+                            }
+                        }
                     }
-                }
                 }
 
                 if has("healthcheck") {
-                VStack(spacing: 0) {
-                    route("Healthcheck", icon: "heart.text.clipboard", summary: healthcheckSummary) { ComposeHealthcheckForm(text: $text, path: path + ["healthcheck"], readOnly: readOnly) }
-                }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
+                    VStack(spacing: 0) {
+                        route("Healthcheck", icon: "heart.text.clipboard", summary: healthcheckSummary) {
+                            ComposeHealthcheckForm(text: $text, path: path + ["healthcheck"], readOnly: readOnly)
+                        }
+                    }.background(
+                        Color(uiColor: .secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
                 }
 
-                if hasAny(["restart", "command", "entrypoint", "container_name", "hostname", "domainname", "extra_hosts", "dns", "dns_opt", "dns_search"]) {
-                VStack(spacing: 0) {
-                    if hasAny(["restart", "command", "entrypoint"]) {
-                    route("Runtime", icon: "terminal", summary: has("restart") ? "Restart: " + (value("restart") ?? "Default") : (has("command") ? "Custom command" : "Custom entrypoint")) {
-                        Form {
-                            if has("restart") { Section { policy("Restart policy", key: "restart") } }
-                            if let error { Text(error).foregroundStyle(.red) }
-                            Section {
-                                if has("command") { NavigationLink("Command") { strings("command", title: "Command") } }
-                                if has("entrypoint") { NavigationLink("Entrypoint") { strings("entrypoint", title: "Entrypoint") } }
+                if hasAny([
+                    "restart", "command", "entrypoint", "container_name", "hostname", "domainname", "extra_hosts",
+                    "dns", "dns_opt", "dns_search",
+                ]) {
+                    VStack(spacing: 0) {
+                        if hasAny(["restart", "command", "entrypoint"]) {
+                            route(
+                                "Runtime", icon: "terminal",
+                                summary: has("restart")
+                                    ? "Restart: " + (value("restart") ?? "Default")
+                                    : (has("command") ? "Custom command" : "Custom entrypoint")
+                            ) {
+                                Form {
+                                    if has("restart") { Section { policy("Restart policy", key: "restart") } }
+                                    if let error { Text(error).foregroundStyle(.red) }
+                                    Section {
+                                        if has("command") {
+                                            NavigationLink("Command") { strings("command", title: "Command") }
+                                        }
+                                        if has("entrypoint") {
+                                            NavigationLink("Entrypoint") { strings("entrypoint", title: "Entrypoint") }
+                                        }
+                                    }
+                                }.navigationTitle("Runtime")
                             }
-                        }.navigationTitle("Runtime")
-                    }
-                    }
+                        }
 
-                    if hasAny(["container_name", "hostname", "domainname"]) {
-                    route("Identity", icon: "person.text.rectangle", summary: value("container_name") ?? value("hostname") ?? value("domainname") ?? "Configured") {
-                        Form {
-                            if has("container_name") { scalar("Container name", key: "container_name") }
-                            if has("hostname") { scalar("Hostname", key: "hostname") }
-                            if has("domainname") { scalar("Domain name", key: "domainname") }
-                        }.navigationTitle("Identity")
-                    }
-                    }
+                        if hasAny(["container_name", "hostname", "domainname"]) {
+                            route(
+                                "Identity", icon: "person.text.rectangle",
+                                summary: value("container_name") ?? value("hostname") ?? value("domainname")
+                                    ?? "Configured"
+                            ) {
+                                Form {
+                                    if has("container_name") { scalar("Container name", key: "container_name") }
+                                    if has("hostname") { scalar("Hostname", key: "hostname") }
+                                    if has("domainname") { scalar("Domain name", key: "domainname") }
+                                }.navigationTitle("Identity")
+                            }
+                        }
 
-                    if hasAny(["extra_hosts", "dns", "dns_opt", "dns_search"]) {
-                    route("Name resolution", icon: "globe", summary: "DNS and host mappings") {
-                        Form {
-                            if has("extra_hosts") {
-                            NavigationLink("Extra hosts") {
-                                if document?.nativeField(at: (path + ["extra_hosts"]).map(ComposeFieldPathComponent.key)).kind == .sequence {
-                                    strings("extra_hosts", title: "Extra hosts", allowsScalar: false)
-                                } else {
-                                    ComposeMappingForm(text: $text, path: path + ["extra_hosts"], title: "Extra hosts", resource: false, readOnly: readOnly, sensitive: false)
-                                }
+                        if hasAny(["extra_hosts", "dns", "dns_opt", "dns_search"]) {
+                            route("Name resolution", icon: "globe", summary: "DNS and host mappings") {
+                                Form {
+                                    if has("extra_hosts") {
+                                        NavigationLink("Extra hosts") {
+                                            if document?.nativeField(
+                                                at: (path + ["extra_hosts"]).map(ComposeFieldPathComponent.key)
+                                            ).kind == .sequence {
+                                                strings("extra_hosts", title: "Extra hosts", allowsScalar: false)
+                                            } else {
+                                                ComposeMappingForm(
+                                                    text: $text, path: path + ["extra_hosts"], title: "Extra hosts",
+                                                    resource: false, readOnly: readOnly, sensitive: false)
+                                            }
+                                        }
+                                    }
+                                    if has("dns") {
+                                        NavigationLink("DNS servers") { strings("dns", title: "DNS servers") }
+                                    }
+                                    if has("dns_opt") {
+                                        NavigationLink("DNS options") { strings("dns_opt", title: "DNS options") }
+                                    }
+                                    if has("dns_search") {
+                                        NavigationLink("DNS search domains") {
+                                            strings("dns_search", title: "DNS search domains")
+                                        }
+                                    }
+                                }.navigationTitle("Name resolution")
                             }
-                            }
-                            if has("dns") { NavigationLink("DNS servers") { strings("dns", title: "DNS servers") } }
-                            if has("dns_opt") { NavigationLink("DNS options") { strings("dns_opt", title: "DNS options") } }
-                            if has("dns_search") { NavigationLink("DNS search domains") { strings("dns_search", title: "DNS search domains") } }
-                        }.navigationTitle("Name resolution")
-                    }
-                    }
-                }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
+                        }
+                    }.background(
+                        Color(uiColor: .secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
                 }
 
                 if has("x-arcane") {
-                    route("Arcane metadata", icon: "square.stack.3d.up.fill", summary: "Icons, visibility and updates") {
-                        ComposeNativeFieldsForm(text: $text, path: path + ["x-arcane"], title: "Arcane metadata", readOnly: readOnly)
+                    route("Arcane metadata", icon: "square.stack.3d.up.fill", summary: "Icons, visibility and updates")
+                    {
+                        ComposeNativeFieldsForm(
+                            text: $text, path: path + ["x-arcane"], title: "Arcane metadata", readOnly: readOnly)
                     }
                 }
                 if !additionalFields.isEmpty {
@@ -314,11 +445,17 @@ struct ComposeServiceForm: View {
                         Text("Additional settings").font(.headline)
                         VStack(spacing: 0) {
                             ForEach(additionalFields, id: \.self) { key in
-                                route(key.replacingOccurrences(of: "_", with: " ").capitalized, icon: "slider.horizontal.3", summary: "Configured") {
-                                    ComposeNativeFieldsForm(text: $text, path: path + [key], title: key, readOnly: readOnly)
+                                route(
+                                    key.replacingOccurrences(of: "_", with: " ").capitalized,
+                                    icon: "slider.horizontal.3", summary: "Configured"
+                                ) {
+                                    ComposeNativeFieldsForm(
+                                        text: $text, path: path + [key], title: key, readOnly: readOnly)
                                 }
                             }
-                        }.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
+                        }.background(
+                            Color(uiColor: .secondarySystemGroupedBackground),
+                            in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
                     }
                 }
                 if has("pull_policy"), !has("image") {
@@ -327,9 +464,11 @@ struct ComposeServiceForm: View {
                     }
                 }
                 if !existingFields.isEmpty {
-                route("All service settings", icon: "slider.horizontal.3", summary: "Browse every configuration field") {
-                    ComposeNativeFieldsForm(text: $text, path: path, title: "Service settings", readOnly: readOnly)
-                }
+                    route(
+                        "All service settings", icon: "slider.horizontal.3", summary: "Browse every configuration field"
+                    ) {
+                        ComposeNativeFieldsForm(text: $text, path: path, title: "Service settings", readOnly: readOnly)
+                    }
                 }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
             }.padding()
@@ -343,7 +482,9 @@ struct ComposeServiceForm: View {
                     Menu {
                         if !readOnly { Button("Add configuration", systemImage: "plus") { addingFields = true } }
                         if let menuActions { menuActions }
-                    } label: { Image(systemName: "ellipsis") }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
                     .accessibilityLabel("Service actions")
                 }
             }
@@ -357,7 +498,8 @@ struct ComposeServiceForm: View {
 
     private func scalarValue(at fieldPath: [String]) -> String? {
         guard let field = document?.nativeField(at: fieldPath.map(ComposeFieldPathComponent.key)),
-              [.string, .number, .boolean].contains(field.kind) else { return nil }
+            [.string, .number, .boolean].contains(field.kind)
+        else { return nil }
         return field.value
     }
 
@@ -382,7 +524,9 @@ struct ComposeServiceForm: View {
         return "Configured"
     }
 
-    private func tile<Destination: View>(_ title: String, icon: String, tint: Color, summary: String, @ViewBuilder destination: () -> Destination) -> some View {
+    private func tile<Destination: View>(
+        _ title: String, icon: String, tint: Color, summary: String, @ViewBuilder destination: () -> Destination
+    ) -> some View {
         NavigationLink(destination: destination) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -395,11 +539,15 @@ struct ComposeServiceForm: View {
                     Text(summary).font(.caption).foregroundStyle(.secondary)
                 }
             }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                .background(
+                    Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         }.buttonStyle(PressableButtonStyle())
     }
 
-    private func route<Destination: View>(_ title: String, icon: String, summary: String, @ViewBuilder destination: () -> Destination) -> some View {
+    private func route<Destination: View>(
+        _ title: String, icon: String, summary: String, @ViewBuilder destination: () -> Destination
+    ) -> some View {
         NavigationLink(destination: destination) {
             HStack(spacing: 12) {
                 Image(systemName: icon).font(.body).foregroundStyle(.secondary).frame(width: 22)
@@ -417,20 +565,26 @@ struct ComposeServiceForm: View {
         let options = ComposeFieldOptions(path: (path + [key]).map(ComposeFieldPathComponent.key))
         let values = options.values
         let current = value(key) ?? ""
-        return Picker(title, selection: Binding(get: { value(key) ?? "" }, set: { selected in
-            do {
-                let currentDocument = try ComposeDocument(text)
-                if selected.isEmpty {
-                    let parent = path.map(ComposeFieldPathComponent.key)
-                    if currentDocument.nativeFields(at: parent).contains(where: { $0.name == key }) {
-                        text = try currentDocument.removingNative(at: parent + [.key(key)])
-                    }
-                } else {
-                    text = try currentDocument.settingNative(selected, kind: .string, at: (path + [key]).map(ComposeFieldPathComponent.key))
-                }
-                error = nil
-            } catch { self.error = error.localizedDescription }
-        })) {
+        return Picker(
+            title,
+            selection: Binding(
+                get: { value(key) ?? "" },
+                set: { selected in
+                    do {
+                        let currentDocument = try ComposeDocument(text)
+                        if selected.isEmpty {
+                            let parent = path.map(ComposeFieldPathComponent.key)
+                            if currentDocument.nativeFields(at: parent).contains(where: { $0.name == key }) {
+                                text = try currentDocument.removingNative(at: parent + [.key(key)])
+                            }
+                        } else {
+                            text = try currentDocument.settingNative(
+                                selected, kind: .string, at: (path + [key]).map(ComposeFieldPathComponent.key))
+                        }
+                        error = nil
+                    } catch { self.error = error.localizedDescription }
+                })
+        ) {
             Text("Default").tag("")
             ForEach(values, id: \.self) { value in Text(options.label(value)).tag(value) }
             if !current.isEmpty, !values.contains(current) { Text("Custom: " + current).tag(current) }
@@ -441,7 +595,9 @@ struct ComposeServiceForm: View {
         ComposeScalarField(text: $text, path: path + [key], title: title, readOnly: readOnly)
     }
     private func strings(_ key: String, title: String, allowsScalar: Bool = true) -> some View {
-        ComposeStringListForm(text: $text, path: path + [key], title: title, readOnly: readOnly, allowsScalar: allowsScalar, environmentFiles: key == "env_file")
+        ComposeStringListForm(
+            text: $text, path: path + [key], title: title, readOnly: readOnly, allowsScalar: allowsScalar,
+            environmentFiles: key == "env_file")
     }
     private func collection(_ key: String, title: String, kind: ComposeEntryKind) -> some View {
         ComposeCollectionForm(text: $text, path: path + [key], title: title, kind: kind, readOnly: readOnly)
@@ -469,8 +625,8 @@ private struct ComposeMappingForm: View {
         let typedPath = path.map(ComposeFieldPathComponent.key)
         let kind = document.nativeField(at: typedPath).kind
         guard kind == .mapping || kind == .sequence else { return false }
-        return !document.isEditable(at: path) || document.rawValue(at: path) == nil ||
-            document.nativeFields(at: typedPath).contains { $0.kind == .mapping || $0.kind == .sequence }
+        return !document.isEditable(at: path) || document.rawValue(at: path) == nil
+            || document.nativeFields(at: typedPath).contains { $0.kind == .mapping || $0.kind == .sequence }
     }
 
     var body: some View {
@@ -486,8 +642,11 @@ private struct ComposeMappingForm: View {
                             Section(key) {
                                 if resource {
                                     LabeledContent("Name", value: key)
-                                } else if document.scalar(at: path + [key]) != nil || document.rawValue(at: path + [key]) == nil {
-                                    let layout = dynamicTypeSize.isAccessibilitySize
+                                } else if document.scalar(at: path + [key]) != nil
+                                    || document.rawValue(at: path + [key]) == nil
+                                {
+                                    let layout =
+                                        dynamicTypeSize.isAccessibilitySize
                                         ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
                                     layout {
                                         if revealed.contains(key) || title == "Labels" || !sensitive {
@@ -507,13 +666,15 @@ private struct ComposeMappingForm: View {
                             }
                             .contextMenu {
                                 if !readOnly {
-                                    Button("Delete", role: .destructive) { change { try $0.removing(at: path + [key]) } }
+                                    Button("Delete", role: .destructive) {
+                                        change { try $0.removing(at: path + [key]) }
+                                    }
                                 }
                             }
                         }.onDelete { indices in
                             guard !readOnly else { return }
                             let keys = document.keys(at: path)
-                            change { current in
+                            change { _ in
                                 var source = text
                                 for index in indices.reversed() {
                                     source = try ComposeDocument(source).removing(at: path + [keys[index]])
@@ -522,7 +683,9 @@ private struct ComposeMappingForm: View {
                             }
                         }.deleteDisabled(readOnly)
                         if document.keys(at: path).isEmpty {
-                            ContentUnavailableView("No " + title.lowercased(), systemImage: "list.bullet", description: Text("Use Add to create an entry."))
+                            ContentUnavailableView(
+                                "No " + title.lowercased(), systemImage: "list.bullet",
+                                description: Text("Use Add to create an entry."))
                         }
                     } else {
                         Text("Unsupported format")
@@ -551,12 +714,17 @@ private struct ComposeMappingForm: View {
     }
 
     private func binding(_ key: String) -> Binding<String> {
-        Binding(get: { document?.scalar(at: path + [key]) ?? "" }, set: { value in
-            change { try $0.setting(ComposeDocument.quoted(value), at: path + [key]) }
-        })
+        Binding(
+            get: { document?.scalar(at: path + [key]) ?? "" },
+            set: { value in
+                change { try $0.setting(ComposeDocument.quoted(value), at: path + [key]) }
+            })
     }
     private func change(_ action: (ComposeDocument) throws -> String) {
-        do { text = try action(ComposeDocument(text)); error = nil } catch { self.error = error.localizedDescription }
+        do {
+            text = try action(ComposeDocument(text))
+            error = nil
+        } catch { self.error = error.localizedDescription }
     }
 }
 
@@ -580,14 +748,17 @@ private struct ComposeCollectionForm: View {
         Group {
             if nativeFallback {
                 ComposeNativeFieldsForm(text: $text, path: path, title: title, readOnly: readOnly)
-            } else { legacyBody }
+            } else {
+                legacyBody
+            }
         }
     }
 
     private var legacyBody: some View {
         Form {
             if let document, document.isEditable(at: path),
-               document.items(at: path) != nil || document.rawValue(at: path) == nil {
+                document.items(at: path) != nil || document.rawValue(at: path) == nil
+            {
                 let items = document.items(at: path) ?? []
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     Button {
@@ -599,24 +770,31 @@ private struct ComposeCollectionForm: View {
                             Image(systemName: "chevron.right").foregroundStyle(Color.secondary)
                         }
                     }.disabled(readOnly)
-                    .contextMenu {
-                        if !readOnly {
-                            Button("Delete", role: .destructive) {
-                                do { text = try ComposeDocument(text).removingItem(at: path, index: index); error = nil }
-                                catch { self.error = error.localizedDescription }
+                        .contextMenu {
+                            if !readOnly {
+                                Button("Delete", role: .destructive) {
+                                    do {
+                                        text = try ComposeDocument(text).removingItem(at: path, index: index)
+                                        error = nil
+                                    } catch { self.error = error.localizedDescription }
+                                }
                             }
                         }
-                    }
                 }.onDelete { indices in
                     guard !readOnly else { return }
                     do {
                         var source = text
-                        for index in indices.reversed() { source = try ComposeDocument(source).removingItem(at: path, index: index) }
-                        text = source; error = nil
+                        for index in indices.reversed() {
+                            source = try ComposeDocument(source).removingItem(at: path, index: index)
+                        }
+                        text = source
+                        error = nil
                     } catch { self.error = error.localizedDescription }
                 }.deleteDisabled(readOnly)
                 if items.isEmpty {
-                    ContentUnavailableView("No " + title.lowercased(), systemImage: "list.bullet", description: Text("Use Add to create an entry."))
+                    ContentUnavailableView(
+                        "No " + title.lowercased(), systemImage: "list.bullet",
+                        description: Text("Use Add to create an entry."))
                 }
             } else if kind == .network {
                 NavigationLink("Network attachments") {
@@ -635,26 +813,39 @@ private struct ComposeCollectionForm: View {
                 }
             }
             .sheet(item: $editing) { selection in
-                ComposeEntrySheet(kind: kind, original: selection.raw, schemaPath: path.map(ComposeFieldPathComponent.key) + [.index(selection.index ?? 0)]) { raw, externalResource in
+                ComposeEntrySheet(
+                    kind: kind, original: selection.raw,
+                    schemaPath: path.map(ComposeFieldPathComponent.key) + [.index(selection.index ?? 0)]
+                ) { raw, externalResource in
                     do {
                         if selection.index != nil, raw == selection.raw, externalResource == nil { return nil }
                         var source = text
                         if let externalResource {
-                            if kind == .mount, let mountType = try ComposeDocument(raw).scalar(at: ["type"]), mountType != "volume" {
-                                throw ComposeFormError.invalid("This mount uses \(mountType). Change its type to volume in All settings before selecting an existing volume.")
+                            if kind == .mount, let mountType = try ComposeDocument(raw).scalar(at: ["type"]),
+                                mountType != "volume"
+                            {
+                                throw ComposeFormError.invalid(
+                                    "This mount uses \(mountType). Change its type to volume in All settings before selecting an existing volume."
+                                )
                             }
                             let resourcePath = [kind == .mount ? "volumes" : "networks", externalResource]
                             let existing = try ComposeDocument(source)
                             if existing.rawValue(at: resourcePath) == nil {
                                 source = try existing.setting("external: true", at: resourcePath)
                             } else if existing.scalar(at: resourcePath + ["external"]) != "true" {
-                                throw ComposeFormError.invalid("This name already has a project resource definition. Configure it as external in Project resources before selecting the existing Docker resource.")
+                                throw ComposeFormError.invalid(
+                                    "This name already has a project resource definition. Configure it as external in Project resources before selecting the existing Docker resource."
+                                )
                             }
                         }
                         if externalResource == nil, kind == .mount || kind == .network,
-                           let entry = try? ComposeEntryDraft(raw: raw, kind: kind) {
+                            let entry = try? ComposeEntryDraft(raw: raw, kind: kind)
+                        {
                             let name = entry.source
-                            let named = kind == .network || (!name.isEmpty && !name.hasPrefix("/") && !name.hasPrefix(".") && !name.hasPrefix("~"))
+                            let named =
+                                kind == .network
+                                || (!name.isEmpty && !name.hasPrefix("/") && !name.hasPrefix(".")
+                                    && !name.hasPrefix("~"))
                             if named {
                                 let resourcePath = [kind == .mount ? "volumes" : "networks", name]
                                 let existing = try ComposeDocument(source)
@@ -665,7 +856,9 @@ private struct ComposeCollectionForm: View {
                         }
                         let current = try ComposeDocument(source)
                         if let index = selection.index {
-                            guard let items = current.items(at: path), items.indices.contains(index), items[index] == selection.raw else { throw ComposeFormError.changed }
+                            guard let items = current.items(at: path), items.indices.contains(index),
+                                items[index] == selection.raw
+                            else { throw ComposeFormError.changed }
                             text = try current.settingItem(raw, at: path, index: index)
                         } else {
                             text = try current.appendingItem(raw, at: path)
@@ -700,29 +893,41 @@ private struct ComposeEntrySheet: View {
     @State private var nativeWrapper = ""
     @State private var initialized = false
 
-
     var body: some View {
         NavigationStack {
             Form {
                 if supported {
                     switch kind {
                     case .port:
-                        entryField("Host address (optional)") { TextField("Host address", text: $draft.address).focused($focused) }
-                        entryField("Host port (optional)") { TextField("Host port", text: $draft.source).keyboardType(.numbersAndPunctuation) }
-                        entryField("Container port") { TextField("Container port", text: $draft.target).keyboardType(.numbersAndPunctuation) }
+                        entryField("Host address (optional)") {
+                            TextField("Host address", text: $draft.address).focused($focused)
+                        }
+                        entryField("Host port (optional)") {
+                            TextField("Host port", text: $draft.source).keyboardType(.numbersAndPunctuation)
+                        }
+                        entryField("Container port") {
+                            TextField("Container port", text: $draft.target).keyboardType(.numbersAndPunctuation)
+                        }
                         Picker("Protocol", selection: $draft.option) {
-                            Text("TCP").tag("tcp"); Text("UDP").tag("udp"); Text("SCTP").tag("sctp")
+                            Text("TCP").tag("tcp")
+                            Text("UDP").tag("udp")
+                            Text("SCTP").tag("sctp")
                         }
                     case .mount:
-                        entryField("Volume name or host path (optional)") { TextField("Volume name or host path", text: $draft.source).focused($focused) }
+                        entryField("Volume name or host path (optional)") {
+                            TextField("Volume name or host path", text: $draft.source).focused($focused)
+                        }
                         entryField("Container path") { TextField("Container path", text: $draft.target) }
                         Toggle("Read only", isOn: $draft.readOnly)
                         resourceButton
                     case .keyValue:
                         entryField("Name") { TextField("Name", text: $draft.source).focused($focused) }
                         entryField("Value") {
-                            if reveal { TextField("Value", text: $draft.target).privacySensitive() }
-                            else { SecureField("Value", text: $draft.target).privacySensitive() }
+                            if reveal {
+                                TextField("Value", text: $draft.target).privacySensitive()
+                            } else {
+                                SecureField("Value", text: $draft.target).privacySensitive()
+                            }
                         }
                         Toggle("Reveal value", isOn: $reveal)
                     case .network:
@@ -736,7 +941,11 @@ private struct ComposeEntrySheet: View {
                     Button("All settings") {
                         do {
                             nativeSource = supported ? try draft.yaml(kind: kind) : nativeSource
-                            nativeWrapper = "entry:\n" + nativeSource.split(separator: "\n", omittingEmptySubsequences: false).map { "  " + $0 }.joined(separator: "\n")
+                            nativeWrapper =
+                                "entry:\n"
+                                + nativeSource.split(separator: "\n", omittingEmptySubsequences: false).map {
+                                    "  " + $0
+                                }.joined(separator: "\n")
                             showNativeSettings = true
                         } catch { self.error = error.localizedDescription }
                     }
@@ -759,26 +968,36 @@ private struct ComposeEntrySheet: View {
             }
             .sheet(isPresented: $showNativeSettings, onDismiss: applyNativeSettings) {
                 NavigationStack {
-                    ComposeNativeFieldsForm(text: $nativeWrapper, path: ["entry"], title: "Entry settings", readOnly: false, schemaPath: schemaPath)
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { showNativeSettings = false }
-                            }
+                    ComposeNativeFieldsForm(
+                        text: $nativeWrapper, path: ["entry"], title: "Entry settings", readOnly: false,
+                        schemaPath: schemaPath
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showNativeSettings = false }
                         }
+                    }
                 }
             }
             .sheet(isPresented: $showResources) {
-                ComposeResourcePicker(kind: kind, selection: Binding(
-                    get: { draft.source },
-                    set: { draft.source = $0; externalResource = $0 }
-                ))
+                ComposeResourcePicker(
+                    kind: kind,
+                    selection: Binding(
+                        get: { draft.source },
+                        set: {
+                            draft.source = $0
+                            externalResource = $0
+                        }
+                    ))
             }
             .onAppear {
                 guard !initialized else { return }
                 initialized = true
                 nativeSource = original
-                do { draft = try ComposeEntryDraft(raw: original, kind: kind); focused = true }
-                catch { supported = false }
+                do {
+                    draft = try ComposeEntryDraft(raw: original, kind: kind)
+                    focused = true
+                } catch { supported = false }
             }
         }
     }

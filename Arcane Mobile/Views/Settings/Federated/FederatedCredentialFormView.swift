@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct FederatedCredentialFormView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -23,19 +23,31 @@ struct FederatedCredentialFormView: View {
         NavigationStack {
             Form {
                 Section("Credential") {
-                    FormTextField(title: "Name", placeholder: "", text: $form.name, autocapitalization: .never, autocorrectionDisabled: true)
-                    FormTextField(title: "Description", placeholder: "", text: $form.description, autocapitalization: .never, autocorrectionDisabled: true, axis: .vertical)
+                    FormTextField(
+                        title: "Name", placeholder: "", text: $form.name, autocapitalization: .never,
+                        autocorrectionDisabled: true)
+                    FormTextField(
+                        title: "Description", placeholder: "", text: $form.description, autocapitalization: .never,
+                        autocorrectionDisabled: true, axis: .vertical)
                     Toggle("Enabled", isOn: $form.enabled)
                 }
                 Section("Trust rule") {
-                    FormTextField(title: "Issuer URL", placeholder: "", text: $form.issuerUrl, keyboardType: .URL, autocapitalization: .never, autocorrectionDisabled: true)
-                    FormTextField(title: "Audiences, one per line", placeholder: "", text: $form.audiences, autocapitalization: .never, autocorrectionDisabled: true, axis: .vertical)
-                    FormTextField(title: "Subject claim", placeholder: "", text: $form.subjectClaim, autocapitalization: .never, autocorrectionDisabled: true)
+                    FormTextField(
+                        title: "Issuer URL", placeholder: "", text: $form.issuerUrl, keyboardType: .URL,
+                        autocapitalization: .never, autocorrectionDisabled: true)
+                    FormTextField(
+                        title: "Audiences, one per line", placeholder: "", text: $form.audiences,
+                        autocapitalization: .never, autocorrectionDisabled: true, axis: .vertical)
+                    FormTextField(
+                        title: "Subject claim", placeholder: "", text: $form.subjectClaim, autocapitalization: .never,
+                        autocorrectionDisabled: true)
                     FormPicker(title: "Match type", selection: $form.matchType) {
                         Text("Exact").tag("exact")
                         Text("Glob").tag("glob")
                     }
-                    FormTextField(title: "Subject match", placeholder: "", text: $form.subjectMatch, autocapitalization: .never, autocorrectionDisabled: true, axis: .vertical)
+                    FormTextField(
+                        title: "Subject match", placeholder: "", text: $form.subjectMatch, autocapitalization: .never,
+                        autocorrectionDisabled: true, axis: .vertical)
                 }
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -49,22 +61,32 @@ struct FederatedCredentialFormView: View {
                         ForEach(environments) { Text($0.name ?? $0.id).tag($0.id) }
                     }
                     LabeledContent("Token lifetime in seconds") {
-                        TextField("Seconds", value: $form.tokenTtlSeconds, format: .number.grouping(.never)).keyboardType(.numberPad).multilineTextAlignment(.trailing)
+                        TextField("Seconds", value: $form.tokenTtlSeconds, format: .number.grouping(.never))
+                            .keyboardType(.numberPad).multilineTextAlignment(.trailing)
                     }
                     Toggle("Expires", isOn: $form.expires)
                         .disabled(credential?.expiresAt != nil)
                     if form.expires { DatePicker("Expiration", selection: $form.expiresAt) }
-                } header: { Text("Access") } footer: {
-                    if credential?.expiresAt != nil { Text("This server allows changing an expiration date but does not support removing it.") }
+                } header: {
+                    Text("Access")
+                } footer: {
+                    if credential?.expiresAt != nil {
+                        Text("This server allows changing an expiration date but does not support removing it.")
+                    }
                 }
                 if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red) } }
-                if let validation = form.validationMessage { Section { Text(validation).font(.caption).foregroundStyle(.secondary) } }
+                if let validation = form.validationMessage {
+                    Section { Text(validation).font(.caption).foregroundStyle(.secondary) }
+                }
             }
             .disabled(saving)
             .navigationTitle(credential == nil ? "Create Credential" : "Edit Credential")
             .toolbar {
                 AppToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                AppToolbarItem(placement: .confirmationAction) { Button(credential == nil ? "Create" : "Save") { Task { await save() } }.disabled(saving || form.validationMessage != nil || manager.currentUser?.isGlobalAdmin != true) }
+                AppToolbarItem(placement: .confirmationAction) {
+                    Button(credential == nil ? "Create" : "Save") { Task { await save() } }.disabled(
+                        saving || form.validationMessage != nil || manager.currentUser?.isGlobalAdmin != true)
+                }
             }
             .task {
                 guard let client = manager.client else { return }
@@ -90,13 +112,18 @@ struct FederatedCredentialFormView: View {
     }
 
     private func save() async {
-        guard presentationGeneration == manager.clientGeneration, manager.currentUser?.isGlobalAdmin == true, form.validationMessage == nil, let client = manager.client else { return }
+        guard presentationGeneration == manager.clientGeneration, manager.currentUser?.isGlobalAdmin == true,
+            form.validationMessage == nil, let client = manager.client
+        else { return }
         let generation = manager.clientGeneration
         saving = true
         defer { saving = false }
         do {
-            if let credential { _ = try await client.federatedCredentials.update(id: credential.id, body: form.updateRequest) }
-            else { _ = try await client.federatedCredentials.create(form.createRequest) }
+            if let credential {
+                _ = try await client.federatedCredentials.update(id: credential.id, body: form.updateRequest)
+            } else {
+                _ = try await client.federatedCredentials.create(form.createRequest)
+            }
             guard !Task.isCancelled, generation == manager.clientGeneration else { return }
             await onSaved()
             dismiss()

@@ -57,7 +57,7 @@ nonisolated enum RemoteDataLimits {
     static func boundedAPIResponse<Value: Decodable & Sendable>(
         client: ArcaneClient,
         path: String,
-        as type: Value.Type,
+        as _: Value.Type,
         maximumBytes: Int = maximumResponseBytes
     ) async throws -> Value {
         let data = try await boundedData(
@@ -71,7 +71,7 @@ nonisolated enum RemoteDataLimits {
     static func boundedDirectResponse<Value: Decodable & Sendable>(
         client: ArcaneClient,
         path: String,
-        as type: Value.Type,
+        as _: Value.Type,
         maximumBytes: Int = maximumResponseBytes
     ) async throws -> Value {
         let data = try await boundedData(client: client, path: path, maximumBytes: maximumBytes)

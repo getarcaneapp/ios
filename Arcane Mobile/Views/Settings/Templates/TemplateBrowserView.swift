@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct TemplateBrowserView: View {
     /// True when pushed inside an existing NavigationStack (e.g. from the
@@ -164,7 +164,8 @@ struct TemplateBrowserView: View {
             ForEach(group.templates) { template in templateRow(template) }
         } header: {
             if group.name == groupedTemplates.first?.name {
-                ResourceCountSectionHeader(group.name, loadedCount: store.templates.count,
+                ResourceCountSectionHeader(
+                    group.name, loadedCount: store.templates.count,
                     totalCount: store.totalItemCount, hasMore: store.hasMore)
             } else {
                 Text(group.name)
@@ -251,9 +252,12 @@ struct TemplateRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                 HStack(spacing: 6) {
-                    Label(template.isRemote ? "Remote" : "Local", systemImage: template.isRemote ? "cloud" : "internaldrive")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(template.isRemote ? .blue : .indigo)
+                    Label(
+                        template.isRemote ? "Remote" : "Local",
+                        systemImage: template.isRemote ? "cloud" : "internaldrive"
+                    )
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(template.isRemote ? .blue : .indigo)
                     if let version = template.metadata?.version, !version.isEmpty {
                         Text(version)
                             .font(.caption2.monospaced())

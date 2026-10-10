@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct TemplateEditorView: View {
     let mode: TemplateEditorMode
@@ -44,8 +44,11 @@ struct TemplateEditorView: View {
     private var canSave: Bool {
         guard isLoaded, sessionIdentity == manager.cacheSessionIdentity else { return false }
         let permission: String
-        if case .create = mode { permission = Permission.Templates.create }
-        else { permission = Permission.Templates.update }
+        if case .create = mode {
+            permission = Permission.Templates.create
+        } else {
+            permission = Permission.Templates.update
+        }
         return manager.permissions.has(permission, in: nil)
             && (isDefaults || !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
@@ -57,8 +60,9 @@ struct TemplateEditorView: View {
                     if !isDefaults {
                         Section("Template") {
                             FormTextField(title: "Name", placeholder: "My template", text: $name)
-                            FormTextField(title: "Description", placeholder: "Optional", text: $description,
-                                          axis: .vertical, lineLimit: 2...4)
+                            FormTextField(
+                                title: "Description", placeholder: "Optional", text: $description,
+                                axis: .vertical, lineLimit: 2...4)
                         }
                     }
                     Section {
@@ -80,9 +84,11 @@ struct TemplateEditorView: View {
                 }
                 if isLoaded, sessionIdentity != manager.cacheSessionIdentity {
                     Section {
-                        Label("The connection changed. Close this editor and reopen it on the intended server before saving.",
-                              systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
+                        Label(
+                            "The connection changed. Close this editor and reopen it on the intended server before saving.",
+                            systemImage: "exclamationmark.triangle"
+                        )
+                        .foregroundStyle(.orange)
                     }
                 }
                 if let errorMessage {
@@ -108,12 +114,15 @@ struct TemplateEditorView: View {
                         .disabled(!canSave || !hasChanges || isSaving)
                 }
             }
-            .deleteConfirmation(isPresented: $confirmDiscard, config: DeleteConfirmationConfig(
-                title: "Discard template changes?",
-                actions: [DeleteConfirmationAction(title: "Discard Changes") { dismiss() }],
-                cancelTitle: "Keep Editing",
-                dismissOnConfirm: false
-            ))
+            .deleteConfirmation(
+                isPresented: $confirmDiscard,
+                config: DeleteConfirmationConfig(
+                    title: "Discard template changes?",
+                    actions: [DeleteConfirmationAction(title: "Discard Changes") { dismiss() }],
+                    cancelTitle: "Keep Editing",
+                    dismissOnConfirm: false
+                )
+            )
             .interactiveDismissDisabled(hasChanges || isSaving)
             .task { if !isLoaded { await load() } }
         }
@@ -123,11 +132,15 @@ struct TemplateEditorView: View {
     private func fileEditor(isEnvironment: Bool) -> some View {
         Group {
             if previewEnabled {
-                if isEnvironment { EnvPreviewEditor(text: $environment, readOnly: !canSave || isSaving) }
-                else { ComposePreviewEditor(text: $compose, readOnly: !canSave || isSaving) }
+                if isEnvironment {
+                    EnvPreviewEditor(text: $environment, readOnly: !canSave || isSaving)
+                } else {
+                    ComposePreviewEditor(text: $compose, readOnly: !canSave || isSaving)
+                }
             } else {
-                CodeEditorView(text: isEnvironment ? $environment : $compose,
-                               language: isEnvironment ? .env : .yaml, readOnly: !canSave || isSaving)
+                CodeEditorView(
+                    text: isEnvironment ? $environment : $compose,
+                    language: isEnvironment ? .env : .yaml, readOnly: !canSave || isSaving)
             }
         }
         .navigationTitle(isEnvironment ? ".env" : "compose.yml")
@@ -181,27 +194,35 @@ struct TemplateEditorView: View {
             if previewEnabled { try ProjectDraftSnapshot(compose: compose, environment: environment).validateSyntax() }
             switch mode {
             case .create:
-                _ = try await client.templates.create(CreateTemplate(name: name, description: description,
-                                                                     content: compose, envContent: environment))
+                _ = try await client.templates.create(
+                    CreateTemplate(
+                        name: name, description: description,
+                        content: compose, envContent: environment))
             case .edit(let template):
                 guard !template.isRemote else { return }
                 let latest = try await client.templates.getContent(id: template.id)
                 guard identity == manager.cacheSessionIdentity else { return }
                 guard latest.content == originalCompose, latest.envContent == originalEnvironment,
-                      latest.template.name == originalName, latest.template.description == originalDescription else {
-                    errorMessage = "This template changed on the server. Your draft is preserved. Reopen the template to load the latest version."
+                    latest.template.name == originalName, latest.template.description == originalDescription
+                else {
+                    errorMessage =
+                        "This template changed on the server. Your draft is preserved. Reopen the template to load the latest version."
                     return
                 }
-                _ = try await client.templates.update(id: template.id, body: UpdateTemplate(
-                    name: name, description: description, content: compose, envContent: environment))
+                _ = try await client.templates.update(
+                    id: template.id,
+                    body: UpdateTemplate(
+                        name: name, description: description, content: compose, envContent: environment))
             case .defaults:
                 let latest = try await client.templates.getDefaults()
                 guard identity == manager.cacheSessionIdentity else { return }
                 guard latest.composeTemplate == originalCompose, latest.envTemplate == originalEnvironment else {
-                    errorMessage = "Default templates changed on the server. Your draft is preserved. Reopen this editor to load the latest version."
+                    errorMessage =
+                        "Default templates changed on the server. Your draft is preserved. Reopen this editor to load the latest version."
                     return
                 }
-                try await client.templates.saveDefaults(SaveDefaultTemplates(composeContent: compose, envContent: environment))
+                try await client.templates.saveDefaults(
+                    SaveDefaultTemplates(composeContent: compose, envContent: environment))
             }
             guard identity == manager.cacheSessionIdentity else { return }
             showToast(.success("Template saved"))

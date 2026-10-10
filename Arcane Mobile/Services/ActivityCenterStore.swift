@@ -1,6 +1,6 @@
+import Arcane
 import Foundation
 import Observation
-import Arcane
 
 nonisolated enum ActivityCenterItem: Identifiable, Hashable, Sendable {
     case activity(Activity)
@@ -256,8 +256,7 @@ final class ActivityCenterStore {
             environments = try await resolveEnvironments(client: client)
         } catch {
             guard loadGeneration == generation, !Task.isCancelled else { return }
-            if reset { errorMessage = friendlyErrorMessage(error) }
-            else { loadMoreError = friendlyErrorMessage(error) }
+            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
             return
         }
         guard loadGeneration == generation, !Task.isCancelled else { return }
@@ -275,8 +274,10 @@ final class ActivityCenterStore {
                 paginationByEnvironment[id] = state
                 failedPageEnvironmentIDs.insert(id)
             }
-            guard reset || paginationByEnvironment[id]?.hasMore == true
-                    || failedPageEnvironmentIDs.contains(id) else { return nil }
+            guard
+                reset || paginationByEnvironment[id]?.hasMore == true
+                    || failedPageEnvironmentIDs.contains(id)
+            else { return nil }
             return (environment, paginationByEnvironment[id]?.nextStart ?? 0)
         }
         var failures = 0
@@ -323,9 +324,10 @@ final class ActivityCenterStore {
                 )
                 paginationByEnvironment[id] = state
                 let normalized = page.items.map { normalize($0, environment: environment) }
-                activityBuckets[id] = sortActivities(PaginationLoader.merge(
-                    current: normalized, incoming: reset ? [] : activityBuckets[id] ?? [], reset: false
-                ))
+                activityBuckets[id] = sortActivities(
+                    PaginationLoader.merge(
+                        current: normalized, incoming: reset ? [] : activityBuckets[id] ?? [], reset: false
+                    ))
             }
         }
         guard loadGeneration == generation, !Task.isCancelled else { return }
@@ -333,12 +335,16 @@ final class ActivityCenterStore {
         activityBuckets = activityBuckets.filter { validIDs.contains($0.key) }
         paginationByEnvironment = paginationByEnvironment.filter { validIDs.contains($0.key) }
         failedPageEnvironmentIDs.formIntersection(validIDs)
-        hasMore = paginationByEnvironment.values.contains(where: \.hasMore)
+        hasMore =
+            paginationByEnvironment.values.contains(where: \.hasMore)
             || !failedPageEnvironmentIDs.isEmpty
         rebuildActivities()
         if failures > 0 {
-            if reset { setStreamWarning(.loadPartial) }
-            else { loadMoreError = "Couldn't load more activities. Try again." }
+            if reset {
+                setStreamWarning(.loadPartial)
+            } else {
+                loadMoreError = "Couldn't load more activities. Try again."
+            }
         }
     }
 
@@ -667,7 +673,8 @@ final class ActivityCenterStore {
         }
         for key in activityDetails.keys {
             guard var detail = activityDetails[key], detail.activity.id == message.activityID,
-                  environmentID == nil || environmentID == detail.activity.sourceEnvironmentKey else { continue }
+                environmentID == nil || environmentID == detail.activity.sourceEnvironmentKey
+            else { continue }
             detail.activity.latestMessage = message.message
             detail.activity.updatedAt = message.createdAt
             detail.messages = PaginationLoader.merge(
@@ -752,8 +759,8 @@ private struct ActivityEnvironment: Hashable, Sendable {
     var name: String
 }
 
-private extension String {
-    nonisolated var nilIfEmpty: String? {
+extension String {
+    fileprivate nonisolated var nilIfEmpty: String? {
         isEmpty ? nil : self
     }
 }

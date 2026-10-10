@@ -79,8 +79,8 @@ private struct BulkListSelectionFixture: View {
     }
 }
 
-private extension UIView {
-    var selectedRowCount: Int? {
+extension UIView {
+    fileprivate var selectedRowCount: Int? {
         if let tableView = self as? UITableView {
             return tableView.indexPathsForSelectedRows?.count ?? 0
         }

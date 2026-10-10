@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 /// Errors surfaced to Shortcuts/Siri as readable sentences — never silent
 /// failures.
@@ -32,9 +32,10 @@ nonisolated enum IntentClientFactory {
             throw IntentClientError.demoMode
         }
         guard let urlString = AppGroup.defaults?.string(forKey: AppGroup.Keys.serverURL),
-              !urlString.isEmpty,
-              let url = URL(string: urlString),
-              let origin = AppGroup.canonicalServerOrigin(for: url) else {
+            !urlString.isEmpty,
+            let url = URL(string: urlString),
+            let origin = AppGroup.canonicalServerOrigin(for: url)
+        else {
             throw IntentClientError.notConfigured
         }
         guard SharedKeychain.credentialOrigin == origin else {
@@ -42,11 +43,13 @@ nonisolated enum IntentClientFactory {
         }
 
         let sessionIdentity = AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity)
-        let tokenStore = SharedKeychain.sharedStore(for: origin, validating: {
-            SharedKeychain.credentialOrigin == origin
-                && IntentClientFactory.serverOrigin == origin
-                && AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity) == sessionIdentity
-        })
+        let tokenStore = SharedKeychain.sharedStore(
+            for: origin,
+            validating: {
+                SharedKeychain.credentialOrigin == origin
+                    && IntentClientFactory.serverOrigin == origin
+                    && AppGroup.defaults?.string(forKey: AppGroup.Keys.sessionIdentity) == sessionIdentity
+            })
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
@@ -54,18 +57,20 @@ nonisolated enum IntentClientFactory {
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         configuration.urlCache = nil
 
-        return ArcaneClient(configuration: .init(
-            baseURL: url,
-            tokenStore: tokenStore,
-            defaultEnvironmentID: activeEnvironmentID,
-            urlSession: URLSession(configuration: configuration),
-            retryPolicy: .init(maxAttempts: 2, baseBackoff: .milliseconds(300), maxBackoff: .seconds(1))
-        ))
+        return ArcaneClient(
+            configuration: .init(
+                baseURL: url,
+                tokenStore: tokenStore,
+                defaultEnvironmentID: activeEnvironmentID,
+                urlSession: URLSession(configuration: configuration),
+                retryPolicy: .init(maxAttempts: 2, baseBackoff: .milliseconds(300), maxBackoff: .seconds(1))
+            ))
     }
 
     static var activeEnvironmentID: EnvironmentID {
         guard serverOrigin != nil,
-              WidgetSnapshotStore.load()?.serverOrigin == serverOrigin else {
+            WidgetSnapshotStore.load()?.serverOrigin == serverOrigin
+        else {
             return .localDocker
         }
         let raw = AppGroup.defaults?.string(forKey: AppGroup.Keys.activeEnvironmentID)

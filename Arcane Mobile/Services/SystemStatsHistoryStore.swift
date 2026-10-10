@@ -1,6 +1,6 @@
+import Arcane
 import Foundation
 import Observation
-import Arcane
 
 /// Owns the per-environment `system/stats` streams for the dashboard and
 /// retains a rolling sample window per environment, so sparklines survive
@@ -186,8 +186,9 @@ final class SystemStatsHistoryStore {
                 guard generation == self.generation, !Task.isCancelled else { return }
                 // Keep the last-known series; just flag the error while we
                 // back off and try again.
-                setError(environmentID: environmentID,
-                          "Live stats unavailable: \(friendlyErrorMessage(error))")
+                setError(
+                    environmentID: environmentID,
+                    "Live stats unavailable: \(friendlyErrorMessage(error))")
                 // A rejected handshake (expired bearer → 401, or the server's
                 // per-IP connection cap → 429) surfaces as URLError -1011 and
                 // never reaches the HTTP-layer 401-refresh path, so the SDK
@@ -196,7 +197,8 @@ final class SystemStatsHistoryStore {
                 // Harmless when the cause was the connection cap: refreshes
                 // are single-flighted and throttled inside AuthManager.
                 if let urlError = error as? URLError, urlError.code == .badServerResponse,
-                   (try? await client.authManager.hasRefreshCredential()) == true {
+                    (try? await client.authManager.hasRefreshCredential()) == true
+                {
                     guard generation == self.generation, !Task.isCancelled else { return }
                     _ = try? await client.authManager.refreshTokens()
                 }

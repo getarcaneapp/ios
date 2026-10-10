@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 /// One environment card on the dashboard: identity header, a four-up metric
 /// strip, and compact CPU / memory / disk rings. Data is value-passed so only
@@ -46,8 +46,9 @@ struct EnvironmentFleetListRow: View {
         .glassCardBackground(isHighlighted: isActive && !manager.allEnvironmentsPreview)
         .overlay {
             if manager.allEnvironmentsPreview,
-               let hex = colors.hex(server: manager.serverURL, environmentID: environment.id),
-               let color = Color(hex: hex) {
+                let hex = colors.hex(server: manager.serverURL, environmentID: environment.id),
+                let color = Color(hex: hex)
+            {
                 RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                     .strokeBorder(color, lineWidth: 1.5)
                     .allowsHitTesting(false)
@@ -65,8 +66,9 @@ struct EnvironmentFleetListRow: View {
         }
         .task(id: snapshot?.versionInfo?.updateAvailable == true) {
             guard snapshot?.versionInfo?.updateAvailable == true,
-                  manager.permissions.has(Permission.System.upgrade, in: environmentID),
-                  let client = manager.client else {
+                manager.permissions.has(Permission.System.upgrade, in: environmentID),
+                let client = manager.client
+            else {
                 canUpgrade = false
                 return
             }
@@ -126,8 +128,12 @@ struct EnvironmentFleetListRow: View {
     private var countsStrip: some View {
         let vulnerabilities = actionCount(.actionableVulnerabilities)
         return HStack(spacing: 10) {
-            count(actionCountText(.imageUpdates), systemImage: "arrow.triangle.2.circlepath", tint: .green, label: "Updates")
-            count("\(runningContainers)/\(totalContainers)", systemImage: "cube.box.fill", tint: .orange, label: "Containers")
+            count(
+                actionCountText(.imageUpdates), systemImage: "arrow.triangle.2.circlepath", tint: .green,
+                label: "Updates")
+            count(
+                "\(runningContainers)/\(totalContainers)", systemImage: "cube.box.fill", tint: .orange,
+                label: "Containers")
             count("\(imageCount)", systemImage: "photo.stack.fill", tint: .purple, label: "Images")
             count(
                 actionCountText(.actionableVulnerabilities),
@@ -181,7 +187,9 @@ struct EnvironmentFleetListRow: View {
             Button("Upgrade Arcane", systemImage: "arrow.up.circle") { showUpgrade = true }
         }
         if manager.permissions.has(Permission.System.prune, in: environmentID) {
-            Button(role: .destructive) { showPrune = true } label: {
+            Button(role: .destructive) {
+                showPrune = true
+            } label: {
                 DestructiveLabel(text: "System Prune")
             }
             .tint(.red)
@@ -242,7 +250,9 @@ struct EnvironmentFleetListRow: View {
 
     // MARK: - Derived values
 
-    private var runningContainers: Int { snapshot?.containers.counts.runningContainers ?? Int(dockerInfo?.containersRunning ?? 0) }
+    private var runningContainers: Int {
+        snapshot?.containers.counts.runningContainers ?? Int(dockerInfo?.containersRunning ?? 0)
+    }
     private var totalContainers: Int { snapshot?.containers.counts.totalContainers ?? Int(dockerInfo?.containers ?? 0) }
     private var imageCount: Int { snapshot?.imageUsageCounts.totalImages ?? Int(dockerInfo?.images ?? 0) }
 
@@ -270,8 +280,9 @@ struct EnvironmentFleetListRow: View {
     private var memoryPercent: Double? {
         if let value = stats?.memoryPercent { return value }
         guard let used = stats?.memoryUsageBytes,
-              let total = stats?.memoryTotalBytes ?? dockerInfo?.memTotal,
-              total > 0 else { return nil }
+            let total = stats?.memoryTotalBytes ?? dockerInfo?.memTotal,
+            total > 0
+        else { return nil }
         return Double(used) / Double(total) * 100
     }
 

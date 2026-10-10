@@ -285,8 +285,9 @@ struct PasskeysMFAView: View {
 
     private func request(_ action: ProtectedAction) {
         if case .add = action,
-           capabilities?.canEnrollWithActiveSession == true,
-           capabilities?.requiresStepUp == false {
+            capabilities?.canEnrollWithActiveSession == true,
+            capabilities?.requiresStepUp == false
+        {
             Task { await execute(action, using: nil) }
             return
         }
@@ -362,8 +363,9 @@ struct PasskeysMFAView: View {
         }
         if grant == nil {
             guard case .add = action,
-                  capabilities?.canEnrollWithActiveSession == true,
-                  capabilities?.requiresStepUp == false else {
+                capabilities?.canEnrollWithActiveSession == true,
+                capabilities?.requiresStepUp == false
+            else {
                 request(action)
                 return
             }
@@ -572,6 +574,6 @@ private struct RecoveryCodesSaveView: View {
     }
 }
 
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
+extension String {
+    fileprivate var nilIfEmpty: String? { isEmpty ? nil : self }
 }

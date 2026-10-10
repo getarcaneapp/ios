@@ -16,16 +16,20 @@ final class ReleaseNotesTests: XCTestCase {
             fixed: [.init("Fixed bug")]
         )
 
-        XCTAssertEqual(note.presentationSections.map(\.title), [
-            "New",
-            "Changed",
-            "Fixed",
-        ])
-        XCTAssertEqual(note.presentationSections.map(\.subtitle), [
-            "• New feature",
-            "• Changed behavior · Premium",
-            "• Fixed bug",
-        ])
+        XCTAssertEqual(
+            note.presentationSections.map(\.title),
+            [
+                "New",
+                "Changed",
+                "Fixed",
+            ])
+        XCTAssertEqual(
+            note.presentationSections.map(\.subtitle),
+            [
+                "• New feature",
+                "• Changed behavior · Premium",
+                "• Fixed bug",
+            ])
         XCTAssertEqual(note.presentationSections.map(\.category), [.new, .changed, .fixed])
         XCTAssertEqual(
             note.presentationSections.map { $0.category.systemImage },
@@ -87,20 +91,21 @@ final class ReleaseNotesTests: XCTestCase {
             UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
         )
 
-        let configurations: [(
-            name: String,
-            colorScheme: ColorScheme,
-            dynamicTypeSize: DynamicTypeSize,
-            interfaceStyle: UIUserInterfaceStyle
-        )] = [
-            ("Light Standard", .light, .large, .light),
-            ("Dark Accessibility", .dark, .accessibility3, .dark),
-        ]
+        let configurations:
+            [(
+                name: String,
+                colorScheme: ColorScheme,
+                dynamicTypeSize: DynamicTypeSize,
+                interfaceStyle: UIUserInterfaceStyle
+            )] = [
+                ("Light Standard", .light, .large, .light),
+                ("Dark Accessibility", .dark, .accessibility3, .dark),
+            ]
 
         for configuration in configurations {
             let content = WhatsNewPresentationView(whatsNew: latest)
-            .environment(\.colorScheme, configuration.colorScheme)
-            .environment(\.dynamicTypeSize, configuration.dynamicTypeSize)
+                .environment(\.colorScheme, configuration.colorScheme)
+                .environment(\.dynamicTypeSize, configuration.dynamicTypeSize)
             let hostingController = UIHostingController(rootView: content)
             hostingController.overrideUserInterfaceStyle = configuration.interfaceStyle
             let window = UIWindow(windowScene: windowScene)

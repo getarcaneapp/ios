@@ -10,6 +10,8 @@ struct BackupRequestScope {
     }
     func check(_ manager: ArcaneClientManager) throws {
         try Task.checkCancellation()
-        guard generation == manager.clientGeneration, environmentID == manager.activeEnvironmentID else { throw CancellationError() }
+        guard generation == manager.clientGeneration, environmentID == manager.activeEnvironmentID else {
+            throw CancellationError()
+        }
     }
 }

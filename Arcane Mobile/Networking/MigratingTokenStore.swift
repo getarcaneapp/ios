@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 import Security
 
 /// Origin-bound token store shared with widgets and App Intents. Legacy items
@@ -15,7 +15,10 @@ nonisolated struct MigratingTokenStore: TokenStore {
     private let allowsLegacyMigration: Bool
     private let credentialOrigin: @Sendable () -> String?
 
-    init(origin: String, allowsLegacyMigration: Bool = false, lease: CredentialLease = CredentialLease(), persistence: CredentialPersistenceCoordinator = CredentialPersistenceCoordinator()) {
+    init(
+        origin: String, allowsLegacyMigration: Bool = false, lease: CredentialLease = CredentialLease(),
+        persistence: CredentialPersistenceCoordinator = CredentialPersistenceCoordinator()
+    ) {
         self.lease = lease
         self.persistence = persistence
         self.origin = origin
@@ -47,7 +50,7 @@ nonisolated struct MigratingTokenStore: TokenStore {
     }
 
     func loadTokens() async throws -> TokenPair? {
-        guard (lease.isActive || lease.canClear), credentialOrigin() == origin else { return nil }
+        guard lease.isActive || lease.canClear, credentialOrigin() == origin else { return nil }
         if let tokens = try await originStore.loadTokens() {
             guard lease.isActive || lease.canClear else { throw CancellationError() }
             return tokens
@@ -77,8 +80,10 @@ nonisolated struct MigratingTokenStore: TokenStore {
         let nonExpired = candidates.filter { $0.expiresAt > Date() }
         // Prefer a currently-valid access token. If every access token is
         // expired, keep the newest pair so its refresh token can still rotate.
-        guard let selected = (nonExpired.isEmpty ? candidates : nonExpired)
-            .max(by: { $0.expiresAt < $1.expiresAt }) else { return nil }
+        guard
+            let selected = (nonExpired.isEmpty ? candidates : nonExpired)
+                .max(by: { $0.expiresAt < $1.expiresAt })
+        else { return nil }
 
         try await persistence.save(selected, to: originStore, lease: lease, bind: {})
         try? await legacy.clearTokens()

@@ -37,11 +37,12 @@ struct AppIconPickerView: View {
             let alternates = icons["CFBundleAlternateIcons"] as? [String: Any]
         else { return result }
         for name in alternates.keys.sorted() {
-            result.append(.init(
-                alternateName: name,
-                displayName: prettify(name),
-                previewAssetName: AppIconPreviewAsset.name(for: name)
-            ))
+            result.append(
+                .init(
+                    alternateName: name,
+                    displayName: prettify(name),
+                    previewAssetName: AppIconPreviewAsset.name(for: name)
+                ))
         }
         return result
     }
@@ -80,10 +81,13 @@ struct AppIconPickerView: View {
         }
         .navigationTitle("App Icon")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Couldn't change icon", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
+        .alert(
+            "Couldn't change icon",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )
+        ) {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
@@ -135,7 +139,8 @@ struct AppIconPickerView: View {
         if raw == "AppIcon-Development-Preview" { return "Blueprint" }
         if raw == "AppIcon-Blueprint" { return "Wireframe" }
 
-        return raw
+        return
+            raw
             .replacingOccurrences(of: "AppIcon-", with: "")
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")

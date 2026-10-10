@@ -9,7 +9,8 @@ struct PaginationLoaderTests {
     func collectHandlesPaginationBoundariesWithoutTruncation(total: Int) async throws {
         let resources = try await PaginationLoader.collect(pageSize: 50) { start, limit in
             let end = min(start + limit, total)
-            let items = start < end
+            let items =
+                start < end
                 ? (start..<end).map(TestResource.init(id:))
                 : []
             return ResourcePage(

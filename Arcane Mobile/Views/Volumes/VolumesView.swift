@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct VolumesView: View {
     private static let pageSize = 50
@@ -9,7 +9,6 @@ struct VolumesView: View {
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     let environmentID: EnvironmentID
     let environmentName: String
-
 
     @State private var volumes: [Volume] = []
     @State private var sizes: [String: Int64] = [:]
@@ -36,8 +35,6 @@ struct VolumesView: View {
     @State private var isBulkRunning = false
     @State private var bulkRunningActionID: String?
 
-
-
     /// Prune and per-volume delete share one `.deleteConfirmation` cover
     /// (one full-screen cover per view).
     private enum VolumeDestructive {
@@ -57,10 +54,11 @@ struct VolumesView: View {
     private func computeSections() -> [StableListSection<String, Volume>] {
         let query = debouncedSearchText
         let filtered = volumes.filter { volume in
-            let matchesSearch = query.isEmpty ||
-                volume.name.localizedCaseInsensitiveContains(query) ||
-                volume.driver.localizedCaseInsensitiveContains(query)
-            let matchesScope = scopeFilter == .all
+            let matchesSearch =
+                query.isEmpty || volume.name.localizedCaseInsensitiveContains(query)
+                || volume.driver.localizedCaseInsensitiveContains(query)
+            let matchesScope =
+                scopeFilter == .all
                 || (scopeFilter == .local && volume.scope.lowercased() == "local")
                 || (scopeFilter == .global && volume.scope.lowercased() != "local")
             return matchesSearch && matchesScope
@@ -84,7 +82,7 @@ struct VolumesView: View {
         return [
             .init(id: "pinned", title: "Pinned", items: pinnedItems),
             .init(id: "used", title: "Used", items: used),
-            .init(id: "unused", title: "Unused", items: unused)
+            .init(id: "unused", title: "Unused", items: unused),
         ]
     }
 
@@ -103,7 +101,6 @@ struct VolumesView: View {
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove animates too.
-
 
     private var selectedVolumes: [Volume] {
         volumes.filter { selection.contains($0.id) }
@@ -227,7 +224,9 @@ struct VolumesView: View {
 
             if !isSelecting {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showCreateSheet = true } label: {
+                    Button {
+                        showCreateSheet = true
+                    } label: {
                         Image(systemName: "plus")
                             .appAccentToolbarSymbol()
                     }
@@ -253,28 +252,34 @@ struct VolumesView: View {
                     title: "Prune Unused Volumes",
                     message: "All unused volumes will be permanently deleted.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Prune") {
-                        Task { await pruneVolumes() }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Prune") {
+                            Task { await pruneVolumes() }
+                        }
+                    ]
                 )
             case .delete(let volume):
                 return DeleteConfirmationConfig(
                     title: "Delete Volume",
                     message: "Delete “\(volume.name)”? This cannot be undone.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Delete") {
-                        Task { await deleteVolume(volume) }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Delete") {
+                            Task { await deleteVolume(volume) }
+                        }
+                    ]
                 )
             case .bulkDelete(let names):
                 return DeleteConfirmationConfig(
                     title: "Delete Volumes",
-                    message: "Delete \(names.count) selected volume" +
-                        "\(names.count == 1 ? "" : "s")? This cannot be undone.",
+                    message: "Delete \(names.count) selected volume"
+                        + "\(names.count == 1 ? "" : "s")? This cannot be undone.",
                     icon: "trash",
-                    actions: [DeleteConfirmationAction(title: "Delete") {
-                        Task { await bulkDeleteVolumes(names: names) }
-                    }]
+                    actions: [
+                        DeleteConfirmationAction(title: "Delete") {
+                            Task { await bulkDeleteVolumes(names: names) }
+                        }
+                    ]
                 )
             }
         }
@@ -339,8 +344,9 @@ struct VolumesView: View {
                 Button {
                     togglePin(volume)
                 } label: {
-                    Label(isPinned ? "Unpin" : "Pin",
-                          systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                    Label(
+                        isPinned ? "Unpin" : "Pin",
+                        systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
                 }
                 Button(role: .destructive) {
                     pendingDestructive = .delete(volume)
@@ -360,8 +366,9 @@ struct VolumesView: View {
                 Button {
                     togglePinAfterSwipe(volume)
                 } label: {
-                    Label(isPinned ? "Unpin" : "Pin",
-                          systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                    Label(
+                        isPinned ? "Unpin" : "Pin",
+                        systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
                 }
                 .tint(.yellow)
             }
@@ -409,11 +416,13 @@ struct VolumesView: View {
 
     private func volumePreview(_ volume: Volume) -> some View {
         var badges: [RowPreviewCard.PreviewBadge] = []
-        badges.append(.init(text: volume.inUse ? "In Use" : "Unused",
-                            color: volume.inUse ? .green : .secondary))
+        badges.append(
+            .init(
+                text: volume.inUse ? "In Use" : "Unused",
+                color: volume.inUse ? .green : .secondary))
         var details: [RowPreviewCard.PreviewDetail] = [
             .init(icon: "gearshape", label: "Driver", value: volume.driver),
-            .init(icon: "globe", label: "Scope", value: volume.scope.capitalized)
+            .init(icon: "globe", label: "Scope", value: volume.scope.capitalized),
         ]
         if let size = sizes[volume.name], size > 0 {
             details.insert(.init(icon: "internaldrive", label: "Size", value: size.byteString), at: 0)
@@ -459,8 +468,7 @@ struct VolumesView: View {
             applyVolumesPage(response, reset: reset, start: start, generation: generation)
         } catch {
             guard loadGeneration == generation else { return }
-            if reset { errorMessage = friendlyErrorMessage(error) }
-            else { loadMoreError = friendlyErrorMessage(error) }
+            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
         }
         guard loadGeneration == generation, !Task.isCancelled else { return }
         if reset || sizes.isEmpty {
@@ -564,11 +572,13 @@ struct VolumesView: View {
 
     private func invalidateVolumeCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "volumes"),
-            client.rest.environmentPath(environmentID, "volumes/sizes"),
-            client.rest.environmentPath(environmentID, "volumes/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "volumes"),
+                client.rest.environmentPath(environmentID, "volumes/sizes"),
+                client.rest.environmentPath(environmentID, "volumes/*"),
+            ])
     }
 }
 
@@ -580,8 +590,6 @@ struct UsageBadge: View {
         Text(text)
             .font(.subheadline)
             .foregroundStyle(color)
-
-
 
     }
 }
@@ -842,44 +850,43 @@ struct VolumeDetailView: View {
         }
     }
 
-
-
-
-
-
-
     private var volumeMetadata: [ResourceMetadataItem] {
         [
             ResourceMetadataItem(label: "Driver", value: volume.driver, systemImage: "gearshape"),
             ResourceMetadataItem(label: "Scope", value: volume.scope.capitalized, systemImage: "scope"),
             ResourceMetadataItem(label: "Created", value: volume.createdAt, systemImage: "calendar"),
-            ResourceMetadataItem(label: "Size", value: sizeBytes?.byteString ?? (loadingSize ? "Loading" : "Unavailable"), systemImage: "internaldrive")
+            ResourceMetadataItem(
+                label: "Size", value: sizeBytes?.byteString ?? (loadingSize ? "Loading" : "Unavailable"),
+                systemImage: "internaldrive"),
         ]
     }
 
     private func resolvedContainer(for id: String) -> ContainerSummary? {
-        resolvedContainersByID[id] ?? resolvedContainersByID.values.first { container in
-            container.id.hasPrefix(id) || id.hasPrefix(container.id)
-        }
+        resolvedContainersByID[id]
+            ?? resolvedContainersByID.values.first { container in
+                container.id.hasPrefix(id) || id.hasPrefix(container.id)
+            }
     }
 
     private func loadConsumers() async {
         guard let client = manager.client, let cached = manager.cached, !volume.containers.isEmpty else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "containers")
-            guard let containers = try await cached.getAllPages(
-                path: path,
-                elementType: ContainerSummary.self,
-                policy: .containersList,
-                envID: environmentID,
-                fetchPage: { start, limit in
-                    let response = try await client.containers.list(
-                        envID: environmentID,
-                        query: .init(start: start, limit: limit)
-                    )
-                    return ResourcePage(items: response.data, pagination: response.pagination)
-                }
-            ) else { return }
+            guard
+                let containers = try await cached.getAllPages(
+                    path: path,
+                    elementType: ContainerSummary.self,
+                    policy: .containersList,
+                    envID: environmentID,
+                    fetchPage: { start, limit in
+                        let response = try await client.containers.list(
+                            envID: environmentID,
+                            query: .init(start: start, limit: limit)
+                        )
+                        return ResourcePage(items: response.data, pagination: response.pagination)
+                    }
+                )
+            else { return }
             resolvedContainersByID = Dictionary(uniqueKeysWithValues: containers.map { ($0.id, $0) })
         } catch {
             // Preserve stable container IDs as fallbacks when resolution fails.
@@ -908,11 +915,13 @@ struct VolumeDetailView: View {
         do {
             try await client.volumes.remove(envID: environmentID, name: volume.name)
             if let cached = manager.cached {
-                await cached.invalidate(envID: environmentID, paths: [
-                    client.rest.environmentPath(environmentID, "volumes"),
-                    client.rest.environmentPath(environmentID, "volumes/sizes"),
-                    client.rest.environmentPath(environmentID, "volumes/*")
-                ])
+                await cached.invalidate(
+                    envID: environmentID,
+                    paths: [
+                        client.rest.environmentPath(environmentID, "volumes"),
+                        client.rest.environmentPath(environmentID, "volumes/sizes"),
+                        client.rest.environmentPath(environmentID, "volumes/*"),
+                    ])
             }
             mutationStore.markChanged(kind: .volumes, envID: environmentID)
             dismiss()
@@ -1005,7 +1014,8 @@ struct CreateVolumeView: View {
 
     private func createVolume() async {
         guard let client = manager.client else { return }
-        isLoading = true; errorMessage = nil
+        isLoading = true
+        errorMessage = nil
         defer { isLoading = false }
         do {
             let body = ["name": name, "driver": driver]
@@ -1013,14 +1023,17 @@ struct CreateVolumeView: View {
             // Same decoder bypass as listVolumes — create returns the Volume too.
             _ = try await client.transport.rawRequest(path, method: "POST", body: body)
             if let cached = manager.cached {
-                await cached.invalidate(envID: environmentID, paths: [
-                    client.rest.environmentPath(environmentID, "volumes"),
-                    client.rest.environmentPath(environmentID, "volumes/sizes"),
-                    client.rest.environmentPath(environmentID, "volumes/*")
-                ])
+                await cached.invalidate(
+                    envID: environmentID,
+                    paths: [
+                        client.rest.environmentPath(environmentID, "volumes"),
+                        client.rest.environmentPath(environmentID, "volumes/sizes"),
+                        client.rest.environmentPath(environmentID, "volumes/*"),
+                    ])
             }
             mutationStore.markChanged(kind: .volumes, envID: environmentID)
-            await onSuccess(); dismiss()
+            await onSuccess()
+            dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }
     }
 }

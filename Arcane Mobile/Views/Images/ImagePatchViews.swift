@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ImagePatchTargetsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -17,7 +17,8 @@ struct ImagePatchTargetsView: View {
             if let error { Text(error).foregroundStyle(.secondary) }
             ForEach(targets) { target in
                 NavigationLink {
-                    ImagePatchView(environmentID: environmentID, imageID: target.imageId,
+                    ImagePatchView(
+                        environmentID: environmentID, imageID: target.imageId,
                         imageName: target.imageRef, localOnly: target.localOnly == true)
                 } label: {
                     VStack(alignment: .leading) {
@@ -56,17 +57,28 @@ struct ImagePatchTargetsView: View {
         requestGeneration &+= 1
         let generation = requestGeneration
         let expected = scope
-        loading = true; error = nil
+        loading = true
+        error = nil
         loadMoreError = nil
         defer { if expected == scope, generation == requestGeneration { loading = false } }
         do {
-            let result = try await client.images.patchTargets(envID: environmentID,
+            let result = try await client.images.patchTargets(
+                envID: environmentID,
                 query: .init(search: search.isEmpty ? nil : search, start: reset ? 0 : targets.count, limit: 30))
             guard !Task.isCancelled, expected == scope, generation == requestGeneration else { return }
-            targets = reset ? result.data : targets + result.data; hasMore = result.data.count == 30
-        } catch is CancellationError { }
-        catch ArcaneError.notFound { if expected == scope { error = "Image patching is not available on this server." } }
-        catch { if expected == scope { if reset { self.error = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) } } }
+            targets = reset ? result.data : targets + result.data
+            hasMore = result.data.count == 30
+        } catch is CancellationError {} catch ArcaneError.notFound {
+            if expected == scope { error = "Image patching is not available on this server." }
+        } catch {
+            if expected == scope {
+                if reset {
+                    self.error = friendlyErrorMessage(error)
+                } else {
+                    loadMoreError = friendlyErrorMessage(error)
+                }
+            }
+        }
     }
 }
 
@@ -89,7 +101,9 @@ struct ImagePatchView: View {
     @State private var available = false
     @State private var availabilityError: String?
     @State private var refreshToken = UUID()
-    private var scope: String { "\(manager.serverURL)|\(manager.clientGeneration)|\(environmentID.rawValue)|\(imageID)" }
+    private var scope: String {
+        "\(manager.serverURL)|\(manager.clientGeneration)|\(environmentID.rawValue)|\(imageID)"
+    }
     private var canPatch: Bool { available && !localOnly && manager.permissions.has("images:patch", in: environmentID) }
 
     var body: some View {
@@ -106,7 +120,8 @@ struct ImagePatchView: View {
                     if let activity { NavigationLink("Progress and output") { ActivityDetailView(activity: activity) } }
                     if record.status == "patching" { ProgressView("Patching packages") }
                     Button("Refresh status") { refreshToken = UUID() }
-                    Text("Deploy the patched image separately after reviewing the result.").font(.caption).foregroundStyle(.secondary)
+                    Text("Deploy the patched image separately after reviewing the result.").font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             } else {
                 Section("Patched image") {
@@ -122,23 +137,34 @@ struct ImagePatchView: View {
         }
         .textInputAutocapitalization(.never).autocorrectionDisabled()
         .navigationTitle("Patch Image")
-        .onChange(of: manager.clientGeneration) { patchTask?.cancel(); record = nil; activity = nil }
-        .onChange(of: manager.activeEnvironmentID) { patchTask?.cancel(); record = nil; activity = nil }
+        .onChange(of: manager.clientGeneration) {
+            patchTask?.cancel()
+            record = nil
+            activity = nil
+        }
+        .onChange(of: manager.activeEnvironmentID) {
+            patchTask?.cancel()
+            record = nil
+            activity = nil
+        }
         .onDisappear { patchTask?.cancel() }
         .task(id: scope) { await checkAvailability() }
         .task(id: "\(scope)|\(record?.id ?? "")|\(refreshToken)") { await follow() }
     }
 
     private func checkAvailability() async {
-        available = false; record = nil; activity = nil; availabilityError = nil
+        available = false
+        record = nil
+        activity = nil
+        availabilityError = nil
         guard let client = manager.client else { return }
         do {
             _ = try await client.images.patchTargets(envID: environmentID, query: .init(limit: 1))
             guard !Task.isCancelled else { return }
             available = true
-        } catch is CancellationError { }
-        catch ArcaneError.notFound { availabilityError = "Image patching is not available on this server." }
-        catch { availabilityError = error.localizedDescription }
+        } catch is CancellationError {} catch ArcaneError.notFound {
+            availabilityError = "Image patching is not available on this server."
+        } catch { availabilityError = error.localizedDescription }
     }
 
     private func start() async {
@@ -147,13 +173,16 @@ struct ImagePatchView: View {
         let trimmedTimeout = timeout.trimmingCharacters(in: .whitespacesAndNewlines)
         let seconds = Int(trimmedTimeout)
         guard trimmedTimeout.isEmpty || (seconds ?? 0) > 0 else {
-            showToast(.error("Enter a positive timeout in seconds.")); return
+            showToast(.error("Enter a positive timeout in seconds."))
+            return
         }
         submitting = true
         defer { submitting = false }
         do {
-            let result = try await client.images.patch(envID: environmentID, imageID: imageID,
-                options: .init(suffix: suffix.isEmpty ? nil : suffix,
+            let result = try await client.images.patch(
+                envID: environmentID, imageID: imageID,
+                options: .init(
+                    suffix: suffix.isEmpty ? nil : suffix,
                     patchedTag: patchedTag.isEmpty ? nil : patchedTag,
                     timeoutSeconds: seconds, scanId: scanID.isEmpty ? nil : scanID, ignoreErrors: ignoreErrors))
             guard !Task.isCancelled, expected == scope else { return }
@@ -173,11 +202,13 @@ struct ImagePatchView: View {
                 }
                 let updated: ImagePatchRecord?
                 if manager.permissions.has("images:list", in: environmentID) {
-                    let page = try await client.images.listPatches(envID: environmentID,
+                    let page = try await client.images.listPatches(
+                        envID: environmentID,
                         query: .init(search: current.originalRef, limit: 100))
                     updated = page.data.first(where: { $0.id == current.id })
                 } else {
-                    let targets = try await client.images.patchTargets(envID: environmentID,
+                    let targets = try await client.images.patchTargets(
+                        envID: environmentID,
                         query: .init(search: current.originalRef, limit: 100))
                     updated = targets.data.compactMap(\.lastPatch).first(where: { $0.id == current.id })
                 }
@@ -191,7 +222,8 @@ struct ImagePatchView: View {
                 }
                 try await Task.sleep(for: .seconds(3))
             } while !Task.isCancelled
-        } catch is CancellationError { }
-        catch { showToast(.error("Status refresh failed: \(error.localizedDescription)")) }
+        } catch is CancellationError {} catch {
+            showToast(.error("Status refresh failed: \(error.localizedDescription)"))
+        }
     }
 }

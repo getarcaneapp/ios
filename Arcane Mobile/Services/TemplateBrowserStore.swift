@@ -1,6 +1,6 @@
+import Arcane
 import Foundation
 import Observation
-import Arcane
 
 nonisolated enum TemplateSourceSelection: String, CaseIterable, Identifiable, Hashable, Sendable {
     case all

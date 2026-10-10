@@ -1,8 +1,8 @@
-import SwiftUI
-import Observation
-import UserNotifications
-import Security
 import Arcane
+import Observation
+import Security
+import SwiftUI
+import UserNotifications
 
 /// Owns the device side of native push: APNs registration, enrollment and
 /// pairing with the push relay, the per-server device record on the Arcane
@@ -125,8 +125,9 @@ final class PushNotificationCoordinator {
         // The server forgot this device (admin disabled push, or it was pruned)
         // — drop the stale local binding so the toggle reads correctly.
         if let status = serverStatus, let origin,
-           let binding = binding(for: origin),
-           !status.enabled || !status.devices.contains(where: { $0.id == binding.deviceId }) {
+            let binding = binding(for: origin),
+            !status.enabled || !status.devices.contains(where: { $0.id == binding.deviceId })
+        {
             credentials?.bindings.removeValue(forKey: origin)
             persist()
         }
@@ -139,7 +140,9 @@ final class PushNotificationCoordinator {
         latestDeviceToken = token
         registrationError = nil
         let environment = Self.detectAPNSEnvironment()
-        guard let creds = credentials, creds.deviceToken != token || creds.apnsEnvironment != environment else { return }
+        guard let creds = credentials, creds.deviceToken != token || creds.apnsEnvironment != environment else {
+            return
+        }
         var updated = creds
         updated.deviceToken = token
         updated.apnsEnvironment = environment
@@ -190,7 +193,9 @@ final class PushNotificationCoordinator {
         }
         do {
             guard let client = manager.client, let origin = manager.serverOrigin else { throw PushError.notSignedIn }
-            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [
+                .alert, .sound, .badge,
+            ])
             try checkSession()
             await refreshAuthorizationStatus()
             try checkSession()
@@ -203,7 +208,8 @@ final class PushNotificationCoordinator {
 
             let token = try await awaitDeviceToken()
             try checkSession()
-            let creds = try await ensureInstallation(relayURL: status.relayUrl, deviceToken: token, checkSession: checkSession)
+            let creds = try await ensureInstallation(
+                relayURL: status.relayUrl, deviceToken: token, checkSession: checkSession)
             try checkSession()
 
             let pairing = try await client.mobilePush.pairingToken()
@@ -251,7 +257,9 @@ final class PushNotificationCoordinator {
             serverStatus = updatedStatus
             showToast(.success("Push notifications enabled"))
         } catch {
-            guard operationID == id, manager.isCurrentAuthentication(generation), !(error is CancellationError) else { return }
+            guard operationID == id, manager.isCurrentAuthentication(generation), !(error is CancellationError) else {
+                return
+            }
             let message = friendlyErrorMessage(error)
             errorMessage = message
             showToast(.error(message))
@@ -298,19 +306,33 @@ final class PushNotificationCoordinator {
     /// one paired for the currently configured server.
     func handleTap(userInfo: [AnyHashable: Any], manager: ArcaneClientManager) {
         guard let payload = MobilePushPayload(userInfo: userInfo),
-              let binding = binding(for: manager.serverOrigin),
-              binding.channelId == payload.channelId
+            let binding = binding(for: manager.serverOrigin),
+            binding.channelId == payload.channelId
         else { return }
         QuickActionRouter.shared.handle(route: payload.route)
     }
 
     // MARK: - Relay client
 
-    private struct InstallationResponse: Decodable { let installationId: String; let installationSecret: String }
-    private struct PairResponse: Decodable { let recipientId: String; let channelId: String }
-    private struct RelayError: Decodable { struct Body: Decodable { let code: String; let message: String }; let error: Body }
+    private struct InstallationResponse: Decodable {
+        let installationId: String
+        let installationSecret: String
+    }
+    private struct PairResponse: Decodable {
+        let recipientId: String
+        let channelId: String
+    }
+    private struct RelayError: Decodable {
+        struct Body: Decodable {
+            let code: String
+            let message: String
+        }
+        let error: Body
+    }
 
-    private func ensureInstallation(relayURL: String, deviceToken: String, checkSession: () throws -> Void) async throws -> Credentials {
+    private func ensureInstallation(relayURL: String, deviceToken: String, checkSession: () throws -> Void) async throws
+        -> Credentials
+    {
         let environment = Self.detectAPNSEnvironment()
         if let creds = credentials, creds.relayURL == relayURL {
             if creds.deviceToken != deviceToken || creds.apnsEnvironment != environment {
@@ -327,7 +349,9 @@ final class PushNotificationCoordinator {
             }
             return creds
         }
-        let bootstrap = Credentials(relayURL: relayURL, installationId: "", installationSecret: "", deviceToken: deviceToken, apnsEnvironment: environment)
+        let bootstrap = Credentials(
+            relayURL: relayURL, installationId: "", installationSecret: "", deviceToken: deviceToken,
+            apnsEnvironment: environment)
         let created: InstallationResponse = try await relayRequest(
             bootstrap, "POST", "/v1/installations",
             body: [
@@ -338,7 +362,9 @@ final class PushNotificationCoordinator {
             ],
             authorized: false
         )
-        let creds = Credentials(relayURL: relayURL, installationId: created.installationId, installationSecret: created.installationSecret, deviceToken: deviceToken, apnsEnvironment: environment)
+        let creds = Credentials(
+            relayURL: relayURL, installationId: created.installationId, installationSecret: created.installationSecret,
+            deviceToken: deviceToken, apnsEnvironment: environment)
         try checkSession()
         credentials = creds
         persist()
@@ -360,23 +386,29 @@ final class PushNotificationCoordinator {
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private func relayRequestVoid(_ creds: Credentials, _ method: String, _ path: String, body: [String: String]) async throws {
+    private func relayRequestVoid(_ creds: Credentials, _ method: String, _ path: String, body: [String: String])
+        async throws
+    {
         _ = try await relayData(creds, method, path, body: body, authorized: true)
     }
 
-    private func relayData(_ creds: Credentials, _ method: String, _ path: String, body: [String: String], authorized: Bool) async throws -> Data {
+    private func relayData(
+        _ creds: Credentials, _ method: String, _ path: String, body: [String: String], authorized: Bool
+    ) async throws -> Data {
         guard let url = URL(string: creds.relayURL + path) else { throw PushError.relay(0, "invalid relay URL") }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
         if authorized {
-            request.setValue("Bearer \(creds.installationId).\(creds.installationSecret)", forHTTPHeaderField: "Authorization")
+            request.setValue(
+                "Bearer \(creds.installationId).\(creds.installationSecret)", forHTTPHeaderField: "Authorization")
         }
         let (data, response) = try await relaySession.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
-            let message = (try? JSONDecoder().decode(RelayError.self, from: data))?.error.message
+            let message =
+                (try? JSONDecoder().decode(RelayError.self, from: data))?.error.message
                 ?? String(data: data, encoding: .utf8) ?? ""
             throw PushError.relay(status, message)
         }
@@ -389,16 +421,16 @@ final class PushNotificationCoordinator {
 
     nonisolated static func detectAPNSEnvironment() -> String {
         #if targetEnvironment(simulator)
-        return "sandbox"
+            return "sandbox"
         #else
-        guard let path = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision"),
-              let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-              let text = String(data: data, encoding: .isoLatin1),
-              let keyRange = text.range(of: "<key>aps-environment</key>"),
-              let valueStart = text.range(of: "<string>", range: keyRange.upperBound..<text.endIndex),
-              let valueEnd = text.range(of: "</string>", range: valueStart.upperBound..<text.endIndex)
-        else { return "production" }
-        return text[valueStart.upperBound..<valueEnd.lowerBound] == "development" ? "sandbox" : "production"
+            guard let path = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision"),
+                let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                let text = String(data: data, encoding: .isoLatin1),
+                let keyRange = text.range(of: "<key>aps-environment</key>"),
+                let valueStart = text.range(of: "<string>", range: keyRange.upperBound..<text.endIndex),
+                let valueEnd = text.range(of: "</string>", range: valueStart.upperBound..<text.endIndex)
+            else { return "production" }
+            return text[valueStart.upperBound..<valueEnd.lowerBound] == "development" ? "sandbox" : "production"
         #endif
     }
 }
@@ -422,7 +454,9 @@ nonisolated private enum PushKeychain {
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data else {
+            return nil
+        }
         return try? JSONDecoder().decode(PushNotificationCoordinator.Credentials.self, from: data)
     }
 

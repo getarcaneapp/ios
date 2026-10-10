@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 nonisolated enum ArcaneAPIHelpers {
     static func environmentPath(_ client: ArcaneClient, envID: EnvironmentID, _ suffix: String) -> String {
@@ -14,12 +14,12 @@ nonisolated enum ArcaneAPIHelpers {
 
     static func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
         guard let lhsComponents = URLComponents(url: lhs, resolvingAgainstBaseURL: false),
-              let rhsComponents = URLComponents(url: rhs, resolvingAgainstBaseURL: false),
-              let lhsScheme = lhsComponents.scheme?.lowercased(),
-              let rhsScheme = rhsComponents.scheme?.lowercased(),
-              var lhsHost = lhsComponents.host?.lowercased(),
-              var rhsHost = rhsComponents.host?.lowercased(),
-              lhsScheme == rhsScheme
+            let rhsComponents = URLComponents(url: rhs, resolvingAgainstBaseURL: false),
+            let lhsScheme = lhsComponents.scheme?.lowercased(),
+            let rhsScheme = rhsComponents.scheme?.lowercased(),
+            var lhsHost = lhsComponents.host?.lowercased(),
+            var rhsHost = rhsComponents.host?.lowercased(),
+            lhsScheme == rhsScheme
         else { return false }
         if lhsHost.hasSuffix(".") { lhsHost.removeLast() }
         if rhsHost.hasSuffix(".") { rhsHost.removeLast() }

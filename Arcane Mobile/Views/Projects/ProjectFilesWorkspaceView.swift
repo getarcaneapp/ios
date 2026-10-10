@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 enum ProjectFilesWorkspaceDestination: Hashable {
     case compose
@@ -78,7 +78,8 @@ struct ProjectFilesWorkspaceView: View {
         sessionIdentity == manager.cacheSessionIdentity && manager.acceptsEnvironmentContext(environmentID)
     }
     private var canEdit: Bool {
-        readOnlyReason == nil && sessionIsCurrent && manager.permissions.has(Permission.Projects.update, in: environmentID)
+        readOnlyReason == nil && sessionIsCurrent
+            && manager.permissions.has(Permission.Projects.update, in: environmentID)
     }
 
     private var hasCoreChanges: Bool {
@@ -130,24 +131,38 @@ struct ProjectFilesWorkspaceView: View {
         }
         .disabled(isSaving)
         .interactiveDismissDisabled(hasChanges)
-        .deleteConfirmation(isPresented: $showDiscard, title: "Discard unsaved changes?", confirmTitle: "Discard", dismissOnConfirm: false) {
+        .deleteConfirmation(
+            isPresented: $showDiscard, title: "Discard unsaved changes?", confirmTitle: "Discard",
+            dismissOnConfirm: false
+        ) {
             dismiss()
         }
-        .deleteConfirmation(isPresented: $showReloadConfirmation, title: "Reload and discard unsaved changes?", confirmTitle: "Reload", dismissOnConfirm: false) {
-            Task { await loadFiles(refresh: true) }
+        .deleteConfirmation(
+            isPresented: $showReloadConfirmation, title: "Reload and discard unsaved changes?", confirmTitle: "Reload",
+            dismissOnConfirm: false
+        ) {
+            Task { await loadFiles() }
         }
-        .sheet(isPresented: $showReview, onDismiss: {
+        .sheet(
+            isPresented: $showReview,
+            onDismiss: {
                 guard let deploy = reviewedDeploy else { return }
                 reviewedDeploy = nil
-                if deploy && manager.supportsPost26MobileFeatures { showSaveDeployOptions = true }
-                else { Task { await saveChanges(deploy: deploy) } }
-            }) {
-            ProjectDraftReviewView(originalCompose: originalComposeContent, compose: composeContent,
+                if deploy && manager.supportsPost26MobileFeatures {
+                    showSaveDeployOptions = true
+                } else {
+                    Task { await saveChanges(deploy: deploy) }
+                }
+            }
+        ) {
+            ProjectDraftReviewView(
+                originalCompose: originalComposeContent, compose: composeContent,
                 environmentChanged: envContent != originalEnvContent,
                 additionalChanges: changedManagedFilePaths + stagedChanges.map { $0.relativePath },
-                canDeploy: manager.permissions.has(Permission.Projects.deploy, in: environmentID)) { deploy in
-                    reviewedDeploy = deploy
-                }
+                canDeploy: manager.permissions.has(Permission.Projects.deploy, in: environmentID)
+            ) { deploy in
+                reviewedDeploy = deploy
+            }
         }
         .sheet(isPresented: $showSaveDeployOptions) {
             DeployOptionsSheet(serverOrigin: manager.serverOrigin ?? "", environmentID: environmentID) { options in
@@ -226,7 +241,14 @@ struct ProjectFilesWorkspaceView: View {
             managedFileEditor(path: path)
                 .navigationTitle(ProjectFileWorkspaceHelpers.basename(path))
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { editorToolbar(folderPath: ProjectFileWorkspaceHelpers.parentPath(path), combined: previewEnabled && managedFileContents[path] != nil && (composeRelatedPaths.contains(path) || ProjectFileWorkspaceHelpers.basename(path).hasPrefix(".env"))) }
+                .toolbar {
+                    editorToolbar(
+                        folderPath: ProjectFileWorkspaceHelpers.parentPath(path),
+                        combined: previewEnabled && managedFileContents[path] != nil
+                            && (composeRelatedPaths.contains(path)
+                                || ProjectFileWorkspaceHelpers.basename(path).hasPrefix(".env"))
+                    )
+                }
         }
     }
 
@@ -235,20 +257,21 @@ struct ProjectFilesWorkspaceView: View {
         if previewEnabled {
             VStack(spacing: 0) {
                 editorNotice
-                ComposePreviewEditor(text: $composeContent, readOnly: !canEdit, menuActions: AnyView(projectFileActions(folderPath: "")))
+                ComposePreviewEditor(
+                    text: $composeContent, readOnly: !canEdit, menuActions: AnyView(projectFileActions(folderPath: "")))
             }
         } else {
-        ProjectTextFileEditorView(
-            text: $composeContent,
-            language: .yaml,
-            readOnly: !canEdit,
-            readOnlyMessage: readOnlyReason,
-            isLoading: false,
-            errorMessage: errorMessage,
-            allowsResolveVariables: true,
-            onResolveVariables: { showRender = true }
-        )
-    }
+            ProjectTextFileEditorView(
+                text: $composeContent,
+                language: .yaml,
+                readOnly: !canEdit,
+                readOnlyMessage: readOnlyReason,
+                isLoading: false,
+                errorMessage: errorMessage,
+                allowsResolveVariables: true,
+                onResolveVariables: { showRender = true }
+            )
+        }
 
     }
 
@@ -265,18 +288,19 @@ struct ProjectFilesWorkspaceView: View {
         if previewEnabled {
             VStack(spacing: 0) {
                 editorNotice
-                EnvPreviewEditor(text: $envContent, readOnly: !canEdit, menuActions: AnyView(projectFileActions(folderPath: "")))
+                EnvPreviewEditor(
+                    text: $envContent, readOnly: !canEdit, menuActions: AnyView(projectFileActions(folderPath: "")))
             }
         } else {
-        ProjectTextFileEditorView(
-            text: $envContent,
-            language: .env,
-            readOnly: !canEdit,
-            readOnlyMessage: readOnlyReason,
-            isLoading: false,
-            errorMessage: errorMessage
-        )
-    }
+            ProjectTextFileEditorView(
+                text: $envContent,
+                language: .env,
+                readOnly: !canEdit,
+                readOnlyMessage: readOnlyReason,
+                isLoading: false,
+                errorMessage: errorMessage
+            )
+        }
 
     }
 
@@ -329,7 +353,8 @@ struct ProjectFilesWorkspaceView: View {
         if previewEnabled && manager.permissions.has(Permission.Projects.deploy, in: environmentID) {
             Button("Deploy Saved Project", systemImage: "play") {
                 guard sessionIsCurrent else { return }
-                DeploymentActivityStore.shared.start(kind: .up, envID: environmentID, targetID: projectID,
+                DeploymentActivityStore.shared.start(
+                    kind: .up, envID: environmentID, targetID: projectID,
                     targetName: projectName, environmentName: manager.activeEnvironmentName,
                     manager: manager, mutationStore: mutationStore, deployOptions: requestedDeployOptions)
             }
@@ -344,15 +369,13 @@ struct ProjectFilesWorkspaceView: View {
         }.disabled(!canEdit)
         Divider()
         Button("Reload", systemImage: "arrow.clockwise") {
-            if hasChanges { showReloadConfirmation = true }
-            else { Task { await loadFiles(refresh: true) } }
+            if hasChanges { showReloadConfirmation = true } else { Task { await loadFiles() } }
         }
     }
 
     private var saveButton: some View {
         Button {
-            if previewEnabled { showReview = true }
-            else { Task { await saveChanges() } }
+            if previewEnabled { showReview = true } else { Task { await saveChanges() } }
         } label: {
             if isSaving {
                 ProgressView().scaleEffect(0.8)
@@ -400,7 +423,7 @@ struct ProjectFilesWorkspaceView: View {
                             .foregroundStyle(.secondary)
                         Text("Empty Folder")
                             .font(.headline)
-                        Text(emptyStateMessage(folderPath: folderPath))
+                        Text(emptyStateMessage())
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -410,9 +433,10 @@ struct ProjectFilesWorkspaceView: View {
                     .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
                 } else {
                     ForEach(children) { entry in
-                        NavigationLink(value: entry.isDirectory
-                            ? ProjectFilesWorkspaceDestination.folder(entry.relativePath)
-                            : ProjectFilesWorkspaceDestination.managedFile(entry.relativePath)
+                        NavigationLink(
+                            value: entry.isDirectory
+                                ? ProjectFilesWorkspaceDestination.folder(entry.relativePath)
+                                : ProjectFilesWorkspaceDestination.managedFile(entry.relativePath)
                         ) {
                             ProjectFileBrowserRow(
                                 name: entry.name,
@@ -451,8 +475,7 @@ struct ProjectFilesWorkspaceView: View {
         }
         .listStyle(.insetGrouped)
         .refreshable {
-            if hasChanges { showReloadConfirmation = true }
-            else { await loadFiles(refresh: true) }
+            if hasChanges { showReloadConfirmation = true } else { await loadFiles() }
         }
     }
 
@@ -462,7 +485,7 @@ struct ProjectFilesWorkspaceView: View {
         }
     }
 
-    private func emptyStateMessage(folderPath: String) -> String {
+    private func emptyStateMessage() -> String {
         canEdit ? "Add files or folders here with the + button." : "This folder is empty."
     }
 
@@ -484,23 +507,36 @@ struct ProjectFilesWorkspaceView: View {
             ContentUnavailableView("Folder", systemImage: "folder", description: Text(path))
         } else {
             Group {
-            if previewEnabled && composeRelatedPaths.contains(path) && managedFileContents[path] != nil {
-                ComposePreviewEditor(text: bindingForManagedFile(path), readOnly: !canEdit || displayedFiles.first(where: { $0.relativePath == path })?.isProtected == true, menuActions: AnyView(projectFileActions(folderPath: ProjectFileWorkspaceHelpers.parentPath(path))))
-            } else if previewEnabled && ProjectFileWorkspaceHelpers.basename(path).hasPrefix(".env") && managedFileContents[path] != nil {
-                EnvPreviewEditor(text: bindingForManagedFile(path), readOnly: !canEdit || displayedFiles.first(where: { $0.relativePath == path })?.isProtected == true, menuActions: AnyView(projectFileActions(folderPath: ProjectFileWorkspaceHelpers.parentPath(path))))
-            } else {
-            ProjectTextFileEditorView(
-                text: bindingForManagedFile(path),
-                language: ProjectFileWorkspaceHelpers.language(for: path),
-                readOnly: !canEdit || (displayedFiles.first(where: { $0.relativePath == path })?.isProtected == true),
-                readOnlyMessage: readOnlyReason,
-                isLoading: managedFileLoading.contains(path),
-                errorMessage: managedFileLoadErrors[path],
-                onRetry: {
-                    Task { await loadManagedFileContent(path, force: true) }
+                if previewEnabled && composeRelatedPaths.contains(path) && managedFileContents[path] != nil {
+                    ComposePreviewEditor(
+                        text: bindingForManagedFile(path),
+                        readOnly: !canEdit
+                            || displayedFiles.first(where: { $0.relativePath == path })?.isProtected == true,
+                        menuActions: AnyView(
+                            projectFileActions(folderPath: ProjectFileWorkspaceHelpers.parentPath(path))))
+                } else if previewEnabled && ProjectFileWorkspaceHelpers.basename(path).hasPrefix(".env")
+                    && managedFileContents[path] != nil
+                {
+                    EnvPreviewEditor(
+                        text: bindingForManagedFile(path),
+                        readOnly: !canEdit
+                            || displayedFiles.first(where: { $0.relativePath == path })?.isProtected == true,
+                        menuActions: AnyView(
+                            projectFileActions(folderPath: ProjectFileWorkspaceHelpers.parentPath(path))))
+                } else {
+                    ProjectTextFileEditorView(
+                        text: bindingForManagedFile(path),
+                        language: ProjectFileWorkspaceHelpers.language(for: path),
+                        readOnly: !canEdit
+                            || (displayedFiles.first(where: { $0.relativePath == path })?.isProtected == true),
+                        readOnlyMessage: readOnlyReason,
+                        isLoading: managedFileLoading.contains(path),
+                        errorMessage: managedFileLoadErrors[path],
+                        onRetry: {
+                            Task { await loadManagedFileContent(path, force: true) }
+                        }
+                    )
                 }
-            )
-            }
             }
             .task(id: path) {
                 await loadManagedFileContent(path)
@@ -556,7 +592,7 @@ struct ProjectFilesWorkspaceView: View {
         }
     }
 
-    private func loadFiles(refresh: Bool = false) async {
+    private func loadFiles() async {
         guard sessionIsCurrent, let client = manager.client else { return }
         isLoading = true
         errorMessage = nil
@@ -572,16 +608,22 @@ struct ProjectFilesWorkspaceView: View {
             guard sessionIsCurrent else { return }
             projectName = compose.displayName
             composeRelatedPaths = Set((compose.includeFiles ?? []).map(\.relativePath))
-                .union(["compose.override.yml", "compose.override.yaml", "docker-compose.override.yml", "docker-compose.override.yaml"])
-            composeFileName = compose.composeFileName?.isEmpty == false
+                .union([
+                    "compose.override.yml", "compose.override.yaml", "docker-compose.override.yml",
+                    "docker-compose.override.yaml",
+                ])
+            composeFileName =
+                compose.composeFileName?.isEmpty == false
                 ? (compose.composeFileName ?? "compose.yml")
                 : "compose.yml"
             composeContent = compose.composeContent ?? ""
             envContent = compose.envContent ?? ""
             originalComposeContent = composeContent
             originalEnvContent = envContent
-            readOnlyReason = compose.isArchived ? "Archived projects are read-only." :
-                (compose.gitOpsManagedBy != nil ? "GitOps-managed project files are read-only." : nil)
+            readOnlyReason =
+                compose.isArchived
+                ? "Archived projects are read-only."
+                : (compose.gitOpsManagedBy != nil ? "GitOps-managed project files are read-only." : nil)
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -644,19 +686,27 @@ struct ProjectFilesWorkspaceView: View {
         do {
             if previewEnabled {
                 try ProjectDraftSnapshot(compose: composeContent, environment: envContent).validateSyntax()
-                for change in fileChanges where change.relativePath.lowercased().hasSuffix(".yml") || change.relativePath.lowercased().hasSuffix(".yaml") {
-                    if let content = change.content { try ProjectDraftSnapshot(compose: content, environment: "").validateSyntax() }
+                for change in fileChanges
+                where change.relativePath.lowercased().hasSuffix(".yml")
+                    || change.relativePath.lowercased().hasSuffix(".yaml")
+                {
+                    if let content = change.content {
+                        try ProjectDraftSnapshot(compose: content, environment: "").validateSyntax()
+                    }
                 }
             }
             // Core files lack an atomic revision token: refetch before any write.
             let latest = try await client.projects.compose(envID: environmentID, projectID: projectID)
             guard canEdit else { return }
             guard !latest.isArchived, latest.gitOpsManagedBy == nil else {
-                readOnlyReason = "This project is read-only."; return
+                readOnlyReason = "This project is read-only."
+                return
             }
             guard (latest.composeContent ?? "") == originalComposeContent,
-                  (latest.envContent ?? "") == originalEnvContent else {
-                errorMessage = "Project files changed on the server. Copy your draft before reloading and applying your changes."
+                (latest.envContent ?? "") == originalEnvContent
+            else {
+                errorMessage =
+                    "Project files changed on the server. Copy your draft before reloading and applying your changes."
                 showToast(.error("Server files changed. Your draft is preserved."))
                 return
             }
@@ -687,17 +737,21 @@ struct ProjectFilesWorkspaceView: View {
             guard sessionIsCurrent else { return }
             showToast(.success("Saved"))
             if deploy && manager.permissions.has(Permission.Projects.deploy, in: environmentID) {
-                let started = DeploymentActivityStore.shared.start(kind: .up, envID: environmentID, targetID: projectID,
+                let started = DeploymentActivityStore.shared.start(
+                    kind: .up, envID: environmentID, targetID: projectID,
                     targetName: projectName, environmentName: manager.activeEnvironmentName,
                     manager: manager, mutationStore: mutationStore, deployOptions: requestedDeployOptions)
                 if !started { showToast(.info("Files saved. Use Deploy Saved Project to try deployment again.")) }
             }
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
-            await loadFiles(refresh: true)
+            await loadFiles()
         } catch {
             errorMessage = friendlyErrorMessage(error)
-            showToast(.error(savedCoreFiles ? "Compose and environment saved; additional files could not be saved." : "Couldn't save"))
+            showToast(
+                .error(
+                    savedCoreFiles
+                        ? "Compose and environment saved; additional files could not be saved." : "Couldn't save"))
             if savedCoreFiles && sessionIsCurrent {
                 await invalidateProjectCaches()
                 mutationStore.markChanged(kind: .projects, envID: environmentID)
@@ -743,12 +797,14 @@ struct ProjectFilesWorkspaceView: View {
     private func submitFileDialog(_ result: ProjectFileDialogResult) -> String? {
         switch result {
         case .createFile(let parentPath, let name):
-            guard let path = ProjectFileWorkspaceHelpers.planCreate(
-                existingPaths: displayedPathSet,
-                parentPath: parentPath,
-                name: name,
-                composeFileName: composeFileName
-            ) else {
+            guard
+                let path = ProjectFileWorkspaceHelpers.planCreate(
+                    existingPaths: displayedPathSet,
+                    parentPath: parentPath,
+                    name: name,
+                    composeFileName: composeFileName
+                )
+            else {
                 return "Use a unique file name that is not reserved by Arcane."
             }
             stagedChanges.append(ProjectFileChange(operation: .createFile, relativePath: path, content: ""))
@@ -756,23 +812,27 @@ struct ProjectFilesWorkspaceView: View {
             selected = .managedFile(path)
             return nil
         case .createFolder(let parentPath, let name):
-            guard let path = ProjectFileWorkspaceHelpers.planCreate(
-                existingPaths: displayedPathSet,
-                parentPath: parentPath,
-                name: name,
-                composeFileName: composeFileName
-            ) else {
+            guard
+                let path = ProjectFileWorkspaceHelpers.planCreate(
+                    existingPaths: displayedPathSet,
+                    parentPath: parentPath,
+                    name: name,
+                    composeFileName: composeFileName
+                )
+            else {
                 return "Use a unique folder name that is not reserved by Arcane."
             }
             stagedChanges.append(ProjectFileChange(operation: .createFolder, relativePath: path))
             return nil
         case .rename(let path, let newName):
-            guard let plan = ProjectFileWorkspaceHelpers.planRename(
-                existingPaths: displayedPathSet,
-                relativePath: path,
-                newName: newName,
-                composeFileName: composeFileName
-            ) else {
+            guard
+                let plan = ProjectFileWorkspaceHelpers.planRename(
+                    existingPaths: displayedPathSet,
+                    relativePath: path,
+                    newName: newName,
+                    composeFileName: composeFileName
+                )
+            else {
                 return "Use a unique file name that is not reserved by Arcane."
             }
             stagedChanges.append(ProjectFileChange(operation: .rename, relativePath: path, newName: plan.newName))
@@ -783,12 +843,13 @@ struct ProjectFilesWorkspaceView: View {
             return nil
         case .move(let path, let newParentPath):
             guard let entry = displayedFiles.first(where: { $0.relativePath == path }),
-                  let newPath = ProjectFileWorkspaceHelpers.planMove(
+                let newPath = ProjectFileWorkspaceHelpers.planMove(
                     entry: entry,
                     existingPaths: displayedPathSet,
                     relativePath: path,
                     newParentPath: newParentPath
-                  ) else {
+                )
+            else {
                 return "Choose a different destination folder."
             }
             stagedChanges.append(ProjectFileChange(operation: .move, relativePath: path, newParentPath: newParentPath))
@@ -801,14 +862,16 @@ struct ProjectFilesWorkspaceView: View {
     }
 
     private func stageDelete(_ entry: ManagedProjectFileEntry) {
-        stagedChanges.append(ProjectFileChange(
-            operation: .delete,
-            relativePath: entry.relativePath,
-            recursive: entry.isDirectory ? true : nil
-        ))
+        stagedChanges.append(
+            ProjectFileChange(
+                operation: .delete,
+                relativePath: entry.relativePath,
+                recursive: entry.isDirectory ? true : nil
+            ))
         removeManagedState(root: entry.relativePath)
         if case .managedFile(let path) = selected,
-           ProjectFileWorkspaceHelpers.pathMatches(path, root: entry.relativePath) {
+            ProjectFileWorkspaceHelpers.pathMatches(path, root: entry.relativePath)
+        {
             selected = .files
         }
     }
@@ -819,13 +882,16 @@ struct ProjectFilesWorkspaceView: View {
 
     private func remapManagedState(from oldPath: String, to newPath: String) {
         managedFileContents = ProjectFileWorkspaceHelpers.remapRecord(managedFileContents, from: oldPath, to: newPath)
-        originalManagedFileContents = ProjectFileWorkspaceHelpers.remapRecord(originalManagedFileContents, from: oldPath, to: newPath)
-        managedFileLoadErrors = ProjectFileWorkspaceHelpers.remapRecord(managedFileLoadErrors, from: oldPath, to: newPath)
-        managedFileLoading = Set(managedFileLoading.map { path in
-            ProjectFileWorkspaceHelpers.pathMatches(path, root: oldPath)
-                ? "\(newPath)\(path.dropFirst(oldPath.count))"
-                : path
-        })
+        originalManagedFileContents = ProjectFileWorkspaceHelpers.remapRecord(
+            originalManagedFileContents, from: oldPath, to: newPath)
+        managedFileLoadErrors = ProjectFileWorkspaceHelpers.remapRecord(
+            managedFileLoadErrors, from: oldPath, to: newPath)
+        managedFileLoading = Set(
+            managedFileLoading.map { path in
+                ProjectFileWorkspaceHelpers.pathMatches(path, root: oldPath)
+                    ? "\(newPath)\(path.dropFirst(oldPath.count))"
+                    : path
+            })
     }
 
     private func removeManagedState(root: String) {
@@ -837,10 +903,12 @@ struct ProjectFilesWorkspaceView: View {
 
     private func invalidateProjectCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "projects") + "*",
-            client.rest.environmentPath(environmentID, "projects/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "projects") + "*",
+                client.rest.environmentPath(environmentID, "projects/*"),
+            ])
     }
 }
 
@@ -1282,22 +1350,26 @@ enum ProjectFileWorkspaceHelpers {
         "compose.yaml",
         "compose.yml",
         "docker-compose.yaml",
-        "docker-compose.yml"
+        "docker-compose.yml",
     ]
 
     static func apply(projectFiles: [ProjectFile], changes: [ProjectFileChange]) -> [ManagedProjectFileEntry] {
-        var entries = Dictionary(uniqueKeysWithValues: projectFiles.map { file in
-            (file.relativePath, ManagedProjectFileEntry(
-                path: file.path,
-                relativePath: file.relativePath,
-                name: file.name.isEmpty ? basename(file.relativePath) : file.name,
-                isDirectory: file.isDirectory,
-                size: file.size,
-                protected: file.protected ?? (file.editable == false),
-                pending: false,
-                depth: depth(file.relativePath)
-            ))
-        })
+        var entries = Dictionary(
+            uniqueKeysWithValues: projectFiles.map { file in
+                (
+                    file.relativePath,
+                    ManagedProjectFileEntry(
+                        path: file.path,
+                        relativePath: file.relativePath,
+                        name: file.name.isEmpty ? basename(file.relativePath) : file.name,
+                        isDirectory: file.isDirectory,
+                        size: file.size,
+                        protected: file.protected ?? (file.editable == false),
+                        pending: false,
+                        depth: depth(file.relativePath)
+                    )
+                )
+            })
 
         for change in changes {
             let relativePath = normalize(change.relativePath)
@@ -1421,12 +1493,13 @@ enum ProjectFileWorkspaceHelpers {
     }
 
     static func remapRecord<T>(_ record: [String: T], from oldPath: String, to newPath: String) -> [String: T] {
-        Dictionary(uniqueKeysWithValues: record.map { path, value in
-            if pathMatches(path, root: oldPath) {
-                return ("\(newPath)\(path.dropFirst(oldPath.count))", value)
-            }
-            return (path, value)
-        })
+        Dictionary(
+            uniqueKeysWithValues: record.map { path, value in
+                if pathMatches(path, root: oldPath) {
+                    return ("\(newPath)\(path.dropFirst(oldPath.count))", value)
+                }
+                return (path, value)
+            })
     }
 
     static func removeRecord<T>(_ record: [String: T], root: String) -> [String: T] {

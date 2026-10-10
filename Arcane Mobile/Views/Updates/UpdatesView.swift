@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct UpdatesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -21,7 +21,9 @@ struct UpdatesView: View {
     }
 
     private var checkAllItem: ActionButtonItem {
-        ActionButtonItem(id: "check-all-updates", title: "Check All", systemImage: "arrow.clockwise", tint: .accentColor) {
+        ActionButtonItem(
+            id: "check-all-updates", title: "Check All", systemImage: "arrow.clockwise", tint: .accentColor
+        ) {
             presentedEnvironments = fleet.environments
             pendingFleetAction = .checkImages
         }

@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Arcane_Mobile
 
 @Suite("Arcane Compose metadata")
@@ -8,9 +9,18 @@ struct ComposeArcaneMetadataTests {
 
     @Test func rootAndServiceMetadataOfferTheirSupportedFields() throws {
         #expect(ComposeSchema.fields(at: []).contains { $0.name == "x-arcane" && $0.kinds == [.mapping] })
-        #expect(ComposeSchema.fields(at: [.key("services"), .key("web")]).contains { $0.name == "x-arcane" && $0.kinds == [.mapping] })
-        #expect(Set(ComposeSchema.fields(at: metadata).map(\.name)) == ["icon", "icons", "icon-light", "icon-dark", "hidden", "urls", "tags", "updater"])
-        #expect(Set(ComposeSchema.fields(at: serviceMetadata).map(\.name)) == ["icon", "icons", "icon-light", "icon-dark", "hidden", "updater"])
+        #expect(
+            ComposeSchema.fields(at: [.key("services"), .key("web")]).contains {
+                $0.name == "x-arcane" && $0.kinds == [.mapping]
+            })
+        #expect(
+            Set(ComposeSchema.fields(at: metadata).map(\.name)) == [
+                "icon", "icons", "icon-light", "icon-dark", "hidden", "urls", "tags", "updater",
+            ])
+        #expect(
+            Set(ComposeSchema.fields(at: serviceMetadata).map(\.name)) == [
+                "icon", "icons", "icon-light", "icon-dark", "hidden", "updater",
+            ])
         for path in [metadata, serviceMetadata] {
             #expect(try #require(ComposeSchema.value(at: path + [.key("hidden")])).kinds == [.boolean])
             #expect(Set(try #require(ComposeSchema.value(at: path + [.key("icons")])).kinds) == [.string, .sequence])
@@ -21,7 +31,10 @@ struct ComposeArcaneMetadataTests {
     @Test func updaterAndTagItemsHaveTypedFieldsAndEnums() throws {
         for path in [metadata, serviceMetadata] {
             let updater = path + [.key("updater")]
-            #expect(Set(ComposeSchema.fields(at: updater).map(\.name)) == ["enabled", "strategy", "constraint", "tag-pattern"])
+            #expect(
+                Set(ComposeSchema.fields(at: updater).map(\.name)) == [
+                    "enabled", "strategy", "constraint", "tag-pattern",
+                ])
             #expect(try #require(ComposeSchema.value(at: updater + [.key("enabled")])).kinds == [.boolean])
             let strategy = try #require(ComposeSchema.value(at: updater + [.key("strategy")]))
             #expect(strategy.kinds == [.string])
@@ -56,7 +69,9 @@ struct ComposeArcaneMetadataTests {
         let document = try ComposeDocument(edited)
         #expect(document.nativeField(at: updater + [.key("enabled")]).kind == .boolean)
         #expect(document.nativeField(at: tag + [.key("name")]).value == "Production")
-        for path in [updater + [.key("enabled")], updater + [.key("strategy")], tag + [.key("name")], tag + [.key("color")]] {
+        for path in [
+            updater + [.key("enabled")], updater + [.key("strategy")], tag + [.key("name")], tag + [.key("color")],
+        ] {
             let field = document.nativeField(at: path)
             #expect(try document.settingNative(field.value, kind: field.kind, at: path) == edited)
         }

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ImageDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -95,9 +95,20 @@ struct ImageDetailView: View {
             }
         }
         .sheet(isPresented: $showTag) { ImageTagView(environmentID: environmentID, imageID: image.id) }
-        .onDisappear { exportTask?.cancel(); cleanupExport() }
-        .onChange(of: manager.clientGeneration) { exportTask?.cancel(); cleanupExport(); showTag = false }
-        .onChange(of: manager.activeEnvironmentID) { exportTask?.cancel(); cleanupExport(); showTag = false }
+        .onDisappear {
+            exportTask?.cancel()
+            cleanupExport()
+        }
+        .onChange(of: manager.clientGeneration) {
+            exportTask?.cancel()
+            cleanupExport()
+            showTag = false
+        }
+        .onChange(of: manager.activeEnvironmentID) {
+            exportTask?.cancel()
+            cleanupExport()
+            showTag = false
+        }
         .task { await loadDetails() }
         .task { await loadUpdateStatus() }
         .task { await loadUsingContainers() }
@@ -117,36 +128,39 @@ struct ImageDetailView: View {
     private var actionOverflow: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
         if manager.permissions.has("images:tag", in: environmentID) {
-            items.append(ActionButtonItem(
-                id: "tag",
-                title: "Tag Image",
-                systemImage: "tag",
-                tint: .accentColor
-            ) {
-                showTag = true
-            })
+            items.append(
+                ActionButtonItem(
+                    id: "tag",
+                    title: "Tag Image",
+                    systemImage: "tag",
+                    tint: .accentColor
+                ) {
+                    showTag = true
+                })
         }
         if manager.permissions.has("images:read", in: environmentID) {
-            items.append(ActionButtonItem(
-                id: "export",
-                title: exporting ? "Exporting…" : "Export Image",
-                systemImage: "square.and.arrow.up",
-                tint: .accentColor
-            ) {
-                guard !exporting else { return }
-                exportTask = Task { await exportImage() }
-            })
+            items.append(
+                ActionButtonItem(
+                    id: "export",
+                    title: exporting ? "Exporting…" : "Export Image",
+                    systemImage: "square.and.arrow.up",
+                    tint: .accentColor
+                ) {
+                    guard !exporting else { return }
+                    exportTask = Task { await exportImage() }
+                })
         }
-        items.append(ActionButtonItem(
-            id: "remove",
-            title: "Remove Image",
-            systemImage: "trash",
-            tint: .red,
-            role: .destructive,
-            confirmationMessage: "This will remove the image from the host."
-        ) {
-            Task { await removeImage() }
-        })
+        items.append(
+            ActionButtonItem(
+                id: "remove",
+                title: "Remove Image",
+                systemImage: "trash",
+                tint: .red,
+                role: .destructive,
+                confirmationMessage: "This will remove the image from the host."
+            ) {
+                Task { await removeImage() }
+            })
         return items
     }
 
@@ -160,8 +174,12 @@ struct ImageDetailView: View {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let file = directory.appendingPathComponent("image.tar")
             try await client.images.export(envID: environmentID, imageID: image.id, to: file)
-            guard !Task.isCancelled, generation == manager.clientGeneration else { try? FileManager.default.removeItem(at: directory); return }
-            cleanupExport(); exportedImage = file
+            guard !Task.isCancelled, generation == manager.clientGeneration else {
+                try? FileManager.default.removeItem(at: directory)
+                return
+            }
+            cleanupExport()
+            exportedImage = file
             showToast(.info("Image archive ready to share from the actions menu"))
         } catch {
             try? FileManager.default.removeItem(at: directory)
@@ -213,7 +231,7 @@ struct ImageDetailView: View {
     }
 
     private func identitySection(_ details: ImageDetailSummary) -> some View {
-        detailSection(title: "Identity", systemImage: "number") {
+        detailSection(title: "Identity") {
             valueRow("Image ID", monospacedValue: details.id)
             if !details.repoTags.isEmpty {
                 valueRow("Tags", monospacedValue: details.repoTags.joined(separator: "\n"))
@@ -222,7 +240,7 @@ struct ImageDetailView: View {
     }
 
     private var usedBySection: some View {
-        detailSection(title: "Used By", systemImage: "cube.box", count: usingContainers.count) {
+        detailSection(title: "Used By", count: usingContainers.count) {
             ForEach(Array(usingContainers.enumerated()), id: \.element.id) { _, container in
                 NavigationLink {
                     ContainerDetailView(container: container, environmentID: environmentID)
@@ -240,7 +258,7 @@ struct ImageDetailView: View {
     }
 
     private func tagsSection(_ tags: [String]) -> some View {
-        detailSection(title: "Tags", systemImage: "tag") {
+        detailSection(title: "Tags") {
             ForEach(Array(tags.enumerated()), id: \.element) { _, tag in
                 MonospacedValue(value: tag)
                     .font(.caption.monospaced())
@@ -255,7 +273,7 @@ struct ImageDetailView: View {
             return AnyView(EmptyView())
         }
         return AnyView(
-            detailSection(title: "Image Config", systemImage: "slider.horizontal.3") {
+            detailSection(title: "Image Config") {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     switch row {
                     case .value(let label, let value):
@@ -295,11 +313,12 @@ struct ImageDetailView: View {
 
     private func detailSection<Content: View>(
         title: String,
-        systemImage: String,
         count: Int? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        Section { content() } header: {
+        Section {
+            content()
+        } header: {
             Text(verbatim: count.map { "\(title) (\($0))" } ?? title)
         }
     }
@@ -317,7 +336,9 @@ struct ImageDetailView: View {
         LabeledContent(label) { Text(textValue).textSelection(.enabled) }
     }
 
-    private func configNavLink<Destination: View>(_ title: String, @ViewBuilder destination: () -> Destination) -> some View {
+    private func configNavLink<Destination: View>(_ title: String, @ViewBuilder destination: () -> Destination)
+        -> some View
+    {
         NavigationLink(destination: destination()) { Text(title) }
     }
 
@@ -326,9 +347,12 @@ struct ImageDetailView: View {
             ResourceMetadataItem(label: "Size", value: details.size.byteString, systemImage: "internaldrive"),
             ResourceMetadataItem(label: "Created", value: headerDate(details.created), systemImage: "calendar"),
             ResourceMetadataItem(label: "Platform", value: "\(details.os)/\(details.architecture)", systemImage: "cpu"),
-            ResourceMetadataItem(label: "Author", value: nonEmptyResourceValue(details.author) ?? "Unknown", systemImage: "person"),
-            ResourceMetadataItem(label: "Docker", value: nonEmptyResourceValue(details.dockerVersion) ?? "Unknown", systemImage: "shippingbox"),
-            ResourceMetadataItem(label: "Consumers", value: String(usingContainers.count), systemImage: "cube.box")
+            ResourceMetadataItem(
+                label: "Author", value: nonEmptyResourceValue(details.author) ?? "Unknown", systemImage: "person"),
+            ResourceMetadataItem(
+                label: "Docker", value: nonEmptyResourceValue(details.dockerVersion) ?? "Unknown",
+                systemImage: "shippingbox"),
+            ResourceMetadataItem(label: "Consumers", value: String(usingContainers.count), systemImage: "cube.box"),
         ]
     }
 
@@ -368,8 +392,9 @@ struct ImageDetailView: View {
                     UpdateStateBadge(state: updateState)
                 }
                 if let info = updateInfo, info.hasUpdate,
-                   let latest = info.latestVersion, !info.currentVersion.isEmpty,
-                   latest != info.currentVersion {
+                    let latest = info.latestVersion, !info.currentVersion.isEmpty,
+                    latest != info.currentVersion
+                {
                     Text("\(info.currentVersion) → \(latest)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -465,7 +490,8 @@ struct ImageDetailView: View {
         let imageHex = normalizedID(image.id)
         let containerHex = normalizedID(container.imageId)
         if !imageHex.isEmpty, !containerHex.isEmpty,
-           imageHex == containerHex || imageHex.hasPrefix(containerHex) || containerHex.hasPrefix(imageHex) {
+            imageHex == containerHex || imageHex.hasPrefix(containerHex) || containerHex.hasPrefix(imageHex)
+        {
             return true
         }
         // Fallback: the container's image ref matches one of this image's tags,
@@ -482,7 +508,10 @@ struct ImageDetailView: View {
         var r = ref
         if let at = r.firstIndex(of: "@") { r = String(r[..<at]) }  // drop @sha256:… digest
         for prefix in ["index.docker.io/library/", "index.docker.io/", "docker.io/library/", "docker.io/", "library/"] {
-            if r.hasPrefix(prefix) { r = String(r.dropFirst(prefix.count)); break }
+            if r.hasPrefix(prefix) {
+                r = String(r.dropFirst(prefix.count))
+                break
+            }
         }
         return r
     }
@@ -493,10 +522,12 @@ struct ImageDetailView: View {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
             if let cached = manager.cached {
-                await cached.invalidate(envID: environmentID, paths: [
-                    client.rest.environmentPath(environmentID, "images") + "*",
-                    client.rest.environmentPath(environmentID, "images/*")
-                ])
+                await cached.invalidate(
+                    envID: environmentID,
+                    paths: [
+                        client.rest.environmentPath(environmentID, "images") + "*",
+                        client.rest.environmentPath(environmentID, "images/*"),
+                    ])
             }
             mutationStore.markChanged(kind: .images, envID: environmentID)
             dismiss()
@@ -506,8 +537,8 @@ struct ImageDetailView: View {
     }
 }
 
-private extension String {
-    var formattedDate: String {
+extension String {
+    fileprivate var formattedDate: String {
         ArcaneDateFormatting.formattedISO8601(self, date: .abbreviated, time: .shortened)
     }
 }

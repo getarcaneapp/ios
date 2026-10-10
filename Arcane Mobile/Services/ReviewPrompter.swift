@@ -1,7 +1,7 @@
 import Foundation
+import Observation
 import StoreKit
 import UIKit
-import Observation
 
 /// Tracks user-success milestones (container starts, project ups, etc.) and
 /// requests an App Store review after a configurable threshold, suppressed
@@ -34,13 +34,14 @@ final class ReviewPrompter {
         let lastVersion = UserDefaults.standard.string(forKey: Self.lastPromptVersionKey) ?? ""
         guard actions >= Self.threshold, lastVersion != currentVersion else { return }
 
-        guard let scene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive })
+        guard
+            let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive })
         else { return }
 
         Task {
-             AppStore.requestReview(in: scene)
+            AppStore.requestReview(in: scene)
         }
         UserDefaults.standard.set(currentVersion, forKey: Self.lastPromptVersionKey)
     }

@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct GitOpsSyncsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -13,8 +13,12 @@ struct GitOpsSyncsView: View {
             path: { _, client in client.rest.environmentPath(environmentID, "gitops-syncs") },
             emptyTitle: "No GitOps Syncs",
             actions: [
-                .init(id: "sync", title: "Sync Now", systemImage: "arrow.clockwise", method: .post, pathSuffix: "/{id}/sync"),
-                .init(id: "delete", title: "Delete", systemImage: "trash", method: .delete, pathSuffix: "/{id}", destructive: true)
+                .init(
+                    id: "sync", title: "Sync Now", systemImage: "arrow.clockwise", method: .post,
+                    pathSuffix: "/{id}/sync"),
+                .init(
+                    id: "delete", title: "Delete", systemImage: "trash", method: .delete, pathSuffix: "/{id}",
+                    destructive: true),
             ],
             createTitle: "Create GitOps Sync",
             createFields: [
@@ -22,7 +26,7 @@ struct GitOpsSyncsView: View {
                 .init("repositoryId", label: "Repository ID", required: true),
                 .init("branch", label: "Branch", placeholder: "main"),
                 .init("path", label: "Path", required: true),
-                .init("enabled", label: "Enabled", type: .toggle)
+                .init("enabled", label: "Enabled", type: .toggle),
             ],
             createPath: { _, client in client.rest.environmentPath(environmentID, "gitops-syncs") },
             managementDestination: manager.canAccess(.gitRepositories) ? .gitRepositories : nil

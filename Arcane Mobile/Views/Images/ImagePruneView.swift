@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct ImagePruneView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -73,7 +73,10 @@ struct ImagePruneView: View {
                     }
                 }
             }
-            .alert("Prune failed", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            .alert(
+                "Prune failed",
+                isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+            ) {
                 Button("OK") { errorMessage = nil }
             } message: {
                 Text(errorMessage ?? "")
@@ -100,10 +103,12 @@ struct ImagePruneView: View {
                 until: mode == .olderThan ? until : nil
             )
             if let cached = manager.cached {
-                await cached.invalidate(envID: environmentID, paths: [
-                    client.rest.environmentPath(environmentID, "images") + "*",
-                    client.rest.environmentPath(environmentID, "images/*")
-                ])
+                await cached.invalidate(
+                    envID: environmentID,
+                    paths: [
+                        client.rest.environmentPath(environmentID, "images") + "*",
+                        client.rest.environmentPath(environmentID, "images/*"),
+                    ])
             }
             mutationStore.markChanged(kind: .images, envID: environmentID)
             await onComplete()

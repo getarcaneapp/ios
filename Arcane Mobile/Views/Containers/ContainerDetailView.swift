@@ -1,6 +1,6 @@
+import Arcane
 import SwiftUI
 import UIKit
-import Arcane
 
 struct ContainerDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -271,7 +271,8 @@ struct ContainerDetailView: View {
                 Task { await performAction(.unpause, actionID: "unpause") }
             }
         } else if isRunning {
-            return ActionButtonItem(id: "stop", title: "Stop", systemImage: "stop.fill", tint: .red, role: .destructive) {
+            return ActionButtonItem(id: "stop", title: "Stop", systemImage: "stop.fill", tint: .red, role: .destructive)
+            {
                 Task { await performAction(.stop, actionID: "stop") }
             }
         } else {
@@ -284,24 +285,30 @@ struct ContainerDetailView: View {
     private var actionSecondary: [ActionButtonItem] {
         var items: [ActionButtonItem] = []
         if container.updateInfo?.hasUpdate == true,
-           manager.permissions.has(Permission.Containers.autoUpdate, in: environmentID) {
-            items.append(ActionButtonItem(
-                id: "update",
-                title: "Update",
-                systemImage: "arrow.up.circle.fill",
-                tint: .blue
-            ) {
-                startContainerUpdate()
-            })
+            manager.permissions.has(Permission.Containers.autoUpdate, in: environmentID)
+        {
+            items.append(
+                ActionButtonItem(
+                    id: "update",
+                    title: "Update",
+                    systemImage: "arrow.up.circle.fill",
+                    tint: .blue
+                ) {
+                    startContainerUpdate()
+                })
         }
         if isRunning && !isPaused {
-            items.append(ActionButtonItem(id: "restart", title: "Restart", systemImage: "arrow.clockwise", tint: .orange) {
-                Task { await performAction(.restart, actionID: "restart") }
-            })
+            items.append(
+                ActionButtonItem(id: "restart", title: "Restart", systemImage: "arrow.clockwise", tint: .orange) {
+                    Task { await performAction(.restart, actionID: "restart") }
+                })
         }
-        items.append(ActionButtonItem(id: "redeploy", title: "Redeploy", systemImage: "arrow.triangle.2.circlepath", tint: .accentColor) {
-            startRedeploy()
-        })
+        items.append(
+            ActionButtonItem(
+                id: "redeploy", title: "Redeploy", systemImage: "arrow.triangle.2.circlepath", tint: .accentColor
+            ) {
+                startRedeploy()
+            })
         return items
     }
 
@@ -339,39 +346,51 @@ struct ContainerDetailView: View {
 
     private var actionOverflow: [ActionButtonItem] {
         var items: [ActionButtonItem] = [
-            ActionButtonItem(id: "inspect", title: "Inspect", systemImage: "doc.text.magnifyingglass", tint: .accentColor) {
+            ActionButtonItem(
+                id: "inspect", title: "Inspect", systemImage: "doc.text.magnifyingglass", tint: .accentColor
+            ) {
                 showInspect = true
             },
-            ActionButtonItem(id: "download-logs", title: "Download Logs", systemImage: "square.and.arrow.down", tint: .accentColor) {
+            ActionButtonItem(
+                id: "download-logs", title: "Download Logs", systemImage: "square.and.arrow.down", tint: .accentColor
+            ) {
                 Task { await downloadLogs() }
-            }
+            },
         ]
         if manager.serverCapabilities?.mode == .rbac {
             if manager.permissions.has("containers:edit", in: environmentID) {
-                items.append(ActionButtonItem(id: "edit", title: "Edit", systemImage: "slider.horizontal.3", tint: .accentColor) { showEdit = true })
+                items.append(
+                    ActionButtonItem(id: "edit", title: "Edit", systemImage: "slider.horizontal.3", tint: .accentColor)
+                    { showEdit = true })
             }
             if manager.permissions.has("images:commit", in: environmentID) {
-                items.append(ActionButtonItem(id: "commit", title: "Commit to Image", systemImage: "square.stack.3d.up", tint: .accentColor) { showCommit = true })
+                items.append(
+                    ActionButtonItem(
+                        id: "commit", title: "Commit to Image", systemImage: "square.stack.3d.up", tint: .accentColor
+                    ) { showCommit = true })
             }
         }
         if isRunning && !isPaused {
-            items.append(ActionButtonItem(id: "terminal", title: "Terminal", systemImage: "terminal.fill", tint: .accentColor) {
-                showTerminal = true
-            })
+            items.append(
+                ActionButtonItem(id: "terminal", title: "Terminal", systemImage: "terminal.fill", tint: .accentColor) {
+                    showTerminal = true
+                })
         }
-        items.append(ActionButtonItem(id: "rename", title: "Rename", systemImage: "pencil", tint: .accentColor) {
-            showRename = true
-        })
-        items.append(ActionButtonItem(
-            id: "delete",
-            title: "Delete",
-            systemImage: "trash",
-            tint: .red,
-            role: .destructive,
-            confirmationMessage: "This will permanently delete the container and cannot be undone."
-        ) {
-            Task { await deleteContainer() }
-        })
+        items.append(
+            ActionButtonItem(id: "rename", title: "Rename", systemImage: "pencil", tint: .accentColor) {
+                showRename = true
+            })
+        items.append(
+            ActionButtonItem(
+                id: "delete",
+                title: "Delete",
+                systemImage: "trash",
+                tint: .red,
+                role: .destructive,
+                confirmationMessage: "This will permanently delete the container and cannot be undone."
+            ) {
+                Task { await deleteContainer() }
+            })
         return items
     }
 
@@ -380,7 +399,11 @@ struct ContainerDetailView: View {
         systemImage: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        Section { content() } header: { Label(title, systemImage: systemImage) }
+        Section {
+            content()
+        } header: {
+            Label(title, systemImage: systemImage)
+        }
     }
 
     private func row(_ label: String, @ViewBuilder value: () -> some View) -> some View {
@@ -475,9 +498,9 @@ struct ContainerDetailView: View {
 
     @ViewBuilder
     private func hostConfigSection(_ hostConfig: ContainerHostConfig, mounts: [ContainerMount]) -> some View {
-        let hasRows = hostConfig.networkMode != nil || hostConfig.restartPolicy != nil ||
-            (hostConfig.memory ?? 0) > 0 || hostConfig.privileged == true ||
-            !mounts.isEmpty
+        let hasRows =
+            hostConfig.networkMode != nil || hostConfig.restartPolicy != nil || (hostConfig.memory ?? 0) > 0
+            || hostConfig.privileged == true || !mounts.isEmpty
         if hasRows {
             detailSection(title: "Host Config", systemImage: "server.rack") {
                 if let mode = hostConfig.networkMode {
@@ -522,7 +545,8 @@ struct ContainerDetailView: View {
     }
 
     private func containerMetadata(_ details: ContainerDetails) -> [ResourceMetadataItem] {
-        let primaryAddress = details.networkSettings.networks
+        let primaryAddress =
+            details.networkSettings.networks
             .sorted { $0.key < $1.key }
             .compactMap { nonEmptyResourceValue($0.value.ipAddress) }
             .first ?? "Unavailable"
@@ -533,15 +557,19 @@ struct ContainerDetailView: View {
         }
         uptimeStatus = uptimeStatus.trimmingCharacters(in: .whitespaces)
         return [
-            ResourceMetadataItem(label: "Image", value: nonEmptyResourceValue(details.image) ?? container.image, systemImage: "photo.stack"),
-            ResourceMetadataItem(label: "Uptime / Status", value: nonEmptyResourceValue(uptimeStatus) ?? statusString, systemImage: "clock"),
+            ResourceMetadataItem(
+                label: "Image", value: nonEmptyResourceValue(details.image) ?? container.image,
+                systemImage: "photo.stack"),
+            ResourceMetadataItem(
+                label: "Uptime / Status", value: nonEmptyResourceValue(uptimeStatus) ?? statusString,
+                systemImage: "clock"),
             ResourceMetadataItem(label: "Address", value: primaryAddress, systemImage: "network", monospaced: true),
             ResourceMetadataItem(
                 label: "Health",
                 value: health.capitalized,
                 systemImage: "heart.text.square",
                 tint: health.lowercased() == "healthy" ? .green : .secondary
-            )
+            ),
         ]
     }
 
@@ -639,10 +667,12 @@ struct ContainerDetailView: View {
 
     private func invalidateContainerCaches() async {
         guard let cached = manager.cached, let client = manager.client else { return }
-        await cached.invalidate(envID: environmentID, paths: [
-            client.rest.environmentPath(environmentID, "containers"),
-            client.rest.environmentPath(environmentID, "containers/*")
-        ])
+        await cached.invalidate(
+            envID: environmentID,
+            paths: [
+                client.rest.environmentPath(environmentID, "containers"),
+                client.rest.environmentPath(environmentID, "containers/*"),
+            ])
     }
 }
 
@@ -681,8 +711,9 @@ struct EnvVarsView: View {
                 return true
             }
             if !variable.isPotentialSecret,
-               let value = variable.value,
-               value.localizedCaseInsensitiveContains(query) {
+                let value = variable.value,
+                value.localizedCaseInsensitiveContains(query)
+            {
                 return true
             }
             return variable.value == nil
@@ -735,8 +766,9 @@ private struct EnvironmentVariableValueRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let value = variable.value,
-               !variable.name.isEmpty,
-               !value.isEmpty {
+                !variable.name.isEmpty,
+                !value.isEmpty
+            {
                 HStack(spacing: 8) {
                     Text(variable.name)
                         .font(.caption.bold())
@@ -852,8 +884,8 @@ struct BindsView: View {
 }
 
 // MARK: - Helpers
-private extension String {
-    var formattedDate: String {
+extension String {
+    fileprivate var formattedDate: String {
         ArcaneDateFormatting.formattedISO8601(self, date: .abbreviated, time: .shortened)
     }
 }
@@ -861,9 +893,9 @@ private extension String {
 private struct LogDownloadShareSheet: UIViewControllerRepresentable {
     let url: URL
 
-    func makeUIViewController(context: Context) -> UIActivityViewController {
+    func makeUIViewController(context _: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: [url], applicationActivities: nil)
     }
 
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+    func updateUIViewController(_: UIActivityViewController, context _: Context) {}
 }

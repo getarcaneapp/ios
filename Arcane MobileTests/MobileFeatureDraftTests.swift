@@ -1,6 +1,7 @@
+import Arcane
 import Foundation
 import Testing
-import Arcane
+
 @testable import Arcane_Mobile
 
 @MainActor

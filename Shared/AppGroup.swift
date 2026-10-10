@@ -28,10 +28,11 @@ nonisolated enum AppGroup {
 
     static func canonicalServerOrigin(for url: URL) -> String? {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let scheme = components.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              var host = components.host?.lowercased(),
-              !host.isEmpty else { return nil }
+            let scheme = components.scheme?.lowercased(),
+            scheme == "http" || scheme == "https",
+            var host = components.host?.lowercased(),
+            !host.isEmpty
+        else { return nil }
         if host.hasSuffix(".") { host.removeLast() }
         let port = components.port ?? (scheme == "https" ? 443 : 80)
         var path = components.percentEncodedPath

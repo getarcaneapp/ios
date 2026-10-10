@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 // MARK: - Settings Category Definitions
 
@@ -95,7 +95,9 @@ let environmentConfigurationCategories: [SettingsCategoryDef] = [
                 fields: [
                     .init(key: "baseServerUrl", label: "Base Server URL", type: .text, stacked: true),
                     .init(key: "defaultShell", label: "Default Shell", type: .text),
-                    .init(key: "defaultDeployPullPolicy", label: "Default Pull Policy", type: .select(["missing", "always", "never"])),
+                    .init(
+                        key: "defaultDeployPullPolicy", label: "Default Pull Policy",
+                        type: .select(["missing", "always", "never"])),
                     .init(key: "autoInjectEnv", label: "Auto-Inject .env", type: .boolean),
                 ]
             ),
@@ -103,14 +105,18 @@ let environmentConfigurationCategories: [SettingsCategoryDef] = [
                 id: "prune-options",
                 title: "Prune Options",
                 fields: [
-                    .init(key: "pruneContainerMode", label: "Prune Containers", type: .select(["none", "stopped", "olderThan"])),
+                    .init(
+                        key: "pruneContainerMode", label: "Prune Containers",
+                        type: .select(["none", "stopped", "olderThan"])),
                     .init(
                         key: "pruneContainerUntil",
                         label: "Container Age Filter",
                         type: .text,
                         visibleWhen: .init(key: "pruneContainerMode", value: "olderThan")
                     ),
-                    .init(key: "pruneImageMode", label: "Prune Images", type: .select(["none", "dangling", "all", "olderThan"])),
+                    .init(
+                        key: "pruneImageMode", label: "Prune Images",
+                        type: .select(["none", "dangling", "all", "olderThan"])),
                     .init(
                         key: "pruneImageUntil",
                         label: "Image Age Filter",
@@ -118,14 +124,18 @@ let environmentConfigurationCategories: [SettingsCategoryDef] = [
                         visibleWhen: .init(key: "pruneImageMode", value: "olderThan")
                     ),
                     .init(key: "pruneVolumeMode", label: "Prune Volumes", type: .select(["none", "anonymous", "all"])),
-                    .init(key: "pruneNetworkMode", label: "Prune Networks", type: .select(["none", "unused", "olderThan"])),
+                    .init(
+                        key: "pruneNetworkMode", label: "Prune Networks",
+                        type: .select(["none", "unused", "olderThan"])),
                     .init(
                         key: "pruneNetworkUntil",
                         label: "Network Age Filter",
                         type: .text,
                         visibleWhen: .init(key: "pruneNetworkMode", value: "olderThan")
                     ),
-                    .init(key: "pruneBuildCacheMode", label: "Prune Build Cache", type: .select(["none", "unused", "all", "olderThan"])),
+                    .init(
+                        key: "pruneBuildCacheMode", label: "Prune Build Cache",
+                        type: .select(["none", "unused", "all", "olderThan"])),
                     .init(
                         key: "pruneBuildCacheUntil",
                         label: "Build Cache Age Filter",
@@ -151,7 +161,8 @@ let environmentConfigurationCategories: [SettingsCategoryDef] = [
                         key: "trivyNetwork",
                         label: "Trivy Network",
                         type: .networkSelect,
-                        description: "Auto inherits Arcane's network. Choose a built-in or custom Docker network to override it."
+                        description:
+                            "Auto inherits Arcane's network. Choose a built-in or custom Docker network to override it."
                     ),
                     .init(key: "trivySecurityOpts", label: "Security Options", type: .textarea),
                     .init(key: "trivyPrivileged", label: "Privileged Mode", type: .boolean),
@@ -163,7 +174,7 @@ let environmentConfigurationCategories: [SettingsCategoryDef] = [
                     .init(key: "trivyConfig", label: "Trivy Config (YAML)", type: .textarea),
                     .init(key: "trivyIgnore", label: ".trivyignore", type: .textarea),
                 ]
-            ),
+            )
         ]
     ),
     .init(
@@ -180,7 +191,8 @@ let environmentConfigurationCategories: [SettingsCategoryDef] = [
                     .init(key: "pollingInterval", label: "Polling Interval", type: .cron),
                     .init(key: "autoUpdate", label: "Auto-Update", type: .boolean),
                     .init(key: "autoUpdateInterval", label: "Update Interval", type: .cron),
-                    .init(key: "autoUpdateExcludedContainers", label: "Excluded Containers", type: .containerMultiSelect),
+                    .init(
+                        key: "autoUpdateExcludedContainers", label: "Excluded Containers", type: .containerMultiSelect),
                 ]
             ),
             .init(
@@ -229,10 +241,14 @@ let environmentServiceCategories: [SettingsCategoryDef] = [
                 id: "activity-history",
                 title: "Activity History",
                 fields: [
-                    .init(key: "activityHistoryRetentionDays", label: "Retention (days)", type: .number, minValue: 0, maxValue: 3650),
-                    .init(key: "activityHistoryMaxEntries", label: "Max Entries", type: .number, minValue: 0, maxValue: 100000),
+                    .init(
+                        key: "activityHistoryRetentionDays", label: "Retention (days)", type: .number, minValue: 0,
+                        maxValue: 3650),
+                    .init(
+                        key: "activityHistoryMaxEntries", label: "Max Entries", type: .number, minValue: 0,
+                        maxValue: 100000),
                 ]
-            ),
+            )
         ]
     ),
     .init(
@@ -246,24 +262,32 @@ let environmentServiceCategories: [SettingsCategoryDef] = [
                 title: "Docker Operations",
                 fields: [
                     .init(key: "dockerApiTimeout", label: "Docker API (s)", type: .number, minValue: 1, maxValue: 3600),
-                    .init(key: "dockerImagePullTimeout", label: "Image Pull (s)", type: .number, minValue: 30, maxValue: 7200),
-                    .init(key: "trivyScanTimeout", label: "Trivy Scan (s)", type: .number, minValue: 60, maxValue: 14400),
+                    .init(
+                        key: "dockerImagePullTimeout", label: "Image Pull (s)", type: .number, minValue: 30,
+                        maxValue: 7200),
+                    .init(
+                        key: "trivyScanTimeout", label: "Trivy Scan (s)", type: .number, minValue: 60, maxValue: 14400),
                 ]
             ),
             .init(
                 id: "git-operations",
                 title: "Git Operations",
                 fields: [
-                    .init(key: "gitOperationTimeout", label: "Git Operation (s)", type: .number, minValue: 30, maxValue: 3600),
+                    .init(
+                        key: "gitOperationTimeout", label: "Git Operation (s)", type: .number, minValue: 30,
+                        maxValue: 3600)
                 ]
             ),
             .init(
                 id: "network-operations",
                 title: "Network Operations",
                 fields: [
-                    .init(key: "httpClientTimeout", label: "HTTP Client (s)", type: .number, minValue: 5, maxValue: 300),
+                    .init(
+                        key: "httpClientTimeout", label: "HTTP Client (s)", type: .number, minValue: 5, maxValue: 300),
                     .init(key: "registryTimeout", label: "Registry (s)", type: .number, minValue: 5, maxValue: 300),
-                    .init(key: "proxyRequestTimeout", label: "Proxy Request (s)", type: .number, minValue: 10, maxValue: 600),
+                    .init(
+                        key: "proxyRequestTimeout", label: "Proxy Request (s)", type: .number, minValue: 10,
+                        maxValue: 600),
                 ]
             ),
         ]
@@ -336,7 +360,9 @@ struct SystemSettingsView: View {
                 .pickerStyle(.menu)
                 .disabled(fleet.isLoading || availableTargets.count < 2)
             } footer: {
-                Text("Choose which environment these settings edit. This does not change the environment used elsewhere in the app.")
+                Text(
+                    "Choose which environment these settings edit. This does not change the environment used elsewhere in the app."
+                )
             }
 
             Section("Configuration") {
@@ -433,8 +459,9 @@ struct SystemSettingsView: View {
         await fleet.load(manager: manager, refresh: refresh)
 
         guard !Task.isCancelled,
-              let selectedTarget,
-              let environment = fleet.environments.first(where: { $0.id == selectedTarget.id }) else {
+            let selectedTarget,
+            let environment = fleet.environments.first(where: { $0.id == selectedTarget.id })
+        else {
             return
         }
         self.selectedTarget = EnvironmentSettingsTarget(
@@ -664,7 +691,8 @@ struct SettingsCategoryView: View {
 
     /// Summary shown on the picker's row: "None" or the number of excluded names.
     private func excludedCountLabel(_ raw: String) -> String {
-        let count = raw
+        let count =
+            raw
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -725,7 +753,8 @@ struct SettingsCategoryView: View {
                 return ResourcePage(items: response.data, pagination: response.pagination)
             }
             guard !Task.isCancelled else { return }
-            runningContainers = list
+            runningContainers =
+                list
                 .filter { $0.isRunning }
                 .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
         } catch {
@@ -829,7 +858,8 @@ struct SettingsCategoryView: View {
             }
             spaced.append(character)
         }
-        return spaced
+        return
+            spaced
             .split(separator: " ")
             .map { $0.prefix(1).uppercased() + $0.dropFirst() }
             .joined(separator: " ")
@@ -838,9 +868,9 @@ struct SettingsCategoryView: View {
     /// A short "Allowed: min–max" hint shown under numeric fields that declare a range.
     private func rangeHint(_ field: SettingFieldDef) -> String? {
         switch (field.minValue, field.maxValue) {
-        case let (min?, max?): return "Allowed: \(min)–\(max)"
-        case let (min?, nil): return "Minimum: \(min)"
-        case let (nil, max?): return "Maximum: \(max)"
+        case (let min?, let max?): return "Allowed: \(min)–\(max)"
+        case (let min?, nil): return "Minimum: \(min)"
+        case (nil, let max?): return "Maximum: \(max)"
         default: return nil
         }
     }
@@ -885,7 +915,8 @@ struct ContainerMultiSelectView: View {
     private var allRows: [Row] {
         let running = containers.map { Row(name: $0.displayName, isRunning: true) }
         let runningNames = Set(running.map(\.name))
-        let orphaned = selectedNames
+        let orphaned =
+            selectedNames
             .subtracting(runningNames)
             .sorted()
             .map { Row(name: $0, isRunning: false) }

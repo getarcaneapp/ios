@@ -152,11 +152,13 @@ extension View {
                 title: title,
                 message: message,
                 icon: icon,
-                actions: [DeleteConfirmationAction(
-                    title: confirmTitle,
-                    tint: confirmTint,
-                    action: onConfirm
-                )],
+                actions: [
+                    DeleteConfirmationAction(
+                        title: confirmTitle,
+                        tint: confirmTint,
+                        action: onConfirm
+                    )
+                ],
                 dismissOnConfirm: dismissOnConfirm
             )
         )
@@ -187,11 +189,13 @@ extension View {
                 title: title(value),
                 message: message(value),
                 icon: icon,
-                actions: [DeleteConfirmationAction(
-                    title: confirmTitle,
-                    tint: confirmTint,
-                    action: { onConfirm(value) }
-                )]
+                actions: [
+                    DeleteConfirmationAction(
+                        title: confirmTitle,
+                        tint: confirmTint,
+                        action: { onConfirm(value) }
+                    )
+                ]
             )
         }
     }
@@ -348,7 +352,9 @@ private struct DeleteConfirmationCard: View {
     private var cancelButton: some View {
         if #available(iOS 26, *) {
             // Liquid Glass neutral button.
-            Button { resolve(nil) } label: {
+            Button {
+                resolve(nil)
+            } label: {
                 Text(config.cancelTitle)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -358,7 +364,9 @@ private struct DeleteConfirmationCard: View {
             .buttonStyle(.glass)
             .controlSize(.large)
         } else {
-            Button { resolve(nil) } label: {
+            Button {
+                resolve(nil)
+            } label: {
                 Text(config.cancelTitle)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -376,7 +384,9 @@ private struct DeleteConfirmationCard: View {
         let tint = action.tint ?? (action.role == .destructive ? .red : .accentColor)
         if #available(iOS 26, *) {
             // Prominent Liquid Glass tinted with the action's color.
-            Button { resolve(action.action) } label: {
+            Button {
+                resolve(action.action)
+            } label: {
                 Text(action.title)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -387,7 +397,9 @@ private struct DeleteConfirmationCard: View {
             .controlSize(.large)
             .tint(tint)
         } else {
-            Button { resolve(action.action) } label: {
+            Button {
+                resolve(action.action)
+            } label: {
                 Text(action.title)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)

@@ -16,17 +16,25 @@ struct ComposeAddFieldsSheet: View {
     @State private var needsName = false
     @State private var error: String?
 
-    init(text: Binding<String>, path: [String], excluding: Set<String> = [], schemaPath: [ComposeFieldPathComponent]? = nil, includesProjectSettings: Bool = false, preferredService: String? = nil) {
+    init(
+        text: Binding<String>, path: [String], excluding: Set<String> = [],
+        schemaPath: [ComposeFieldPathComponent]? = nil, includesProjectSettings: Bool = false,
+        preferredService: String? = nil
+    ) {
         _text = text
         fieldPath = path.map(ComposeFieldPathComponent.key)
         self.includesProjectSettings = includesProjectSettings
         let services = (try? ComposeDocument(text.wrappedValue))?.services ?? []
-        _serviceSelection = State(initialValue: preferredService.flatMap { services.contains($0) ? $0 : nil } ?? services.first ?? "")
+        _serviceSelection = State(
+            initialValue: preferredService.flatMap { services.contains($0) ? $0 : nil } ?? services.first ?? "")
         self.excluding = excluding
         self.schemaPath = schemaPath ?? fieldPath
     }
 
-    init(text: Binding<String>, fieldPath: [ComposeFieldPathComponent], excluding: Set<String> = [], schemaPath: [ComposeFieldPathComponent]? = nil) {
+    init(
+        text: Binding<String>, fieldPath: [ComposeFieldPathComponent], excluding: Set<String> = [],
+        schemaPath: [ComposeFieldPathComponent]? = nil
+    ) {
         _text = text
         self.fieldPath = fieldPath
         includesProjectSettings = false
@@ -36,24 +44,34 @@ struct ComposeAddFieldsSheet: View {
     }
 
     private var services: [String] { (try? ComposeDocument(text))?.services ?? [] }
-    private var serviceName: String { serviceSelection.isEmpty ? newServiceName.trimmingCharacters(in: .whitespacesAndNewlines) : serviceSelection }
-    private var servicePath: [ComposeFieldPathComponent] { [.key("services"), .key(serviceName.isEmpty ? "new-service" : serviceName)] }
+    private var serviceName: String {
+        serviceSelection.isEmpty ? newServiceName.trimmingCharacters(in: .whitespacesAndNewlines) : serviceSelection
+    }
+    private var servicePath: [ComposeFieldPathComponent] {
+        [.key("services"), .key(serviceName.isEmpty ? "new-service" : serviceName)]
+    }
     private var destinationPath: [ComposeFieldPathComponent] {
         includesProjectSettings ? (selectionIsProject ? [] : servicePath) : fieldPath
     }
-    private var isList: Bool { !includesProjectSettings && (try? ComposeDocument(text))?.nativeField(at: fieldPath).kind == .sequence }
+    private var isList: Bool {
+        !includesProjectSettings && (try? ComposeDocument(text))?.nativeField(at: fieldPath).kind == .sequence
+    }
     private var available: [ComposeSchemaField] {
-        suggestions(at: includesProjectSettings ? servicePath : fieldPath,
-                    schemaPath: includesProjectSettings ? servicePath : schemaPath,
-                    excluding: excluding)
+        suggestions(
+            at: includesProjectSettings ? servicePath : fieldPath,
+            schemaPath: includesProjectSettings ? servicePath : schemaPath,
+            excluding: excluding)
     }
     private var projectFields: [ComposeSchemaField] { suggestions(at: [], schemaPath: [], excluding: ["services"]) }
 
-    private func suggestions(at path: [ComposeFieldPathComponent], schemaPath: [ComposeFieldPathComponent], excluding: Set<String>) -> [ComposeSchemaField] {
+    private func suggestions(
+        at path: [ComposeFieldPathComponent], schemaPath: [ComposeFieldPathComponent], excluding: Set<String>
+    ) -> [ComposeSchemaField] {
         let existing = Set((try? ComposeDocument(text))?.nativeFields(at: path).map(\.name) ?? [])
         return ComposeSchema.fields(at: schemaPath).filter {
             !existing.contains($0.name) && !excluding.contains($0.name)
-                && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.description.localizedCaseInsensitiveContains(search))
+                && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)
+                    || $0.description.localizedCaseInsensitiveContains(search))
         }
     }
     var body: some View {
@@ -78,7 +96,9 @@ struct ComposeAddFieldsSheet: View {
                                 }
                                 if let error { Text(error).foregroundStyle(.red) }
                             } footer: {
-                                if serviceSelection.isEmpty { Text("Enter a name, then choose a setting below to create the service.") }
+                                if serviceSelection.isEmpty {
+                                    Text("Enter a name, then choose a setting below to create the service.")
+                                }
                             }
                             Section("Service settings") {
                                 ForEach(available) { field in fieldButton(field) }
@@ -93,14 +113,14 @@ struct ComposeAddFieldsSheet: View {
                             customFieldButton("Custom field")
                         }
                     }.searchable(text: $search, prompt: "Find a Compose setting")
-                    .navigationTitle("Add configuration")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { dismiss() }
+                        .navigationTitle("Add configuration")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") { dismiss() }
+                            }
                         }
-                    }
                 }
             }
         }
@@ -113,7 +133,9 @@ struct ComposeAddFieldsSheet: View {
     }
 
     private func fieldButton(_ field: ComposeSchemaField, project: Bool = false) -> some View {
-        Button { select(field, project: project) } label: {
+        Button {
+            select(field, project: project)
+        } label: {
             VStack(alignment: .leading, spacing: 4) {
                 Text(ComposeDisplayText.title(field.name)).foregroundStyle(Color.primary)
                 if !field.description.isEmpty {
@@ -129,8 +151,14 @@ struct ComposeAddFieldsSheet: View {
 
     private func select(_ field: ComposeSchemaField?, project: Bool = false) {
         if includesProjectSettings, !project, serviceSelection.isEmpty {
-            guard !serviceName.isEmpty else { error = "Enter a service name above."; return }
-            guard !services.contains(serviceName) else { error = "A service with this name already exists."; return }
+            guard !serviceName.isEmpty else {
+                error = "Enter a service name above."
+                return
+            }
+            guard !services.contains(serviceName) else {
+                error = "A service with this name already exists."
+                return
+            }
         }
         selectionIsProject = project
         needsName = field == nil && !isList
@@ -145,11 +173,14 @@ struct ComposeAddFieldsSheet: View {
 
     private func add(_ pending: ComposeSettingDraft) -> String? {
         do {
-            guard !excluding.contains(pending.name) else { throw ComposeFormError.invalid("This setting is managed outside this editor.") }
+            guard !excluding.contains(pending.name) else {
+                throw ComposeFormError.invalid("This setting is managed outside this editor.")
+            }
             guard !(includesProjectSettings && selectionIsProject && pending.name == "services") else {
                 throw ComposeFormError.invalid("Use the service settings above to add a service.")
             }
-            let newService = includesProjectSettings && !selectionIsProject && serviceSelection.isEmpty ? serviceName : nil
+            let newService =
+                includesProjectSettings && !selectionIsProject && serviceSelection.isEmpty ? serviceName : nil
             let result = try pending.adding(to: text, at: destinationPath, newService: newService, listItem: isList)
             text = result
             if let newService { serviceSelection = newService }

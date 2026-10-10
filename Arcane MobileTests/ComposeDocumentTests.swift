@@ -1,4 +1,5 @@
 import Testing
+
 @testable import Arcane_Mobile
 
 @Suite
@@ -7,11 +8,13 @@ struct ComposeDocumentTests {
         let source = "# header\r\nservices:\r\n  web:\r\n    image: 'nginx:latest' # keep\r\nx-extra: ${VALUE}\r\n"
         let document = try ComposeDocument(source)
         #expect(document.source == source)
-        #expect(try document.setting(ComposeDocument.quoted("nginx:latest"), at: ["services", "web", "image"]) == source)
+        #expect(
+            try document.setting(ComposeDocument.quoted("nginx:latest"), at: ["services", "web", "image"]) == source)
     }
 
     @Test func scalarEditPreservesUnicodeCommentsAndExtensions() throws {
-        let source = "# 🐳\nservices:\n  web:\n    image: nginx # pin\n    labels:\n      title: café\nx-extra: ${KEEP}\n"
+        let source =
+            "# 🐳\nservices:\n  web:\n    image: nginx # pin\n    labels:\n      title: café\nx-extra: ${KEEP}\n"
         let changed = try ComposeDocument(source).setting("alpine", at: ["services", "web", "image"])
         #expect(changed == source.replacingOccurrences(of: "image: nginx", with: "image: alpine"))
         #expect(try ComposeDocument(changed).scalar(at: ["services", "web", "labels", "title"]) == "café")
@@ -21,7 +24,9 @@ struct ComposeDocumentTests {
         let source = "services:\n  web:\n    ports:\n      - '80:80' # first\n      - '443:443' # secure\n"
         let document = try ComposeDocument(source)
         #expect(document.items(at: ["services", "web", "ports"]) == ["'80:80'", "'443:443'"])
-        #expect(try document.settingItem("'8080:80'", at: ["services", "web", "ports"], index: 0) == source.replacingOccurrences(of: "'80:80'", with: "'8080:80'"))
+        #expect(
+            try document.settingItem("'8080:80'", at: ["services", "web", "ports"], index: 0)
+                == source.replacingOccurrences(of: "'80:80'", with: "'8080:80'"))
     }
 
     @Test func malformedAndDuplicateKeysAreRejected() {
@@ -76,7 +81,10 @@ struct ComposeDocumentTests {
     }
 
     @Test func unsupportedStructuresFailClosed() throws {
-        for source in ["services:\n  web: {image: nginx}\n", "services:\n  web: &web\n    image: nginx\n", "services:\n  web: !custom\n    image: nginx\n"] {
+        for source in [
+            "services:\n  web: {image: nginx}\n", "services:\n  web: &web\n    image: nginx\n",
+            "services:\n  web: !custom\n    image: nginx\n",
+        ] {
             let document = try ComposeDocument(source)
             #expect(throws: (any Error).self) { try document.setting("alpine", at: ["services", "web", "image"]) }
         }
@@ -91,37 +99,42 @@ struct ComposeDocumentTests {
     }
     @Test func healthcheckFlowSequencePreservesScreenshotFields() throws {
         let source = """
-        # deployment
-        services:
-          arcane:
-            image: ghcr.io/getarcaneapp/arcane:latest
-            container_name: arcane
-            restart: unless-stopped
-            ports:
-              - "3552:3552"
+            # deployment
+            services:
+              arcane:
+                image: ghcr.io/getarcaneapp/arcane:latest
+                container_name: arcane
+                restart: unless-stopped
+                ports:
+                  - "3552:3552"
+                volumes:
+                  - /var/run/docker.sock:/var/run/docker.sock
+                  - arcane-data:/app/data
+                environment:
+                  APP_URL: https://arcane.example.test
+                  ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+                  JWT_SECRET: ${JWT_SECRET}
+                healthcheck:
+                  test: ["CMD", "/app/arcane", "health"] # keep
+                  interval: 30s
+                  timeout: 10s
+                  retries: 3
+                  start_period: 10s
             volumes:
-              - /var/run/docker.sock:/var/run/docker.sock
-              - arcane-data:/app/data
-            environment:
-              APP_URL: https://arcane.example.test
-              ENCRYPTION_KEY: ${ENCRYPTION_KEY}
-              JWT_SECRET: ${JWT_SECRET}
-            healthcheck:
-              test: ["CMD", "/app/arcane", "health"] # keep
-              interval: 30s
-              timeout: 10s
-              retries: 3
-              start_period: 10s
-        volumes:
-          arcane-data:
-        """
+              arcane-data:
+            """
         let path = ["services", "arcane", "healthcheck", "test"]
         let document = try ComposeDocument(source)
         #expect(document.isEditable(at: ["services", "arcane"]))
         #expect(document.items(at: path) == ["\"CMD\"", "\"/app/arcane\"", "\"health\""])
-        #expect(try document.settingItem("\"status\"", at: path, index: 2) == source.replacingOccurrences(of: "\"health\"", with: "\"status\""))
-        #expect(try document.appendingItem("\"--verbose\"", at: path) == source.replacingOccurrences(of: "\"health\"]", with: "\"health\", \"--verbose\"]"))
-        #expect(try ComposeDocument(document.removingItem(at: path, index: 1)).items(at: path) == ["\"CMD\"", "\"health\""])
+        #expect(
+            try document.settingItem("\"status\"", at: path, index: 2)
+                == source.replacingOccurrences(of: "\"health\"", with: "\"status\""))
+        #expect(
+            try document.appendingItem("\"--verbose\"", at: path)
+                == source.replacingOccurrences(of: "\"health\"]", with: "\"health\", \"--verbose\"]"))
+        #expect(
+            try ComposeDocument(document.removingItem(at: path, index: 1)).items(at: path) == ["\"CMD\"", "\"health\""])
     }
 
     @Test func flowSequenceCommentsDelimitersAndCRLFArePreserved() throws {
@@ -139,7 +152,10 @@ struct ComposeDocumentTests {
     }
 
     @Test func unsafeFlowSequencesFailClosed() throws {
-        for value in ["[&command CMD, health]", "[!custom CMD, health]", "[*command]", "[{command: health}]", "[[CMD, health]]", "[command: health]"] {
+        for value in [
+            "[&command CMD, health]", "[!custom CMD, health]", "[*command]", "[{command: health}]", "[[CMD, health]]",
+            "[command: health]",
+        ] {
             let document = try ComposeDocument("test: " + value + "\n")
             #expect(!document.isEditable(at: ["test"]))
             #expect(throws: (any Error).self) { try document.settingItem("'status'", at: ["test"], index: 0) }
@@ -154,13 +170,19 @@ struct ComposeDocumentTests {
 
     @Test(arguments: ["{}", ""])
     func addsNetworkAddressToEmptyAttachment(value: String) throws {
-        let source = "services:\r\n  arcane:\r\n    networks:\r\n      vlan25: " + value + " # keep attachment\r\n    image: arcane\r\nx-keep: true\r\n"
+        let source =
+            "services:\r\n  arcane:\r\n    networks:\r\n      vlan25: " + value
+            + " # keep attachment\r\n    image: arcane\r\nx-keep: true\r\n"
         let path = ["services", "arcane", "networks", "vlan25", "ipv4_address"]
         let document = try ComposeDocument(source)
         #expect(document.isEditable(at: path))
         let changed = try document.setting("'192.0.2.25'", at: path)
         #expect(try ComposeDocument(changed).scalar(at: path) == "192.0.2.25")
-        #expect(changed == source.replacingOccurrences(of: "vlan25: " + value + " # keep attachment\r\n", with: "vlan25:  # keep attachment\r\n        \"ipv4_address\": '192.0.2.25'\r\n"))
+        #expect(
+            changed
+                == source.replacingOccurrences(
+                    of: "vlan25: " + value + " # keep attachment\r\n",
+                    with: "vlan25:  # keep attachment\r\n        \"ipv4_address\": '192.0.2.25'\r\n"))
     }
 
     @Test(arguments: ["{aliases: [arcane]}", "arcane", "[]", "&network {}", "!custom {}"])

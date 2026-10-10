@@ -123,7 +123,8 @@ private struct CardEntranceModifier: ViewModifier {
             .onAppear {
                 guard !hasAppeared, !Self.seenIdentities.contains(identity) else { return }
                 Self.seenIdentities.insert(identity)
-                let animation = reduceMotion
+                let animation =
+                    reduceMotion
                     ? Motion.reducedFallback
                     : Motion.entrance.delay(Double(index) * Motion.stagger)
                 withAnimation(animation) {
@@ -158,7 +159,8 @@ private struct StaggeredRevealModifier: ViewModifier {
             .offset(y: reduceMotion || revealed ? 0 : 6)
             .opacity(revealed ? 1 : 0)
             .onAppear {
-                let animation = reduceMotion
+                let animation =
+                    reduceMotion
                     ? Motion.reducedFallback
                     : Motion.entrance.delay(Double(index) * Motion.stagger)
                 withAnimation(animation) { revealed = true }

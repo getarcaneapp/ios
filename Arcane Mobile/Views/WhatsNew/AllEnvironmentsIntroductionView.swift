@@ -11,17 +11,20 @@ struct AllEnvironmentsIntroductionView: View {
             TabView(selection: $page) {
                 introductionPage(
                     title: "All your environments.\nOne view.",
-                    message: "See containers, projects, images and more from all enabled environments together. Your dashboard brings their totals into one place.",
+                    message:
+                        "See containers, projects, images and more from all enabled environments together. Your dashboard brings their totals into one place.",
                     illustration: 0
                 ).tag(0)
                 introductionPage(
                     title: "Know what belongs where.",
-                    message: "Environment names and colors identify every resource. Use filters to focus on one environment without leaving the list.",
+                    message:
+                        "Environment names and colors identify every resource. Use filters to focus on one environment without leaving the list.",
                     illustration: 1
                 ).tag(1)
                 introductionPage(
                     title: "Manage them together.",
-                    message: "Update checks, updates and pruning apply to all enabled environments, even when a list is filtered. Review the confirmation before running an action.",
+                    message:
+                        "Update checks, updates and pruning apply to all enabled environments, even when a list is filtered. Review the confirmation before running an action.",
                     illustration: 2
                 ).tag(2)
             }
@@ -88,10 +91,12 @@ struct AllEnvironmentsIntroductionView: View {
                 .frame(maxWidth: .infinity)
 
                 if illustration == 2 {
-                    Text("Optional preview. Turn it off anytime in More → Preview Features. Environment switching is hidden while it’s on.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+                    Text(
+                        "Optional preview. Turn it off anytime in More → Preview Features. Environment switching is hidden while it’s on."
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
 
                     if !manager.allEnvironmentsPreview {
                         Button {
@@ -150,7 +155,10 @@ struct AllEnvironmentsIntroductionView: View {
         .font(.title3)
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: Radius.hero, style: .continuous))
+        .background(
+            Color(.secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: Radius.hero, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: Radius.hero, style: .continuous)
                 .strokeBorder(.quaternary, lineWidth: 1)

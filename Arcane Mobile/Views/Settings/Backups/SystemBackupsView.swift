@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct SystemBackupsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -17,41 +17,54 @@ struct SystemBackupsView: View {
     @State private var showCreate = false
     @State private var showVolumeBackup = false
     @State private var showSettings = false
-    private var canRead: Bool { manager.currentUser?.isAdmin == true && manager.permissions.has("system-backups:read", in: nil) }
-    private var canManage: Bool { manager.currentUser?.isAdmin == true && manager.permissions.has("system-backups:manage", in: nil) }
+    private var canRead: Bool {
+        manager.currentUser?.isAdmin == true && manager.permissions.has("system-backups:read", in: nil)
+    }
+    private var canManage: Bool {
+        manager.currentUser?.isAdmin == true && manager.permissions.has("system-backups:manage", in: nil)
+    }
     var body: some View {
         Group {
-            if !canRead { ContentUnavailableView("Administrator Access Required", systemImage: "lock") }
-            else {
+            if !canRead {
+                ContentUnavailableView("Administrator Access Required", systemImage: "lock")
+            } else {
                 List {
                     if let errorMessage {
-                Text(errorMessage).foregroundStyle(.red)
-                Button("Retry") { Task { await load() } }
-            }
+                        Text(errorMessage).foregroundStyle(.red)
+                        Button("Retry") { Task { await load() } }
+                    }
                     Section("History") {
                         ForEach(entries) { entry in
-                            NavigationLink { SystemBackupDetailView(entry: entry) } label: {
+                            NavigationLink {
+                                SystemBackupDetailView(entry: entry)
+                            } label: {
                                 Label {
                                     VStack(alignment: .leading) {
                                         Text(entry.resourceName)
-                                        Text(entry.createdAt, style: .date).font(.subheadline).foregroundStyle(.secondary)
-                                        Text("\(entry.status) · \(entry.destination) · \(ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file))")
-                                            .font(.caption).foregroundStyle(.secondary)
+                                        Text(entry.createdAt, style: .date).font(.subheadline).foregroundStyle(
+                                            .secondary)
+                                        Text(
+                                            "\(entry.status) · \(entry.destination) · \(ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file))"
+                                        )
+                                        .font(.caption).foregroundStyle(.secondary)
                                     }
-                                } icon: { Image(systemName: "externaldrive.badge.timemachine") }
+                                } icon: {
+                                    Image(systemName: "externaldrive.badge.timemachine")
+                                }
                             }
                         }
                         PaginatedListFooter(
-                hasMore: hasMore, loadMoreError: loadMoreError,
-                onRetry: { Task { await load(more: true) } },
-                onLoadMore: { Task { await load(more: true) } }
-            ).id(entries.count)
+                            hasMore: hasMore, loadMoreError: loadMoreError,
+                            onRetry: { Task { await load(more: true) } },
+                            onLoadMore: { Task { await load(more: true) } }
+                        ).id(entries.count)
                         if busy && entries.isEmpty { ProgressView("Loading…").frame(maxWidth: .infinity) }
                         if entries.isEmpty && !busy && errorMessage == nil {
                             ContentUnavailableView(
                                 search.isEmpty ? "No Backups" : "No Matching Backups",
                                 systemImage: "externaldrive.badge.timemachine",
-                                description: Text(search.isEmpty ? "Create a backup using the toolbar." : "Try a different search.")
+                                description: Text(
+                                    search.isEmpty ? "Create a backup using the toolbar." : "Try a different search.")
                             )
                             .listRowBackground(Color.clear)
                         }
@@ -123,12 +136,26 @@ struct SystemBackupsView: View {
         let request = UUID()
         requestID = request
         loadingIdentity = key
-        if loadedIdentity != key { entries = []; hasMore = false; loadedIdentity = key }
-        busy = true; errorMessage = nil; loadMoreError = nil
+        if loadedIdentity != key {
+            entries = []
+            hasMore = false
+            loadedIdentity = key
+        }
+        busy = true
+        errorMessage = nil
+        loadMoreError = nil
 
-        defer { if requestID == request { busy = false; loadingIdentity = nil } }
+        defer {
+            if requestID == request {
+                busy = false
+                loadingIdentity = nil
+            }
+        }
         do {
-            let page = try await client.systemBackups.history(query: .init(search: search, start: more ? entries.count : 0, limit: 50, sortBy: "createdAt", sortOrder: .descending))
+            let page = try await client.systemBackups.history(
+                query: .init(
+                    search: search, start: more ? entries.count : 0, limit: 50, sortBy: "createdAt",
+                    sortOrder: .descending))
             try scope.check(manager)
             guard key == listIdentity, requestID == request else { return }
             supported = true
@@ -142,8 +169,7 @@ struct SystemBackupsView: View {
             errorMessage = "System backups are not available on this server."
         } catch {
             guard key == listIdentity, requestID == request else { return }
-            if more { loadMoreError = friendlyErrorMessage(error) }
-            else { errorMessage = friendlyErrorMessage(error) }
+            if more { loadMoreError = friendlyErrorMessage(error) } else { errorMessage = friendlyErrorMessage(error) }
         }
     }
 }
@@ -163,26 +189,38 @@ struct SystemBackupCreateView: View {
             if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
             if !discover {
                 FormPicker(title: "Storage", selection: $destination) {
-                    Text("Local").tag("local"); Text("S3").tag("s3"); Text("Local and S3").tag("local_s3")
+                    Text("Local").tag("local")
+                    Text("S3").tag("s3")
+                    Text("Local and S3").tag("local_s3")
                 }
             }
             if discover {
                 Section {
                     BackupDestinationPicker(selection: $s3ID, destinations: destinations)
                 } footer: {
-                    Text("Searches for Arcane system backups in the selected destination's existing recovery repository. Choose the destination and path originally used for those backups.")
+                    Text(
+                        "Searches for Arcane system backups in the selected destination's existing recovery repository. Choose the destination and path originally used for those backups."
+                    )
                 }
             } else if destination != "local" {
                 BackupDestinationPicker(selection: $s3ID, destinations: destinations)
             }
             Section {
-                FormSecureField(title: "Recovery key", placeholder: "", text: $recoveryKey).privacySensitive().textInputAutocapitalization(.never).autocorrectionDisabled()
-            } footer: { Text("Enter the recovery key for remote backups, or leave it empty to use the server's stored key.") }
+                FormSecureField(title: "Recovery key", placeholder: "", text: $recoveryKey).privacySensitive()
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+            } footer: {
+                Text("Enter the recovery key for remote backups, or leave it empty to use the server's stored key.")
+            }
         }
         .navigationTitle(discover ? "Discover System Backups" : "Create Backup")
         .modifier(BackupSessionScope())
         .disabled(busy)
-        .toolbar { AppToolbarItem(placement: .confirmationAction) { Button(discover ? "Discover" : "Create") { Task { await submit() } }.disabled(busy || ((discover || destination != "local") && s3ID.isEmpty)) } }
+        .toolbar {
+            AppToolbarItem(placement: .confirmationAction) {
+                Button(discover ? "Discover" : "Create") { Task { await submit() } }.disabled(
+                    busy || ((discover || destination != "local") && s3ID.isEmpty))
+            }
+        }
         .task(id: manager.clientGeneration) {
             let scope = BackupRequestScope(manager)
             guard let client = manager.client, manager.permissions.has("s3-destinations:list", in: nil) else { return }
@@ -200,16 +238,24 @@ struct SystemBackupCreateView: View {
     private func submit() async {
         let scope = BackupRequestScope(manager)
         guard let client = manager.client else { return }
-        busy = true; defer { busy = false }
+        busy = true
+        defer { busy = false }
         do {
             if discover {
-                let count = try await client.systemBackups.discover(.init(s3DestinationId: s3ID, recoveryKey: recoveryKey))
-                try scope.check(manager); showToast(.info("Found \(count) backups"))
+                let count = try await client.systemBackups.discover(
+                    .init(s3DestinationId: s3ID, recoveryKey: recoveryKey))
+                try scope.check(manager)
+                showToast(.info("Found \(count) backups"))
             } else {
-                _ = try await client.systemBackups.create(.init(destination: destination, s3DestinationId: destination == "local" ? nil : s3ID, recoveryKey: recoveryKey.isEmpty ? nil : recoveryKey))
-                try scope.check(manager); showToast(.info("Backup started. Check history for completion."))
+                _ = try await client.systemBackups.create(
+                    .init(
+                        destination: destination, s3DestinationId: destination == "local" ? nil : s3ID,
+                        recoveryKey: recoveryKey.isEmpty ? nil : recoveryKey))
+                try scope.check(manager)
+                showToast(.info("Backup started. Check history for completion."))
             }
-            recoveryKey = ""; dismiss()
+            recoveryKey = ""
+            dismiss()
         } catch is CancellationError {} catch { errorMessage = friendlyErrorMessage(error) }
     }
 }
@@ -221,10 +267,16 @@ struct BackupRecoveryKeyView: View {
     @State private var message: String?
     var body: some View {
         Form {
-            FormSecureField(title: "Recovery key", placeholder: "", text: $key).privacySensitive().textInputAutocapitalization(.never).autocorrectionDisabled()
+            FormSecureField(title: "Recovery key", placeholder: "", text: $key).privacySensitive()
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
             Button("Generate key") { Task { await generate() } }
             if !key.isEmpty {
-                Button("Copy recovery key") { UIPasteboard.general.setItems([[UIPasteboard.typeAutomatic: key]], options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(60)]); showToast(.copied("Recovery key copied")) }
+                Button("Copy recovery key") {
+                    UIPasteboard.general.setItems(
+                        [[UIPasteboard.typeAutomatic: key]],
+                        options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(60)])
+                    showToast(.copied("Recovery key copied"))
+                }
                 ShareLink("Export recovery key", item: key)
                 Button("Save recovery key on server") { Task { await save() } }
             }
@@ -237,16 +289,26 @@ struct BackupRecoveryKeyView: View {
     private func generate() async {
         let scope = BackupRequestScope(manager)
         guard let client = manager.client else { return }
-        busy = true; defer { busy = false }
-        do { let generated = try await client.systemBackups.generateRecoveryKey(); try scope.check(manager); key = generated.recoveryKey; message = "Store this key somewhere safe before saving it on the server." }
-        catch is CancellationError {} catch { message = friendlyErrorMessage(error) }
+        busy = true
+        defer { busy = false }
+        do {
+            let generated = try await client.systemBackups.generateRecoveryKey()
+            try scope.check(manager)
+            key = generated.recoveryKey
+            message = "Store this key somewhere safe before saving it on the server."
+        } catch is CancellationError {} catch { message = friendlyErrorMessage(error) }
     }
     private func save() async {
         let scope = BackupRequestScope(manager)
         guard let client = manager.client else { return }
-        busy = true; defer { busy = false }
-        do { _ = try await client.systemBackups.setRecoveryKey(.init(recoveryKey: key)); key = ""; try scope.check(manager); showToast(.success("Recovery key saved")) }
-        catch is CancellationError {} catch { message = friendlyErrorMessage(error) }
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await client.systemBackups.setRecoveryKey(.init(recoveryKey: key))
+            key = ""
+            try scope.check(manager)
+            showToast(.success("Recovery key saved"))
+        } catch is CancellationError {} catch { message = friendlyErrorMessage(error) }
     }
 }
 
@@ -266,37 +328,69 @@ struct SystemVolumeRunView: View {
     var body: some View {
         Form {
             if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
-            FormPicker(title: "Storage", selection: $destination) { Text("Local").tag("local"); Text("S3").tag("s3"); Text("Local and S3").tag("local_s3") }
+            FormPicker(title: "Storage", selection: $destination) {
+                Text("Local").tag("local")
+                Text("S3").tag("s3")
+                Text("Local and S3").tag("local_s3")
+            }
             if destination != "local" { BackupDestinationPicker(selection: $s3ID, destinations: destinations) }
             Toggle("Stop containers during backup", isOn: $stopContainers)
             Toggle("Ignore anonymous volumes", isOn: $ignoreAnonymous)
-            FormPicker(title: "Volumes", selection: $selectionMode) { Text("All").tag("all"); Text("Only selected").tag("allowlist"); Text("Except selected").tag("blocklist") }
+            FormPicker(title: "Volumes", selection: $selectionMode) {
+                Text("All").tag("all")
+                Text("Only selected").tag("allowlist")
+                Text("Except selected").tag("blocklist")
+            }
             if selectionMode != "all" {
                 ForEach(options, id: \.name) { option in
-                    Toggle(option.name, isOn: Binding(get: { selected.contains(option.name) }, set: { if $0 { selected.insert(option.name) } else { selected.remove(option.name) } })).disabled(!option.available)
+                    Toggle(
+                        option.name,
+                        isOn: Binding(
+                            get: { selected.contains(option.name) },
+                            set: { if $0 { selected.insert(option.name) } else { selected.remove(option.name) } })
+                    ).disabled(!option.available)
                 }
             }
         }
         .navigationTitle("Back Up Volumes").disabled(busy)
         .modifier(BackupSessionScope())
-        .toolbar { AppToolbarItem(placement: .confirmationAction) { Button("Run") { Task { await run() } }.disabled(busy || (destination != "local" && s3ID.isEmpty) || (selectionMode == "allowlist" && selected.isEmpty)) } }
+        .toolbar {
+            AppToolbarItem(placement: .confirmationAction) {
+                Button("Run") { Task { await run() } }.disabled(
+                    busy || (destination != "local" && s3ID.isEmpty)
+                        || (selectionMode == "allowlist" && selected.isEmpty))
+            }
+        }
         .task(id: manager.clientGeneration) {
             let scope = BackupRequestScope(manager)
             guard let client = manager.client else { return }
             do {
                 let result = try await client.systemBackups.volumeOptions()
-                try scope.check(manager); options = result
-                if manager.permissions.has("s3-destinations:list", in: nil) { let result = try await client.s3Destinations.options(); try scope.check(manager); destinations = result }
+                try scope.check(manager)
+                options = result
+                if manager.permissions.has("s3-destinations:list", in: nil) {
+                    let result = try await client.s3Destinations.options()
+                    try scope.check(manager)
+                    destinations = result
+                }
             } catch { errorMessage = friendlyErrorMessage(error) }
         }
     }
     private func run() async {
         let scope = BackupRequestScope(manager)
         guard let client = manager.client else { return }
-        busy = true; defer { busy = false }
+        busy = true
+        defer { busy = false }
         do {
-            _ = try await client.systemBackups.runVolumeBackups(.init(custom: .init(destination: destination, s3DestinationId: destination == "local" ? nil : s3ID, stopContainers: stopContainers, selectionMode: selectionMode, volumeNames: Array(selected), ignoreAnonymous: ignoreAnonymous)))
-            try scope.check(manager); showToast(.info("Volume backups started. Check history for completion.")); dismiss()
+            _ = try await client.systemBackups.runVolumeBackups(
+                .init(
+                    custom: .init(
+                        destination: destination, s3DestinationId: destination == "local" ? nil : s3ID,
+                        stopContainers: stopContainers, selectionMode: selectionMode, volumeNames: Array(selected),
+                        ignoreAnonymous: ignoreAnonymous)))
+            try scope.check(manager)
+            showToast(.info("Volume backups started. Check history for completion."))
+            dismiss()
         } catch is CancellationError {} catch { errorMessage = friendlyErrorMessage(error) }
     }
 }

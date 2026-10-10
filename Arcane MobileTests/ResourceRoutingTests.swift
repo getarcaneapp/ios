@@ -10,12 +10,18 @@ struct ResourceRoutingTests {
     @Test
     func widgetDestinationsRemainPendingUntilTheAuthenticatedRootConsumesThem() throws {
         let router = QuickActionRouter()
-        #expect(router.handle(url: try #require(URL(string: "arcane-mobile://open?tab=containers&env=remote&container=not-in-first-page"))))
+        #expect(
+            router.handle(
+                url: try #require(
+                    URL(string: "arcane-mobile://open?tab=containers&env=remote&container=not-in-first-page"))))
         #expect(router.pendingRoute == .container(environmentID: "remote", id: "not-in-first-page"))
         #expect(router.pendingTabID == nil)
         #expect(router.pendingRoute?.environmentID == "remote")
 
-        #expect(router.handle(url: try #require(URL(string: "arcane-mobile://open?tab=projects&env=remote&project=archived-project"))))
+        #expect(
+            router.handle(
+                url: try #require(URL(string: "arcane-mobile://open?tab=projects&env=remote&project=archived-project")))
+        )
         #expect(router.pendingRoute == .project(environmentID: "remote", id: "archived-project"))
         #expect(router.pendingTabID == nil)
     }

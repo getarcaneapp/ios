@@ -4,13 +4,19 @@ import SwiftTreeSitter
 nonisolated extension ComposeDocument {
     func nativeField(at path: [ComposeFieldPathComponent], name: String = "Value") -> ComposeNativeField {
         do {
-            guard let node = try nativeNode(path) else { return ComposeNativeField(name: name, path: path, kind: .null, value: "") }
+            guard let node = try nativeNode(path) else {
+                return ComposeNativeField(name: name, path: path, kind: .null, value: "")
+            }
             guard !nativeUnsafe(node), let content = Self.content(node) else { throw ComposeDocumentError.unsupported }
             let kind: ComposeNativeKind
             let value: String
             switch content.nodeType {
-            case "block_mapping", "flow_mapping": kind = .mapping; value = ""
-            case "block_sequence", "flow_sequence": kind = .sequence; value = ""
+            case "block_mapping", "flow_mapping":
+                kind = .mapping
+                value = ""
+            case "block_sequence", "flow_sequence":
+                kind = .sequence
+                value = ""
             case "plain_scalar":
                 switch Self.children(content).first?.nodeType {
                 case "boolean_scalar": kind = .boolean
@@ -20,10 +26,14 @@ nonisolated extension ComposeDocument {
                 }
                 value = fragment(content)
             case "block_scalar":
-                kind = .string; value = try blockScalar(content).value
+                kind = .string
+                value = try blockScalar(content).value
             case "double_quote_scalar", "single_quote_scalar":
-                guard let decoded = Self.decode(fragment(content)), !fragment(content).contains("\n") else { throw ComposeDocumentError.unsupported }
-                kind = .string; value = decoded
+                guard let decoded = Self.decode(fragment(content)), !fragment(content).contains("\n") else {
+                    throw ComposeDocumentError.unsupported
+                }
+                kind = .string
+                value = decoded
             default: throw ComposeDocumentError.unsupported
             }
             if content.nodeType == "plain_scalar", value.contains("\n") { throw ComposeDocumentError.unsupported }
@@ -56,7 +66,9 @@ nonisolated extension ComposeDocument {
         case .sequence: return "[]"
         case .number:
             let parsed = try ComposeDocument(value)
-            guard parsed.nativeField(at: []).kind == .number, parsed.rawValue(at: []) == value, !value.contains("\n"), !value.contains("\r"), value == value.trimmingCharacters(in: .whitespaces) else {
+            guard parsed.nativeField(at: []).kind == .number, parsed.rawValue(at: []) == value, !value.contains("\n"),
+                !value.contains("\r"), value == value.trimmingCharacters(in: .whitespaces)
+            else {
                 throw ComposeFormError.invalid("Enter a valid number.")
             }
             return value
@@ -64,17 +76,24 @@ nonisolated extension ComposeDocument {
         }
     }
 
-    func settingNative(_ value: String, kind: ComposeNativeKind, at path: [ComposeFieldPathComponent]) throws -> String {
+    func settingNative(_ value: String, kind: ComposeNativeKind, at path: [ComposeFieldPathComponent]) throws -> String
+    {
         let literal = try Self.nativeLiteral(kind: kind, value: value)
         if kind == .null, try nativeNode(path) == nil, nativeEntryExists(path) { return source }
         if let node = try nativeNode(path) {
-            guard !nativeUnsafe(node), let content = Self.content(node), !nativeContainsReferences(content) else { throw ComposeDocumentError.unsupported }
+            guard !nativeUnsafe(node), let content = Self.content(node), !nativeContainsReferences(content) else {
+                throw ComposeDocumentError.unsupported
+            }
             let current = nativeField(at: path)
             if current.kind == kind && (current.value == value || kind == .null) { return source }
-            if nativeHasAnchor(node), current.kind != kind || kind == .mapping || kind == .sequence { throw ComposeDocumentError.unsupported }
+            if nativeHasAnchor(node), current.kind != kind || kind == .mapping || kind == .sequence {
+                throw ComposeDocumentError.unsupported
+            }
             if content.nodeType == "block_scalar", kind == .string {
                 let result = try replacingBlockScalar(blockScalar(content), value: value)
-                guard try ComposeDocument(result).nativeField(at: path).value == value else { throw ComposeDocumentError.unsupported }
+                guard try ComposeDocument(result).nativeField(at: path).value == value else {
+                    throw ComposeDocumentError.unsupported
+                }
                 return result
             }
             if content.nodeType == "block_scalar" {
@@ -85,7 +104,9 @@ nonisolated extension ComposeDocument {
         }
         guard let last = path.last else {
             let prefix = source.isEmpty || source.hasSuffix("\n") || source.hasSuffix("\r\n") ? "" : newline
-            return try nativeApplying([(NSRange(location: (source as NSString).length, length: 0), prefix + literal + newline)])
+            return try nativeApplying([
+                (NSRange(location: (source as NSString).length, length: 0), prefix + literal + newline)
+            ])
         }
         let parentPath = Array(path.dropLast())
         guard let parent = try nativeNode(parentPath), let content = Self.content(parent), !nativeUnsafe(parent) else {
@@ -106,7 +127,11 @@ nonisolated extension ComposeDocument {
                 if pair.nodeType == "flow_node" {
                     return try nativeApplying([(NSRange(location: NSMaxRange(range(pair)), length: 0), ": " + literal)])
                 }
-                guard let colon = (0..<pair.childCount).compactMap({ pair.child(at: $0) }).first(where: { $0.nodeType == ":" }) else { throw ComposeDocumentError.unsupported }
+                guard
+                    let colon = (0..<pair.childCount).compactMap({ pair.child(at: $0) }).first(where: {
+                        $0.nodeType == ":"
+                    })
+                else { throw ComposeDocumentError.unsupported }
                 return try nativeApplying([(NSRange(location: NSMaxRange(range(colon)), length: 0), " " + literal)])
             }
             return try nativeAppend(key: key, literal: literal, container: content)
@@ -126,10 +151,13 @@ nonisolated extension ComposeDocument {
         }
         guard !field.isEmpty else { throw ComposeFormError.invalid("Enter a field name.") }
         let added = try addingNative("", kind: .mapping, key: name, at: [.key("services")])
-        return try ComposeDocument(added).addingNative(value, kind: kind, key: field, at: [.key("services"), .key(name)])
+        return try ComposeDocument(added).addingNative(
+            value, kind: kind, key: field, at: [.key("services"), .key(name)])
     }
 
-    func addingNative(_ value: String, kind: ComposeNativeKind, key: String?, at path: [ComposeFieldPathComponent]) throws -> String {
+    func addingNative(_ value: String, kind: ComposeNativeKind, key: String?, at path: [ComposeFieldPathComponent])
+        throws -> String
+    {
         let literal = try Self.nativeLiteral(kind: kind, value: value)
         guard let node = try nativeNode(path), let content = Self.content(node) else {
             guard let key else { throw ComposeDocumentError.unsupported }
@@ -143,7 +171,9 @@ nonisolated extension ComposeDocument {
         if nativeMapping(content) {
             guard let key, !key.isEmpty else { throw ComposeFormError.invalid("Enter a field name.") }
             guard key != "<<" else { throw ComposeDocumentError.unsupported }
-            guard !nativePairs(content).contains(where: { nativeKey($0) == key }) else { throw ComposeFormError.duplicate }
+            guard !nativePairs(content).contains(where: { nativeKey($0) == key }) else {
+                throw ComposeFormError.duplicate
+            }
             return try nativeAppend(key: key, literal: literal, container: content)
         }
         if nativeSequence(content) { return try nativeAppend(key: nil, literal: literal, container: content) }
@@ -151,7 +181,9 @@ nonisolated extension ComposeDocument {
     }
 
     func removingNative(at path: [ComposeFieldPathComponent]) throws -> String {
-        guard let last = path.last, let parent = try nativeNode(Array(path.dropLast())), let container = Self.content(parent), !nativeUnsafe(parent) else { throw ComposeDocumentError.unsupported }
+        guard let last = path.last, let parent = try nativeNode(Array(path.dropLast())),
+            let container = Self.content(parent), !nativeUnsafe(parent)
+        else { throw ComposeDocumentError.unsupported }
         let entries: [Node]
         let target: Node
         switch last {
@@ -170,7 +202,8 @@ nonisolated extension ComposeDocument {
         if container.nodeType?.hasPrefix("flow_") == true {
             var edits = [(range(target), "")]
             let commas = flowCommas(container)
-            let comma = commas.first { range($0).location >= NSMaxRange(range(target)) }
+            let comma =
+                commas.first { range($0).location >= NSMaxRange(range(target)) }
                 ?? commas.last { NSMaxRange(range($0)) <= range(target).location }
             if let comma { edits.append((range(comma), "")) }
             return try nativeApplying(edits)
@@ -179,20 +212,27 @@ nonisolated extension ComposeDocument {
             // Keep comments from the removed subtree as comments adjacent to the empty container.
             let replacement = nativeMapping(container) ? "{}" : "[]"
             let comments = nativeComments(target).map { substring(range($0)) }
-            let suffix = comments.isEmpty ? "" : " " + comments.joined(separator: newline + String(repeating: " ", count: column(container)))
+            let suffix =
+                comments.isEmpty
+                ? "" : " " + comments.joined(separator: newline + String(repeating: " ", count: column(container)))
             return try nativeApplying([(range(container), replacement + suffix)])
         }
         let bounds = range(target)
         let start = lineStart(bounds.location)
         let end = lineEnd(NSMaxRange(bounds))
-        let comments = nativeComments(target).map { String(repeating: " ", count: column(target)) + substring(range($0)) + newline }.joined()
+        let comments = nativeComments(target).map {
+            String(repeating: " ", count: column(target)) + substring(range($0)) + newline
+        }.joined()
         let prefix = substring(NSRange(location: start, length: bounds.location - start))
         if !prefix.trimmingCharacters(in: .whitespaces).isEmpty {
             // A compact mapping/list can share its first line with an outer sequence dash.
             // Retain that dash and leave the remaining children on their indented lines.
             let trailing = substring(NSRange(location: NSMaxRange(bounds), length: end - NSMaxRange(bounds)))
-            let comment = trailing.firstIndex(of: "#").map { String(trailing[$0...]).trimmingCharacters(in: .newlines) } ?? ""
-            return try nativeApplying([(NSRange(location: bounds.location, length: end - bounds.location), comment + newline + comments)])
+            let comment =
+                trailing.firstIndex(of: "#").map { String(trailing[$0...]).trimmingCharacters(in: .newlines) } ?? ""
+            return try nativeApplying([
+                (NSRange(location: bounds.location, length: end - bounds.location), comment + newline + comments)
+            ])
         }
         return try nativeApplying([(NSRange(location: start, length: end - start), comments)])
     }
@@ -202,8 +242,12 @@ nonisolated extension ComposeDocument {
         let text = key.map { Self.quoted($0) + ": " + literal } ?? literal
         if container.nodeType?.hasPrefix("flow_") == true {
             let close = NSMaxRange(range(container)) - 1
-            var edits: [(NSRange, String)] = [(NSRange(location: close, length: 0), (entries.isEmpty ? "" : " ") + text)]
-            if let last = entries.last, !flowCommas(container).contains(where: { range($0).location >= NSMaxRange(range(last)) }) {
+            var edits: [(NSRange, String)] = [
+                (NSRange(location: close, length: 0), (entries.isEmpty ? "" : " ") + text)
+            ]
+            if let last = entries.last,
+                !flowCommas(container).contains(where: { range($0).location >= NSMaxRange(range(last)) })
+            {
                 edits.append((NSRange(location: NSMaxRange(range(last)), length: 0), ","))
             }
             return try nativeApplying(edits)
@@ -219,11 +263,15 @@ nonisolated extension ComposeDocument {
         var node = Self.content(root)
         for component in path {
             guard let current = node else { return nil }
-            guard !nativeUnsafe(current), let content = Self.content(current) else { throw ComposeDocumentError.unsupported }
+            guard !nativeUnsafe(current), let content = Self.content(current) else {
+                throw ComposeDocumentError.unsupported
+            }
             switch component {
             case .key(let key):
                 guard key != "<<" else { throw ComposeDocumentError.unsupported }
-                if content.nodeType == "plain_scalar", Self.children(content).first?.nodeType == "null_scalar" { return nil }
+                if content.nodeType == "plain_scalar", Self.children(content).first?.nodeType == "null_scalar" {
+                    return nil
+                }
                 guard nativeMapping(content) else { throw ComposeDocumentError.unsupported }
                 node = nativePairs(content).first(where: { nativeKey($0) == key })?.child(byFieldName: "value")
             case .index(let index):
@@ -237,16 +285,27 @@ nonisolated extension ComposeDocument {
     }
 
     private func nativeEntryExists(_ path: [ComposeFieldPathComponent]) -> Bool {
-        guard let last = path.last, let parent = try? nativeNode(Array(path.dropLast())), let content = Self.content(parent) else { return false }
+        guard let last = path.last, let parent = try? nativeNode(Array(path.dropLast())),
+            let content = Self.content(parent)
+        else { return false }
         switch last {
         case .key(let key): return nativePairs(content).contains { nativeKey($0) == key }
         case .index(let index): return nativeItems(content).indices.contains(index)
         }
     }
 
-    private func nativeMapping(_ node: Node) -> Bool { ["block_mapping", "flow_mapping"].contains(node.nodeType ?? "") }
-    private func nativeSequence(_ node: Node) -> Bool { ["block_sequence", "flow_sequence"].contains(node.nodeType ?? "") }
-    private func nativePairs(_ node: Node) -> [Node] { Self.children(node).filter { ["block_mapping_pair", "flow_pair"].contains($0.nodeType ?? "") || node.nodeType == "flow_mapping" && $0.nodeType == "flow_node" } }
+    private func nativeMapping(_ node: Node) -> Bool {
+        ["block_mapping", "flow_mapping"].contains(node.nodeType ?? "")
+    }
+    private func nativeSequence(_ node: Node) -> Bool {
+        ["block_sequence", "flow_sequence"].contains(node.nodeType ?? "")
+    }
+    private func nativePairs(_ node: Node) -> [Node] {
+        Self.children(node).filter {
+            ["block_mapping_pair", "flow_pair"].contains($0.nodeType ?? "")
+                || node.nodeType == "flow_mapping" && $0.nodeType == "flow_node"
+        }
+    }
     private func nativeItems(_ node: Node) -> [Node] { Self.children(node).filter { $0.nodeType != "comment" } }
     private func nativeKey(_ pair: Node) -> String? {
         let key = pair.child(byFieldName: "key") ?? (pair.nodeType == "flow_node" ? pair : nil)
@@ -255,15 +314,30 @@ nonisolated extension ComposeDocument {
 
     private func nativeUnsafe(_ node: Node) -> Bool {
         if node.nodeType == "alias" || nativeUnsupportedTag(node) { return true }
-        if ["block_node", "flow_node"].contains(node.nodeType ?? ""), Self.children(node).contains(where: { $0.nodeType == "alias" || nativeUnsupportedTag($0) }) { return true }
-        if let parent = node.parent, ["block_node", "flow_node"].contains(parent.nodeType ?? ""), Self.children(parent).contains(where: nativeUnsupportedTag) { return true }
+        if ["block_node", "flow_node"].contains(node.nodeType ?? ""),
+            Self.children(node).contains(where: { $0.nodeType == "alias" || nativeUnsupportedTag($0) })
+        {
+            return true
+        }
+        if let parent = node.parent, ["block_node", "flow_node"].contains(parent.nodeType ?? ""),
+            Self.children(parent).contains(where: nativeUnsupportedTag)
+        {
+            return true
+        }
         guard let content = Self.content(node) else { return false }
         if nativeMapping(content) {
             let entries = nativePairs(content)
-            if Self.children(content).contains(where: { !["comment", "block_mapping_pair", "flow_pair", "flow_node"].contains($0.nodeType ?? "") }) { return true }
+            if Self.children(content).contains(where: {
+                !["comment", "block_mapping_pair", "flow_pair", "flow_node"].contains($0.nodeType ?? "")
+            }) {
+                return true
+            }
             return entries.contains { pair in
-                guard let key = pair.child(byFieldName: "key") ?? (pair.nodeType == "flow_node" ? pair : nil), Self.isScalar(key), nativeKey(pair) != nil else { return true }
-                return fragment(key).contains("\n") || Self.children(key).contains { ["anchor", "alias", "tag"].contains($0.nodeType ?? "") }
+                guard let key = pair.child(byFieldName: "key") ?? (pair.nodeType == "flow_node" ? pair : nil),
+                    Self.isScalar(key), nativeKey(pair) != nil
+                else { return true }
+                return fragment(key).contains("\n")
+                    || Self.children(key).contains { ["anchor", "alias", "tag"].contains($0.nodeType ?? "") }
             }
         }
         return false
@@ -282,7 +356,8 @@ nonisolated extension ComposeDocument {
     }
 
     private func nativeContainsReferences(_ node: Node) -> Bool {
-        ["anchor", "alias", "tag"].contains(node.nodeType ?? "") || Self.children(node).contains(where: nativeContainsReferences)
+        ["anchor", "alias", "tag"].contains(node.nodeType ?? "")
+            || Self.children(node).contains(where: nativeContainsReferences)
     }
     private func nativeComments(_ node: Node) -> [Node] {
         if node.nodeType == "comment" { return [node] }

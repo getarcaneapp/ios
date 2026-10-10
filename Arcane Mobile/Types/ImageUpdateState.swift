@@ -1,5 +1,5 @@
-import Foundation
 import Arcane
+import Foundation
 
 nonisolated enum ImageUpdateState: Equatable {
     case unknown
@@ -8,11 +8,19 @@ nonisolated enum ImageUpdateState: Equatable {
     case error(String)
 
     init(info: ImageUpdateInfo?) {
-        guard let info else { self = .unknown; return }
-        if info.hasUpdate { self = .hasUpdate }
-        else if !info.error.isEmpty { self = .error(info.error) }
-        else if info.hasCheckResult || info.checkTime != nil { self = .upToDate }
-        else { self = .unknown }
+        guard let info else {
+            self = .unknown
+            return
+        }
+        if info.hasUpdate {
+            self = .hasUpdate
+        } else if !info.error.isEmpty {
+            self = .error(info.error)
+        } else if info.hasCheckResult || info.checkTime != nil {
+            self = .upToDate
+        } else {
+            self = .unknown
+        }
     }
 
     static func checkedResults(_ info: [String: ImageUpdateInfo?]) -> [String: ImageUpdateResponse] {
@@ -22,7 +30,8 @@ nonisolated enum ImageUpdateState: Equatable {
         }
     }
 
-    static func resolve(inline: ImageUpdateInfo?, references: [String], results: [String: ImageUpdateResponse]) -> Self {
+    static func resolve(inline: ImageUpdateInfo?, references: [String], results: [String: ImageUpdateResponse]) -> Self
+    {
         let tags = Set(references.filter { $0 != "<none>:<none>" })
         let checks = tags.sorted().compactMap { results[$0] }
         guard !checks.isEmpty else { return .init(info: inline) }

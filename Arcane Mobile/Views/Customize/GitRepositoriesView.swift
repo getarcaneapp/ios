@@ -1,5 +1,5 @@
-import SwiftUI
 import Arcane
+import SwiftUI
 
 struct GitRepositoriesView: View {
     var body: some View {
@@ -9,8 +9,12 @@ struct GitRepositoriesView: View {
             path: { _, _ in "customize/git-repositories" },
             emptyTitle: "No Git Repositories",
             actions: [
-                .init(id: "test", title: "Test Connection", systemImage: "checkmark.seal", method: .post, pathSuffix: "/{id}/test"),
-                .init(id: "delete", title: "Delete", systemImage: "trash", method: .delete, pathSuffix: "/{id}", destructive: true)
+                .init(
+                    id: "test", title: "Test Connection", systemImage: "checkmark.seal", method: .post,
+                    pathSuffix: "/{id}/test"),
+                .init(
+                    id: "delete", title: "Delete", systemImage: "trash", method: .delete, pathSuffix: "/{id}",
+                    destructive: true),
             ],
             createTitle: "Add Git Repository",
             createFields: [
@@ -19,7 +23,7 @@ struct GitRepositoriesView: View {
                 .init("branch", label: "Branch", placeholder: "main"),
                 .init("username", label: "Username"),
                 .init("token", label: "Token", type: .secure),
-                .init("sshKey", label: "SSH Key", type: .multiline)
+                .init("sshKey", label: "SSH Key", type: .multiline),
             ],
             createPath: { _, _ in "customize/git-repositories" }
         )
