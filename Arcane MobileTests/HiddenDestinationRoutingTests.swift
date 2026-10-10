@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @testable import Arcane_Mobile
@@ -39,5 +40,32 @@ struct HiddenDestinationRoutingTests {
         let more = MainTabView.resolveDestination(AppTab.settings.id, visibleTabs: [], availableTabs: [])
         #expect(more?.selectedTab == .settings)
         #expect(more?.moreDestination == nil)
+    }
+}
+
+@Suite("Saved navigation state")
+@MainActor
+struct SavedNavigationStateTests {
+    @Test(arguments: [true, false])
+    func initialSelectionRespectsRememberPreference(remember: Bool) throws {
+        let suite = "arcane.tests.navigation.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(remember, forKey: "arcane.rememberLastTab")
+        defaults.set(AppTab.containers.id, forKey: "arcane.lastSelectedTabID")
+        let view = MainTabView(defaults: defaults)
+        #expect(view.selectedTab == (remember ? AppTab.containers.id : AppTab.dashboard.id))
+        defaults.set(AppTab.images.id, forKey: "arcane.lastSelectedTabID")
+        #expect(view.selectedTab == (remember ? AppTab.containers.id : AppTab.dashboard.id))
+    }
+
+    @Test(arguments: [nil, "", AppTab.projects.id])
+    func missingPreferenceDefaultsToRemembering(saved: String?) throws {
+        let suite = "arcane.tests.navigation.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(saved, forKey: "arcane.lastSelectedTabID")
+        let view = MainTabView(defaults: defaults)
+        #expect(view.selectedTab == (saved?.isEmpty == false ? saved! : AppTab.dashboard.id))
     }
 }

@@ -856,20 +856,20 @@ struct CreateNetworkView: View {
         isLoading = true; errorMessage = nil
         defer { isLoading = false }
         do {
-            var body: [String: AnyCodable] = [
-                "name": AnyCodable(name),
-                "driver": AnyCodable(driver),
-                "internal": AnyCodable(isInternal)
+            var body: [String: JSONValue] = [
+                "name": JSONValue(name),
+                "driver": JSONValue(driver),
+                "internal": JSONValue(isInternal)
             ]
             let trimmedSubnet = subnet.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedGateway = gateway.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedRange = ipRange.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedSubnet.isEmpty || !trimmedGateway.isEmpty || !trimmedRange.isEmpty {
-                var config: [String: AnyCodable] = [:]
-                if !trimmedSubnet.isEmpty { config["subnet"] = AnyCodable(trimmedSubnet) }
-                if !trimmedGateway.isEmpty { config["gateway"] = AnyCodable(trimmedGateway) }
-                if !trimmedRange.isEmpty { config["ipRange"] = AnyCodable(trimmedRange) }
-                body["ipam"] = AnyCodable(["config": AnyCodable([AnyCodable(config)])])
+                var config: [String: JSONValue] = [:]
+                if !trimmedSubnet.isEmpty { config["subnet"] = JSONValue(trimmedSubnet) }
+                if !trimmedGateway.isEmpty { config["gateway"] = JSONValue(trimmedGateway) }
+                if !trimmedRange.isEmpty { config["ipRange"] = JSONValue(trimmedRange) }
+                body["ipam"] = JSONValue(["config": JSONValue([JSONValue(config)])])
             }
             let path = client.rest.environmentPath(environmentID, "networks")
             let _: NetworkSummary = try await client.rest.post(path, body: body)

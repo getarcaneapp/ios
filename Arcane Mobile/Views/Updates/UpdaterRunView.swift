@@ -55,7 +55,7 @@ struct UpdaterRunSheet: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(environment.displayName)
                                             .foregroundStyle(.primary)
-                                        Text(environment.url)
+                                        Text(environment.apiUrl)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)

@@ -131,7 +131,7 @@ private nonisolated final class LifecycleURLProtocol: URLProtocol, @unchecked Se
     private var loadingTask: Task<Void, Never>?
     override func startLoading() {
         let handler = Self.lock.withLock { Self.handlers[request.value(forHTTPHeaderField: "Lifecycle-Test") ?? ""] }
-        loadingTask = Task {
+        loadingTask = Task { @Sendable [self, handler] in
             do {
                 guard let handler else { throw URLError(.badServerResponse) }
                 let data = try await handler(request)
@@ -300,5 +300,44 @@ struct SessionLifecycleTests {
         #expect(manager.client?.transport === nextClient)
         #expect(!manager.isLoading)
         if logout { #expect(try await tokens.loadTokens() == nil) }
+    }
+}
+
+@Suite("Swift 6.4 SDK integration")
+struct SDKMigrationIntegrationTests {
+    @Test @MainActor
+    func proxyAndCredentialErrorsHaveDistinctMessages() {
+        #expect(friendlyErrorMessage(ArcaneError.proxyAuthenticationRequired) == "Sign in to the proxy protecting this server")
+        #expect(friendlyErrorMessage(ArcaneError.authenticationRejected) == "The server rejected authentication")
+    }
+
+    @Test(arguments: [false, true])
+    func cancelledUploadAwaitsCleanupBeforeReturning(cleanupFails: Bool) async throws {
+        let recorder = BindingRecorder()
+        let session = LifecycleURLProtocol.session { request in
+            recorder.record(request.httpMethod ?? "")
+            if request.httpMethod == "DELETE" {
+                if cleanupFails { throw URLError(.cannotConnectToHost) }
+                return Data()
+            }
+            return Data(#"{"success":true,"data":{"id":"session","kind":"volume-backup","filename":"backup.tar","size":5,"chunkSize":3,"totalChunks":2,"receivedChunks":[],"complete":false,"createdAt":"2026-09-04T12:00:00Z"}}"#.utf8)
+        }
+        defer { session.invalidateAndCancel() }
+        let client = ArcaneClient(configuration: .init(
+            baseURL: URL(string: "https://upload.example.test")!,
+            tokenStore: InMemoryTokenStore(tokens: .init(accessToken: "accepted", refreshToken: "refresh", expiresAt: .distantFuture)),
+            urlSession: session,
+            retryPolicy: .init(maxAttempts: 1, baseBackoff: .zero, maxBackoff: .zero)
+        ))
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data([0, 1, 2, 3, 4]).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let upload = Task {
+            try await client.uploads.uploadFile(kind: .volumeBackup, fileURL: file) { _ in
+                withUnsafeCurrentTask { $0?.cancel() }
+            }
+        }
+        await #expect(throws: CancellationError.self) { try await upload.value }
+        #expect(recorder.recorded == ["POST", "PUT", "DELETE"])
     }
 }

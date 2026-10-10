@@ -342,7 +342,7 @@ struct NotificationProviderFormView: View {
             }
 
             Button("Add Header", systemImage: "plus") {
-                state.headers.append(NotificationHeaderRow())
+                state.headers.append(StableHeaderRow())
             }
         } header: {
             Text("Headers")
@@ -355,7 +355,7 @@ struct NotificationProviderFormView: View {
 
     private func valueRows(
         _ title: String,
-        rows: Binding<[NotificationValueRow]>,
+        rows: Binding<[StableStringRow]>,
         placeholder: String,
         addTitle: String
     ) -> some View {
@@ -370,7 +370,7 @@ struct NotificationProviderFormView: View {
             }
 
             Button(addTitle, systemImage: "plus") {
-                rows.wrappedValue.append(NotificationValueRow())
+                rows.wrappedValue.append(StableStringRow())
             }
         } header: {
             Text(title)

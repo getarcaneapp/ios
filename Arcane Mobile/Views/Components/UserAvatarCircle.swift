@@ -7,6 +7,8 @@ import SwiftUI
 struct UserAvatarCircle: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
+    @SwiftUI.Environment(\.displayScale) private var displayScale
+
     let size: CGFloat
     var font: Font = .subheadline.bold()
 
@@ -15,7 +17,7 @@ struct UserAvatarCircle: View {
             if let data = manager.currentUserAvatarData,
                let image = ImageCache.decode(
                    data: data,
-                   maxPixelSize: max(1, Int(ceil(size * UIScreen.main.scale)))
+                   maxPixelSize: max(1, Int(ceil(size * displayScale)))
                ) {
                 Image(uiImage: image)
                     .resizable()

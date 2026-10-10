@@ -234,7 +234,7 @@ struct RegistryFormView: View {
         defer { isLoading = false }
         do {
             if let registry {
-                let body = UpdateContainerRegistryRequest(
+                let body = UpdateContainerRegistry(
                     url: url,
                     username: username.nilIfEmpty,
                     token: token.nilIfEmpty,
@@ -252,7 +252,7 @@ struct RegistryFormView: View {
                 )
                 let _: ContainerRegistry = try await client.rest.put("container-registries/\(registry.id)", body: body)
             } else {
-                let body = CreateContainerRegistryRequest(
+                let body = CreateContainerRegistry(
                     url: url,
                     username: username,
                     token: token,

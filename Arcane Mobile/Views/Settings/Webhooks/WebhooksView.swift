@@ -321,7 +321,7 @@ struct CreateWebhookView: View {
 
     // For target pickers
     @State private var containers: [ContainerSummary] = []
-    @State private var projects: [Project] = []
+    @State private var projects: [ProjectDetails] = []
     @State private var loadingTargets = false
 
     private var actionsForTarget: [CreateWebhook.ActionTypePayload] {

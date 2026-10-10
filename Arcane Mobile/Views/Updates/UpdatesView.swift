@@ -124,7 +124,7 @@ private struct EnvironmentPickerSheet: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(env.displayName)
                                     .foregroundStyle(.primary)
-                                Text(env.url)
+                                Text(env.apiUrl)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)

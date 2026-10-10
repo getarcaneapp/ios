@@ -1346,10 +1346,10 @@ struct CreateProjectView: View {
         defer { isLoading = false }
         do {
             if previewEnabled { try draftSnapshot.validateSyntax() }
-            let body: [String: AnyCodable] = [
-                "name": AnyCodable(name),
-                "composeContent": AnyCodable(composeContent),
-                "envContent": AnyCodable(envContent)
+            let body: [String: JSONValue] = [
+                "name": JSONValue(name),
+                "composeContent": JSONValue(composeContent),
+                "envContent": JSONValue(envContent)
             ]
             let path = client.rest.environmentPath(environmentID, "projects")
             let created: ProjectDetails = try await client.rest.post(path, body: body)

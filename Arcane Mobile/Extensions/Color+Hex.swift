@@ -21,15 +21,8 @@ extension Color {
     }
 }
 
-private struct AppAccentColorKey: EnvironmentKey {
-    static let defaultValue: Color = .blue
-}
-
 extension EnvironmentValues {
-    var appAccentColor: Color {
-        get { self[AppAccentColorKey.self] }
-        set { self[AppAccentColorKey.self] = newValue }
-    }
+    @Entry var appAccentColor: Color = .blue
 }
 
 extension View {

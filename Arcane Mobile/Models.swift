@@ -53,35 +53,6 @@ enum ResourceUpdateFilter: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - App compatibility names backed by libarcane-swift exports
-//
-// Display models (`Project`, `ContainerSummary`, `ImageSummary`, `ImageDetailSummary`,
-// `NetworkSummary`, `Environment`, `User`, `APIKey`,
-// `ContainerRegistry`, `TemplateRegistry`, `Template`,
-// `TemplateContent`, `Webhook`) live in `ResilientModels.swift`
-// as hand-written, schema-tolerant structs that decode every field with
-// `decodeIfPresent`. Only request/sub-type aliases that flow *into* the SDK
-// stay here.
-
-typealias CreateUserRequest = CreateUser
-typealias UpdateUserRequest = UpdateUser
-typealias CreateAPIKeyRequest = CreateAPIKey
-typealias CreateContainerRegistryRequest = CreateContainerRegistry
-typealias UpdateContainerRegistryRequest = UpdateContainerRegistry
-typealias CreateTemplateRegistryRequest = CreateTemplateRegistry
-typealias UpdateTemplateRegistryRequest = UpdateTemplateRegistry
-typealias AnyCodable = JSONValue
-
-// MARK: - Notification type aliases
-typealias NotificationSettingsResponse = NotificationSettings
-typealias NotificationSettingsUpdate = UpdateNotificationSettings
-
-// MARK: - Webhook type aliases
-typealias WebhookCreateModel = CreateWebhook
-typealias WebhookCreatedModel = WebhookCreated
-typealias WebhookSummaryModel = Webhook
-typealias WebhookUpdateModel = UpdateWebhook
-
 struct DataResponse<T: Codable & Sendable>: Codable, Sendable {
     var data: T?
     var message: String?
@@ -114,10 +85,6 @@ struct DataResponse<T: Codable & Sendable>: Codable, Sendable {
 
 // MARK: - Display helpers
 
-// `ImageSummary`, `ContainerSummary`, `Environment`, `Project` and their
-// computed properties (displayName, isRunning, statusColor, isOnline, etc.)
-// now live as concrete types in `ResilientModels.swift`.
-
 nonisolated struct VolumeSizeInfo: Codable, Sendable {
     let name: String
     let size: Int64
@@ -146,8 +113,6 @@ nonisolated struct ServerVersionInfo: Codable, Sendable {
     var releaseUrl: String?
 }
 
-// `NotificationSettings: Identifiable` is now stated in the SDK itself.
-
 extension ContainerRegistry {
     /// Best-effort display name. The SDK type carries a `description` field;
     /// fall back to the URL host when description is empty.
@@ -161,12 +126,6 @@ extension Template {
     /// Convenience accessor that surfaces the icon URL from metadata, since
     /// the SDK keeps it inside the `metadata` blob.
     var iconUrl: String? { metadata?.iconUrl }
-}
-
-extension APIKey {
-    /// Compat alias for the renamed `isStatic` field — these flags conveyed
-    /// the same "can't be deleted via UI" semantic.
-    var isProtected: Bool { isStatic }
 }
 
 extension User {
@@ -297,13 +256,8 @@ extension Arcane.Environment {
         let lower = status.lowercased()
         return lower == "online" || lower == "up"
     }
-    /// Backwards-compat alias for the renamed `apiUrl` property.
-    var url: String { apiUrl }
 }
 
-typealias SettingsUpdate = UpdateSettings
-typealias UpgradeCheckResultData = UpgradeCheckResult
-typealias Project = ProjectDetails
 
 // MARK: - NetworkSummary compatibility
 //
@@ -418,13 +372,7 @@ extension CreateWebhook {
     }
 }
 
-// MARK: - SystemStats compatibility
-//
-// Views were written against an iOS-side `SystemStatsFrame` with explicit
-// `*Bytes` and `*Percent` accessors. The SDK's canonical `SystemStats` keeps
-// the wire field names (`memoryUsage`, `memoryTotal`, `diskUsage`, etc.) — we
-// bridge them here so existing call sites keep working.
-typealias SystemStatsFrame = SystemStats
+// MARK: - System statistics presentation
 
 extension SystemStats {
     /// CPU usage as a percentage in the 0–100 range.
@@ -524,6 +472,8 @@ extension Int {
 func friendlyErrorMessage(_ error: Error) -> String {
     if let arcane = error as? ArcaneError {
         switch arcane {
+        case .proxyAuthenticationRequired: return "Sign in to the proxy protecting this server"
+        case .authenticationRejected: return "The server rejected authentication"
         case .unauthorized: return "Not signed in"
         case .forbidden: return "You don't have permission to do that"
         case .notFound: return "Not found"

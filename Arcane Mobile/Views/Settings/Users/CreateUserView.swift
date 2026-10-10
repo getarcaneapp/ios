@@ -103,7 +103,7 @@ struct CreateUserView: View {
         defer { isLoading = false }
         let supportsRBAC = supportsRoleManagement
         do {
-            let body = CreateUserRequest(
+            let body = CreateUser(
                 username: username,
                 password: password,
                 displayName: nil,

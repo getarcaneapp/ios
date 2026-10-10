@@ -14,7 +14,7 @@ struct SystemUpgradeView: View {
 
     private enum Phase: Equatable {
         case checking
-        case ready(UpgradeCheckResultData)
+        case ready(UpgradeCheckResult)
         case checkFailed(String)
         case triggering
         case triggered(String)
@@ -118,7 +118,7 @@ struct SystemUpgradeView: View {
         .glassEffectCompat(in: .rect(cornerRadius: Radius.hero))
     }
 
-    private func readyContent(result: UpgradeCheckResultData) -> some View {
+    private func readyContent(result: UpgradeCheckResult) -> some View {
         VStack(spacing: 16) {
             heroCard(
                 tint: result.canUpgrade ? .blue : .gray,

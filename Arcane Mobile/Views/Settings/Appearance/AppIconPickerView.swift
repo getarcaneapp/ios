@@ -132,6 +132,8 @@ struct AppIconPickerView: View {
 
     private func prettify(_ raw: String) -> String {
         if raw == "AppIcon-Techy-Arcane" { return "Techy" }
+        if raw == "AppIcon-Development-Preview" { return "Blueprint" }
+        if raw == "AppIcon-Blueprint" { return "Wireframe" }
 
         return raw
             .replacingOccurrences(of: "AppIcon-", with: "")

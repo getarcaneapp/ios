@@ -3,20 +3,21 @@ import SwiftUI
 
 struct MainTabView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @State private var selectedTab: String = AppTab.dashboard.id
+    @State private(set) var selectedTab: String
     @State private var store = NavTabsStore.shared
     @State private var router = QuickActionRouter.shared
     @State private var fleetStore = FleetStore()
     @State private var moreDestination: AppTab?
     @AppStorage("arcane.showTabLabels") private var showTabLabels = false
 
-    init() {
-        let defaults = UserDefaults.standard
+    init(defaults: UserDefaults = .standard) {
         let remember = defaults.object(forKey: "arcane.rememberLastTab") as? Bool ?? true
         if remember,
            let saved = defaults.string(forKey: "arcane.lastSelectedTabID"),
            !saved.isEmpty {
-            _selectedTab = State(initialValue: saved)
+            self.selectedTab = saved
+        } else {
+            self.selectedTab = AppTab.dashboard.id
         }
     }
 

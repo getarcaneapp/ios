@@ -1,14 +1,7 @@
 import SwiftUI
 
-private struct FleetEnvironmentIDKey: EnvironmentKey {
-    static let defaultValue: String? = nil
-}
-
 extension EnvironmentValues {
-    var fleetEnvironmentID: String? {
-        get { self[FleetEnvironmentIDKey.self] }
-        set { self[FleetEnvironmentIDKey.self] = newValue }
-    }
+    @Entry var fleetEnvironmentID: String? = nil
 }
 
 struct FleetEnvironmentLabel: View {

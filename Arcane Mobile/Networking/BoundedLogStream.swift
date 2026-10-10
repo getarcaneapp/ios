@@ -21,11 +21,14 @@ nonisolated struct BoundedLogStream: AsyncSequence, Sendable {
         Iterator(transport: transport, path: path, query: query)
     }
 
-    nonisolated final class Iterator: AsyncIteratorProtocol, @unchecked Sendable {
+    /// Each iterator belongs to one consuming task.
+    nonisolated final class Iterator: AsyncIteratorProtocol {
         private let transport: ArcaneURLSessionTransport
         private let path: String
         private let query: [URLQueryItem]
+        private var task: URLSessionWebSocketTask?
         private var channel: WebSocketChannel<Never, LogLine>?
+        private var finished = false
         private var iterator: AsyncThrowingStream<LogLine, Error>.Iterator?
 
         init(transport: ArcaneURLSessionTransport, path: String, query: [URLQueryItem]) {
@@ -35,25 +38,52 @@ nonisolated struct BoundedLogStream: AsyncSequence, Sendable {
         }
 
         func next() async throws -> LogLine? {
-            try Task.checkCancellation()
-            if iterator == nil {
-                let request = try await transport.websocketRequest(path: path, query: query)
-                let channel = WebSocketChannel<Never, LogLine>(
-                    request: request,
-                    encodeOutbound: { _ in fatalError("Log streams are receive-only") },
-                    decodeInbound: { message in try Self.decode(message) }
-                )
-                self.channel = channel
-                iterator = channel.messages(bufferingPolicy: .bufferingNewest(100)).makeAsyncIterator()
+            guard !finished else { return nil }
+            do {
+                try Task.checkCancellation()
+                if iterator == nil {
+                    let task = try await transport.makeWebSocketTask(path: path, query: query)
+                    self.task = task
+                    task.maximumMessageSize = RemoteDataLimits.maximumStreamLineBytes
+                    try Task.checkCancellation()
+                    let channel = WebSocketChannel<Never, LogLine>(
+                        task: task,
+                        encodeOutbound: { _ in fatalError("Log streams are receive-only") },
+                        decodeInbound: { message in try Self.decode(message) }
+                    )
+                    self.channel = channel
+                    iterator = channel.messages(bufferingPolicy: .bufferingNewest(100)).makeAsyncIterator()
+                }
+
+                let task = task
+                let value = try await withTaskCancellationHandler {
+                    guard var current = iterator else { return nil as LogLine? }
+                    let value = try await current.next(isolation: #isolation)
+                    iterator = current
+                    try Task.checkCancellation()
+                    return value
+                } onCancel: {
+                    task?.cancel(with: .normalClosure, reason: nil)
+                }
+                if value == nil { finish() }
+                return value
+            } catch {
+                finish()
+                if Task.isCancelled { throw CancellationError() }
+                throw error
             }
-            guard var current = iterator else { return nil }
-            let value = try await current.next()
-            iterator = current
-            if value == nil {
-                channel = nil
-                iterator = nil
-            }
-            return value
+        }
+
+        private func finish() {
+            finished = true
+            task?.cancel(with: .normalClosure, reason: nil)
+            iterator = nil
+            channel = nil
+            task = nil
+        }
+
+        deinit {
+            task?.cancel(with: .normalClosure, reason: nil)
         }
 
         private static func decode(_ message: URLSessionWebSocketTask.Message) throws -> LogLine {

@@ -53,9 +53,6 @@ extension NotificationProvider: @retroactive Identifiable {
     }
 }
 
-typealias NotificationValueRow = StableStringRow
-typealias NotificationHeaderRow = StableHeaderRow
-
 struct EventSubscriptions: Equatable {
     var imageUpdate = true
     var containerUpdate = true
@@ -105,7 +102,7 @@ struct NotificationProviderFormState: Equatable {
     var fromAddress = ""
     var tlsMode = EmailTLSMode.starttls.rawValue
     var authMode = EmailAuthMode.auto.rawValue
-    var recipients: [NotificationValueRow] = []
+    var recipients: [StableStringRow] = []
 
     var preview = true
     var notification = true
@@ -121,11 +118,11 @@ struct NotificationProviderFormState: Equatable {
     var threadTS = ""
 
     var topic = ""
-    var tags: [NotificationValueRow] = []
+    var tags: [StableStringRow] = []
     var cache = true
     var firebase = true
 
-    var devices: [NotificationValueRow] = []
+    var devices: [StableStringRow] = []
 
     var insecureSkipVerify = false
     var useHeader = false
@@ -136,7 +133,7 @@ struct NotificationProviderFormState: Equatable {
     var contentType = "application/json"
     var titleKey = "title"
     var messageKey = "message"
-    var headers: [NotificationHeaderRow] = []
+    var headers: [StableHeaderRow] = []
     var successBodyContains = ""
     var payloadTemplate = ""
 
@@ -173,13 +170,13 @@ struct NotificationProviderFormState: Equatable {
             smtpUsername = config.smtpUsername
             password = config.smtpPassword ?? ""
             fromAddress = config.fromAddress
-            recipients = config.toAddresses.map { NotificationValueRow(value: $0) }
+            recipients = config.toAddresses.map { StableStringRow(value: $0) }
             tlsMode = config.tlsMode.rawValue
             authMode = (config.authMode ?? .auto).rawValue
             events = EventSubscriptions(events: config.events ?? .defaults)
         case .telegram(let config):
             token = config.botToken ?? ""
-            recipients = config.chatIds.map { NotificationValueRow(value: $0) }
+            recipients = config.chatIds.map { StableStringRow(value: $0) }
             preview = config.preview
             notification = config.notification
             parseMode = config.parseMode ?? ""
@@ -192,7 +189,7 @@ struct NotificationProviderFormState: Equatable {
             password = config.password ?? ""
             token = config.token ?? ""
             source = config.source
-            recipients = config.recipients.map { NotificationValueRow(value: $0) }
+            recipients = config.recipients.map { StableStringRow(value: $0) }
             disableTLS = config.disableTls
             events = EventSubscriptions(events: config.events ?? .defaults)
         case .slack(let config):
@@ -212,7 +209,7 @@ struct NotificationProviderFormState: Equatable {
             password = config.password ?? ""
             title = config.title ?? ""
             priority = config.priority ?? "default"
-            tags = (config.tags ?? []).map { NotificationValueRow(value: $0) }
+            tags = (config.tags ?? []).map { StableStringRow(value: $0) }
             icon = config.icon ?? ""
             cache = config.cache
             firebase = config.firebase
@@ -222,7 +219,7 @@ struct NotificationProviderFormState: Equatable {
         case .pushover(let config):
             token = config.token ?? ""
             user = config.user
-            devices = (config.devices ?? []).map { NotificationValueRow(value: $0) }
+            devices = (config.devices ?? []).map { StableStringRow(value: $0) }
             priority = String(config.priority)
             title = config.title ?? ""
             events = EventSubscriptions(events: config.events ?? .defaults)
@@ -256,7 +253,7 @@ struct NotificationProviderFormState: Equatable {
             messageKey = config.messageKey ?? "message"
             headers = (config.customHeaders ?? [:])
                 .sorted { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
-                .map { NotificationHeaderRow(name: $0.key, value: $0.value) }
+                .map { StableHeaderRow(name: $0.key, value: $0.value) }
             disableTLS = config.disableTls
             successBodyContains = config.successBodyContains ?? ""
             payloadTemplate = config.payloadTemplate ?? ""
@@ -423,7 +420,7 @@ private extension Array where Element == String {
     var nilIfEmpty: [String]? { isEmpty ? nil : self }
 }
 
-private extension Array where Element == NotificationValueRow {
+private extension Array where Element == StableStringRow {
     var values: [String] {
         compactMap { row in
             let value = row.value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -432,7 +429,7 @@ private extension Array where Element == NotificationValueRow {
     }
 }
 
-private extension Array where Element == NotificationHeaderRow {
+private extension Array where Element == StableHeaderRow {
     var dictionary: [String: String] {
         reduce(into: [:]) { result, row in
             let name = row.name.trimmingCharacters(in: .whitespacesAndNewlines)

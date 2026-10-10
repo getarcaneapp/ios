@@ -25,7 +25,7 @@ For setup instructions, configuration details, and development guides, visit the
 
 ## Building
 
-This is a SwiftUI app targeting iOS 18+ in Swift 6 strict-concurrency mode. On iOS 26 and later it adopts Liquid Glass; on iOS 18 those surfaces fall back to materials via the helpers in `Arcane Mobile/Extensions/GlassCompat.swift`.
+Build with Xcode 27.0 or newer and Swift 6.4. This SwiftUI app targets iOS 18+ in Swift 6 strict-concurrency mode. On iOS 26 and later it adopts Liquid Glass; on iOS 18 those surfaces fall back to materials via the helpers in `Arcane Mobile/Extensions/GlassCompat.swift`.
 
 ```sh
 open "Arcane Mobile.xcodeproj"

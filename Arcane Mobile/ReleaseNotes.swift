@@ -147,13 +147,18 @@ enum ReleaseNotes {
         ReleaseNote(
             version: "0.10.0",
             new: [
+                .init("Blueprint alternate app icon."),
                 .init("View and manage resources across all environments in one place, with environment filters and a guided introduction.", badge: .preview),
                 .init("Native Compose editor for projects and templates in Preview Features.", badge: .preview)
             ],
             changed: [
+                .init("Updated SwiftUI and Arcane SDK integration for iOS 18 through iOS 27."),
                 .init("Preview badges identify experimental features in release notes.")
             ],
             fixed: [
+                .init("Live logs preserve proxy sessions and close connections when cancelled."),
+                .init("Profile images use the current display resolution."),
+                .init("Proxy authentication failures show specific error messages."),
                 .init("Image update results appear correctly in All Environments."),
                 .init("Fleet actions use concise confirmation prompts and compact toast feedback; Compose drafts use standard confirmations."),
                 .init("Destructive menu icons match their red action labels."),

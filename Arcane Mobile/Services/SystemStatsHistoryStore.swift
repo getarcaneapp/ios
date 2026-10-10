@@ -16,7 +16,7 @@ final class SystemStatsHistoryStore {
     final class Series {
         var cpu: [SparklineSample] = []
         var memory: [SparklineSample] = []
-        var latest: SystemStatsFrame?
+        var latest: SystemStats?
         var error: String?
     }
 
@@ -233,7 +233,7 @@ final class SystemStatsHistoryStore {
         series.error = nil
     }
 
-    private func append(_ frame: SystemStatsFrame, environmentID: String) {
+    private func append(_ frame: SystemStats, environmentID: String) {
         guard trackedIDs.contains(environmentID) else { return }
         let series = seriesInternal(for: environmentID)
         series.latest = frame

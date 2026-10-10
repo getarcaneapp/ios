@@ -1021,6 +1021,10 @@ nonisolated enum SupportBundleCollector {
     private static func diagnosticErrorDetail(_ error: Error) -> String {
         if let arcaneError = error as? ArcaneError {
             switch arcaneError {
+            case .proxyAuthenticationRequired:
+                return "ArcaneError.proxyAuthenticationRequired"
+            case .authenticationRejected:
+                return "ArcaneError.authenticationRejected"
             case .unauthorized:
                 return "ArcaneError.unauthorized"
             case .forbidden:

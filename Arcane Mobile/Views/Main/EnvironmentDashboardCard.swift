@@ -216,7 +216,7 @@ struct EnvironmentDashboardCard: View {
     }
 
     /// Latest live stats frame from the shared history store.
-    private var latestStats: SystemStatsFrame? { series?.latest }
+    private var latestStats: SystemStats? { series?.latest }
 
     private var statsError: String? { series?.error }
 
@@ -507,6 +507,8 @@ struct EnvironmentDashboardCard: View {
 
     private func arcaneMessage(_ error: ArcaneError) -> String {
         switch error {
+        case .proxyAuthenticationRequired: return "Proxy sign-in required"
+        case .authenticationRejected: return "Authentication rejected"
         case .rateLimited: return "Rate limited"
         case .notFound: return "Not available"
         case .unauthorized, .forbidden: return "Not authorized"

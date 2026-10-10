@@ -94,7 +94,7 @@ private struct EnvironmentContextPicker: View {
         guard !query.isEmpty else { return environments }
         return environments.filter {
             $0.displayName.localizedCaseInsensitiveContains(query)
-                || $0.url.localizedCaseInsensitiveContains(query)
+                || $0.apiUrl.localizedCaseInsensitiveContains(query)
         }
     }
 
@@ -116,7 +116,7 @@ private struct EnvironmentContextPicker: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(environment.displayName)
                                 .foregroundStyle(.primary)
-                            Text(environment.url)
+                            Text(environment.apiUrl)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)

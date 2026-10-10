@@ -31,8 +31,8 @@ struct Post26ParityTests {
         state.webhookURL = "https://hooks.example.test/notify"
         state.method = "PATCH"
         state.headers = [
-            NotificationHeaderRow(name: "X-Environment", value: "production"),
-            NotificationHeaderRow(name: "X-Empty", value: "")
+            StableHeaderRow(name: "X-Environment", value: "production"),
+            StableHeaderRow(name: "X-Empty", value: "")
         ]
         state.payloadTemplate = #"{"title":"{{ title }}"}"#
         state.successBodyContains = "accepted"
@@ -84,7 +84,7 @@ struct Post26ParityTests {
         generic.messageKey = "body"
         generic.successBodyContains = "accepted"
         generic.payloadTemplate = #"{"subject":"{{ title }}"}"#
-        generic.headers = [NotificationHeaderRow(name: "X-Environment", value: "production")]
+        generic.headers = [StableHeaderRow(name: "X-Environment", value: "production")]
 
         guard case .generic(let legacyConfig) = generic.configuration(
             for: .generic,

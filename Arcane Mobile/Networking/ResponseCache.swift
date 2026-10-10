@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Synchronization
 
 // Disk-backed, in-memory-mirrored cache for API GET responses.
 // Stale-while-revalidate is implemented in CachedFetch; this layer is
@@ -36,10 +37,7 @@ nonisolated private struct ValueEnvelope<T: Codable>: Codable {
     let value: T
 }
 
-// @unchecked: `value` is always a Sendable payload (every call site requires
-// `T: Codable & Sendable`) and entries are only stored/read under ResponseCache
-// actor isolation — the existential box just can't prove that statically.
-private struct HotEntry: @unchecked Sendable {
+private nonisolated struct HotEntry: Sendable {
     let value: any Sendable
     let storedAt: Date
     var lastAccess: UInt64
@@ -348,15 +346,14 @@ actor ResponseCache {
 
 /// A shared validity lease also lets MainActor callbacks check freshness without
 /// suspending between the check and applying the result.
-nonisolated final class CacheGeneration: @unchecked Sendable {
-    private let lock = NSLock()
-    private var valid = true
+nonisolated final class CacheGeneration: Sendable {
+    private let valid = Mutex(true)
 
     var isValid: Bool {
-        lock.withLock { valid }
+        valid.withLock { $0 }
     }
 
     func invalidate() {
-        lock.withLock { valid = false }
+        valid.withLock { $0 = false }
     }
 }

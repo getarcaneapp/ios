@@ -102,7 +102,7 @@ struct UserDetailView: View {
         defer { isSaving = false }
         let supportsRBAC = manager.serverCapabilities?.supportsRoleManagement == true
         do {
-            let body = UpdateUserRequest(
+            let body = UpdateUser(
                 displayName: displayName.isEmpty ? nil : displayName,
                 email: email.isEmpty ? nil : email,
                 roles: supportsRBAC ? nil : (isAdmin ? ["admin"] : [])

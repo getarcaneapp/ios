@@ -30,7 +30,7 @@ struct EnvironmentFleetListRow: View {
 
     private var environmentID: EnvironmentID { EnvironmentID(rawValue: environment.id) }
     private var snapshot: DashboardSnapshot? { streamState?.hasLoaded == true ? streamState?.snapshot : nil }
-    private var stats: SystemStatsFrame? { series?.latest }
+    private var stats: SystemStats? { series?.latest }
 
     var body: some View {
         Button(action: onOpen) {

@@ -1,25 +1,29 @@
 import Foundation
 import Arcane
+import Synchronization
 
 /// A synchronous retirement fence shared by every client in an authentication attempt.
-nonisolated final class CredentialLease: @unchecked Sendable {
-    private let lock = NSLock()
-    private var active = true
-    private var allowsClear = true
+nonisolated final class CredentialLease: Sendable {
+    private struct State {
+        var active = true
+        var allowsClear = true
+    }
 
-    var isActive: Bool { lock.withLock { active } }
-    var canClear: Bool { lock.withLock { allowsClear } }
+    private let state = Mutex(State())
+
+    var isActive: Bool { state.withLock { $0.active } }
+    var canClear: Bool { state.withLock { $0.allowsClear } }
 
     func retire(allowClear: Bool = false) {
-        lock.withLock {
-            active = false
-            allowsClear = allowClear
+        state.withLock {
+            $0.active = false
+            $0.allowsClear = allowClear
         }
     }
 
     func whileActive(_ operation: () -> Void) throws {
-        try lock.withLock {
-            guard active else { throw CancellationError() }
+        try state.withLock {
+            guard $0.active else { throw CancellationError() }
             operation()
         }
     }
