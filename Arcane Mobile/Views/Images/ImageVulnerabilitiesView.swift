@@ -312,6 +312,7 @@ struct ImageVulnerabilitiesView: View {
         do {
             let _ = try await client.vulnerabilities.scanImage(envID: environmentID, imageId: imageID)
             await reload()
+            showToast(.success("Scan complete"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -323,6 +324,7 @@ struct ImageVulnerabilitiesView: View {
             try await client.vulnerabilities.unignore(envID: environmentID, ignoreId: ignoreId)
             ignoredById.removeValue(forKey: key)
             rebuildDisplayedVulnerabilities()
+            showToast(.success("Vulnerability unignored"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -595,6 +597,7 @@ private struct IgnoreVulnerabilitySheet: View {
         do {
             let result = try await client.vulnerabilities.ignore(envID: environmentID, payload: body)
             onIgnored(IgnoredVulnerability(result))
+            showToast(.success("Vulnerability ignored"))
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)

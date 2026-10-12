@@ -509,6 +509,7 @@ struct EnvironmentDashboardCard: View {
             await ResponseCache.shared.invalidateEnvironment(envID.rawValue)
             await onRefresh()
             syncSuccessPulse.toggle()
+            showToast(.success("Environment synced"))
         } catch let error as ArcaneError {
             showToast(.error(arcaneMessage(error)))
         } catch {

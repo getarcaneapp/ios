@@ -78,7 +78,7 @@ struct ImageUpdatesView: View {
                         .foregroundStyle(summary.errorsCount > 0 ? .red : .secondary)
                 }
             } else if loadingSummary {
-                ProgressView("Loading summary…")
+                ArcaneLoadingView("Loading summary…")
             } else {
                 Text("No summary available").foregroundStyle(.secondary)
             }
@@ -153,6 +153,7 @@ struct ImageUpdatesView: View {
             _ = try await client.images.checkAllUpdates(envID: environmentID)
             await loadSummary()
             await loadByRefs()
+            showToast(.success("Update check complete"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

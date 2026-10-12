@@ -144,7 +144,7 @@ struct EnvironmentDetailView: View {
                         dockerInfoTab(info)
                     }
                 } else if staticError == nil {
-                    ProgressView("Loading system information…")
+                    ArcaneLoadingView("Loading system information…")
                         .frame(maxWidth: .infinity)
                         .padding(.top, 40)
                 }
@@ -165,7 +165,7 @@ struct EnvironmentDetailView: View {
                         isAvailable: environmentError == nil
                     )
                 } else if isLoading {
-                    ProgressView("Loading connection details…")
+                    ArcaneLoadingView("Loading connection details…")
                         .frame(maxWidth: .infinity)
                         .padding(.top, 40)
                 }
@@ -232,7 +232,7 @@ struct EnvironmentDetailView: View {
                 if let error = draft.errorMessage {
                     ErrorBanner(message: error, severity: .warning)
                 } else {
-                    ProgressView("Loading settings…")
+                    ArcaneLoadingView("Loading settings…")
                         .frame(maxWidth: .infinity)
                         .padding(.top, 40)
                 }

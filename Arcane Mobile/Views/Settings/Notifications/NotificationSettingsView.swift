@@ -19,7 +19,7 @@ struct NotificationSettingsView: View {
     var body: some View {
         Group {
             if isLoading && configuredProviders.isEmpty {
-                ProgressView("Loading notifications…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading notifications…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     providersSection
@@ -130,6 +130,7 @@ struct NotificationSettingsView: View {
                 envID: manager.activeEnvironmentID
             )
             configuredProviders.removeAll { $0.provider == provider }
+            showToast(.success("Notification provider deleted"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

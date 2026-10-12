@@ -272,6 +272,7 @@ struct RegistryFormView: View {
                 )
                 let _: ContainerRegistry = try await client.rest.post("container-registries", body: body)
             }
+            showToast(.success(registry == nil ? "Registry created" : "Registry updated"))
             await onSuccess()
             dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }

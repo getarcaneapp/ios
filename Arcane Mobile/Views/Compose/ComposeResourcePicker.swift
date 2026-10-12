@@ -53,7 +53,7 @@ struct ComposeResourcePicker: View {
                         }
                     }
                     if isLoading {
-                        ProgressView("Loading…").frame(maxWidth: .infinity)
+                        ArcaneLoadingView("Loading…").frame(maxWidth: .infinity)
                     } else if let errorMessage {
                         Section {
                             Label(errorMessage, systemImage: "exclamationmark.triangle")

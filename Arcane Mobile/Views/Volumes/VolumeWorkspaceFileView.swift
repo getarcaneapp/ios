@@ -32,7 +32,7 @@ struct VolumeWorkspaceFileView: View {
                 Text("Read only: \(reason.replacingOccurrences(of: "_", with: " "))").font(.caption).padding(
                     .horizontal)
             }
-            if loading { ProgressView().frame(maxWidth: .infinity) }
+            if loading { ArcaneLoadingView().frame(maxWidth: .infinity) }
             if content?.content != nil {
                 CodeEditorView(text: $draft.text, language: .plaintext, readOnly: !canEdit || loading)
             } else if !loading {

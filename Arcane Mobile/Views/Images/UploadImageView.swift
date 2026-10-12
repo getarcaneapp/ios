@@ -46,7 +46,7 @@ struct UploadImageView: View {
                 if isUploading {
                     Section("Progress") {
                         VStack(alignment: .leading, spacing: 4) {
-                            ProgressView()
+                            ArcaneLoadingView()
                             Text("Uploading…")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -182,6 +182,7 @@ struct UploadImageView: View {
                         ])
                 }
                 mutationStore.markChanged(kind: .images, envID: envID)
+                showToast(.success("Image uploaded"))
                 await onComplete()
             } catch is CancellationError {
                 errorMessage = "Cancelled"

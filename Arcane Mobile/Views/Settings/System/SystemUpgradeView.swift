@@ -108,8 +108,7 @@ struct SystemUpgradeView: View {
 
     private var loadingCard: some View {
         VStack(spacing: 16) {
-            ProgressView()
-                .controlSize(.large)
+            ArcaneLoadingView()
             Text("Checking for upgrade…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -165,8 +164,7 @@ struct SystemUpgradeView: View {
                 Circle()
                     .fill(Color.blue.opacity(0.18))
                     .frame(width: 96, height: 96)
-                ProgressView()
-                    .controlSize(.large)
+                ArcaneLoadingView()
             }
             .glassEffectCompat(tint: Color.blue.opacity(0.25), in: .circle)
             VStack(spacing: 6) {
@@ -198,8 +196,7 @@ struct SystemUpgradeView: View {
                 body:
                     "A new Arcane container is starting. The mobile app may briefly lose connection — pull to refresh once it's back."
             )
-            ProgressView()
-                .controlSize(.regular)
+            ArcaneLoadingView()
         }
     }
 

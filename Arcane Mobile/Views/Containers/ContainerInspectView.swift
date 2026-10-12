@@ -20,7 +20,7 @@ struct ContainerInspectView: View {
     var body: some View {
         Group {
             if isLoading && rawJSON.isEmpty {
-                ProgressView("Loading inspect…")
+                ArcaneLoadingView("Loading inspect…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, rawJSON.isEmpty {
                 ContentUnavailableView {

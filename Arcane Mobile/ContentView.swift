@@ -13,7 +13,7 @@ struct ContentView: View {
             case .setup:
                 LoginView(mode: .setup)
             case .authenticating:
-                ProgressView()
+                ArcaneLoadingView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .login:
                 LoginView(mode: .login)

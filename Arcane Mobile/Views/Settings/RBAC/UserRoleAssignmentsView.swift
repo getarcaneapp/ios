@@ -21,7 +21,7 @@ struct UserRoleAssignmentsView: View {
     var body: some View {
         Group {
             if isLoading && assignments.isEmpty {
-                ProgressView("Loading assignments…")
+                ArcaneLoadingView("Loading assignments…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = errorMessage, assignments.isEmpty {
                 ContentUnavailableView(
@@ -174,6 +174,7 @@ struct UserRoleAssignmentsView: View {
             withAnimation {
                 assignments = updated
             }
+            showToast(.success("Role assignment removed"))
         } catch let ArcaneError.conflict(message) {
             actionErrorMessage =
                 message ?? "Cannot remove this assignment — at least one global administrator must remain."
@@ -312,6 +313,7 @@ struct AddRoleAssignmentSheet: View {
         }
         do {
             _ = try await client.users.setRoleAssignments(userId: user.id, assignments: inputs)
+            showToast(.success("Role assigned"))
             await onSaved()
             dismiss()
         } catch let ArcaneError.validation(fields) {

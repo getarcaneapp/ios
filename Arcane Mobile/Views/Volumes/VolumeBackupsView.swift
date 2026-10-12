@@ -103,7 +103,7 @@ struct VolumeBackupsView: View {
                 onRetry: { Task { await load(more: true) } },
                 onLoadMore: { Task { await load(more: true) } }
             )
-            if busy { ProgressView() }
+            if busy { ArcaneLoadingView().frame(maxWidth: .infinity) }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Backups")

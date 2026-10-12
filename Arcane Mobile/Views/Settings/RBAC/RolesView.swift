@@ -37,7 +37,7 @@ struct RolesView: View {
                     description: Text("You don't have permission to view roles.")
                 )
             } else if isLoading && roles.isEmpty {
-                ProgressView("Loading roles…")
+                ArcaneLoadingView("Loading roles…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = errorMessage, roles.isEmpty {
                 ContentUnavailableView {
@@ -254,6 +254,7 @@ struct RolesView: View {
                 roles.removeAll { $0.id == role.id }
             }
             await load()
+            showToast(.success("Role deleted"))
         } catch let ArcaneError.conflict(message) {
             actionErrorMessage =
                 message ?? "This role can't be deleted because it would leave the system with no administrators."
@@ -457,6 +458,7 @@ struct RoleDetailView: View {
                     CreateRole(name: name, description: desc, permissions: perms)
                 )
             }
+            showToast(.success(role == nil ? "Role created" : "Role updated"))
             await onUpdate()
             dismiss()
         } catch let ArcaneError.validation(fields) {

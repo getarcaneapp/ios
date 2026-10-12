@@ -43,6 +43,7 @@ struct Arcane_MobileApp: App {
                             accentColorHex: accentColorHex,
                             isPresented: $showsLaunchSplash
                         )
+                        .transition(.launchSplashExit(reduceMotion: UIAccessibility.isReduceMotionEnabled))
                     }
                 }
                 .task {

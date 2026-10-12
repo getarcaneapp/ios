@@ -54,7 +54,7 @@ struct AllEnvironmentsImageUpdatesView: View {
     var body: some View {
         Group {
             if !hasLoadedOnce && isLoading {
-                ProgressView("Loading updates…")
+                ArcaneLoadingView("Loading updates…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let environmentLoadError, buckets.isEmpty {
                 ContentUnavailableView {
@@ -250,7 +250,7 @@ struct AllEnvironmentsImageUpdatesView: View {
                 }
             }
             if loading && !updates.isEmpty {
-                ProgressView("Checking images…")
+                ArcaneLoadingView("Checking images…")
             }
         }
         .listStyle(.insetGrouped)
@@ -258,7 +258,7 @@ struct AllEnvironmentsImageUpdatesView: View {
         .overlay {
             if updates.isEmpty && errors.isEmpty {
                 if loading {
-                    ProgressView("Checking images…")
+                    ArcaneLoadingView("Checking images…")
                 } else if !search.isEmpty {
                     ContentUnavailableView.search(text: search)
                 } else {

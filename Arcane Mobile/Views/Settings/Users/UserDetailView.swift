@@ -109,6 +109,7 @@ struct UserDetailView: View {
                 roles: supportsRBAC ? nil : (isAdmin ? ["admin"] : [])
             )
             _ = try await client.users.update(id: user.id, body: body)
+            showToast(.success("User updated"))
             await onUpdate()
             dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }

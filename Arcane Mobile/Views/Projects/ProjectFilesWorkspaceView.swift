@@ -116,7 +116,7 @@ struct ProjectFilesWorkspaceView: View {
     var body: some View {
         Group {
             if isLoading && !hasLoaded {
-                ProgressView("Loading files...")
+                ArcaneLoadingView("Loading files...")
                     .navigationTitle("Project Files")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -925,7 +925,7 @@ private struct ProjectTextFileEditorView: View {
                 .ignoresSafeArea(.keyboard, edges: .bottom)
 
             if isLoading {
-                ProgressView("Loading file...")
+                ArcaneLoadingView("Loading file...")
                     .padding()
                     .background(.regularMaterial, in: .rect(cornerRadius: Radius.nested, style: .continuous))
             }

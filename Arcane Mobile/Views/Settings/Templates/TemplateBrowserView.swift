@@ -56,7 +56,7 @@ struct TemplateBrowserView: View {
                 }
 
                 if store.isLoading && store.templates.isEmpty {
-                    ProgressView("Loading templates…")
+                    ArcaneLoadingView("Loading templates…")
                         .frame(maxWidth: .infinity)
                         .listRowBackground(Color.clear)
                 } else if let errorMessage = store.errorMessage, store.templates.isEmpty {

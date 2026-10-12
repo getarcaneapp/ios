@@ -86,7 +86,7 @@ struct Toast: Identifiable {
     /// Optional trailing button. Returns `true` to dismiss the toast.
     var action: (@MainActor () -> Bool)? = nil
 
-    var height: CGFloat { activityState == nil ? 50 : 62 }
+    var height: CGFloat { 50 }
 }
 
 // MARK: - Factories (one-liner call sites)
@@ -193,8 +193,11 @@ final class ToastPresenter {
         }
     }
 
+    /// Marks an activity toast finished, or presents an already-finished
+    /// activity as a short result toast when it was never shown running.
     func finishActivity(id: String, title: String, state: ToastActivityState, progress: Double?) {
-        guard var toast = currentToast, toast.activityID == id else { return }
+        let updatesCurrent = currentToast?.activityID == id
+        var toast = updatesCurrent ? currentToast! : .activity(id: id, title: title, progress: progress)
 
         toast.title = terminalTitle(title, state: state)
         toast.symbol = terminalSymbol(state)
@@ -203,6 +206,10 @@ final class ToastPresenter {
         toast.activityState = state
         toast.isPersistent = false
         toast.duration = state == .failure ? 5 : 2.5
+        guard updatesCurrent else {
+            show(toast)
+            return
+        }
         if pendingToast != nil {
             pendingToast = toast
             return
@@ -340,6 +347,15 @@ private struct ToastCapsule: View {
                 content
             }
         }
+        // Activity progress runs around the capsule's edge. Drawn inside the
+        // glass: content layered above the glass effect isn't shown.
+        .capsuleProgressBorder(
+            fraction: toast.activityProgress,
+            // Persistent toasts stand for work still running, so they get the
+            // traveling arc too.
+            isActive: toast.activityState == .running || (toast.isPersistent && toast.activityState == nil),
+            tint: toast.activityState?.tint ?? toast.symbolTint
+        )
         .clipShape(.capsule)
         .contentShape(.capsule)
         .glassEffectCompat(in: .capsule)
@@ -358,7 +374,7 @@ private struct ToastCapsule: View {
     }
 
     private var content: some View {
-        VStack(spacing: toast.activityState == nil ? 0 : 7) {
+        VStack(spacing: 0) {
             HStack(spacing: 10) {
                 if let symbol = toast.symbol {
                     Image(systemName: symbol)
@@ -392,13 +408,6 @@ private struct ToastCapsule: View {
                 }
             }
 
-            if let state = toast.activityState {
-                ActivityProgressView(
-                    progress: toast.activityProgress.map { Int(($0 * 100).rounded()) },
-                    isActive: state == .running,
-                    tint: state.tint
-                )
-            }
         }
         .padding(.horizontal, 18)
         .frame(height: toast.height)

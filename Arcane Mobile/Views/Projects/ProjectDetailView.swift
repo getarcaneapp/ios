@@ -606,6 +606,7 @@ struct ProjectDetailView: View {
             )
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
+            showToast(.success("Project deleted"))
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -624,6 +625,7 @@ struct ProjectDetailView: View {
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
+            showToast(.success("Project archived"))
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -642,6 +644,7 @@ struct ProjectDetailView: View {
             let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
+            showToast(.success("Project unarchived"))
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -1143,7 +1146,7 @@ struct CreateProjectView: View {
                 } else if canBrowseTemplates {
                     Section("Template") {
                         if isLoadingTemplates {
-                            ProgressView("Loading templates...")
+                            ArcaneLoadingView("Loading templates...")
                         } else if templates.isEmpty {
                             Text("No templates available")
                                 .foregroundStyle(.secondary)
@@ -1454,6 +1457,8 @@ struct CreateProjectView: View {
                         ?? manager.activeEnvironmentName,
                     manager: manager, mutationStore: mutationStore, deployOptions: requestedDeployOptions)
                 if !started { showToast(.info("Project created. Open the project to retry deployment.")) }
+            } else {
+                showToast(.success("Project created"))
             }
             if let cached = manager.cached {
                 await cached.invalidate(

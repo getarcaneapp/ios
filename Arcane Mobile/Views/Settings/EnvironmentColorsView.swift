@@ -32,7 +32,7 @@ struct EnvironmentColorsView: View {
         .navigationTitle("Environment Colors")
         .task { await environmentsStore.load(manager: manager) }
         .overlay {
-            if environmentsStore.isLoading && environmentsStore.environments.isEmpty { ProgressView() }
+            if environmentsStore.isLoading && environmentsStore.environments.isEmpty { ArcaneLoadingView() }
         }
     }
 }

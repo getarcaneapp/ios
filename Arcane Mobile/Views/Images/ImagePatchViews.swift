@@ -32,7 +32,7 @@ struct ImagePatchTargetsView: View {
                     }
                 }
             }
-            if loading { ProgressView() }
+            if loading { ArcaneLoadingView().frame(maxWidth: .infinity) }
             PaginatedListFooter(
                 hasMore: hasMore, loadMoreError: loadMoreError,
                 onRetry: { Task { await load(reset: false) } },
@@ -118,7 +118,7 @@ struct ImagePatchView: View {
                     if let error = record.error { Text(error).foregroundStyle(.red) }
                     if let count = record.packagesUpdated { LabeledContent("Packages updated", value: String(count)) }
                     if let activity { NavigationLink("Progress and output") { ActivityDetailView(activity: activity) } }
-                    if record.status == "patching" { ProgressView("Patching packages") }
+                    if record.status == "patching" { ArcaneLoadingView("Patching packages", style: .inline) }
                     Button("Refresh status") { refreshToken = UUID() }
                     Text("Deploy the patched image separately after reviewing the result.").font(.caption)
                         .foregroundStyle(.secondary)

@@ -141,7 +141,7 @@ struct ImagesView: View {
             showSkeleton: list.isLoading && images.isEmpty,
             animatesTransition: false
         ) {
-            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = list.errorMessage, images.isEmpty {
                 ContentUnavailableView {
@@ -634,6 +634,7 @@ struct ImagesView: View {
             try await action.perform(client: client, environmentID: environmentID)
             await invalidateImageCaches(environmentID)
             mutationStore.markChanged(kind: .images, envID: environmentID)
+            showToast(.success("Images pruned"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -649,6 +650,7 @@ struct ImagesView: View {
             }
             await invalidateImageCaches(image.environmentID)
             mutationStore.markChanged(kind: .images, envID: image.environmentID)
+            showToast(.success("Image removed"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }

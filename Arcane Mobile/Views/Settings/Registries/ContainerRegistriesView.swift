@@ -25,7 +25,7 @@ struct ContainerRegistriesView: View {
                     "Admin Required", systemImage: "lock.fill",
                     description: Text("Only administrators can manage container registries."))
             } else if isLoading && registries.isEmpty {
-                ProgressView("Loading registries...").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading registries...").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, registries.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load Registries", systemImage: "exclamationmark.triangle")
@@ -222,6 +222,7 @@ struct ContainerRegistriesView: View {
                 await cached.invalidateGlobal(paths: ["container-registries", "container-registries/*"])
             }
             await loadRegistries()
+            showToast(.success("Registry deleted"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }

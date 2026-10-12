@@ -48,7 +48,7 @@ struct NetworkTopologyView: View {
     var body: some View {
         Group {
             if isLoading && topology == nil {
-                ProgressView("Loading network topology…")
+                ArcaneLoadingView("Loading network topology…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if manager.client == nil && topology == nil {
                 ContentUnavailableView {
@@ -76,7 +76,7 @@ struct NetworkTopologyView: View {
                 NetworkTopologyDiagram(topology: topology, selectedNode: $selectedNode)
                     .id(topology)
             } else {
-                ProgressView("Preparing network topology…")
+                ArcaneLoadingView("Preparing network topology…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }

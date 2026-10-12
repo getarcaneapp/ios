@@ -269,7 +269,7 @@ struct ContainersView: View {
             showSkeleton: list.isLoading && containers.isEmpty,
             animatesTransition: false
         ) {
-            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = list.errorMessage, containers.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))

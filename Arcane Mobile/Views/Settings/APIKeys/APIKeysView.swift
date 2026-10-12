@@ -52,7 +52,7 @@ struct APIKeysView: View {
     var body: some View {
         Group {
             if isLoading && apiKeys.isEmpty {
-                ProgressView("Loading API keys…")
+                ArcaneLoadingView("Loading API keys…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, apiKeys.isEmpty {
                 ContentUnavailableView {

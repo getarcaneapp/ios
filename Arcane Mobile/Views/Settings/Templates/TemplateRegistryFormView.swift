@@ -117,6 +117,7 @@ struct TemplateRegistryFormView: View {
                 )
                 _ = try await client.templates.createRegistry(body)
             }
+            showToast(.success(registry == nil ? "Template registry created" : "Template registry updated"))
             await onSuccess()
             dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }

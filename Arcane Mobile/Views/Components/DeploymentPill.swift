@@ -105,6 +105,12 @@ private struct DeploymentPillView: View {
     let onTap: () -> Void
     let onDismiss: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Completion sweep: the border fills all the way around, then the
+    /// checkmark takes over.
+    @State private var completionFill: Double?
+    @State private var showsCheckmark = false
+
     private var status: InstallStreamStatus { operation.status }
 
     var body: some View {
@@ -126,16 +132,25 @@ private struct DeploymentPillView: View {
                 }
 
                 Spacer(minLength: 8)
-
-                trailingIndicator
             }
             .padding(.horizontal, 16)
             .frame(height: 50)
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
+        // Progress runs around the pill's edge instead of a spinner inside it.
+        // Drawn inside the glass: content layered above the glass effect isn't shown.
+        .capsuleProgressBorder(
+            fraction: status == .running ? operation.progressFraction : completionFill,
+            isActive: status == .running,
+            tint: status == .success ? .green : .accentColor
+        )
         .clipShape(.capsule)
         .glassEffectCompat(in: .capsule)
+        .task(id: status) {
+            guard case .success = status else { return }
+            await sweepToCheckmark()
+        }
         .modifier(PillLegacyFloatChrome())
         .motionAwareAnimation(Motion.state, value: status)
         .padding(.horizontal, 15)
@@ -163,8 +178,14 @@ private struct DeploymentPillView: View {
                     .symbolEffect(.pulse, options: .repeating)
                     .foregroundStyle(.blue)
             case .success:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                if showsCheckmark {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
+                } else {
+                    Image(systemName: operation.kind.systemImage)
+                        .foregroundStyle(.blue)
+                }
             case .failure:
                 Image(systemName: "xmark.octagon.fill")
                     .foregroundStyle(.red)
@@ -188,18 +209,24 @@ private struct DeploymentPillView: View {
         }
     }
 
-    @ViewBuilder
-    private var trailingIndicator: some View {
-        switch status {
-        case .running:
-            if let fraction = operation.progressFraction {
-                ProgressRing(fraction: fraction)
-            } else {
-                ProgressView()
-                    .controlSize(.small)
-            }
-        case .success, .failure:
-            EmptyView()
+    /// Success: the border sweeps around the whole pill in green, then fades
+    /// as the checkmark pops in. Reduce Motion goes straight to the checkmark.
+    private func sweepToCheckmark() async {
+        guard !reduceMotion else {
+            showsCheckmark = true
+            return
+        }
+        completionFill = 0
+        do {
+            try await Task.sleep(for: .milliseconds(32))
+            withAnimation(Motion.completionSweep) { completionFill = 1 }
+            try await Task.sleep(for: .milliseconds(650))
+            withAnimation(Motion.entrance) { showsCheckmark = true }
+            try await Task.sleep(for: .milliseconds(350))
+            withAnimation(Motion.state) { completionFill = nil }
+        } catch {
+            showsCheckmark = true
+            completionFill = nil
         }
     }
 
@@ -209,25 +236,6 @@ private struct DeploymentPillView: View {
             parts.append("in progress")
         }
         return parts.joined(separator: ", ")
-    }
-}
-
-/// Small determinate ring for pull progress. Trim animation is plain vector
-/// drawing (not glass), so animating it is safe.
-private struct ProgressRing: View {
-    let fraction: Double
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(.tertiary, lineWidth: 2.5)
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(Motion.gauge, value: fraction)
-        }
-        .frame(width: 18, height: 18)
     }
 }
 

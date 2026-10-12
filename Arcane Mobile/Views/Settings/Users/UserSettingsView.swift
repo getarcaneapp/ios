@@ -65,7 +65,7 @@ struct UserSettingsView: View {
         }
         .overlay {
             if isLoading {
-                ProgressView("Loading…")
+                ArcaneLoadingView("Loading…")
             }
         }
     }

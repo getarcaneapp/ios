@@ -20,7 +20,7 @@ struct UsersView: View {
     var body: some View {
         Group {
             if isLoading && users.isEmpty {
-                ProgressView("Loading users...").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading users...").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, users.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load Users", systemImage: "exclamationmark.triangle")
@@ -213,6 +213,7 @@ struct UsersView: View {
                 await cached.invalidateGlobal(paths: ["users", "users/*"])
             }
             await loadUsers()
+            showToast(.success("User deleted"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }

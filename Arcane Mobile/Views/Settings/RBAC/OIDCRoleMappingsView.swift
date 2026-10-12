@@ -32,7 +32,7 @@ struct OIDCRoleMappingsView: View {
                     description: Text("Only global administrators can manage OIDC role mappings.")
                 )
             } else if isLoading && mappings.isEmpty {
-                ProgressView("Loading mappings…")
+                ArcaneLoadingView("Loading mappings…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = errorMessage, mappings.isEmpty {
                 ContentUnavailableView(
@@ -169,6 +169,7 @@ struct OIDCRoleMappingsView: View {
         do {
             try await client.oidcRoleMappings.delete(id: mapping.id)
             withAnimation { mappings.removeAll { $0.id == mapping.id } }
+            showToast(.success("Role mapping deleted"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -364,6 +365,7 @@ private struct OIDCMappingFormSheet: View {
                     CreateOidcRoleMapping(claimValue: claimValue, roleId: roleId, environmentId: envId)
                 )
             }
+            showToast(.success(editing == nil ? "Role mapping created" : "Role mapping updated"))
             await onSaved()
             dismiss()
         } catch let ArcaneError.validation(fields) {

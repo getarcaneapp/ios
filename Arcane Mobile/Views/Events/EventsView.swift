@@ -15,7 +15,7 @@ struct EventsView: View {
 
         Group {
             if store.isLoading && store.events.isEmpty {
-                ProgressView("Loading events…")
+                ArcaneLoadingView("Loading events…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage = store.errorMessage, store.events.isEmpty {
                 ContentUnavailableView {

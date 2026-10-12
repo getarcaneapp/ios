@@ -30,7 +30,7 @@ struct TemplatePreviewView: View {
     var body: some View {
         Group {
             if isLoading && content == nil {
-                ProgressView("Loading template…")
+                ArcaneLoadingView("Loading template…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, content == nil {
                 ContentUnavailableView {

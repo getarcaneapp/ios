@@ -122,7 +122,7 @@ struct BuildSettingsView: View {
         }
         .overlay {
             if isLoading {
-                ProgressView("Loading…")
+                ArcaneLoadingView("Loading…")
             }
         }
     }

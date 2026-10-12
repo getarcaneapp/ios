@@ -1054,9 +1054,7 @@ final class DeploymentActivityStore {
         }
         HapticsManager.success()
         ReviewPrompter.shared.recordSuccess()
-        if !isSheetPresented {
-            showToast(.success("\(operation.title) complete"))
-        }
+        // The pill itself marks completion; a toast would only repeat it.
         finishPresentation(for: operation)
     }
 

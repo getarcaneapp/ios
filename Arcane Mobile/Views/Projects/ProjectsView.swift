@@ -131,7 +131,7 @@ struct ProjectsView: View {
             showSkeleton: list.isLoading && projects.isEmpty,
             animatesTransition: false
         ) {
-            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = list.errorMessage, projects.isEmpty {
                 ContentUnavailableView {
@@ -532,6 +532,7 @@ struct ProjectsView: View {
             }
             await invalidateProjectCaches(project.environmentID)
             mutationStore.markChanged(kind: .projects, envID: project.environmentID)
+            showToast(.success("Project deleted"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }

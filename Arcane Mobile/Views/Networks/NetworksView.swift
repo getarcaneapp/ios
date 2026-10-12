@@ -103,7 +103,7 @@ struct NetworksView: View {
             showSkeleton: list.isLoading && networks.isEmpty,
             animatesTransition: false
         ) {
-            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = list.errorMessage, networks.isEmpty {
                 ContentUnavailableView {
@@ -427,6 +427,7 @@ struct NetworksView: View {
             }
             await invalidateNetworkCaches(network.environmentID)
             mutationStore.markChanged(kind: .networks, envID: network.environmentID)
+            showToast(.success("Network deleted"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -443,6 +444,7 @@ struct NetworksView: View {
             try await ResourcePruneAction.networks.perform(client: client, environmentID: environmentID)
             await invalidateNetworkCaches(environmentID)
             mutationStore.markChanged(kind: .networks, envID: environmentID)
+            showToast(.success("Networks pruned"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -802,6 +804,7 @@ struct NetworkDetailView: View {
                     ])
             }
             mutationStore.markChanged(kind: .networks, envID: environmentID)
+            showToast(.success("Network deleted"))
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -929,6 +932,7 @@ struct CreateNetworkView: View {
                     ])
             }
             mutationStore.markChanged(kind: .networks, envID: environmentID)
+            showToast(.success("Network created"))
             await onSuccess()
             dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }

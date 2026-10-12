@@ -27,7 +27,7 @@ struct TemplateRegistriesView: View {
                     description: Text("Your role cannot view template registries.")
                 )
             } else if isLoading && registries.isEmpty {
-                ProgressView("Loading template registries...").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading template registries...").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, registries.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load Template Registries", systemImage: "exclamationmark.triangle")

@@ -55,7 +55,7 @@ struct VariablesView: View {
                     Text("Your role cannot view global variables.")
                 }
             } else if store.isLoading && store.variables.isEmpty {
-                ProgressView("Loading variables…")
+                ArcaneLoadingView("Loading variables…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if store.isUnsupported {
                 ContentUnavailableView {

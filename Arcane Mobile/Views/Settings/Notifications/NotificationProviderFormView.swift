@@ -73,7 +73,7 @@ struct NotificationProviderFormView: View {
                 }
 
                 if isTesting {
-                    ProgressView("Sending test…")
+                    ArcaneLoadingView("Sending test…", style: .inline)
                 }
             }
         }
@@ -464,7 +464,10 @@ struct NotificationProviderFormView: View {
             )
             originalState = state
             await onSaved()
-            if dismissAfterSave { dismiss() }
+            if dismissAfterSave {
+                showToast(.success("Notification settings saved"))
+                dismiss()
+            }
             return true
         } catch {
             errorMessage = friendlyErrorMessage(error)

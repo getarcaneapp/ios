@@ -35,7 +35,7 @@ struct ActivitiesView: View {
                     description: Text("Activity Center is available when connected to an Arcane 2.0 server.")
                 )
             } else if store.isLoading && store.activities.isEmpty {
-                ProgressView("Loading activities...")
+                ArcaneLoadingView("Loading activities...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage = store.errorMessage, store.activities.isEmpty {
                 ContentUnavailableView {
@@ -603,8 +603,7 @@ struct ActivityDetailView: View {
         }
         .overlay {
             if isLoading && messages.isEmpty {
-                ProgressView()
-                    .controlSize(.large)
+                ArcaneLoadingView()
             }
         }
     }

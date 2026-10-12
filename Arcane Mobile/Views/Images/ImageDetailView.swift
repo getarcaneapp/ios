@@ -218,7 +218,7 @@ struct ImageDetailView: View {
                 }
                 identitySection(details)
             } else if isLoading {
-                ProgressView().frame(maxWidth: .infinity)
+                ArcaneLoadingView().frame(maxWidth: .infinity)
             }
             if !usingContainers.isEmpty { usedBySection }
             if let details {
@@ -530,6 +530,7 @@ struct ImageDetailView: View {
                     ])
             }
             mutationStore.markChanged(kind: .images, envID: environmentID)
+            showToast(.success("Image removed"))
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)

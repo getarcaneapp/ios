@@ -16,7 +16,7 @@ struct S3DestinationsView: View {
     @State private var busy = false
     var body: some View {
         List {
-            if busy && destinations.isEmpty { ProgressView("Loading…").frame(maxWidth: .infinity) }
+            if busy && destinations.isEmpty { ArcaneLoadingView("Loading…").frame(maxWidth: .infinity) }
             if let errorMessage {
                 Text(errorMessage).foregroundStyle(.red)
                 Button("Retry") { Task { await load() } }
@@ -131,6 +131,7 @@ struct S3DestinationsView: View {
             _ = try await client.s3Destinations.delete(id: destination.id)
             try scope.check(manager)
             await load()
+            showToast(.success("S3 destination deleted"))
         } catch is CancellationError {} catch { showToast(.error(friendlyErrorMessage(error))) }
     }
 }

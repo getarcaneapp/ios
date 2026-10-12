@@ -5,13 +5,14 @@
       stroke:#6d28d9;
       stroke-width: 2;
       stroke-dasharray: 1;
-      animation: traceDraw 1.3s cubic-bezier(0.32, 0.72, 0, 1) both;
-      animation-delay: calc(var(--i) * 40ms);
+      animation: traceDraw 1.1s cubic-bezier(0.32, 0.72, 0, 1) both;
+      animation-delay: calc(var(--i) * 45ms);
     }
     @keyframes traceDraw {
       0%   { fill-opacity: 0; stroke-opacity: 1; stroke-dashoffset: 1; }
-      55%  { fill-opacity: 0; stroke-dashoffset: 0; }
-      85%  { fill-opacity: 1; stroke-opacity: 1; }
+      50%  { fill-opacity: 0; stroke-dashoffset: 0; }
+      62%  { fill-opacity: 0.35; }
+      88%  { fill-opacity: 1; stroke-opacity: 0.6; }
       100% { fill-opacity: 1; stroke-opacity: 0; }
     }
     @keyframes traceDrawLoop {

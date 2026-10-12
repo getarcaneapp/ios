@@ -64,7 +64,7 @@ struct DynamicResourceListView: View {
     var body: some View {
         Group {
             if list.isLoading && items.isEmpty {
-                ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage = list.errorMessage, items.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load \(title)", systemImage: "exclamationmark.triangle")

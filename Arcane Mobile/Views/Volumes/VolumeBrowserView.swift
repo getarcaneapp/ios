@@ -39,7 +39,7 @@ struct VolumeBrowserView: View {
     var body: some View {
         Group {
             if isLoading && entries.isEmpty {
-                ProgressView("Loading files…")
+                ArcaneLoadingView("Loading files…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, entries.isEmpty {
                 ContentUnavailableView(

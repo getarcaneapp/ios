@@ -605,7 +605,7 @@ struct DashboardView: View {
             }
 
             if environments.count < rawEnvironmentCount {
-                ProgressView("Loading more environments…")
+                ArcaneLoadingView("Loading more environments…", style: .inline)
                     .font(.caption)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)

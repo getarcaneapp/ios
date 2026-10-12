@@ -30,7 +30,7 @@ struct ImageAttestationsView: View {
     var body: some View {
         Group {
             if isLoading && result == nil {
-                ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, result == nil {
                 ContentUnavailableView {
                     Label("Couldn't Load Attestations", systemImage: "exclamationmark.triangle")

@@ -462,7 +462,7 @@ private struct GitOpsProjectDestination: View {
                 ContentUnavailableView(
                     "Project Unavailable", systemImage: "square.stack.3d.up", description: Text(errorMessage))
             } else {
-                ProgressView("Loading project…")
+                ArcaneLoadingView("Loading project…")
             }
         }
         .task(id: manager.clientGeneration) {

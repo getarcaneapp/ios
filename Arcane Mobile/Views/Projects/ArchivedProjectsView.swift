@@ -33,7 +33,7 @@ struct ArchivedProjectsView: View {
     var body: some View {
         Group {
             if isLoading && projects.isEmpty {
-                ProgressView("Loading archived projects...")
+                ArcaneLoadingView("Loading archived projects...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = errorMessage, projects.isEmpty {
                 ContentUnavailableView(
@@ -167,8 +167,9 @@ struct ArchivedProjectsView: View {
             rebuildDisplayedProjects()
             await invalidateProjectCaches()
             mutationStore.markChanged(kind: .projects, envID: environmentID)
+            showToast(.success("Project unarchived"))
         } catch {
-            errorMessage = friendlyErrorMessage(error)
+            showToast(.error(friendlyErrorMessage(error)))
         }
     }
 

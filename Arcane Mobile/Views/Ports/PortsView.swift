@@ -76,7 +76,7 @@ struct PortsView: View {
     var body: some View {
         Group {
             if list.isLoading && ports.isEmpty {
-                ProgressView("Loading ports…")
+                ArcaneLoadingView("Loading ports…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage = list.errorMessage, ports.isEmpty {
                 ContentUnavailableView(
@@ -128,7 +128,7 @@ struct PortsView: View {
                             }
                             .frame(maxWidth: .infinity)
                         } else {
-                            ProgressView("Loading more…").frame(maxWidth: .infinity)
+                            ArcaneLoadingView("Loading more…", style: .inline).frame(maxWidth: .infinity)
                                 .onAppear {
                                     Task { await loadMore() }
                                 }

@@ -660,7 +660,7 @@ struct SettingsCategoryView: View {
         .task { await load() }
         .refreshable { await load() }
         .overlay {
-            if draft.isLoading && !draft.hasLoaded { ProgressView("Loading…") }
+            if draft.isLoading && !draft.hasLoaded { ArcaneLoadingView("Loading…") }
         }
     }
 

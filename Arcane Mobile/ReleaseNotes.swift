@@ -153,6 +153,21 @@ extension ReleaseNote {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.10.2",
+            changed: [
+                .init(
+                    "Success and error toasts for every container, image, volume, network, project, and settings action."
+                ),
+                .init(
+                    "With Activity Toasts set to All, every server activity gets a toast and a Live Activity, including work that finishes before it is seen running."
+                ),
+                .init("Loading screens and sections show the Arcane logo drawing itself in place of a spinner."),
+                .init(
+                    "Deployment pill and activity toasts show progress around their edge instead of a spinner; a finished deployment sweeps the border and shows a checkmark without a separate toast."
+                ),
+            ]
+        ),
+        ReleaseNote(
             version: "0.10.1",
             new: [
                 .init(

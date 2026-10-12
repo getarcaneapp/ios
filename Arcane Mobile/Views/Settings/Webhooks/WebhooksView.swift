@@ -13,7 +13,7 @@ struct WebhooksView: View {
     var body: some View {
         Group {
             if isLoading && webhooks.isEmpty {
-                ProgressView("Loading webhooks…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading webhooks…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if webhooks.isEmpty {
                 ContentUnavailableView {
                     Label("No Webhooks", systemImage: "link.badge.plus")
@@ -126,6 +126,7 @@ struct WebhooksView: View {
             let _: DataResponse<String> = try await client.rest.delete(path)
             webhooks.removeAll { $0.id == webhook.id }
             await invalidateWebhookCaches()
+            showToast(.success("Webhook deleted"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -139,6 +140,7 @@ struct WebhooksView: View {
             let _: Webhook = try await client.rest.put(path, body: body)
             await invalidateWebhookCaches()
             await loadWebhooks(refresh: true)
+            showToast(.success(webhook.enabled ? "Webhook disabled" : "Webhook enabled"))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -477,6 +479,7 @@ struct CreateWebhookView: View {
             )
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks")
             let created: WebhookCreated = try await client.rest.post(path, body: body)
+            showToast(.success("Webhook created"))
             onCreated(created)
             dismiss()
         } catch {

@@ -31,7 +31,7 @@ struct ContainerCommitView: View {
                         "Dockerfile instructions, one per line (optional)", text: $changes, axis: .vertical)
                     Text("Mounted volume contents are excluded from the image.").foregroundStyle(.secondary)
                 }
-                if busy { ProgressView("Creating image…") }
+                if busy { ArcaneLoadingView("Creating image…") }
             }
             .textInputAutocapitalization(.never).autocorrectionDisabled()
             .navigationTitle("Commit to Image")
@@ -97,7 +97,7 @@ struct ContainerComposeView: View {
         NavigationStack {
             Group {
                 if loading {
-                    ProgressView("Generating Compose…")
+                    ArcaneLoadingView("Generating Compose…")
                 } else if let error {
                     ContentUnavailableView(
                         "Compose unavailable", systemImage: "exclamationmark.triangle", description: Text(error)

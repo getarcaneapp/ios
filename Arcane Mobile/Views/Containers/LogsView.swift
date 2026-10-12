@@ -489,7 +489,7 @@ private struct LogViewerEmptyState: View {
         switch connectionState {
         case .connecting:
             VStack(spacing: 12) {
-                ProgressView()
+                ArcaneLoadingView()
                 Text("Connecting to log stream…")
                     .font(.callout)
                     .foregroundStyle(.secondary)

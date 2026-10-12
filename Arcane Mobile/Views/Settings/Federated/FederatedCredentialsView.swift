@@ -27,7 +27,7 @@ struct FederatedCredentialsView: View {
                     "Federated Credentials Unavailable", systemImage: "key.slash",
                     description: Text("This server does not support federated credential management."))
             } else if loading && credentials.isEmpty {
-                ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, credentials.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load Credentials", systemImage: "exclamationmark.triangle")
@@ -105,6 +105,7 @@ struct FederatedCredentialsView: View {
                 do {
                     try await client.federatedCredentials.delete(id: credential.id)
                     await load(reset: true)
+                    showToast(.success("Credential deleted"))
                 } catch { showToast(.error(friendlyErrorMessage(error))) }
             }
         }

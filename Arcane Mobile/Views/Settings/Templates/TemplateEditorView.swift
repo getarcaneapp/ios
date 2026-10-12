@@ -80,7 +80,7 @@ struct TemplateEditorView: View {
                         }
                     }
                 } else if errorMessage == nil {
-                    ProgressView("Loading template…")
+                    ArcaneLoadingView("Loading template…")
                 }
                 if isLoaded, sessionIdentity != manager.cacheSessionIdentity {
                     Section {

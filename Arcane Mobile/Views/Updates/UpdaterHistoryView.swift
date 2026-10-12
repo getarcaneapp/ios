@@ -34,7 +34,7 @@ struct UpdaterHistoryView: View {
     var body: some View {
         Group {
             if isLoading && records.isEmpty {
-                ProgressView("Loading updater history…")
+                ArcaneLoadingView("Loading updater history…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, records.isEmpty {
                 ContentUnavailableView(

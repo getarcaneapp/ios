@@ -114,6 +114,32 @@ struct ActivityToastTests {
         #expect(presenter.currentToast?.activityID == "one#remote")
     }
 
+    @Test
+    func workSeenOnlyAfterFinishingStillToastsWhenTheScopeCoversIt() {
+        // System work that was already done when it reached the stream.
+        var finished = activity(id: "quick", batchID: "other-batch", status: .success)
+        finished.startedBy = .init(userId: nil, username: "System")
+
+        let userOnly = ToastPresenter()
+        let userMonitor = ActivityToastMonitor(presenter: userOnly) { _, _ in false }
+        defer { userMonitor.reset() }
+        userMonitor.handle(event(finished), scope: .userInitiated)
+        #expect(userOnly.activeToast == nil)
+
+        let presenter = ToastPresenter()
+        let monitor = ActivityToastMonitor(presenter: presenter) { _, _ in false }
+        defer { monitor.reset() }
+        monitor.handle(event(finished), scope: .all)
+        #expect(presenter.activeToast?.activityID == "one#quick")
+        #expect(presenter.activeToast?.activityState == .success)
+        #expect(presenter.activeToast?.isPersistent == false)
+
+        // The same terminal event again is not a second toast.
+        presenter.dismiss()
+        monitor.handle(event(finished), scope: .all)
+        #expect(presenter.activeToast == nil)
+    }
+
     private func activity(id: String, batchID: String, status: ActivityStatus) -> Activity {
         Activity(
             id: id, environmentID: "one", batchID: batchID, type: .autoUpdate,

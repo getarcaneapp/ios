@@ -342,9 +342,7 @@ private struct ConnectionProfileEditorView: View {
                 switch credentialLoadState {
                 case .loading:
                     HStack(spacing: 10) {
-                        ProgressView()
-                        Text("Loading Saved Sign-In")
-                            .foregroundStyle(.secondary)
+                        ArcaneLoadingView("Loading Saved Sign-In", style: .inline)
                     }
                 case .failed:
                     Button("Retry Loading Sign-In", action: loadCredential)

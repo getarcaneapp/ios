@@ -146,7 +146,7 @@ struct VolumesView: View {
             showSkeleton: list.isLoading && volumes.isEmpty,
             animatesTransition: false
         ) {
-            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
             if let error = list.errorMessage, volumes.isEmpty {
                 ContentUnavailableView {
@@ -581,6 +581,7 @@ struct VolumesView: View {
             }
             await invalidateVolumeCaches(volume.environmentID)
             mutationStore.markChanged(kind: .volumes, envID: volume.environmentID)
+            showToast(.success("Volume deleted"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -597,6 +598,7 @@ struct VolumesView: View {
             try await ResourcePruneAction.volumes.perform(client: client, environmentID: environmentID)
             await invalidateVolumeCaches(environmentID)
             mutationStore.markChanged(kind: .volumes, envID: environmentID)
+            showToast(.success("Volumes pruned"))
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -991,6 +993,7 @@ struct VolumeDetailView: View {
                     ])
             }
             mutationStore.markChanged(kind: .volumes, envID: environmentID)
+            showToast(.success("Volume deleted"))
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -1099,6 +1102,7 @@ struct CreateVolumeView: View {
                     ])
             }
             mutationStore.markChanged(kind: .volumes, envID: environmentID)
+            showToast(.success("Volume created"))
             await onSuccess()
             dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }

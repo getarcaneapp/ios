@@ -69,7 +69,7 @@ struct VolumeWorkspaceView: View {
                 }
             }
             if loading {
-                ProgressView()
+                ArcaneLoadingView()
             } else if entries.isEmpty && workspace != nil {
                 Text("Empty folder").foregroundStyle(.secondary)
             }

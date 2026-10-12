@@ -221,7 +221,7 @@ struct ContainerDetailView: View {
                 let networks = details.networkSettings.networks
                 if !networks.isEmpty { networkSection(networks) }
             } else if isLoading {
-                ProgressView().frame(maxWidth: .infinity)
+                ArcaneLoadingView().frame(maxWidth: .infinity)
             }
         }
         .listStyle(.insetGrouped)
@@ -581,7 +581,19 @@ struct ContainerDetailView: View {
 
     // MARK: - Actions
 
-    private enum ContainerAction { case start, stop, restart, pause, unpause }
+    private enum ContainerAction {
+        case start, stop, restart, pause, unpause
+
+        var successTitle: String {
+            switch self {
+            case .start: "Container started"
+            case .stop: "Container stopped"
+            case .restart: "Container restarted"
+            case .pause: "Container paused"
+            case .unpause: "Container resumed"
+            }
+        }
+    }
 
     private func performAction(_ action: ContainerAction, actionID: String? = nil) async {
         guard let client = manager.client else { return }
@@ -602,6 +614,7 @@ struct ContainerDetailView: View {
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
             await loadDetails()
+            showToast(.success(action.successTitle))
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }
@@ -616,6 +629,7 @@ struct ContainerDetailView: View {
             try await client.rest.deleteVoid(path)
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
+            showToast(.success("Container removed"))
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
@@ -645,6 +659,7 @@ struct ContainerDetailView: View {
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
             await loadDetails()
+            showToast(.success("Container renamed"))
             return .success(())
         } catch {
             return .failure(error)

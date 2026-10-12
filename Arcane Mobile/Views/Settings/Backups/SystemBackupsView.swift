@@ -58,7 +58,7 @@ struct SystemBackupsView: View {
                             onRetry: { Task { await load(more: true) } },
                             onLoadMore: { Task { await load(more: true) } }
                         ).id(entries.count)
-                        if busy && entries.isEmpty { ProgressView("Loading…").frame(maxWidth: .infinity) }
+                        if busy && entries.isEmpty { ArcaneLoadingView("Loading…").frame(maxWidth: .infinity) }
                         if entries.isEmpty && !busy && errorMessage == nil {
                             ContentUnavailableView(
                                 search.isEmpty ? "No Backups" : "No Matching Backups",

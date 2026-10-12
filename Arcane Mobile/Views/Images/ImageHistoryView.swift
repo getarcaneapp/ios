@@ -13,7 +13,7 @@ struct ImageHistoryView: View {
     var body: some View {
         Group {
             if isLoading && items.isEmpty {
-                ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, items.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load History", systemImage: "exclamationmark.triangle")

@@ -54,7 +54,7 @@ struct JobsListView: View {
     var body: some View {
         Group {
             if list.isLoading && jobs.isEmpty {
-                ProgressView("Loading jobs…")
+                ArcaneLoadingView("Loading jobs…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage = list.errorMessage, jobs.isEmpty {
                 ContentUnavailableView {

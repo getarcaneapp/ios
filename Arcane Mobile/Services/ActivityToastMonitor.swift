@@ -130,7 +130,10 @@ final class ActivityToastMonitor {
             if firstUpdate {
                 guard scope.includes(activity) else { return }
                 notifiedActivityKeys.insert(key)
-                if scope == .all, !ActivityToastScope.userInitiated.includes(activity) {
+                // "All Activities" puts every piece of server work on the Lock
+                // Screen, whoever started it. Work this device started is
+                // skipped above; the deployment store owns its Live Activity.
+                if scope == .all {
                     startServerLiveActivity(key: key, activity: activity, environmentID: environmentID)
                 }
             } else {
@@ -145,11 +148,11 @@ final class ActivityToastMonitor {
             }
             presenter.showActivity(id: key, title: toastTitle(for: activity), progress: progress)
         case .success:
-            finish(key: key, activity: activity, state: .success, progress: progress)
+            finish(key: key, activity: activity, state: .success, progress: progress, scope: scope)
         case .failed:
-            finish(key: key, activity: activity, state: .failure, progress: progress)
+            finish(key: key, activity: activity, state: .failure, progress: progress, scope: scope)
         case .cancelled:
-            finish(key: key, activity: activity, state: .cancelled, progress: progress)
+            finish(key: key, activity: activity, state: .cancelled, progress: progress, scope: scope)
         case .unknown:
             break
         }
@@ -195,7 +198,8 @@ final class ActivityToastMonitor {
         key: String,
         activity: Activity,
         state: ToastActivityState,
-        progress: Double?
+        progress: Double?,
+        scope: ActivityToastScope
     ) {
         if liveActivityKey == key {
             liveActivityKey = nil
@@ -204,7 +208,11 @@ final class ActivityToastMonitor {
                 phase: livePhase(for: activity)
             )
         }
-        guard notifiedActivityKeys.remove(key) != nil else { return }
+        // Quick work often arrives already finished; it still gets a result
+        // toast when the scope covers it, as long as it's new to us.
+        let wasNotified = notifiedActivityKeys.remove(key) != nil
+        let isNew = remember(key)
+        guard wasNotified || (isNew && scope.includes(activity)) else { return }
         presenter.finishActivity(
             id: key,
             title: toastTitle(for: activity),
@@ -215,9 +223,9 @@ final class ActivityToastMonitor {
 
     // MARK: - Server Live Activities
 
-    /// Starts (latest-wins) a Live Activity for automated/system work observed
-    /// on the stream. User-started work is skipped: the deployment store owns
-    /// its Live Activity for operations this device initiated.
+    /// Starts (latest-wins) a Live Activity for work observed on the stream.
+    /// Operations this device initiated never reach here: the deployment
+    /// store owns their Live Activity.
     private func startServerLiveActivity(key: String, activity: Activity, environmentID: String) {
         let started = liveActivity.startServerActivity(
             targetName: serverTargetName(for: activity),

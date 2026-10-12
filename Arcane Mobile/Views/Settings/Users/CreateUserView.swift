@@ -73,7 +73,7 @@ struct CreateUserView: View {
         Section {
             if supportsRoleManagement {
                 if isLoadingRoles && availableRoles.isEmpty {
-                    ProgressView("Loading roles…")
+                    ArcaneLoadingView("Loading roles…")
                 } else {
                     Picker("Role", selection: $selectedRoleId) {
                         Text("Choose…").tag("")
@@ -124,6 +124,7 @@ struct CreateUserView: View {
                     return
                 }
             }
+            showToast(.success("User created"))
             await onSuccess()
             dismiss()
         } catch { errorMessage = friendlyErrorMessage(error) }

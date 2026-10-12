@@ -1,129 +1,128 @@
 import SwiftUI
-import WebKit
 
 extension EnvironmentValues {
     @Entry var isLaunchSplashPresented = false
 }
 
+/// The launch splash: the logo settles in as a faint silhouette, traces
+/// itself on piece by piece and fills, then lifts away as the app appears.
+/// Drawn natively so it runs at the display's full frame rate.
 struct ArcaneLaunchSplash: View {
     let accentColorHex: String
     @Binding var isPresented: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @State private var logoLoadState: AnimatedLogoLoadState = .loading
     @State private var hasAppeared = false
+    /// Starts at the first drawn frame, so launch stalls before the splash
+    /// renders don't eat into the drawing.
+    @State private var clock = LaunchClock()
     @State private var sheenOffset: CGFloat = -1
-    @State private var isExiting = false
+    /// Set once the drawing is done so the hand-off animates a plain image
+    /// instead of the live drawing.
+    @State private var showsFinishedLogo = false
 
     private static let logoSize = CGSize(width: 150, height: 144)
+    private static let logo = LaunchLogoPaths.bundled
 
-    private var phase: Phase {
-        if reduceMotion || !ArcaneAnimatedLogoWebView.isAvailable || logoLoadState == .failed {
-            return .staticLogo
-        }
-        return logoLoadState == .ready ? .animating : .loading
-    }
-
-    private var resolvedAccentColorHex: String {
-        LaunchLogoColor.normalizedHex(accentColorHex)
-    }
+    /// The trace starts as the silhouette settles and ends when the last
+    /// piece has filled.
+    private static let traceStart: TimeInterval = 0.2
+    private static let traceEnd = traceStart + ArcaneLogoTrace.duration(pieceCount: logo?.pieces.count ?? 13)
 
     private var accent: Color {
-        Color(hex: resolvedAccentColorHex) ?? .accentColor
+        Color(hex: LaunchLogoColor.normalizedHex(accentColorHex)) ?? .accentColor
+    }
+
+    private var tracesNatively: Bool {
+        !reduceMotion && Self.logo != nil
     }
 
     var body: some View {
-        ZStack {
-            Color(uiColor: .systemBackground)
+        TimelineView(.animation(paused: reduceMotion || showsFinishedLogo)) { context in
+            let elapsed = clock.elapsed(at: context.date)
+            ZStack {
+                Color(uiColor: .systemBackground)
 
-            backdrop
-                .opacity(hasAppeared && !isExiting ? 1 : 0)
-                .scaleEffect(reduceMotion ? 1 : backdropScale)
+                glow(at: elapsed)
+                    .opacity(hasAppeared ? 1 : 0)
+                    .scaleEffect(reduceMotion || hasAppeared ? 1 : 0.6)
 
-            logo
+                ZStack {
+                    if tracesNatively && !showsFinishedLogo, let logo = Self.logo {
+                        // A faint silhouette the trace draws over, so the logo
+                        // has a presence before the drawing starts.
+                        staticLogo
+                            .opacity(0.12)
+                            .modifier(settleIn)
+                        ArcaneLogoTrace(logo: logo, accent: accent, time: elapsed - Self.traceStart)
+                    } else {
+                        staticLogo
+                            .modifier(settleIn)
+                    }
+                }
                 .frame(width: Self.logoSize.width, height: Self.logoSize.height)
                 .overlay { sheen }
-                .scaleEffect(reduceMotion ? 1 : logoScale)
-                .blur(radius: reduceMotion ? 0 : logoBlur)
                 .opacity(hasAppeared ? 1 : 0)
+            }
+            .onChange(of: Self.stage(at: elapsed)) { _, stage in
+                // The sheen crosses the logo as the last pieces fill, then
+                // the logo lifts away over the app.
+                guard tracesNatively else { return }
+                switch stage {
+                case .tracing: break
+                case .sheen: sweepSheen(after: .zero)
+                case .finished: Task { await finish(after: .zero) }
+                }
+            }
         }
-        .opacity(isExiting ? 0 : 1)
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
         .onAppear {
             withAnimation(reduceMotion ? Motion.reducedFallback : Motion.splashEnter) {
                 hasAppeared = true
             }
         }
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
-        .task(id: phase) {
-            switch phase {
-            case .staticLogo:
-                sweepSheen()
-                await finish(after: .milliseconds(reduceMotion ? 500 : 1100))
-            case .loading:
-                do {
-                    try await Task.sleep(for: .seconds(2))
-                } catch {
-                    return
-                }
-                guard logoLoadState == .loading else { return }
-                logoLoadState = .failed
-            case .animating:
-                // The trace draw fills the logo at about 1.1s; a single sheen
-                // follows, then the splash hands off.
-                do {
-                    try await Task.sleep(for: .milliseconds(1100))
-                } catch {
-                    return
-                }
-                sweepSheen()
-                await finish(after: .milliseconds(1100))
-            }
+        .task {
+            guard !tracesNatively else { return }
+            sweepSheen(after: .milliseconds(reduceMotion ? 0 : 450))
+            await finish(after: .milliseconds(reduceMotion ? 600 : 1500))
         }
     }
 
-    @ViewBuilder
-    private var logo: some View {
-        if phase == .staticLogo {
-            Image(decorative: "ArcaneLogo")
-                .renderingMode(.template)
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(accent)
-        } else {
-            ArcaneAnimatedLogoWebView(
-                accentColorHex: resolvedAccentColorHex,
-                loadState: $logoLoadState
-            )
-        }
+    private enum Stage: Hashable {
+        case tracing, sheen, finished
     }
 
-    /// A slowly drifting wash of the accent behind the logo. Kept faint so it
-    /// tints the screen rather than glowing.
-    private var backdrop: some View {
-        TimelineView(.animation(paused: reduceMotion)) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-            let strength = colorScheme == .dark ? 0.32 : 0.2
-            MeshGradient(
-                width: 3,
-                height: 3,
-                points: Self.meshPoints(at: time),
-                colors: [
-                    .clear, accent.opacity(strength * 0.5), .clear,
-                    accent.opacity(strength * 0.7), accent.opacity(strength), accent.opacity(strength * 0.45),
-                    .clear, accent.opacity(strength * 0.6), .clear,
-                ]
-            )
-        }
+    private static func stage(at elapsed: TimeInterval) -> Stage {
+        if elapsed < traceEnd - 0.35 { return .tracing }
+        if elapsed < traceEnd + 0.55 { return .sheen }
+        return .finished
     }
 
-    private static func meshPoints(at time: TimeInterval) -> [SIMD2<Float>] {
-        let drift = { (speed: Double, phase: Double) in Float(sin(time * speed + phase) * 0.06) }
-        return [
-            [0, 0], [0.5 + drift(0.7, 0), 0], [1, 0],
-            [0, 0.5 + drift(0.6, 1)], [0.5 + drift(0.9, 2), 0.5 + drift(0.8, 3)], [1, 0.5 + drift(0.5, 4)],
-            [0, 1], [0.5 + drift(0.65, 5), 1], [1, 1],
-        ]
+    private var staticLogo: some View {
+        Image(decorative: "ArcaneLogo")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(accent)
+    }
+
+    private var settleIn: LaunchSettleModifier {
+        LaunchSettleModifier(settled: reduceMotion || hasAppeared)
+    }
+
+    /// A soft pool of the accent behind the logo that slowly breathes. Kept
+    /// faint so it tints the screen rather than glowing.
+    private func glow(at time: TimeInterval) -> some View {
+        let strength = colorScheme == .dark ? 0.3 : 0.18
+        let breath = reduceMotion ? 1 : 1 + 0.035 * sin(time * 1.1)
+        return RadialGradient(
+            colors: [accent.opacity(strength), accent.opacity(strength * 0.4), .clear],
+            center: .center,
+            startRadius: 0,
+            endRadius: 300
+        )
+        .scaleEffect(breath)
     }
 
     /// One soft highlight that crosses the filled logo.
@@ -146,56 +145,84 @@ struct ArcaneLaunchSplash: View {
         .allowsHitTesting(false)
     }
 
-    private var backdropScale: CGFloat {
-        if isExiting { return 1.2 }
-        return hasAppeared ? 1 : 0.7
-    }
-
-    /// Settles in from slightly small, then lifts slightly on exit.
-    private var logoScale: CGFloat {
-        if isExiting { return 1.08 }
-        return hasAppeared ? 1 : 0.94
-    }
-
-    private var logoBlur: CGFloat {
-        if isExiting { return 10 }
-        return hasAppeared ? 0 : 6
-    }
-
-    private func sweepSheen() {
+    private func sweepSheen(after delay: Duration) {
         guard !reduceMotion else { return }
-        withAnimation(Motion.splashSheen) {
+        withAnimation(Motion.splashSheen.delay(delay.seconds)) {
             sheenOffset = 1.4
         }
     }
 
+    /// Hands off to the app: the removal transition lifts and dissolves the
+    /// finished logo over the app content.
     private func finish(after delay: Duration) async {
         do {
             try await Task.sleep(for: delay)
+            // Swap the drawing for the identical static logo a frame before
+            // the lift, so the exit scale and blur animate a plain image.
+            showsFinishedLogo = true
+            try await Task.sleep(for: .milliseconds(32))
         } catch {
             return
         }
-
         withAnimation(reduceMotion ? Motion.reducedFallback : Motion.splashExit) {
-            isExiting = true
+            isPresented = false
         }
-
-        let exitDuration =
-            reduceMotion
-            ? Motion.reducedFallbackDuration
-            : Motion.splashExitDuration
-        do {
-            try await Task.sleep(for: .seconds(exitDuration))
-        } catch {
-            return
-        }
-        isPresented = false
     }
+}
 
-    private enum Phase: Hashable {
-        case staticLogo
-        case loading
-        case animating
+/// Wall clock for the splash, started by the first drawn frame.
+private final class LaunchClock {
+    private var start: Date?
+
+    func elapsed(at date: Date) -> TimeInterval {
+        guard let start else {
+            self.start = date
+            return 0
+        }
+        return date.timeIntervalSince(start)
+    }
+}
+
+/// The logo's settle-in: from slightly small and soft to crisp and in place.
+struct LaunchSettleModifier: ViewModifier {
+    let settled: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(settled ? 1 : 0.86)
+            .blur(radius: settled ? 0 : 12)
+    }
+}
+
+/// The splash's removal: lifts toward the viewer and dissolves.
+struct LaunchSplashExitModifier: ViewModifier {
+    let progress: CGFloat
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(reduceMotion ? 1 : 1 + 0.14 * progress)
+            .blur(radius: reduceMotion ? 0 : 14 * progress)
+            .opacity(1 - progress)
+    }
+}
+
+extension AnyTransition {
+    static func launchSplashExit(reduceMotion: Bool) -> AnyTransition {
+        .asymmetric(
+            insertion: .identity,
+            removal: .modifier(
+                active: LaunchSplashExitModifier(progress: 1, reduceMotion: reduceMotion),
+                identity: LaunchSplashExitModifier(progress: 0, reduceMotion: reduceMotion)
+            )
+        )
+    }
+}
+
+extension Duration {
+    fileprivate var seconds: TimeInterval {
+        let parts = components
+        return TimeInterval(parts.seconds) + TimeInterval(parts.attoseconds) / 1e18
     }
 }
 
@@ -211,106 +238,5 @@ private enum LaunchLogoColor {
             return defaultHex
         }
         return "#\(cleaned.uppercased())"
-    }
-}
-
-private enum AnimatedLogoLoadState: Hashable {
-    case loading
-    case ready
-    case failed
-}
-
-private struct ArcaneAnimatedLogoWebView: UIViewRepresentable {
-    let accentColorHex: String
-    @Binding var loadState: AnimatedLogoLoadState
-
-    private static let templateURL =
-        Bundle.main.url(
-            forResource: "ArcaneLaunchLogo",
-            withExtension: "html",
-            subdirectory: "Resources"
-        ) ?? Bundle.main.url(forResource: "ArcaneLaunchLogo", withExtension: "html")
-
-    private static let logoURL =
-        Bundle.main.url(
-            forResource: "logo-animated",
-            withExtension: "svg",
-            subdirectory: "Resources"
-        ) ?? Bundle.main.url(forResource: "logo-animated", withExtension: "svg")
-
-    static var isAvailable: Bool { templateURL != nil && logoURL != nil }
-
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = false
-
-        let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.navigationDelegate = context.coordinator
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.underPageBackgroundColor = .clear
-        webView.isUserInteractionEnabled = false
-        webView.isAccessibilityElement = false
-        webView.accessibilityElementsHidden = true
-        webView.scrollView.backgroundColor = .clear
-        webView.scrollView.bounces = false
-        webView.scrollView.isScrollEnabled = false
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
-
-        guard
-            let templateURL = Self.templateURL,
-            let logoURL = Self.logoURL,
-            let template = try? String(contentsOf: templateURL, encoding: .utf8),
-            let logo = try? String(contentsOf: logoURL, encoding: .utf8),
-            template.contains("{{ARCANE_LOGO}}")
-        else {
-            context.coordinator.loadState.wrappedValue = .failed
-            return webView
-        }
-
-        let coloredLogo =
-            logo
-            .replacingOccurrences(of: "fill:#6d28d9", with: "fill:\(accentColorHex)")
-            .replacingOccurrences(of: "stroke:#6d28d9", with: "stroke:\(accentColorHex)")
-        let html = template.replacingOccurrences(of: "{{ARCANE_LOGO}}", with: coloredLogo)
-        webView.loadHTMLString(html, baseURL: nil)
-        return webView
-    }
-
-    func updateUIView(_: WKWebView, context: Context) {
-        context.coordinator.loadState = $loadState
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(loadState: $loadState)
-    }
-
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        var loadState: Binding<AnimatedLogoLoadState>
-
-        init(loadState: Binding<AnimatedLogoLoadState>) {
-            self.loadState = loadState
-        }
-
-        func webView(_: WKWebView, didFinish _: WKNavigation!) {
-            loadState.wrappedValue = .ready
-        }
-
-        func webView(
-            _: WKWebView,
-            didFail _: WKNavigation!,
-            withError _: Error
-        ) {
-            loadState.wrappedValue = .failed
-        }
-
-        func webView(
-            _: WKWebView,
-            didFailProvisionalNavigation _: WKNavigation!,
-            withError _: Error
-        ) {
-            loadState.wrappedValue = .failed
-        }
     }
 }

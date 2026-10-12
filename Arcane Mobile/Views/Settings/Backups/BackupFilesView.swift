@@ -26,7 +26,7 @@ struct BackupFilesView: View {
 
     var body: some View {
         List {
-            if busy && entries.isEmpty { ProgressView("Loading…").frame(maxWidth: .infinity) }
+            if busy && entries.isEmpty { ArcaneLoadingView("Loading…").frame(maxWidth: .infinity) }
             if let errorMessage {
                 Text(errorMessage).foregroundStyle(.red)
                 Button("Retry") { Task { await load() } }

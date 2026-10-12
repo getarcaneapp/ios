@@ -184,7 +184,7 @@ struct CreateAPIKeyView: View {
                         HStack {
                             Spacer()
                             if isLoadingPermissions {
-                                ProgressView("Loading permissions…")
+                                ArcaneLoadingView("Loading permissions…")
                             } else {
                                 Label("Permissions unavailable", systemImage: "exclamationmark.triangle")
                                     .foregroundStyle(.secondary)
@@ -226,6 +226,7 @@ struct CreateAPIKeyView: View {
 
         do {
             let created: APIKeyCreated = try await client.rest.post("api-keys", body: body)
+            showToast(.success("API key created"))
             onCreated(created)
             dismiss()
         } catch let ArcaneError.validation(fields) {
@@ -408,7 +409,7 @@ struct EditAPIKeyView: View {
                 } else {
                     Section {
                         if isLoadingPermissions {
-                            ProgressView("Loading permissions…")
+                            ArcaneLoadingView("Loading permissions…")
                         } else {
                             PartialDataNotice(
                                 message: "Existing permissions will be preserved because they could not be loaded.")

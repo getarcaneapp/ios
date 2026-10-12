@@ -43,7 +43,7 @@ struct PasskeysMFAView: View {
                 Section {
                     HStack {
                         Spacer()
-                        ProgressView("Loading security settings…")
+                        ArcaneLoadingView("Loading security settings…")
                         Spacer()
                     }
                 }
@@ -410,6 +410,7 @@ struct PasskeysMFAView: View {
                 guard let stepUpToken = grant?.token else { return }
                 let response = try await client.passkeys.enableMFA(stepUpToken: stepUpToken)
                 recoveryPresentation = RecoveryCodePresentation(codes: response.codes)
+                showToast(.success("Multi-factor authentication enabled"))
             case .disableMFA:
                 guard let stepUpToken = grant?.token else { return }
                 try await client.passkeys.disableMFA(stepUpToken: stepUpToken)
@@ -420,6 +421,7 @@ struct PasskeysMFAView: View {
                     stepUpToken: stepUpToken
                 )
                 recoveryPresentation = RecoveryCodePresentation(codes: response.codes)
+                showToast(.success("Recovery codes regenerated"))
             }
             guard generation == manager.clientGeneration else { return }
             await load()

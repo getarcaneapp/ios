@@ -67,15 +67,17 @@ enum Motion {
     /// for the single hero moment on the sign-in screen.
     static let logoEntrance: Animation = .spring(response: 0.55, dampingFraction: 0.62)
 
-    /// Splash logo settling into place as it starts drawing.
-    static let splashEnter: Animation = .smooth(duration: 0.6)
+    /// A progress border completing its lap around a pill on success.
+    static let completionSweep: Animation = .easeInOut(duration: 0.6)
+
+    /// Splash logo and glow settling into place as the logo starts drawing.
+    static let splashEnter: Animation = .spring(response: 0.7, dampingFraction: 0.78)
 
     /// The single highlight that crosses the splash logo once it fills.
-    static let splashSheen: Animation = .easeInOut(duration: 0.9)
+    static let splashSheen: Animation = .easeInOut(duration: 0.8)
 
-    /// Splash handoff: the logo lifts and softens while the app fades in.
-    static let splashExitDuration: TimeInterval = 0.5
-    static let splashExit: Animation = .smooth(duration: splashExitDuration)
+    /// Splash handoff: the logo lifts and dissolves while the app zooms in.
+    static let splashExit: Animation = .spring(response: 0.6, dampingFraction: 0.86)
 
     /// Autoscroll tracking that must stay glued to live-appended output
     /// (terminal). Deliberately linear and short — a smooth/spring token would

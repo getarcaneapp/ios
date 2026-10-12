@@ -14,7 +14,7 @@ struct PaginatedListFooter: View {
                     Button("Retry loading more", action: onRetry)
                         .frame(maxWidth: .infinity)
                 } else {
-                    ProgressView("Loading more…")
+                    ArcaneLoadingView("Loading more…", style: .inline)
                         .frame(maxWidth: .infinity)
                         .onAppear(perform: onLoadMore)
                 }
@@ -34,7 +34,7 @@ struct ResourceListContainer<Content: View>: View {
     var body: some View {
         Group {
             if isLoading && isEmpty {
-                ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ArcaneLoadingView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage, isEmpty {
                 ContentUnavailableView(
                     "Couldn't Load",

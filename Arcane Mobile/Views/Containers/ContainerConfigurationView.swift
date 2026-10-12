@@ -27,7 +27,7 @@ struct ContainerConfigurationView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if loading { ProgressView("Loading configuration…") }
+                if loading { ArcaneLoadingView("Loading configuration…") }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
                 if blocked {
                     Section("Managed container") {
@@ -84,7 +84,7 @@ struct ContainerConfigurationView: View {
             }
             .overlay {
                 if busy {
-                    ProgressView("Saving container…").padding().background(
+                    ArcaneLoadingView("Saving container…").padding().background(
                         .regularMaterial,
                         in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
                 }
@@ -282,6 +282,7 @@ struct ContainerConfigurationView: View {
             }
             guard generation == manager.clientGeneration else { return }
             mutations.markChanged(kind: .containers, envID: environmentID)
+            showToast(.success(containerID == nil ? "Container created" : "Container updated"))
             onSaved(id)
             dismiss()
         } catch is CancellationError {} catch {
@@ -306,7 +307,7 @@ private struct ContainerOwningProjectView: View {
                 ContentUnavailableView(
                     "Project unavailable", systemImage: "folder", description: Text(error))
             } else {
-                ProgressView("Loading project…")
+                ArcaneLoadingView("Loading project…")
             }
         }
         .task(id: manager.clientGeneration) {

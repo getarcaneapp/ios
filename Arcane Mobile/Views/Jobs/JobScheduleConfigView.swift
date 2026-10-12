@@ -42,7 +42,7 @@ struct JobScheduleConfigView: View {
                 Section {
                     HStack {
                         Spacer()
-                        ProgressView("Loading schedules…")
+                        ArcaneLoadingView("Loading schedules…")
                         Spacer()
                     }
                 }
