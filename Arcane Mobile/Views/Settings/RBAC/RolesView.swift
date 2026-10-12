@@ -133,14 +133,10 @@ struct RolesView: View {
                     .accessibilityLabel("Manage OIDC Role Mappings")
                 }
             }
-            if #available(iOS 26, *),
-                rbacAvailable,
-                manager.permissions.canManageRoles,
-                manager.canAccess(.oidcRoleMappings)
-            {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
             if rbacAvailable && manager.permissions.canManageRoles {
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
                 AppToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showCreateSheet = true

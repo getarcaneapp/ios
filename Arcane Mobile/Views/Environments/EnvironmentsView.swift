@@ -4,7 +4,7 @@ import SwiftUI
 /// One environment card on the dashboard: identity header, a four-up metric
 /// strip, and compact CPU / memory / disk rings. Data is value-passed so only
 /// touched cards re-evaluate.
-struct EnvironmentFleetListRow: View {
+struct EnvironmentListRow: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environment: Arcane.Environment
     let dockerInfo: DockerInfo?

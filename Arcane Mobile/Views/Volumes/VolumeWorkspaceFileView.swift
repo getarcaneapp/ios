@@ -59,9 +59,6 @@ struct VolumeWorkspaceFileView: View {
                         loading)
                 }
             }
-            if #available(iOS 26, *), canEdit {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
             if canEdit {
                 AppToolbarItem(placement: .primaryAction) {
                     Button("Save") { Task { await save() } }.disabled(loading || !draft.hasChanges || draft.conflict)

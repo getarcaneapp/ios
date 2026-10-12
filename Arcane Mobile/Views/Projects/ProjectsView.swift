@@ -7,50 +7,58 @@ struct ProjectsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let environmentID: EnvironmentID
     let environmentName: String
+    /// All Environments preview: list and act on projects from every enabled environment.
+    var allEnvironments = false
 
-    @State private var projects: [ProjectDetails] = []
-    @State private var routedProject: ProjectDetails?
+    @State private var list = EnvironmentPagedList<ProjectDetails>(pageSize: Self.pageSize)
+    @State private var routedProject: EnvironmentItem<ProjectDetails>?
     @State private var routeGeneration = 0
     @State private var router = QuickActionRouter.shared
-    @State private var isLoading = false
-    @State private var errorMessage: String?
     @State private var actionErrorMessage: String?
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var showCreateSheet = false
+    @State private var createEnvironmentID: EnvironmentID?
+    @State private var archivedEnvironmentID: EnvironmentID?
     @State private var showFilterSheet = false
-    @State private var pendingDeleteProject: ProjectDetails?
-    @State private var loadGeneration = 0
-    @State private var pagination = ProgressivePaginationState()
-    @State private var hasMore = false
-    @State private var totalItemCount: Int64?
-    @State private var isLoadingMore = false
-    @State private var loadMoreError: String?
+    @State private var pendingDeleteProject: EnvironmentItem<ProjectDetails>?
+    @State private var pendingMaintenanceAction: AllEnvironmentsMaintenanceAction?
+    @State private var environmentFilter: EnvironmentID?
     @State private var statusFilter = ProjectStatusFilter.all
     @State private var updateFilter = ResourceUpdateFilter.all
     @State private var sortOrder = ListSortOrder.ascending
-    @State private var sections: [StableListSection<String, ProjectDetails>] = []
+    @State private var sections: [StableListSection<String, EnvironmentItem<ProjectDetails>>] = []
 
     @State private var selectedProjectID: String?
 
+    private var projects: [EnvironmentItem<ProjectDetails>] { list.items }
+
+    /// The environments this list covers, known before the first load finishes.
+    private var listEnvironments: [ListEnvironment] {
+        allEnvironments ? list.environments : [ListEnvironment(id: environmentID, name: nil)]
+    }
+
     private var activeFilterCount: Int {
         var count = statusFilter != .all ? 1 : 0
+        if environmentFilter != nil { count += 1 }
         if updateFilter != .all { count += 1 }
         return count
     }
 
     private var pinnedIDs: Set<String> {
-        pinnedStore.pinnedIDs(kind: .project, envID: environmentID)
+        pinnedStore.pinnedIDs(kind: .project, in: projects)
     }
 
     /// Filters + sorts once and partitions in a single pass. Pure — reads the
     /// current inputs and returns the grouped sections without touching state.
-    private func computeSections() -> [StableListSection<String, ProjectDetails>] {
+    private func computeSections() -> [StableListSection<String, EnvironmentItem<ProjectDetails>>] {
         let query = debouncedSearchText
         let filtered = projects.filter { project in
+            guard environmentFilter == nil || project.environmentID == environmentFilter else { return false }
             let matchesSearch = query.isEmpty || project.displayName.localizedCaseInsensitiveContains(query)
             let status = project.status.lowercased()
             let matchesStatus =
@@ -65,13 +73,13 @@ struct ProjectsView: View {
             sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
         }
         let pinned: Set<String> = pinnedIDs
-        var pinnedItems: [ProjectDetails] = []
-        var active: [ProjectDetails] = []
-        var stopped: [ProjectDetails] = []
+        var pinnedItems: [EnvironmentItem<ProjectDetails>] = []
+        var active: [EnvironmentItem<ProjectDetails>] = []
+        var stopped: [EnvironmentItem<ProjectDetails>] = []
         for project in filtered {
             if pinned.contains(project.id) {
                 pinnedItems.append(project)
-            } else if isStopped(project) {
+            } else if isStopped(project.value) {
                 stopped.append(project)
             } else {
                 active.append(project)
@@ -97,7 +105,14 @@ struct ProjectsView: View {
     }
 
     private var mutationVersion: Int {
-        mutationStore.version(kind: .projects, envID: environmentID)
+        allEnvironments
+            ? mutationStore.version(kind: .projects, in: list.environments)
+            : mutationStore.version(kind: .projects, envID: environmentID)
+    }
+
+    /// Environments the user can create projects in.
+    private var createEnvironments: [ListEnvironment] {
+        listEnvironments.filter { manager.permissions.has(Permission.Projects.create, in: $0.id) }
     }
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
@@ -113,26 +128,37 @@ struct ProjectsView: View {
     @ViewBuilder
     private var content: some View {
         LoadingCrossfade(
-            showSkeleton: isLoading && projects.isEmpty,
+            showSkeleton: list.isLoading && projects.isEmpty,
             animatesTransition: false
         ) {
             ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
-            if let error = errorMessage, projects.isEmpty {
+            if let error = list.errorMessage, projects.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load Projects", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(error)
                 } actions: {
-                    Button("Retry") { Task { await loadProjects(reset: true) } }
+                    Button("Retry") { Task { await loadProjects() } }
                 }
             } else if projects.isEmpty {
                 ContentUnavailableView {
                     Label("No Projects", systemImage: "square.stack.3d.up")
                 } description: {
-                    Text("No Compose projects found in this environment.")
+                    Text(
+                        allEnvironments
+                            ? "No Compose projects found in any environment."
+                            : "No Compose projects found in this environment.")
                 } actions: {
-                    Button("Create Project") { showCreateSheet = true }
+                    if allEnvironments {
+                        EnvironmentActionButton(
+                            title: "Create Project", systemImage: "plus", environments: createEnvironments
+                        ) { environmentID in
+                            presentCreateProject(in: environmentID)
+                        }
+                    } else {
+                        Button("Create Project") { presentCreateProject(in: environmentID) }
+                    }
                 }
             } else {
                 projectsList
@@ -142,14 +168,17 @@ struct ProjectsView: View {
 
     private var projectsList: some View {
         List(selection: $selectedProjectID) {
+            EnvironmentLoadFailuresSection(failures: list.failedEnvironments) {
+                Task { await loadProjects() }
+            }
             StableSectionedList(
                 sections,
                 preferredHeaderAccessorySectionID: "active",
                 headerAccessory: { _ in
                     ResourceCountLabel(
                         loadedCount: projects.count,
-                        totalCount: totalItemCount,
-                        hasMore: hasMore
+                        totalCount: list.totalItems,
+                        hasMore: list.hasMore
                     )
                 }
             ) { project in
@@ -157,8 +186,8 @@ struct ProjectsView: View {
             }
 
             PaginatedListFooter(
-                hasMore: hasMore,
-                loadMoreError: loadMoreError,
+                hasMore: list.hasMore,
+                loadMoreError: list.loadMoreError,
                 onRetry: { Task { await loadMore() } },
                 onLoadMore: { Task { await loadMore() } }
             )
@@ -181,40 +210,60 @@ struct ProjectsView: View {
             }
         }
         AppToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                showFilterSheet = true
+            } label: {
+                Image(
+                    systemName: activeFilterCount > 0
+                        ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                )
+                .appAccentToolbarSymbol()
+            }
+            .accessibilityLabel("Filter")
+        }
+        AppToolbarItem(placement: .navigationBarTrailing) {
             moreOptionsMenu
         }
         if #available(iOS 26, *) {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
         }
         AppToolbarItem(placement: .navigationBarTrailing) {
-            Button {
-                showCreateSheet = true
-            } label: {
-                Image(systemName: "plus")
-                    .appAccentToolbarSymbol()
+            if allEnvironments {
+                EnvironmentActionButton(
+                    title: "Create Project", systemImage: "plus", environments: createEnvironments
+                ) { environmentID in
+                    presentCreateProject(in: environmentID)
+                }
+                .appAccentToolbarSymbol()
+                .accessibilityLabel("Create project")
+            } else {
+                Button {
+                    presentCreateProject(in: environmentID)
+                } label: {
+                    Image(systemName: "plus")
+                        .appAccentToolbarSymbol()
+                }
+                .accessibilityLabel("Create project")
             }
-            .accessibilityLabel("Create project")
         }
     }
 
     private var moreOptionsMenu: some View {
         Menu {
-            Picker("Sort", selection: $sortOrder) {
-                ForEach(ListSortOrder.allCases) { order in
-                    Label(order.title, systemImage: order.systemImage).tag(order)
+            if allEnvironments {
+                AllEnvironmentsMaintenanceButtons(action: $pendingMaintenanceAction)
+                Divider()
+            }
+            if allEnvironments {
+                EnvironmentActionButton(
+                    title: "Archived Projects", systemImage: "archivebox", environments: listEnvironments
+                ) { environmentID in
+                    archivedEnvironmentID = environmentID
                 }
-            }
-            Button {
-                showFilterSheet = true
-            } label: {
-                Label(
-                    activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
-                    systemImage: "line.3.horizontal.decrease.circle"
-                )
-            }
-            Divider()
-            NavigationLink(destination: ArchivedProjectsView(environmentID: environmentID)) {
-                Label("Archived Projects", systemImage: "archivebox")
+            } else {
+                NavigationLink(destination: ArchivedProjectsView(environmentID: environmentID)) {
+                    Label("Archived Projects", systemImage: "archivebox")
+                }
             }
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -226,6 +275,16 @@ struct ProjectsView: View {
     private var filterSheetContent: some View {
         NavigationStack {
             Form {
+                Section("Sort") {
+                    Picker("Sort", selection: $sortOrder) {
+                        ForEach(ListSortOrder.allCases) { order in
+                            Label(order.title, systemImage: order.systemImage).tag(order)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
+                EnvironmentFilterSection(environments: list.environments, selection: $environmentFilter)
                 Section("Status") {
                     Picker("Status", selection: $statusFilter) {
                         ForEach(ProjectStatusFilter.allCases, id: \.self) { f in
@@ -253,7 +312,8 @@ struct ProjectsView: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
+        .presentationContentInteraction(.resizes)
         .presentationDragIndicator(.visible)
     }
 
@@ -267,11 +327,11 @@ struct ProjectsView: View {
             .toolbar {
                 toolbarContent
             }
-            .task { await loadProjects(reset: true) }
-            .refreshable { await loadProjects(reset: true) }
+            .task { await loadProjects() }
+            .refreshable { await loadProjects() }
             .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
-            .navigationDestination(for: ProjectDetails.self) { project in
-                ProjectDetailView(project: project, environmentID: environmentID)
+            .navigationDestination(for: EnvironmentItem<ProjectDetails>.self) { project in
+                ProjectDetailView(project: project.value, environmentID: project.environmentID)
                     .onDisappear {
                         selectedProjectID = Self.selectionAfterReturning(
                             selectedProjectID,
@@ -280,20 +340,27 @@ struct ProjectsView: View {
                     }
             }
             .sheet(isPresented: $showCreateSheet) {
-                CreateProjectView(environmentID: environmentID) {}
+                CreateProjectView(environmentID: createEnvironmentID ?? environmentID) {}
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showFilterSheet) { filterSheetContent }
             .navigationDestination(item: $routedProject) { project in
-                ProjectDetailView(project: project, environmentID: environmentID)
+                ProjectDetailView(project: project.value, environmentID: project.environmentID)
             }
+            .navigationDestination(item: $archivedEnvironmentID) { environmentID in
+                ArchivedProjectsView(environmentID: environmentID)
+            }
+            .allEnvironmentsMaintenanceConfirmation(
+                action: $pendingMaintenanceAction, environments: environmentsStore.enabledEnvironments
+            )
             .onChange(of: router.pendingRoute, initial: true) { _, _ in
                 Task { await consumeProjectRoute() }
             }
             .onChange(of: mutationVersion) { _, _ in
-                Task { await loadProjects(reset: true) }
+                Task { await loadProjects() }
             }
             .onChange(of: debouncedSearchText) { rebuildSections() }
+            .onChange(of: environmentFilter) { rebuildSections() }
             .onChange(of: statusFilter) { rebuildSections() }
             .onChange(of: updateFilter) { rebuildSections() }
             .onChange(of: sortOrder) { rebuildSections() }
@@ -323,63 +390,45 @@ struct ProjectsView: View {
             }
     }
 
-    private func loadProjects(reset: Bool) async {
+    private func loadProjects() async {
         guard let client = manager.client else { return }
-        loadGeneration += 1
-        let generation = loadGeneration
-        if reset {
-            _ = pagination.reset()
-            hasMore = false
-            totalItemCount = nil
-        }
-        let start = pagination.nextStart
-        if projects.isEmpty { isLoading = true }
-        errorMessage = nil
-        loadMoreError = nil
-        defer {
-            if loadGeneration == generation {
-                isLoading = false
-            }
-        }
-        do {
-            // `PaginatedResponse<ProjectDetails>` is Decodable-only, so we can't
-            // route it through the cache layer (which requires Codable). The
-            // service call is fast enough that this is fine.
-            let query = SearchPaginationSort(start: start, limit: Self.pageSize)
-            let response = try await client.projects.list(envID: environmentID, query: query)
-            applyProjectsPage(response, reset: reset, start: start, generation: generation)
-        } catch {
-            guard loadGeneration == generation else { return }
-            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
-        }
-    }
-
-    private func applyProjectsPage(
-        _ response: PaginatedResponse<ProjectDetails>, reset: Bool, start: Int, generation: Int
-    ) {
-        guard loadGeneration == generation else { return }
-        projects = PaginationLoader.merge(current: projects, incoming: response.data, reset: reset)
-        pagination.receive(
-            pagination: response.pagination, itemCount: response.data.count,
-            requestedStart: start, requestedLimit: Self.pageSize,
-            generation: pagination.generation
-        )
-        hasMore = pagination.hasMore
-        totalItemCount = pagination.totalItems
+        let environments = await environmentsStore.listEnvironments(
+            environmentID, allEnvironments: allEnvironments, manager: manager)
+        await list.reload(environments, fetch: projectsPage(client: client))
         rebuildSections()
     }
 
     private func loadMore() async {
-        guard hasMore, !isLoadingMore else { return }
-        isLoadingMore = true
-        defer { isLoadingMore = false }
-        await loadProjects(reset: false)
+        guard let client = manager.client else { return }
+        await list.loadMore(fetch: projectsPage(client: client))
+        rebuildSections()
     }
 
-    private func projectLink(_ project: ProjectDetails) -> some View {
+    private func projectsPage(client: ArcaneClient) -> EnvironmentPagedList<ProjectDetails>.Fetch {
+        { environmentID, start, limit in
+            // `PaginatedResponse<ProjectDetails>` is Decodable-only, so we can't
+            // route it through the cache layer (which requires Codable). The
+            // service call is fast enough that this is fine.
+            let query = SearchPaginationSort(start: start, limit: limit)
+            let response = try await client.projects.list(envID: environmentID, query: query)
+            return ResourcePage(items: response.data, pagination: response.pagination)
+        }
+    }
+
+    private func listEnvironment(_ id: EnvironmentID) -> ListEnvironment {
+        ListEnvironment(id: id, name: allEnvironments ? environmentsStore.displayName(for: id) ?? id.rawValue : nil)
+    }
+
+    private func presentCreateProject(in environmentID: EnvironmentID) {
+        createEnvironmentID = environmentID
+        showCreateSheet = true
+    }
+
+    private func projectLink(_ project: EnvironmentItem<ProjectDetails>) -> some View {
         let isPinned = pinnedIDs.contains(project.id)
         return NavigationLink(value: project) {
-            ProjectRow(project: project, isPinned: isPinned)
+            ProjectRow(project: project.value, isPinned: isPinned, environmentName: project.environmentName)
+                .rowEnvironment(project)
         }
         .contextMenu {
             Button {
@@ -419,23 +468,23 @@ struct ProjectsView: View {
         }
     }
 
-    private func togglePinAfterSwipe(_ project: ProjectDetails) {
+    private func togglePinAfterSwipe(_ project: EnvironmentItem<ProjectDetails>) {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(250))
             togglePin(project)
         }
     }
 
-    private func togglePin(_ project: ProjectDetails) {
+    private func togglePin(_ project: EnvironmentItem<ProjectDetails>) {
         HapticsManager.light()
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            pinnedStore.togglePin(project.id, kind: .project, envID: environmentID)
+            pinnedStore.togglePin(project, kind: .project)
         }
     }
 
-    private func projectPreview(_ project: ProjectDetails) -> some View {
+    private func projectPreview(_ project: EnvironmentItem<ProjectDetails>) -> some View {
         let status = project.status.lowercased()
         let color: Color
         switch status {
@@ -453,10 +502,13 @@ struct ProjectsView: View {
             details.append(.init(icon: "doc.text", label: "Compose Version", value: version))
         }
         details.append(.init(icon: "calendar", label: "Created", value: project.createdAt))
+        if let environmentName = project.environmentName {
+            details.append(.init(icon: "server.rack", label: "Environment", value: environmentName))
+        }
         return RowPreviewCard(
             icon: "square.stack.3d.up.fill",
             iconColor: color,
-            iconUrl: project.themedIconUrl(for: colorScheme),
+            iconUrl: project.value.themedIconUrl(for: colorScheme),
             title: project.displayName,
             badges: [
                 .init(text: project.status.capitalized, color: color)
@@ -465,27 +517,27 @@ struct ProjectsView: View {
         )
     }
 
-    private func deleteProject(_ project: ProjectDetails, removeFiles: Bool) async {
+    private func deleteProject(_ project: EnvironmentItem<ProjectDetails>, removeFiles: Bool) async {
         guard let client = manager.client else { return }
         pendingDeleteProject = nil
         do {
             _ = try await client.projects.destroy(
-                envID: environmentID,
-                projectID: project.id,
+                envID: project.environmentID,
+                projectID: project.value.id,
                 options: DestroyProject(removeFiles: removeFiles, removeVolumes: false)
             )
             withAnimation {
-                projects.removeAll { $0.id == project.id }
+                list.update { $0.removeAll { $0.id == project.id } }
                 rebuildSections()
             }
-            await invalidateProjectCaches()
-            mutationStore.markChanged(kind: .projects, envID: environmentID)
+            await invalidateProjectCaches(project.environmentID)
+            mutationStore.markChanged(kind: .projects, envID: project.environmentID)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
     }
 
-    private func invalidateProjectCaches() async {
+    private func invalidateProjectCaches(_ environmentID: EnvironmentID) async {
         guard let cached = manager.cached, let client = manager.client else { return }
         await cached.invalidate(
             envID: environmentID,
@@ -546,7 +598,7 @@ struct ProjectRow: View {
                             .accessibilityHidden(true)
                     }
                 }
-                FleetEnvironmentLabel(name: environmentName)
+                EnvironmentLabel(name: environmentName)
             }
 
             Spacer()
@@ -573,30 +625,31 @@ extension ProjectsView {
     fileprivate func consumeProjectRoute() async {
         guard case .authenticated = manager.authState,
             case .project(let envID, let id)? = router.pendingRoute,
-            envID == environmentID.rawValue,
+            allEnvironments || envID == environmentID.rawValue,
             let client = manager.client
         else { return }
+        let routeEnvironmentID = EnvironmentID(rawValue: envID)
         routeGeneration += 1
         let generation = routeGeneration
         let routerGeneration = router.routeGeneration
         let session = manager.cacheSessionIdentity
         router.pendingRoute = nil
         do {
-            let project = try await client.projects.get(envID: environmentID, projectID: id)
+            let project = try await client.projects.get(envID: routeEnvironmentID, projectID: id)
             try Task.checkCancellation()
             guard generation == routeGeneration,
                 routerGeneration == router.routeGeneration,
                 session == manager.cacheSessionIdentity,
                 client.transport === manager.client?.transport,
-                manager.acceptsEnvironmentContext(environmentID)
+                manager.acceptsEnvironmentContext(routeEnvironmentID)
             else { return }
-            routedProject = project
+            routedProject = EnvironmentItem(project, in: listEnvironment(routeEnvironmentID))
         } catch {
             guard generation == routeGeneration,
                 routerGeneration == router.routeGeneration,
                 session == manager.cacheSessionIdentity,
                 client.transport === manager.client?.transport,
-                manager.acceptsEnvironmentContext(environmentID)
+                manager.acceptsEnvironmentContext(routeEnvironmentID)
             else { return }
             showToast(.error(friendlyErrorMessage(error)))
         }

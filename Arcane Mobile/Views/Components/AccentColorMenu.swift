@@ -34,10 +34,10 @@ struct AccentColorMenu: View {
         } label: {
             HStack(spacing: 8) {
                 Circle()
-                    .fill(selectedOption?.color ?? Color(hex: selection) ?? .blue)
+                    .fill(selectedOption?.color ?? Color(hex: selection) ?? .purple)
                     .frame(width: 9, height: 9)
                 Text(selectedOption?.displayName ?? "Custom")
-                    .foregroundStyle(selectedOption?.color ?? Color(hex: selection) ?? .blue)
+                    .foregroundStyle(selectedOption?.color ?? Color(hex: selection) ?? .purple)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.tertiary)

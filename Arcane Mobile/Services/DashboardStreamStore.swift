@@ -48,7 +48,7 @@ final class DashboardStreamStore {
     /// Permanent until configure() sees a different client.
     private(set) var streamUnsupported = false
     /// Cached separately from the environment dictionary so consumers of the
-    /// fleet totals update only when a displayed count changes.
+    /// environment totals update only when a displayed count changes.
     private(set) var aggregate: AggregateCounts?
 
     private var client: ArcaneClient?
@@ -75,7 +75,7 @@ final class DashboardStreamStore {
 
     /// Aggregate tile counts across tracked environments. Every environment
     /// must have a snapshot from the current stream connection; stale or
-    /// partial data is never presented as a live fleet total.
+    /// partial data is never presented as a live total.
     static func resolvedAggregate(
         from statesByEnvironmentID: [String: EnvironmentState]
     ) -> AggregateCounts? {

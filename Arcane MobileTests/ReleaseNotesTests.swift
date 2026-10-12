@@ -13,6 +13,7 @@ final class ReleaseNotesTests: XCTestCase {
             version: "1.2.3",
             new: [.init("New feature")],
             changed: [.init("Changed behavior", badge: .premium)],
+            removed: [.init("Removed screen")],
             fixed: [.init("Fixed bug")]
         )
 
@@ -21,6 +22,7 @@ final class ReleaseNotesTests: XCTestCase {
             [
                 "New",
                 "Changed",
+                "Removed",
                 "Fixed",
             ])
         XCTAssertEqual(
@@ -28,12 +30,13 @@ final class ReleaseNotesTests: XCTestCase {
             [
                 "• New feature",
                 "• Changed behavior · Premium",
+                "• Removed screen",
                 "• Fixed bug",
             ])
-        XCTAssertEqual(note.presentationSections.map(\.category), [.new, .changed, .fixed])
+        XCTAssertEqual(note.presentationSections.map(\.category), [.new, .changed, .removed, .fixed])
         XCTAssertEqual(
             note.presentationSections.map { $0.category.systemImage },
-            ["sparkles", "paintbrush.fill", "ladybug.fill"]
+            ["sparkles", "paintbrush.fill", "minus.circle.fill", "ladybug.fill"]
         )
     }
 

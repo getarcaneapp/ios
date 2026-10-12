@@ -49,11 +49,6 @@ struct ImageVulnerabilitiesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if manager.permissions.has("images:patch", in: environmentID), manager.supportsActivities {
-                if embedded {
-                    if #available(iOS 26, *) {
-                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                    }
-                }
                 AppToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         ImagePatchView(environmentID: environmentID, imageID: imageID, imageName: imageDisplayName)

@@ -23,6 +23,8 @@ private let jobScheduleFields: [JobScheduleField] = [
 struct JobScheduleConfigView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environmentID: EnvironmentID
+    /// Set when opened for a chosen environment from All Environments.
+    var environmentName: String? = nil
 
     @State private var values: [String: String] = [:]
     @State private var original: [String: String] = [:]
@@ -50,9 +52,15 @@ struct JobScheduleConfigView: View {
                         scheduleRow(field)
                     }
                 } footer: {
-                    Text(
-                        "Cron expressions accept 5- or 6-field syntax. Changes save to the active environment's settings."
-                    )
+                    if let environmentName {
+                        Text(
+                            "Cron expressions accept 5- or 6-field syntax. Changes save to \(environmentName)'s settings."
+                        )
+                    } else {
+                        Text(
+                            "Cron expressions accept 5- or 6-field syntax. Changes save to the active environment's settings."
+                        )
+                    }
                 }
 
                 if hasChanges {
@@ -90,9 +98,6 @@ struct JobScheduleConfigView: View {
                 }
                 .accessibilityLabel("Refresh")
                 .disabled(isLoading)
-            }
-            if #available(iOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             AppToolbarItem(placement: .confirmationAction) {
                 Button {

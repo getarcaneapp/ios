@@ -1,15 +1,13 @@
 import Arcane
 import SwiftUI
 
-/// The Updates page: a card-based, cross-environment view of pending image
-/// updates. Rows stay minimal — name, what changed, one-tap update icon —
-/// and tapping a row opens a detail sheet with the full untruncated ref,
-/// version/digest info, and per-container / per-project update actions.
+/// Pending image updates with environment-scoped details and update actions.
 struct AllEnvironmentsImageUpdatesView: View {
     /// True when this page is presented as a sheet (dashboard): starting an
     /// update dismisses the sheet so the root pill becomes the progress
     /// surface. The pill belongs above the tab bar, not floating in a sheet.
     var dismissOnOperationStart: Bool = false
+    var historyAction: ActionButtonItem? = nil
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
@@ -20,13 +18,17 @@ struct AllEnvironmentsImageUpdatesView: View {
     @State private var isLoading = false
     @State private var hasLoadedOnce = false
     @State private var environmentLoadError: String?
+    @State private var search = ""
+    @State private var environmentFilter: EnvironmentID?
+    @State private var sortOrder = ListSortOrder.ascending
+    @State private var showsFilters = false
 
     /// `envID::ref` currently being rechecked against its registry.
     @State private var checkingKeys: Set<String> = []
     /// `envID::resourceID` (image, container, or project) with an update in flight.
     @State private var updatingKeys: Set<String> = []
     @State private var rescanningEnvID: String?
-    @State private var pendingFleetAction: FleetMaintenanceAction?
+    @State private var pendingMaintenanceAction: AllEnvironmentsMaintenanceAction?
     @State private var updaterRunTarget: UpdaterRunTarget?
     /// The image whose detail sheet is open.
     @State private var detailTarget: ImageDetailTarget?
@@ -68,6 +70,8 @@ struct AllEnvironmentsImageUpdatesView: View {
                     systemImage: "bolt.slash",
                     description: Text("Add an environment to see image updates.")
                 )
+            } else if manager.allEnvironmentsPreview {
+                allEnvironmentsUpdatesList
             } else {
                 ScrollView {
                     LazyVStack(spacing: 16) {
@@ -89,18 +93,72 @@ struct AllEnvironmentsImageUpdatesView: View {
         .navigationTitle("Updates")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if manager.allEnvironmentsPreview && dismissOnOperationStart {
-                AppToolbarItem(placement: .topBarLeading) {
-                    Button("Check All", systemImage: "arrow.clockwise") { pendingFleetAction = .checkImages }
-                        .disabled(isLoading || buckets.isEmpty)
+            if manager.allEnvironmentsPreview {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showsFilters = true
+                    } label: {
+                        Image(
+                            systemName: environmentFilter != nil
+                                ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                        )
+                        .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Filter")
                 }
-                AppToolbarItem(placement: .primaryAction) {
-                    Button("Update All", systemImage: "arrow.triangle.2.circlepath") { pendingFleetAction = .update }
-                        .disabled(isLoading || buckets.isEmpty)
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("Update All", systemImage: "arrow.triangle.2.circlepath") {
+                            pendingMaintenanceAction = .update
+                        }
+                        Button("Check All", systemImage: "arrow.clockwise") {
+                            pendingMaintenanceAction = .checkImages
+                        }
+                        if let historyAction {
+                            Divider()
+                            Button(
+                                historyAction.title, systemImage: historyAction.systemImage,
+                                action: historyAction.action)
+                        }
+                    } label: {
+                        Label("More options", systemImage: "ellipsis.circle")
+                    }
+                    .disabled(buckets.isEmpty)
                 }
             }
         }
-        .fleetMaintenanceConfirmation(action: $pendingFleetAction, environments: buckets.map(\.env))
+        .allEnvironmentsMaintenanceConfirmation(action: $pendingMaintenanceAction, environments: buckets.map(\.env))
+        .sheet(isPresented: $showsFilters) {
+            NavigationStack {
+                Form {
+                    Section("Sort") {
+                        Picker("Sort", selection: $sortOrder) {
+                            ForEach(ListSortOrder.allCases) { order in
+                                Label(order.title, systemImage: order.systemImage).tag(order)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
+                    EnvironmentFilterSection(
+                        environments: buckets.map {
+                            ListEnvironment(id: EnvironmentID(rawValue: $0.id), name: $0.env.displayName)
+                        },
+                        selection: $environmentFilter
+                    )
+                }
+                .navigationTitle("Filter")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    AppToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showsFilters = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationContentInteraction(.resizes)
+            .presentationDragIndicator(.visible)
+        }
         .sheet(item: $updaterRunTarget) { target in
             UpdaterRunSheet(
                 environments: [],
@@ -138,6 +196,80 @@ struct AllEnvironmentsImageUpdatesView: View {
             return summary.imagesWithUpdates
         }
         return rows
+    }
+
+    // MARK: - All Environments resource list
+
+    private var filteredBuckets: [EnvUpdateBucket] {
+        buckets.filter { environmentFilter == nil || $0.id == environmentFilter?.rawValue }
+    }
+
+    private var visibleUpdates: [EnvironmentImageUpdateItem] {
+        filteredBuckets.flatMap { bucket in
+            outdatedImages(in: bucket).map { EnvironmentImageUpdateItem(bucket: bucket, image: $0) }
+        }
+        .filter {
+            search.isEmpty || $0.bucket.env.displayName.localizedCaseInsensitiveContains(search)
+                || $0.image.ref.localizedCaseInsensitiveContains(search)
+        }
+        .sorted {
+            let order = $0.image.repoDisplayName.localizedStandardCompare($1.image.repoDisplayName)
+            if order != .orderedSame {
+                return sortOrder.areInIncreasingOrder($0.image.repoDisplayName, $1.image.repoDisplayName)
+            }
+            let environmentOrder = $0.bucket.env.displayName.localizedStandardCompare($1.bucket.env.displayName)
+            if environmentOrder != .orderedSame { return environmentOrder == .orderedAscending }
+            return $0.id < $1.id
+        }
+    }
+
+    private var allEnvironmentsUpdatesList: some View {
+        let updates = visibleUpdates
+        let environments = filteredBuckets
+        let loading = environments.contains { $0.loading }
+        let errors = environments.filter { $0.error != nil }
+
+        return List {
+            ForEach(errors) { bucket in
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Couldn't load \(bucket.env.displayName)", systemImage: "exclamationmark.triangle")
+                    Text(bucket.error ?? "")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button("Retry") { Task { await loadAll(refresh: true) } }
+                }
+            }
+            if !updates.isEmpty {
+                Section {
+                    ForEach(updates) { item in
+                        outdatedImageRow(item.image, in: item.bucket)
+                            .environment(\.rowEnvironmentID, item.bucket.id)
+                    }
+                } header: {
+                    ResourceCountSectionHeader("Available Updates", loadedCount: updates.count)
+                }
+            }
+            if loading && !updates.isEmpty {
+                ProgressView("Checking images…")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .searchable(text: $search, prompt: "Search images or environments")
+        .overlay {
+            if updates.isEmpty && errors.isEmpty {
+                if loading {
+                    ProgressView("Checking images…")
+                } else if !search.isEmpty {
+                    ContentUnavailableView.search(text: search)
+                } else {
+                    ContentUnavailableView(
+                        "No Available Updates",
+                        systemImage: "checkmark.circle",
+                        description: Text("No pending image updates in the selected environments.")
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Environment card
@@ -262,15 +394,16 @@ struct AllEnvironmentsImageUpdatesView: View {
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "shippingbox.and.arrow.backward.fill")
-                        .font(.footnote.weight(.semibold))
+                        .font(manager.allEnvironmentsPreview ? .title3 : .footnote.weight(.semibold))
                         .foregroundStyle(.orange)
                         .frame(width: 36, height: 36)
-                        .background(Color.orange.opacity(0.12), in: .circle)
+                        .background(
+                            manager.allEnvironmentsPreview ? .clear : Color.orange.opacity(0.12), in: .circle)
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             Text(item.repoDisplayName)
-                                .font(.subheadline.weight(.semibold))
+                                .font(manager.allEnvironmentsPreview ? .body : .subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -281,6 +414,9 @@ struct AllEnvironmentsImageUpdatesView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                        if manager.allEnvironmentsPreview {
+                            EnvironmentLabel(name: bucket.env.displayName)
+                        }
                     }
                     Spacer(minLength: 0)
                 }
@@ -308,7 +444,7 @@ struct AllEnvironmentsImageUpdatesView: View {
                 recheckButton(for: item.ref, in: bucket)
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, manager.allEnvironmentsPreview ? 0 : 10)
         .contextMenu {
             if !actionable.isEmpty {
                 Button {
@@ -1066,6 +1202,13 @@ private struct OutdatedImage: Identifiable {
 private struct UpdaterRunTarget: Identifiable, Hashable {
     let envID: String
     var id: String { envID }
+}
+
+private struct EnvironmentImageUpdateItem: Identifiable {
+    let bucket: EnvUpdateBucket
+    let image: OutdatedImage
+
+    var id: String { "\(bucket.id)::\(image.id)" }
 }
 
 private struct ImageDetailTarget: Identifiable, Hashable {

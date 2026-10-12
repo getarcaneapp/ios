@@ -1,6 +1,5 @@
 import Arcane
 import SwiftUI
-import WhatsNewKit
 
 struct AppSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -9,7 +8,6 @@ struct AppSettingsView: View {
     private var activityToastScopeRawValue = ActivityToastScope.userInitiated.rawValue
     @State private var pendingDestructive: PendingDestructive?
     @State private var cacheSizeBytes: Int = 0
-    @State private var presentedWhatsNew: WhatsNewKit.WhatsNew?
     @State private var push = PushNotificationCoordinator.shared
 
     /// Both of this screen's destructive confirmations route through a single
@@ -35,9 +33,7 @@ struct AppSettingsView: View {
         List {
             generalSection
             notificationsSection
-            connectionsSection
             supportSection
-            aboutSection
             storageSection
         }
         .listStyle(.insetGrouped)
@@ -47,9 +43,6 @@ struct AppSettingsView: View {
         .task(id: manager.clientGeneration) {
             await push.refreshAuthorizationStatus()
             await push.refreshServerStatus(manager: manager)
-        }
-        .sheet(item: $presentedWhatsNew) { whatsNew in
-            WhatsNewPresentationView(whatsNew: whatsNew)
         }
         .deleteConfirmation(item: $pendingDestructive) { action in
             switch action {
@@ -133,44 +126,20 @@ struct AppSettingsView: View {
     }
 
     private var notificationsFooter: String {
-        let toasts =
-            "\(activityToastScope.subtitle). User Initiated excludes automated and server maintenance activities."
+        let scope = activityToastScope.subtitle
+        let toasts = "Toasts show \(scope.prefix(1).lowercased() + scope.dropFirst())."
         guard manager.supportsMobilePush else { return toasts }
         if push.serverStatus?.enabled != true {
-            return toasts + " Push notifications are turned off by your Arcane admin."
+            return toasts + " Push is turned off on your Arcane server."
         }
         if push.isAuthorizationDenied {
-            return toasts + " Notifications for Arcane are turned off in iOS Settings."
+            return toasts + " Notifications are off in iOS Settings."
         }
         return toasts
-            + " Push notifications are delivered through Arcane's push relay; only the notification text is sent, never your server address or credentials."
     }
 
     private var activityToastScope: ActivityToastScope {
         ActivityToastScope(rawValue: activityToastScopeRawValue) ?? .userInitiated
-    }
-
-    private var connectionsSection: some View {
-        Section {
-            NavigationLink(destination: ConnectionProfilesView()) {
-                SettingsRow(
-                    title: "Connection Profiles",
-                    systemImage: "person.crop.rectangle.stack.fill",
-                    color: .indigo
-                )
-            }
-            NavigationLink(destination: ServerInfoView()) {
-                SettingsRow(
-                    title: "Server Info",
-                    systemImage: "server.rack",
-                    color: .teal
-                )
-            }
-        } header: {
-            Text("Connections")
-        } footer: {
-            Text("Connection profiles can include a password sign-in in iCloud Keychain. Sessions stay on this device.")
-        }
     }
 
     private var storageSection: some View {
@@ -201,57 +170,8 @@ struct AppSettingsView: View {
         }
     }
 
-    private var aboutSection: some View {
-        Section("About") {
-            Button {
-                presentedWhatsNew = ReleaseNotes.latestWhatsNew
-            } label: {
-                HStack {
-                    SettingsRow(title: "What's New", systemImage: "sparkles", color: .yellow, titleColor: .primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            if let shareURL = URL(string: "https://getarcane.app") {
-                ShareLink(item: shareURL) {
-                    SettingsRow(
-                        title: "Share Arcane",
-                        systemImage: "square.and.arrow.up",
-                        color: .blue,
-                        titleColor: .primary
-                    )
-                }
-            }
-            if let privacyURL = URL(string: "https://getarcane.app/privacy") {
-                Link(destination: privacyURL) {
-                    SettingsExternalRow(title: "Privacy Policy", systemImage: "hand.raised.fill", color: .gray)
-                }
-            }
-            if let coffeeURL = URL(string: "https://buymeacoffee.com/kmendell") {
-                Link(destination: coffeeURL) {
-                    SettingsExternalRow(
-                        title: "Buy Me a Coffee",
-                        systemImage: "cup.and.saucer.fill",
-                        color: .orange
-                    )
-                }
-            }
-        }
-    }
-
     private var supportSection: some View {
         Section("Support") {
-            NavigationLink(destination: SupportBundleView()) {
-                SettingsRow(
-                    title: "Support Bundle",
-                    systemImage: "doc.text.magnifyingglass",
-                    color: .teal
-                )
-            }
             if let docsURL = URL(string: "https://getarcane.app") {
                 Link(destination: docsURL) {
                     SettingsExternalRow(title: "Documentation", systemImage: "globe", color: .blue)
@@ -272,6 +192,20 @@ struct AppSettingsView: View {
                         title: "Join the Discord",
                         systemImage: "bubble.left.and.bubble.right.fill",
                         color: .indigo
+                    )
+                }
+            }
+            if let privacyURL = URL(string: "https://getarcane.app/privacy") {
+                Link(destination: privacyURL) {
+                    SettingsExternalRow(title: "Privacy Policy", systemImage: "hand.raised.fill", color: .gray)
+                }
+            }
+            if let coffeeURL = URL(string: "https://buymeacoffee.com/kmendell") {
+                Link(destination: coffeeURL) {
+                    SettingsExternalRow(
+                        title: "Buy Me a Coffee",
+                        systemImage: "cup.and.saucer.fill",
+                        color: .orange
                     )
                 }
             }

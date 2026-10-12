@@ -12,8 +12,7 @@ private struct BuildSettingsFormState: Equatable {
 struct BuildSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
-    let environmentID: EnvironmentID
-    let environmentName: String
+    var environmentID: EnvironmentID = .localDocker
 
     @State private var buildProvider = "local"
     @State private var buildTimeout = "1800"
@@ -198,7 +197,7 @@ struct BuildSettingsView: View {
             let _: [PublicSetting] = try await client.rest.put(path, body: body)
             guard !Task.isCancelled else { return }
             originalState = formState
-            showToast(.success("Build settings saved for \(environmentName)"))
+            showToast(.success("Build settings saved"))
         } catch {
             guard !Task.isCancelled else { return }
             errorMessage = friendlyErrorMessage(error)

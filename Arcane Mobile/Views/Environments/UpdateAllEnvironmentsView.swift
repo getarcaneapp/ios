@@ -2,7 +2,7 @@ import Arcane
 import Foundation
 import SwiftUI
 
-/// Fleet-wide Arcane self-upgrade, mirroring the web app's "Update All" button
+/// All-environments Arcane self-upgrade, mirroring the web app's "Update All" button
 /// on the environments page: online remote agents are upgraded first, then the
 /// manager itself restarts. Presented as a sheet from the dashboard's
 /// Environments section; the ready screen doubles as the confirmation step
@@ -32,7 +32,7 @@ struct UpdateAllEnvironmentsView: View {
     @State private var pollTask: Task<Void, Never>?
 
     /// The manager environment. The server ignores the path segment for these
-    /// endpoints — the manager always orchestrates the whole fleet.
+    /// endpoints — the manager always orchestrates every environment.
     private let managerEnvID = EnvironmentID(rawValue: "0")
 
     private var isAdmin: Bool { manager.currentUser?.isAdmin == true }
@@ -94,7 +94,7 @@ struct UpdateAllEnvironmentsView: View {
     private var phaseContent: some View {
         if let sceneModel {
             VStack(spacing: 24) {
-                FleetUpdateScene(model: sceneModel)
+                EnvironmentUpdateScene(model: sceneModel)
 
                 Group {
                     phaseDetails
@@ -136,16 +136,16 @@ struct UpdateAllEnvironmentsView: View {
         }
     }
 
-    private var sceneModel: FleetUpdateSceneModel? {
+    private var sceneModel: EnvironmentUpdateSceneModel? {
         switch phase {
         case .loading:
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: .loading,
                 title: "Checking readiness",
                 subtitle: "Reading the manager's update status"
             )
         case .ready:
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: .ready,
                 title: "Update every environment",
                 subtitle: environmentCount == 1
@@ -153,7 +153,7 @@ struct UpdateAllEnvironmentsView: View {
                     : "\(environmentCount) environments · latest release"
             )
         case .triggering:
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: .starting,
                 title: "Starting the update",
                 subtitle: "Contacting the manager"
@@ -168,7 +168,7 @@ struct UpdateAllEnvironmentsView: View {
             let activeEnvironment = results.first { $0.status == .updating }
 
             if job.status == .pendingRestart {
-                return FleetUpdateSceneModel(
+                return EnvironmentUpdateSceneModel(
                     kind: .restarting,
                     title: "Restarting the manager",
                     subtitle: "The environment updates are complete",
@@ -184,7 +184,7 @@ struct UpdateAllEnvironmentsView: View {
                 results.isEmpty
                 ? "Preparing environments"
                 : "\(done) of \(results.count) complete"
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: .updating,
                 title: "Updating environments",
                 subtitle: subtitle,
@@ -197,7 +197,7 @@ struct UpdateAllEnvironmentsView: View {
         case .reconnecting(let job):
             let results = resultsInProcessingOrder(job.results ?? [])
             let done = completedResultCount(results)
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: .reconnecting,
                 title: "Reconnecting",
                 subtitle: "Waiting for the manager to return",
@@ -211,7 +211,7 @@ struct UpdateAllEnvironmentsView: View {
             let results = resultsInProcessingOrder(job.results ?? [])
             let counts = resultCounts(results)
             let done = completedResultCount(results)
-            let kind: FleetUpdateSceneKind
+            let kind: EnvironmentUpdateSceneKind
             let title: String
             if job.status == .failed {
                 kind = .failed
@@ -223,7 +223,7 @@ struct UpdateAllEnvironmentsView: View {
                 kind = .completed
                 title = "All updated"
             }
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: kind,
                 title: title,
                 subtitle: note
@@ -384,9 +384,9 @@ struct UpdateAllEnvironmentsView: View {
 
     private func ringModels(
         for results: [EnvironmentUpdateResult]
-    ) -> [FleetUpdateRingEnvironment] {
+    ) -> [EnvironmentUpdateRingEnvironment] {
         results.enumerated().map { index, result in
-            FleetUpdateRingEnvironment(
+            EnvironmentUpdateRingEnvironment(
                 result: result,
                 slotIndex: index,
                 totalCount: results.count
@@ -474,7 +474,8 @@ struct UpdateAllEnvironmentsView: View {
             // Someone beat us to it — attach to the job that's already running.
             await preflight()
         } catch ArcaneError.notFound {
-            phase = .unsupported("This Arcane server doesn't support fleet updates. Update the server first.")
+            phase = .unsupported(
+                "This Arcane server doesn't support updating all environments. Update the server first.")
         } catch let error as ArcaneError {
             if case .server(_, let message) = error, !message.isEmpty {
                 // Agent-mode servers reject update-all with a 400 explaining
@@ -542,7 +543,7 @@ struct UpdateAllEnvironmentsView: View {
             if job.status == .completed && failedCount == 0 {
                 showToast(.success("All environments updated"))
             } else if job.status == .failed {
-                showToast(.error(job.error ?? "Fleet update failed"))
+                showToast(.error(job.error ?? "Environment update failed"))
             }
         }
         Task {
@@ -554,7 +555,7 @@ struct UpdateAllEnvironmentsView: View {
 
 // MARK: - Update scene
 
-enum FleetUpdateSceneKind: Equatable {
+enum EnvironmentUpdateSceneKind: Equatable {
     case loading
     case ready
     case starting
@@ -595,7 +596,7 @@ enum FleetUpdateSceneKind: Equatable {
     }
 }
 
-struct FleetUpdateRingEnvironment: Identifiable, Equatable {
+struct EnvironmentUpdateRingEnvironment: Identifiable, Equatable {
     let result: EnvironmentUpdateResult
     let slotIndex: Int
     let totalCount: Int
@@ -603,25 +604,25 @@ struct FleetUpdateRingEnvironment: Identifiable, Equatable {
     var id: String { result.id }
 }
 
-struct FleetUpdateSceneModel: Equatable {
-    let kind: FleetUpdateSceneKind
+struct EnvironmentUpdateSceneModel: Equatable {
+    let kind: EnvironmentUpdateSceneKind
     let title: String
     let subtitle: String
     let progress: Double?
     let completedCount: Int
     let totalCount: Int
     let activeEnvironment: EnvironmentUpdateResult?
-    let ringEnvironments: [FleetUpdateRingEnvironment]
+    let ringEnvironments: [EnvironmentUpdateRingEnvironment]
 
     init(
-        kind: FleetUpdateSceneKind,
+        kind: EnvironmentUpdateSceneKind,
         title: String,
         subtitle: String,
         progress: Double? = nil,
         completedCount: Int = 0,
         totalCount: Int = 0,
         activeEnvironment: EnvironmentUpdateResult? = nil,
-        ringEnvironments: [FleetUpdateRingEnvironment] = []
+        ringEnvironments: [EnvironmentUpdateRingEnvironment] = []
     ) {
         self.kind = kind
         self.title = title
@@ -672,8 +673,8 @@ struct FleetUpdateSceneModel: Equatable {
     }
 }
 
-struct FleetUpdateScene: View {
-    let model: FleetUpdateSceneModel
+struct EnvironmentUpdateScene: View {
+    let model: EnvironmentUpdateSceneModel
 
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle) private var focusSize: CGFloat = 96
@@ -685,7 +686,7 @@ struct FleetUpdateScene: View {
             focus
 
             if !model.ringEnvironments.isEmpty {
-                FleetUpdatePipeline(
+                EnvironmentUpdatePipeline(
                     environments: model.ringEnvironments,
                     activeEnvironmentID: model.activeEnvironment?.id,
                     tint: model.kind.tint
@@ -766,7 +767,7 @@ struct FleetUpdateScene: View {
     }
 
     /// Tinted disc carrying the phase symbol, or the percentage while the
-    /// fleet updates with no single environment in flight. Progress itself
+    /// all-environment updates with no single environment in flight. Progress itself
     /// lives in the pipeline connectors, so there is no ring here.
     private var focus: some View {
         ZStack {
@@ -839,7 +840,7 @@ struct FleetUpdateScene: View {
     }
 }
 
-private enum FleetUpdateBubblePhase: CaseIterable {
+private enum EnvironmentUpdateBubblePhase: CaseIterable {
     case resting
     case upperTrailing
     case lowerTrailing
@@ -877,7 +878,7 @@ private enum FleetUpdateBubblePhase: CaseIterable {
     }
 }
 
-nonisolated enum FleetUpdateBubblePresentation: Equatable, Sendable {
+nonisolated enum EnvironmentUpdateBubblePresentation: Equatable, Sendable {
     case pending
     case updating
     case succeeded
@@ -916,8 +917,8 @@ nonisolated enum FleetUpdateBubblePresentation: Equatable, Sendable {
 /// joined by connector bars that fill as the run advances. The active bubble
 /// wears a spinner and floats; pending bubbles drift gently; finished ones
 /// settle with their result glyph.
-private struct FleetUpdatePipeline: View {
-    let environments: [FleetUpdateRingEnvironment]
+private struct EnvironmentUpdatePipeline: View {
+    let environments: [EnvironmentUpdateRingEnvironment]
     let activeEnvironmentID: String?
     let tint: Color
 
@@ -930,8 +931,8 @@ private struct FleetUpdatePipeline: View {
         }
     }
 
-    private func isSettled(_ environment: FleetUpdateRingEnvironment) -> Bool {
-        FleetUpdateBubblePresentation(status: environment.result.status).isTerminal
+    private func isSettled(_ environment: EnvironmentUpdateRingEnvironment) -> Bool {
+        EnvironmentUpdateBubblePresentation(status: environment.result.status).isTerminal
     }
 
     /// Connector after `index`: full once that environment is settled, half
@@ -946,7 +947,7 @@ private struct FleetUpdatePipeline: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(Array(environments.enumerated()), id: \.element.id) { index, environment in
-                FleetUpdateBubble(
+                EnvironmentUpdateBubble(
                     environment: environment,
                     index: index,
                     isActive: environment.id == activeEnvironmentID,
@@ -954,7 +955,7 @@ private struct FleetUpdatePipeline: View {
                     size: bubbleSize
                 )
                 if index < environments.count - 1 {
-                    FleetUpdateConnector(fill: connectorFill(after: index), tint: tint)
+                    EnvironmentUpdateConnector(fill: connectorFill(after: index), tint: tint)
                 }
             }
         }
@@ -964,7 +965,7 @@ private struct FleetUpdatePipeline: View {
     }
 }
 
-private struct FleetUpdateConnector: View {
+private struct EnvironmentUpdateConnector: View {
     let fill: CGFloat
     let tint: Color
 
@@ -985,8 +986,8 @@ private struct FleetUpdateConnector: View {
     }
 }
 
-private struct FleetUpdateBubble: View {
-    let environment: FleetUpdateRingEnvironment
+private struct EnvironmentUpdateBubble: View {
+    let environment: EnvironmentUpdateRingEnvironment
     let index: Int
     let isActive: Bool
     let tint: Color
@@ -996,8 +997,8 @@ private struct FleetUpdateBubble: View {
 
     private var isManager: Bool { environment.result.environmentId == "0" }
 
-    private var presentation: FleetUpdateBubblePresentation {
-        FleetUpdateBubblePresentation(status: environment.result.status)
+    private var presentation: EnvironmentUpdateBubblePresentation {
+        EnvironmentUpdateBubblePresentation(status: environment.result.status)
     }
 
     private var bubbleTint: Color {
@@ -1020,9 +1021,9 @@ private struct FleetUpdateBubble: View {
 
     /// Active bubble bobs visibly; pending ones drift half as far, each
     /// starting from a different phase so the row doesn't move in lockstep.
-    private var floatPhases: [FleetUpdateBubblePhase] {
+    private var floatPhases: [EnvironmentUpdateBubblePhase] {
         guard !reduceMotion, !presentation.isTerminal else { return [.resting] }
-        let all = FleetUpdateBubblePhase.allCases
+        let all = EnvironmentUpdateBubblePhase.allCases
         let shift = index % all.count
         return Array(all[shift...] + all[..<shift])
     }
@@ -1065,7 +1066,7 @@ private struct FleetUpdateBubble: View {
                     .symbolEffect(
                         .bounce,
                         options: .nonRepeating,
-                        value: reduceMotion ? FleetUpdateBubblePresentation.pending : presentation
+                        value: reduceMotion ? EnvironmentUpdateBubblePresentation.pending : presentation
                     )
             }
             .frame(width: size, height: size)

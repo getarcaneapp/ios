@@ -91,6 +91,18 @@ struct ProfileView: View {
                 }
             }
 
+            if user?.preferences != nil {
+                Section {
+                    NavigationLink {
+                        AccountPreferencesView()
+                    } label: {
+                        Label("Preferences", systemImage: "gearshape")
+                    }
+                } footer: {
+                    Text("Saved to your Arcane account.")
+                }
+            }
+
             if !isOIDCUser {
                 passwordSection
             }
@@ -105,6 +117,18 @@ struct ProfileView: View {
                 } header: {
                     Text("Security")
                 }
+            }
+
+            Section {
+                NavigationLink {
+                    ConnectionProfilesView()
+                } label: {
+                    Label("Connection Profiles", systemImage: "person.crop.rectangle.stack.fill")
+                }
+            } header: {
+                Text("Connections")
+            } footer: {
+                Text("Saved servers and sign-ins for switching quickly.")
             }
 
             Section {

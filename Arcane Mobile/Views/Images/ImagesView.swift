@@ -6,27 +6,29 @@ struct ImagesView: View {
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     let environmentID: EnvironmentID
     let environmentName: String
+    /// All Environments preview: list and act on resources from every enabled environment.
+    var allEnvironments = false
 
-    @State private var images: [ImageSummary] = []
-    @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var list = EnvironmentPagedList<ImageSummary>(pageSize: Self.pageSize)
     @State private var actionErrorMessage: String?
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
-    @State private var updateInfo: [String: ImageUpdateResponse] = [:]
+    /// Update check results per environment: the same reference can differ between environments.
+    @State private var updateInfo: [EnvironmentID: [String: ImageUpdateResponse]] = [:]
     @State private var showPullSheet = false
     @State private var pendingDestructive: ImageDestructive?
+    @State private var pendingMaintenanceAction: AllEnvironmentsMaintenanceAction?
     @State private var showPruneSheet = false
     @State private var showUploadSheet = false
-    @State private var pagination = ProgressivePaginationState()
-    @State private var hasMore = false
-    @State private var totalItemCount: Int64?
-    @State private var isLoadingMore = false
-    @State private var loadMoreError: String?
+    /// Environment picked for Pull, Upload, or Prune Options.
+    @State private var targetEnvironmentID: EnvironmentID?
+    @State private var updatesEnvironmentID: EnvironmentID?
     @State private var loadGeneration = 0
     @State private var showFilterSheet = false
+    @State private var environmentFilter: EnvironmentID?
     @State private var tagsFilter = ImageTagsFilter.all
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, ImageRowModel>] = []
@@ -39,21 +41,33 @@ struct ImagesView: View {
     /// Quick prune and per-image delete share one `.deleteConfirmation` cover
     /// (one full-screen cover per view). The Prune Options form is separate.
     private enum ImageDestructive {
-        case prune
-        case delete(ImageSummary)
+        case prune(ResourcePruneAction)
+        case delete(EnvironmentItem<ImageSummary>)
         case bulkDelete([String])
     }
 
-    private var activeFilterCount: Int { tagsFilter != .all ? 1 : 0 }
+    private var images: [EnvironmentItem<ImageSummary>] { list.items }
+
+    /// The environments this list covers, known before the first load finishes.
+    private var listEnvironments: [ListEnvironment] {
+        allEnvironments ? list.environments : [ListEnvironment(id: environmentID, name: nil)]
+    }
+
+    private var activeFilterCount: Int {
+        var count = tagsFilter != .all ? 1 : 0
+        if environmentFilter != nil { count += 1 }
+        return count
+    }
 
     /// Filters + sorts once and partitions in a single pass. Pure — reads the
     /// current inputs and returns the grouped sections without touching state.
     private func computeSections() -> [StableListSection<String, ImageRowModel>] {
         let query = debouncedSearchText
         let filtered = images.filter { image in
+            guard environmentFilter == nil || image.environmentID == environmentFilter else { return false }
             let matchesSearch =
                 query.isEmpty || image.displayName.localizedCaseInsensitiveContains(query)
-                || image.id.localizedCaseInsensitiveContains(query)
+                || image.value.id.localizedCaseInsensitiveContains(query)
             let isTagged = image.repoTags.contains(where: { $0 != "<none>:<none>" })
             let matchesTags =
                 tagsFilter == .all
@@ -98,7 +112,9 @@ struct ImagesView: View {
     }
 
     private var mutationVersion: Int {
-        mutationStore.version(kind: .images, envID: environmentID)
+        allEnvironments
+            ? mutationStore.version(kind: .images, in: list.environments)
+            : mutationStore.version(kind: .images, envID: environmentID)
     }
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
@@ -122,37 +138,50 @@ struct ImagesView: View {
 
     var body: some View {
         LoadingCrossfade(
-            showSkeleton: isLoading && images.isEmpty,
+            showSkeleton: list.isLoading && images.isEmpty,
             animatesTransition: false
         ) {
             ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
-            if let error = errorMessage, images.isEmpty {
+            if let error = list.errorMessage, images.isEmpty {
                 ContentUnavailableView {
                     Label("Error", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(error)
                 } actions: {
-                    Button("Retry") { Task { await loadImages(reset: true) } }
+                    Button("Retry") { Task { await loadImages() } }
                 }
             } else if images.isEmpty {
                 ContentUnavailableView {
                     Label("No Images", systemImage: "photo.stack")
                 } description: {
-                    Text("No images pulled to this environment yet.")
+                    Text(
+                        allEnvironments
+                            ? "No images pulled to any environment yet." : "No images pulled to this environment yet.")
                 } actions: {
-                    Button("Pull Image") { showPullSheet = true }
+                    if allEnvironments {
+                        EnvironmentActionButton(
+                            title: "Pull Image", systemImage: "arrow.down.circle", environments: listEnvironments
+                        ) { environmentID in
+                            presentPull(in: environmentID)
+                        }
+                    } else {
+                        Button("Pull Image") { presentPull(in: environmentID) }
+                    }
                 }
             } else {
                 List(selection: BulkListSelection.binding($selection, isSelecting: isSelecting)) {
+                    EnvironmentLoadFailuresSection(failures: list.failedEnvironments) {
+                        Task { await loadImages() }
+                    }
                     StableSectionedList(
                         sections,
                         preferredHeaderAccessorySectionID: "used",
                         headerAccessory: { _ in
                             ResourceCountLabel(
                                 loadedCount: images.count,
-                                totalCount: totalItemCount,
-                                hasMore: hasMore
+                                totalCount: list.totalItems,
+                                hasMore: list.hasMore
                             )
                         }
                     ) { image in
@@ -160,8 +189,8 @@ struct ImagesView: View {
                     }
 
                     PaginatedListFooter(
-                        hasMore: hasMore,
-                        loadMoreError: loadMoreError,
+                        hasMore: list.hasMore,
+                        loadMoreError: list.loadMoreError,
                         onRetry: { Task { await loadMore() } },
                         onLoadMore: { Task { await loadMore() } }
                     )
@@ -193,6 +222,18 @@ struct ImagesView: View {
             }
             if !isSelecting {
                 AppToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showFilterSheet = true
+                    } label: {
+                        Image(
+                            systemName: activeFilterCount > 0
+                                ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                        )
+                        .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Filter")
+                }
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
                             enterSelectionMode()
@@ -200,41 +241,59 @@ struct ImagesView: View {
                             Label("Select", systemImage: "checklist")
                         }
                         Divider()
-                        Picker("Sort", selection: $sortOrder) {
-                            ForEach(ListSortOrder.allCases) { order in
-                                Label(order.title, systemImage: order.systemImage).tag(order)
+                        if allEnvironments {
+                            // Update checks run per environment; pick which one to open.
+                            EnvironmentActionButton(
+                                title: "Updates", systemImage: "arrow.up.arrow.down.circle",
+                                environments: listEnvironments
+                            ) { environmentID in
+                                updatesEnvironmentID = environmentID
+                            }
+                        } else {
+                            NavigationLink(
+                                destination: ImageUpdatesView(environmentID: environmentID, images: images.map(\.value))
+                            ) {
+                                Label("Updates", systemImage: "arrow.up.arrow.down.circle")
                             }
                         }
-                        Button {
-                            showFilterSheet = true
-                        } label: {
-                            Label(
-                                activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
-                                systemImage: "line.3.horizontal.decrease.circle"
-                            )
-                        }
-                        Divider()
-                        NavigationLink(destination: ImageUpdatesView(environmentID: environmentID, images: images)) {
-                            Label("Updates", systemImage: "arrow.up.arrow.down.circle")
-                        }
-                        NavigationLink(destination: AllVulnerabilitiesView(environmentID: environmentID)) {
+                        NavigationLink(
+                            destination: AllVulnerabilitiesView(
+                                environmentID: environmentID, allEnvironments: allEnvironments)
+                        ) {
                             Label("Security", systemImage: "shield")
                         }
-                        Button {
+                        EnvironmentActionButton(
+                            title: "Upload tarball…", systemImage: "square.and.arrow.up",
+                            environments: listEnvironments
+                        ) { environmentID in
+                            targetEnvironmentID = environmentID
                             showUploadSheet = true
-                        } label: {
-                            Label("Upload tarball…", systemImage: "square.and.arrow.up")
+                        }
+                        if allEnvironments {
+                            Divider()
+                            AllEnvironmentsMaintenanceButtons(action: $pendingMaintenanceAction)
                         }
                         Divider()
-                        Button(role: .destructive) {
-                            pendingDestructive = .prune
-                        } label: {
-                            DestructiveLabel(text: "Quick Prune (Dangling)")
+                        Group {
+                            Button(role: .destructive) {
+                                pendingDestructive = .prune(.images)
+                            } label: {
+                                DestructiveLabel(text: "Quick Prune (Dangling)")
+                            }
+                            Button(role: .destructive) {
+                                pendingDestructive = .prune(.unusedImages)
+                            } label: {
+                                DestructiveLabel(text: "Prune All Unused")
+                            }
                         }
-                        Button {
+                        .tint(.red)
+                        .disabled(allEnvironments && AllEnvironmentsOperationStore.shared.isRunning)
+                        EnvironmentActionButton(
+                            title: "Prune Options…", systemImage: "slider.horizontal.3",
+                            environments: listEnvironments
+                        ) { environmentID in
+                            targetEnvironmentID = environmentID
                             showPruneSheet = true
-                        } label: {
-                            Label("Prune Options…", systemImage: "slider.horizontal.3")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -249,32 +308,39 @@ struct ImagesView: View {
                     }
                 }
             }
-            if #available(iOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
 
             if !isSelecting {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showPullSheet = true
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                            .appAccentToolbarSymbol()
+                    if allEnvironments {
+                        EnvironmentActionButton(
+                            title: "Pull Image", systemImage: "arrow.down.circle", environments: listEnvironments
+                        ) { environmentID in
+                            presentPull(in: environmentID)
+                        }
+                        .appAccentToolbarSymbol()
+                        .accessibilityLabel("Pull image")
+                    } else {
+                        Button {
+                            presentPull(in: environmentID)
+                        } label: {
+                            Image(systemName: "arrow.down.circle")
+                                .appAccentToolbarSymbol()
+                        }
+                        .accessibilityLabel("Pull image")
                     }
-                    .accessibilityLabel("Pull image")
                 }
             }
         }
         .deleteConfirmation(item: $pendingDestructive) { action in
             switch action {
-            case .prune:
+            case .prune(let action):
                 return DeleteConfirmationConfig(
-                    title: "Prune Dangling Images",
-                    message: "Remove all dangling images. This cannot be undone.",
+                    title: action.title,
+                    message: allEnvironments ? action.allEnvironmentsMessage : action.message,
                     icon: "trash",
                     actions: [
                         DeleteConfirmationAction(title: "Prune") {
-                            Task { await pruneImages() }
+                            Task { await pruneImages(action) }
                         }
                     ]
                 )
@@ -302,6 +368,9 @@ struct ImagesView: View {
                 )
             }
         }
+        .allEnvironmentsMaintenanceConfirmation(
+            action: $pendingMaintenanceAction, environments: environmentsStore.enabledEnvironments
+        )
         .alert(
             "Something Went Wrong",
             isPresented: Binding(
@@ -314,11 +383,21 @@ struct ImagesView: View {
             Text(actionErrorMessage ?? "")
         }
         .sheet(isPresented: $showPruneSheet) {
-            ImagePruneView(environmentID: environmentID) {}
+            ImagePruneView(environmentID: targetEnvironmentID ?? environmentID) {}
         }
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
                 Form {
+                    Section("Sort") {
+                        Picker("Sort", selection: $sortOrder) {
+                            ForEach(ListSortOrder.allCases) { order in
+                                Label(order.title, systemImage: order.systemImage).tag(order)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
+                    EnvironmentFilterSection(environments: list.environments, selection: $environmentFilter)
                     Section("Tags") {
                         Picker("Tags", selection: $tagsFilter) {
                             ForEach(ImageTagsFilter.allCases, id: \.self) { filter in
@@ -337,29 +416,37 @@ struct ImagesView: View {
                     }
                 }
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
+            .presentationContentInteraction(.resizes)
             .presentationDragIndicator(.visible)
         }
-        .task { await loadImages(reset: true) }
-        .refreshable { await loadImages(reset: true) }
+        .task { await loadImages() }
+        .refreshable { await loadImages() }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
-        .navigationDestination(for: ImageSummary.self) { image in
-            ImageDetailView(image: image, environmentID: environmentID)
+        .navigationDestination(for: EnvironmentItem<ImageSummary>.self) { image in
+            ImageDetailView(image: image.value, environmentID: image.environmentID)
+        }
+        .navigationDestination(item: $updatesEnvironmentID) { environmentID in
+            ImageUpdatesView(
+                environmentID: environmentID,
+                images: images.filter { $0.environmentID == environmentID }.map(\.value)
+            )
         }
         .sheet(isPresented: $showPullSheet) {
-            PullImageView(environmentID: environmentID)
+            PullImageView(environmentID: targetEnvironmentID ?? environmentID)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showUploadSheet) {
-            UploadImageView(environmentID: environmentID) {}
+            UploadImageView(environmentID: targetEnvironmentID ?? environmentID) {}
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadImages(reset: true) }
+            Task { await loadImages() }
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: environmentFilter) { rebuildSections() }
         .onChange(of: tagsFilter) { rebuildSections() }
         .onChange(of: sortOrder) { rebuildSections() }
         .resourceActionsToolbar(
@@ -374,7 +461,8 @@ struct ImagesView: View {
     private func imageLink(_ row: ImageRowModel) -> some View {
         let image = row.image
         return NavigationLink(value: image) {
-            ImageRow(row: row)
+            ImageRow(row: row, environmentName: image.environmentName)
+                .rowEnvironment(image)
         }
         .contextMenu {
             if !isSelecting {
@@ -403,6 +491,11 @@ struct ImagesView: View {
         }
     }
 
+    private func presentPull(in environmentID: EnvironmentID) {
+        targetEnvironmentID = environmentID
+        showPullSheet = true
+    }
+
     private func enterSelectionMode() {
         HapticsManager.light()
         isSelecting = true
@@ -417,7 +510,7 @@ struct ImagesView: View {
         selection.formIntersection(validIDs)
     }
 
-    private func imagePreview(_ image: ImageSummary, state: ImageUpdateState) -> some View {
+    private func imagePreview(_ image: EnvironmentItem<ImageSummary>, state: ImageUpdateState) -> some View {
         var badges: [RowPreviewCard.PreviewBadge] = [
             .init(
                 text: image.inUse ? "In Use" : "Unused",
@@ -433,67 +526,60 @@ struct ImagesView: View {
         case .unknown:
             break
         }
+        var details: [RowPreviewCard.PreviewDetail] = [
+            .init(icon: "internaldrive", label: "Size", value: image.size.byteString),
+            .init(icon: "number", label: "ID", value: image.value.id, monospaced: true),
+        ]
+        if let environmentName = image.environmentName {
+            details.append(.init(icon: "server.rack", label: "Environment", value: environmentName))
+        }
         return RowPreviewCard(
             icon: "photo.stack.fill",
             iconColor: .purple,
             title: image.displayName,
             badges: badges,
-            details: [
-                .init(icon: "internaldrive", label: "Size", value: image.size.byteString),
-                .init(icon: "number", label: "ID", value: image.id, monospaced: true),
-            ]
+            details: details
         )
     }
 
-    private func loadImages(reset: Bool) async {
+    private func loadImages() async {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
-        if reset {
-            _ = pagination.reset()
-            hasMore = false
-            totalItemCount = nil
-        }
-        let start = pagination.nextStart
-        if images.isEmpty { isLoading = true }
-        errorMessage = nil
-        loadMoreError = nil
-        defer {
-            if loadGeneration == generation {
-                isLoading = false
-            }
-        }
-        do {
-            // `ImageListResponse` is Decodable-only, so we can't drive it through
-            // the cache layer (which requires Codable). Fetch directly through
-            // the SDK service — pull-to-refresh and pagination keep the data
-            // current.
-            let query = SearchPaginationSort(start: start, limit: Self.pageSize)
-            let response = try await client.images.list(envID: environmentID, query: query)
-            guard loadGeneration == generation, !Task.isCancelled else { return }
-            applyImagesPage(response, reset: reset, start: start, generation: generation)
-            await loadUpdateInfo(for: response.data)
-        } catch {
-            guard loadGeneration == generation else { return }
-            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
-        }
-    }
-
-    private func applyImagesPage(_ response: ImageListResponse, reset: Bool, start: Int, generation: Int) {
-        guard loadGeneration == generation else { return }
-        images = PaginationLoader.merge(current: images, incoming: response.data, reset: reset)
-        if reset { updateInfo = [:] }
-        pagination.receive(
-            pagination: response.pagination, itemCount: response.data.count,
-            requestedStart: start, requestedLimit: Self.pageSize,
-            generation: pagination.generation
-        )
-        hasMore = pagination.hasMore
-        totalItemCount = pagination.totalItems
+        let environments = await environmentsStore.listEnvironments(
+            environmentID, allEnvironments: allEnvironments, manager: manager)
+        await list.reload(environments, fetch: imagesPage(client: client))
+        guard loadGeneration == generation, !Task.isCancelled else { return }
+        // A failed environment keeps its rows, so keep their update results too.
+        let failedIDs = Set(list.failedEnvironments.map(\.environment.id))
+        updateInfo = updateInfo.filter { failedIDs.contains($0.key) }
         rebuildSections()
+        await loadUpdateInfo(for: images.filter { !failedIDs.contains($0.environmentID) })
     }
 
-    private func invalidateImageCaches() async {
+    private func loadMore() async {
+        guard let client = manager.client else { return }
+        let generation = loadGeneration
+        let loadedIDs = Set(images.map(\.id))
+        await list.loadMore(fetch: imagesPage(client: client))
+        guard loadGeneration == generation else { return }
+        rebuildSections()
+        await loadUpdateInfo(for: images.filter { !loadedIDs.contains($0.id) })
+    }
+
+    private func imagesPage(client: ArcaneClient) -> EnvironmentPagedList<ImageSummary>.Fetch {
+        // `ImageListResponse` is Decodable-only, so we can't drive it through
+        // the cache layer (which requires Codable). Fetch directly through
+        // the SDK service — pull-to-refresh and pagination keep the data
+        // current.
+        { environmentID, start, limit in
+            let query = SearchPaginationSort(start: start, limit: limit)
+            let response = try await client.images.list(envID: environmentID, query: query)
+            return ResourcePage(items: response.data, pagination: response.pagination)
+        }
+    }
+
+    private func invalidateImageCaches(_ environmentID: EnvironmentID) async {
         guard let cached = manager.cached, let client = manager.client else { return }
         await cached.invalidate(
             envID: environmentID,
@@ -503,59 +589,66 @@ struct ImagesView: View {
             ])
     }
 
-    private func loadUpdateInfo(for newImages: [ImageSummary]) async {
+    /// Fetches update results for `newImages`, one request per environment.
+    private func loadUpdateInfo(for newImages: [EnvironmentItem<ImageSummary>]) async {
         guard let client = manager.client else { return }
         let generation = loadGeneration
         let clientGeneration = manager.clientGeneration
-        let refs =
-            newImages
-            .flatMap { $0.repoTags }
-            .filter { $0 != "<none>:<none>" }
-        guard !refs.isEmpty else { return }
-        do {
-            let map = try await client.images.updateInfoByRefs(envID: environmentID, imageRefs: refs)
-            guard !Task.isCancelled, generation == loadGeneration,
-                clientGeneration == manager.clientGeneration
-            else { return }
-            updateInfo.merge(ImageUpdateState.checkedResults(map)) { _, new in new }
-            rebuildSections()
-        } catch {
-            // Update info is best-effort decoration — silent failure.
+        var refsByEnvironment: [EnvironmentID: [String]] = [:]
+        for image in newImages {
+            let refs = image.repoTags.filter { $0 != "<none>:<none>" }
+            guard !refs.isEmpty else { continue }
+            refsByEnvironment[image.environmentID, default: []] += refs
+        }
+        guard !refsByEnvironment.isEmpty else { return }
+        await withTaskGroup(of: (EnvironmentID, [String: ImageUpdateInfo?]?).self) { group in
+            for (environmentID, refs) in refsByEnvironment {
+                group.addTask {
+                    // Update info is best-effort decoration — silent failure.
+                    (environmentID, try? await client.images.updateInfoByRefs(envID: environmentID, imageRefs: refs))
+                }
+            }
+            for await (environmentID, map) in group {
+                guard let map, !Task.isCancelled, generation == loadGeneration,
+                    clientGeneration == manager.clientGeneration
+                else { continue }
+                updateInfo[environmentID, default: [:]].merge(ImageUpdateState.checkedResults(map)) { _, new in new }
+                rebuildSections()
+            }
         }
     }
 
-    private func updateState(for image: ImageSummary) -> ImageUpdateState {
-        ImageUpdateState.resolve(inline: image.updateInfo, references: image.repoTags, results: updateInfo)
+    private func updateState(for image: EnvironmentItem<ImageSummary>) -> ImageUpdateState {
+        ImageUpdateState.resolve(
+            inline: image.updateInfo, references: image.repoTags, results: updateInfo[image.environmentID] ?? [:])
     }
 
-    private func loadMore() async {
-        guard hasMore, !isLoadingMore else { return }
-        isLoadingMore = true
-        defer { isLoadingMore = false }
-        await loadImages(reset: false)
-    }
-
-    private func pruneImages() async {
+    private func pruneImages(_ action: ResourcePruneAction) async {
+        if allEnvironments {
+            await AllEnvironmentsOperationStore.shared.performPrune(
+                action, environments: environmentsStore.enabledEnvironments, manager: manager)
+            return
+        }
         guard let client = manager.client else { return }
         do {
-            _ = try await client.images.prune(envID: environmentID, mode: "dangling")
-            await invalidateImageCaches()
+            try await action.perform(client: client, environmentID: environmentID)
+            await invalidateImageCaches(environmentID)
             mutationStore.markChanged(kind: .images, envID: environmentID)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
     }
 
-    private func removeImage(_ image: ImageSummary) async {
+    private func removeImage(_ image: EnvironmentItem<ImageSummary>) async {
         guard let client = manager.client else { return }
         do {
-            try await client.images.remove(envID: environmentID, id: image.id)
+            try await client.images.remove(envID: image.environmentID, id: image.value.id)
             withAnimation {
-                images.removeAll { $0.id == image.id }
+                list.update { $0.removeAll { $0.id == image.id } }
                 rebuildSections()
             }
-            await invalidateImageCaches()
-            mutationStore.markChanged(kind: .images, envID: environmentID)
+            await invalidateImageCaches(image.environmentID)
+            mutationStore.markChanged(kind: .images, envID: image.environmentID)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
@@ -576,21 +669,26 @@ struct ImagesView: View {
             showToast(.error("Couldn't start bulk deletion"))
             return
         }
-        let result = await BulkActionRunner.run(ids: ids) { id in
-            try await client.images.remove(envID: environmentID, id: id)
+        let targets = images.filter { ids.contains($0.id) }
+        let byID = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
+        let result = await BulkActionRunner.run(ids: targets.map(\.id)) { id in
+            guard let image = byID[id] else { return }
+            try await client.images.remove(envID: image.environmentID, id: image.value.id)
         }
         let failedIDs = Set(result.failed.map(\.id))
-        let removedIDs = Set(ids.filter { !failedIDs.contains($0) })
-        images.removeAll { removedIDs.contains($0.id) }
+        let removedIDs = Set(targets.map(\.id).filter { !failedIDs.contains($0) })
+        list.update { $0.removeAll { removedIDs.contains($0.id) } }
         rebuildSections()
-        await invalidateImageCaches()
-        mutationStore.markChanged(kind: .images, envID: environmentID)
+        for environment in Set(targets.map(\.environmentID)) {
+            await invalidateImageCaches(environment)
+            mutationStore.markChanged(kind: .images, envID: environment)
+        }
         exitSelectionMode()
         if result.failed.isEmpty {
             showToast(.success("Deleted \(result.succeeded) image\(result.succeeded == 1 ? "" : "s")"))
             ReviewPrompter.shared.recordSuccess()
         } else {
-            showToast(.error("\(result.failed.count) of \(ids.count) failed"))
+            showToast(.error("\(result.failed.count) of \(targets.count) failed"))
         }
     }
 }
@@ -625,7 +723,7 @@ struct ImageRow: View {
                         .foregroundStyle(.secondary)
                     UpdateStateBadge(state: row.updateState)
                 }
-                FleetEnvironmentLabel(name: environmentName)
+                EnvironmentLabel(name: environmentName)
             }
 
             Spacer(minLength: 0)
@@ -636,7 +734,7 @@ struct ImageRow: View {
 }
 
 struct ImageRowModel: Identifiable {
-    let image: ImageSummary
+    let image: EnvironmentItem<ImageSummary>
     let displayName: String
     let sizeText: String
     let updateState: ImageUpdateState
@@ -652,6 +750,7 @@ struct ImageRowModel: Identifiable {
 struct PullImageView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
 
@@ -736,7 +835,7 @@ struct PullImageView: View {
             envID: environmentID,
             targetID: reference,
             targetName: reference,
-            environmentName: manager.activeEnvironmentName,
+            environmentName: environmentsStore.displayName(for: environmentID) ?? manager.activeEnvironmentName,
             manager: manager,
             mutationStore: mutationStore,
             presentSheet: false

@@ -1,6 +1,6 @@
 import Foundation
 
-struct FleetOperationResult: Identifiable {
+struct EnvironmentOperationResult: Identifiable {
     let id: String
     let name: String
     var status = "Waiting"

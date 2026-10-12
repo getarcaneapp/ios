@@ -3,14 +3,14 @@ import SwiftUI
 
 struct EnvironmentColorsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @SwiftUI.Environment(FleetStore.self) private var fleet
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     @State private var colors = EnvironmentColorStore.shared
 
     var body: some View {
         List {
             Section {
                 ForEach(
-                    fleet.environments.sorted {
+                    environmentsStore.environments.sorted {
                         $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
                     }
                 ) { environment in
@@ -24,15 +24,15 @@ struct EnvironmentColorsView: View {
             } footer: {
                 Text("Colors apply to environment names and icons in resource lists. Swipe a row to reset its color.")
             }
-            if let error = fleet.errorMessage {
+            if let error = environmentsStore.errorMessage {
                 Text(error).foregroundStyle(.secondary)
-                Button("Retry") { Task { await fleet.load(manager: manager, refresh: true) } }
+                Button("Retry") { Task { await environmentsStore.load(manager: manager, refresh: true) } }
             }
         }
         .navigationTitle("Environment Colors")
-        .task { await fleet.load(manager: manager) }
+        .task { await environmentsStore.load(manager: manager) }
         .overlay {
-            if fleet.isLoading && fleet.environments.isEmpty { ProgressView() }
+            if environmentsStore.isLoading && environmentsStore.environments.isEmpty { ProgressView() }
         }
     }
 }

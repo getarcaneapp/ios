@@ -282,7 +282,7 @@ struct SessionLifecycleTests {
         #expect(manager.currentUserAvatarData == nil)
     }
 
-    @Test func retiredFleetLoadCannotPopulateTheReplacementStore() async throws {
+    @Test func retiredEnvironmentsLoadCannotPopulateTheReplacementStore() async throws {
         let gate = SessionGate()
         let tokens = InMemoryTokenStore(
             tokens: .init(accessToken: "old", refreshToken: "old", expiresAt: .distantFuture))
@@ -299,17 +299,17 @@ struct SessionLifecycleTests {
                 }
             }, tokenStoreFactory: { _ in tokens })
         manager.currentUser = User(id: "old-user", username: "old-user")
-        let fleet = FleetStore()
-        let pending = Task { await fleet.load(manager: manager) }
+        let environmentsStore = EnvironmentsStore()
+        let pending = Task { await environmentsStore.load(manager: manager) }
         defer { pending.cancel() }
         try #require(await gate.waitUntilStarted())
         manager.configure(serverURL: "https://127.0.0.1")
-        fleet.configure(client: manager.client)
+        environmentsStore.configure(client: manager.client)
         await gate.release()
         await pending.value
-        #expect(fleet.environments.isEmpty)
-        #expect(!fleet.hasLoaded)
-        #expect(!fleet.isLoading)
+        #expect(environmentsStore.environments.isEmpty)
+        #expect(!environmentsStore.hasLoaded)
+        #expect(!environmentsStore.isLoading)
     }
 
     @Test(arguments: ["auth/login", "available-permissions", "version"], [false, true])

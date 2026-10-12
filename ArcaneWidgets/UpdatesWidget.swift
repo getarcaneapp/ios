@@ -2,7 +2,7 @@ import SwiftUI
 import WidgetKit
 
 /// Phase-3 widget: pending image updates + actionable vulnerabilities across
-/// the fleet, with a per-environment breakdown on systemMedium. Deep-links to
+/// all environments, with a per-environment breakdown on systemMedium. Deep-links to
 /// the Updates tab.
 struct UpdatesWidget: Widget {
     var body: some WidgetConfiguration {

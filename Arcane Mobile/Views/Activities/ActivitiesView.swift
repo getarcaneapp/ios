@@ -123,9 +123,6 @@ struct ActivitiesView: View {
                 AppToolbarItem(placement: .navigationBarTrailing) {
                     filterMenu
                 }
-                if #available(iOS 26, *) {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                }
                 AppToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         Task { await store.retryLiveUpdates() }
@@ -136,9 +133,6 @@ struct ActivitiesView: View {
                     .disabled(store.isLoading)
                 }
                 if canClearHistory {
-                    if #available(iOS 26, *) {
-                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                    }
                     AppToolbarItem(placement: .navigationBarTrailing) {
                         Button(role: .destructive) {
                             showClearConfirm = true

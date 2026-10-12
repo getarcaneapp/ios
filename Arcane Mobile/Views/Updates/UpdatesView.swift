@@ -3,12 +3,11 @@ import SwiftUI
 
 struct UpdatesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @SwiftUI.Environment(FleetStore.self) private var fleet
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     @State private var pickerMode: PickerMode?
     @State private var navTarget: NavTarget?
     @State private var showsUpdaterSheet = false
     @State private var initialUpdaterEnvironmentID: String?
-    @State private var pendingFleetAction: FleetMaintenanceAction?
     @State private var presentedEnvironments: [Arcane.Environment] = []
 
     private var runUpdaterItem: ActionButtonItem {
@@ -18,15 +17,6 @@ struct UpdatesView: View {
             systemImage: "play.fill",
             tint: .orange
         ) { launch(.runUpdater) }
-    }
-
-    private var checkAllItem: ActionButtonItem {
-        ActionButtonItem(
-            id: "check-all-updates", title: "Check All", systemImage: "arrow.clockwise", tint: .accentColor
-        ) {
-            presentedEnvironments = fleet.environments
-            pendingFleetAction = .checkImages
-        }
     }
 
     private var historyItem: ActionButtonItem {
@@ -39,7 +29,7 @@ struct UpdatesView: View {
     }
 
     var body: some View {
-        AllEnvironmentsImageUpdatesView()
+        AllEnvironmentsImageUpdatesView(historyAction: historyItem)
             .navigationDestination(item: $navTarget) { target in
                 UpdaterHistoryView(environmentID: EnvironmentID(rawValue: target.envID))
             }
@@ -61,24 +51,20 @@ struct UpdatesView: View {
             }
             .resourceActionsToolbar(
                 primary: runUpdaterItem,
-                secondary: manager.allEnvironmentsPreview ? [checkAllItem, historyItem] : [historyItem]
+                secondary: [historyItem],
+                active: !manager.allEnvironmentsPreview
             )
-            .fleetMaintenanceConfirmation(action: $pendingFleetAction, environments: presentedEnvironments)
-            .task { await fleet.load(manager: manager) }
+            .task { await environmentsStore.load(manager: manager) }
     }
 
     private func launch(_ mode: PickerMode) {
-        let environments = fleet.environments
+        let environments = environmentsStore.environments
         guard !environments.isEmpty else {
-            if let errorMessage = fleet.errorMessage { showToast(.error(errorMessage)) }
+            if let errorMessage = environmentsStore.errorMessage { showToast(.error(errorMessage)) }
             return
         }
         presentedEnvironments = environments
         if mode == .runUpdater {
-            if manager.allEnvironmentsPreview {
-                pendingFleetAction = .update
-                return
-            }
             initialUpdaterEnvironmentID = environments.count == 1 ? environments.first?.id : nil
             showsUpdaterSheet = true
             return

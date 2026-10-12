@@ -6,53 +6,66 @@ struct NetworksView: View {
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     let environmentID: EnvironmentID
     let environmentName: String
+    /// All Environments preview: list and act on resources from every enabled environment.
+    var allEnvironments = false
 
-    @State private var networks: [NetworkSummary] = []
-    @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var list = EnvironmentPagedList<NetworkSummary>(pageSize: Self.pageSize)
     @State private var actionErrorMessage: String?
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var showCreateSheet = false
+    @State private var createEnvironmentID: EnvironmentID?
     @State private var pendingDestructive: NetworkDestructive?
     @State private var showFilterSheet = false
+    @State private var environmentFilter: EnvironmentID?
     @State private var typeFilter = NetworkTypeFilter.all
     @State private var sortOrder = ListSortOrder.ascending
-    @State private var pagination = ProgressivePaginationState()
-    @State private var hasMore = false
-    @State private var totalItemCount: Int64?
-    @State private var isLoadingMore = false
-    @State private var loadMoreError: String?
-    @State private var loadGeneration = 0
-    @State private var systemNetworks: [NetworkSummary] = []
-    @State private var userNetworks: [NetworkSummary] = []
+    @State private var systemNetworks: [EnvironmentItem<NetworkSummary>] = []
+    @State private var userNetworks: [EnvironmentItem<NetworkSummary>] = []
 
     /// Both destructive confirmations on this screen route through a single
     /// `.deleteConfirmation` cover (one full-screen cover per view).
     private enum NetworkDestructive {
         case prune
-        case delete(NetworkSummary)
+        case delete(EnvironmentItem<NetworkSummary>)
     }
 
-    private var activeFilterCount: Int { typeFilter != .all ? 1 : 0 }
+    private var networks: [EnvironmentItem<NetworkSummary>] { list.items }
+
+    /// The environments this list covers, known before the first load finishes.
+    private var listEnvironments: [ListEnvironment] {
+        allEnvironments ? list.environments : [ListEnvironment(id: environmentID, name: nil)]
+    }
+
+    private var activeFilterCount: Int {
+        var count = typeFilter != .all ? 1 : 0
+        if environmentFilter != nil { count += 1 }
+        return count
+    }
 
     private var mutationVersion: Int {
-        mutationStore.version(kind: .networks, envID: environmentID)
+        allEnvironments
+            ? mutationStore.version(kind: .networks, in: list.environments)
+            : mutationStore.version(kind: .networks, envID: environmentID)
     }
 
     private static let systemNetworkNames: Set<String> = ["host", "bridge", "none"]
 
-    private static func isSystem(_ network: NetworkSummary) -> Bool {
+    private static func isSystem(_ network: EnvironmentItem<NetworkSummary>) -> Bool {
         systemNetworkNames.contains(network.name.lowercased())
     }
 
     /// Filters + sorts once and partitions in a single pass into built-in vs
     /// custom networks. Pure — reads current inputs, returns the two groups.
-    private func computePartition() -> (system: [NetworkSummary], user: [NetworkSummary]) {
+    private func computePartition() -> (
+        system: [EnvironmentItem<NetworkSummary>], user: [EnvironmentItem<NetworkSummary>]
+    ) {
         let query = debouncedSearchText
         let filtered = networks.filter { network in
+            guard environmentFilter == nil || network.environmentID == environmentFilter else { return false }
             let matchesSearch =
                 query.isEmpty || network.name.localizedCaseInsensitiveContains(query)
                 || network.driver.localizedCaseInsensitiveContains(query)
@@ -65,8 +78,8 @@ struct NetworksView: View {
         .sorted {
             sortOrder.areInIncreasingOrder($0.name, $1.name)
         }
-        var system: [NetworkSummary] = []
-        var user: [NetworkSummary] = []
+        var system: [EnvironmentItem<NetworkSummary>] = []
+        var user: [EnvironmentItem<NetworkSummary>] = []
         for network in filtered {
             if Self.isSystem(network) { system.append(network) } else { user.append(network) }
         }
@@ -87,34 +100,48 @@ struct NetworksView: View {
 
     var body: some View {
         LoadingCrossfade(
-            showSkeleton: isLoading && networks.isEmpty,
+            showSkeleton: list.isLoading && networks.isEmpty,
             animatesTransition: false
         ) {
             ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
-            if let error = errorMessage, networks.isEmpty {
+            if let error = list.errorMessage, networks.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load Networks", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(error)
                 } actions: {
-                    Button("Retry") { Task { await loadNetworks(reset: true) } }
+                    Button("Retry") { Task { await loadNetworks() } }
                 }
             } else if networks.isEmpty {
                 ContentUnavailableView {
                     Label("No Networks", systemImage: "network")
                 } description: {
-                    Text("No networks found in this environment.")
+                    Text(
+                        allEnvironments
+                            ? "No networks found in any environment." : "No networks found in this environment.")
                 } actions: {
-                    Button("Create Network") { showCreateSheet = true }
+                    if allEnvironments {
+                        EnvironmentActionButton(
+                            title: "Create Network", systemImage: "plus", environments: listEnvironments
+                        ) { environmentID in
+                            presentCreateSheet(in: environmentID)
+                        }
+                    } else {
+                        Button("Create Network") { presentCreateSheet(in: environmentID) }
+                    }
                 }
             } else {
                 List {
+                    EnvironmentLoadFailuresSection(failures: list.failedEnvironments) {
+                        Task { await loadNetworks() }
+                    }
                     if !systemNetworks.isEmpty {
                         Section {
                             ForEach(systemNetworks) { network in
                                 NavigationLink(value: network) {
-                                    NetworkRow(network: network)
+                                    NetworkRow(network: network.value, environmentName: network.environmentName)
+                                        .rowEnvironment(network)
                                 }
                                 .contextMenu {
                                     // No actions — built-in Docker networks cannot be deleted.
@@ -127,8 +154,8 @@ struct NetworksView: View {
                             ResourceCountSectionHeader(
                                 "Built-in",
                                 loadedCount: networks.count,
-                                totalCount: totalItemCount,
-                                hasMore: hasMore
+                                totalCount: list.totalItems,
+                                hasMore: list.hasMore
                             )
                         } footer: {
                             Text("Built-in Docker networks can't be removed.")
@@ -138,7 +165,8 @@ struct NetworksView: View {
                         Section {
                             ForEach(userNetworks) { network in
                                 NavigationLink(value: network) {
-                                    NetworkRow(network: network)
+                                    NetworkRow(network: network.value, environmentName: network.environmentName)
+                                        .rowEnvironment(network)
                                 }
                                 .contextMenu {
                                     Button(role: .destructive) {
@@ -165,8 +193,8 @@ struct NetworksView: View {
                                 ResourceCountSectionHeader(
                                     "Custom",
                                     loadedCount: networks.count,
-                                    totalCount: totalItemCount,
-                                    hasMore: hasMore
+                                    totalCount: list.totalItems,
+                                    hasMore: list.hasMore
                                 )
                             } else {
                                 Text("Custom")
@@ -174,8 +202,8 @@ struct NetworksView: View {
                         }
                     }
                     PaginatedListFooter(
-                        hasMore: hasMore,
-                        loadMoreError: loadMoreError,
+                        hasMore: list.hasMore,
+                        loadMoreError: list.loadMoreError,
                         onRetry: { Task { await loadMore() } },
                         onLoadMore: { Task { await loadMore() } }
                     )
@@ -189,39 +217,38 @@ struct NetworksView: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search networks")
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Picker("Sort", selection: $sortOrder) {
-                        ForEach(ListSortOrder.allCases) { order in
-                            Label(order.title, systemImage: order.systemImage).tag(order)
-                        }
-                    }
-                    Button {
-                        showFilterSheet = true
-                    } label: {
-                        Label(
-                            activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
-                            systemImage: "line.3.horizontal.decrease.circle")
-                    }
+                Button {
+                    showFilterSheet = true
                 } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .appAccentToolbarSymbol()
+                    Image(
+                        systemName: activeFilterCount > 0
+                            ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                    )
+                    .appAccentToolbarSymbol()
                 }
-                .accessibilityLabel("More options")
+                .accessibilityLabel("Filter")
             }
             if #available(iOS 26, *) {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             AppToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showCreateSheet = true
-                } label: {
-                    Image(systemName: "plus")
-                        .appAccentToolbarSymbol()
+                if allEnvironments {
+                    EnvironmentActionButton(
+                        title: "Create Network", systemImage: "plus", environments: listEnvironments
+                    ) { environmentID in
+                        presentCreateSheet(in: environmentID)
+                    }
+                    .appAccentToolbarSymbol()
+                    .accessibilityLabel("Create network")
+                } else {
+                    Button {
+                        presentCreateSheet(in: environmentID)
+                    } label: {
+                        Image(systemName: "plus")
+                            .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Create network")
                 }
-                .accessibilityLabel("Create network")
-            }
-            if #available(iOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             AppToolbarItem(placement: .navigationBarTrailing) {
                 Button(role: .destructive) {
@@ -230,17 +257,18 @@ struct NetworksView: View {
                     Image(systemName: "trash")
                         .foregroundStyle(.red)
                 }
+                .disabled(allEnvironments && AllEnvironmentsOperationStore.shared.isRunning)
                 .accessibilityLabel("Prune unused networks")
             }
         }
-        .task { await loadNetworks(reset: true) }
-        .refreshable { await loadNetworks(reset: true) }
+        .task { await loadNetworks() }
+        .refreshable { await loadNetworks() }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
-        .navigationDestination(for: NetworkSummary.self) { network in
-            NetworkDetailView(network: network, environmentID: environmentID)
+        .navigationDestination(for: EnvironmentItem<NetworkSummary>.self) { network in
+            NetworkDetailView(network: network.value, environmentID: network.environmentID)
         }
         .sheet(isPresented: $showCreateSheet) {
-            CreateNetworkView(environmentID: environmentID) {}
+            CreateNetworkView(environmentID: createEnvironmentID ?? environmentID) {}
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -249,7 +277,8 @@ struct NetworksView: View {
             case .prune:
                 return DeleteConfirmationConfig(
                     title: "Prune Networks",
-                    message: "Remove all unused networks.",
+                    message: allEnvironments
+                        ? ResourcePruneAction.networks.allEnvironmentsMessage : "Remove all unused networks.",
                     icon: "trash",
                     actions: [
                         DeleteConfirmationAction(title: "Prune") {
@@ -284,6 +313,16 @@ struct NetworksView: View {
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
                 Form {
+                    Section("Sort") {
+                        Picker("Sort", selection: $sortOrder) {
+                            ForEach(ListSortOrder.allCases) { order in
+                                Label(order.title, systemImage: order.systemImage).tag(order)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
+                    EnvironmentFilterSection(environments: list.environments, selection: $environmentFilter)
                     Section("Type") {
                         Picker("Type", selection: $typeFilter) {
                             ForEach(NetworkTypeFilter.allCases, id: \.self) { f in
@@ -302,18 +341,20 @@ struct NetworksView: View {
                     }
                 }
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
+            .presentationContentInteraction(.resizes)
             .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadNetworks(reset: true) }
+            Task { await loadNetworks() }
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: environmentFilter) { rebuildSections() }
         .onChange(of: typeFilter) { rebuildSections() }
         .onChange(of: sortOrder) { rebuildSections() }
     }
 
-    private func networkPreview(_ network: NetworkSummary) -> some View {
+    private func networkPreview(_ network: EnvironmentItem<NetworkSummary>) -> some View {
         var badges: [RowPreviewCard.PreviewBadge] = [
             .init(text: network.driver.capitalized, color: .teal)
         ]
@@ -331,99 +372,83 @@ struct NetworksView: View {
                     value: "\(network.containerCount)"
                 ), at: 0)
         }
-        details.append(.init(icon: "number", label: "ID", value: network.id, monospaced: true))
+        details.append(.init(icon: "number", label: "ID", value: network.value.id, monospaced: true))
+        if let environmentName = network.environmentName {
+            details.append(.init(icon: "server.rack", label: "Environment", value: environmentName))
+        }
         return RowPreviewCard(
             icon: "network",
             iconColor: .teal,
-            title: network.name.isEmpty ? network.id : network.name,
+            title: network.name.isEmpty ? network.value.id : network.name,
             badges: badges,
             details: details
         )
     }
 
-    private func loadNetworks(reset: Bool) async {
-        guard let client = manager.client else { return }
-        loadGeneration += 1
-        let generation = loadGeneration
-        if reset {
-            _ = pagination.reset()
-            hasMore = false
-            totalItemCount = nil
-        }
-        let start = pagination.nextStart
-        if networks.isEmpty { isLoading = true }
-        errorMessage = nil
-        loadMoreError = nil
-        defer {
-            if loadGeneration == generation {
-                isLoading = false
-            }
-        }
-        do {
-            // `PaginatedResponse<NetworkSummary>` is Decodable-only and can't
-            // pass through the cache (Codable). Fetch directly.
-            let response = try await client.networks.list(
-                envID: environmentID,
-                query: .init(start: start, limit: Self.pageSize)
-            )
-            applyNetworksPage(response, reset: reset, start: start, generation: generation)
-        } catch {
-            guard loadGeneration == generation else { return }
-            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
-        }
+    private func presentCreateSheet(in environmentID: EnvironmentID) {
+        createEnvironmentID = environmentID
+        showCreateSheet = true
     }
 
-    private func applyNetworksPage(
-        _ response: PaginatedResponse<NetworkSummary>, reset: Bool, start: Int, generation: Int
-    ) {
-        guard loadGeneration == generation else { return }
-        networks = PaginationLoader.merge(current: networks, incoming: response.data, reset: reset)
-        pagination.receive(
-            pagination: response.pagination, itemCount: response.data.count,
-            requestedStart: start, requestedLimit: Self.pageSize,
-            generation: pagination.generation
-        )
-        hasMore = pagination.hasMore
-        totalItemCount = pagination.totalItems
+    private func loadNetworks() async {
+        guard let client = manager.client else { return }
+        let environments = await environmentsStore.listEnvironments(
+            environmentID, allEnvironments: allEnvironments, manager: manager)
+        await list.reload(environments, fetch: networksPage(client: client))
         rebuildSections()
     }
 
     private func loadMore() async {
-        guard hasMore, !isLoadingMore else { return }
-        isLoadingMore = true
-        defer { isLoadingMore = false }
-        await loadNetworks(reset: false)
+        guard let client = manager.client else { return }
+        await list.loadMore(fetch: networksPage(client: client))
+        rebuildSections()
     }
 
-    private func deleteNetwork(_ network: NetworkSummary) async {
+    private func networksPage(client: ArcaneClient) -> EnvironmentPagedList<NetworkSummary>.Fetch {
+        { environmentID, start, limit in
+            // `PaginatedResponse<NetworkSummary>` is Decodable-only and can't
+            // pass through the cache (Codable). Fetch directly.
+            let response = try await client.networks.list(
+                envID: environmentID,
+                query: .init(start: start, limit: limit)
+            )
+            return ResourcePage(items: response.data, pagination: response.pagination)
+        }
+    }
+
+    private func deleteNetwork(_ network: EnvironmentItem<NetworkSummary>) async {
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "networks/\(network.id)")
+            let path = client.rest.environmentPath(network.environmentID, "networks/\(network.value.id)")
             let _: DataResponse<String> = try await client.rest.delete(path)
             withAnimation {
-                networks.removeAll { $0.id == network.id }
+                list.update { $0.removeAll { $0.id == network.id } }
                 rebuildSections()
             }
-            await invalidateNetworkCaches()
-            mutationStore.markChanged(kind: .networks, envID: environmentID)
+            await invalidateNetworkCaches(network.environmentID)
+            mutationStore.markChanged(kind: .networks, envID: network.environmentID)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
     }
 
     private func pruneNetworks() async {
+        if allEnvironments {
+            await AllEnvironmentsOperationStore.shared.performPrune(
+                .networks, environments: environmentsStore.enabledEnvironments, manager: manager)
+            return
+        }
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "networks/prune")
-            let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
-            await invalidateNetworkCaches()
+            try await ResourcePruneAction.networks.perform(client: client, environmentID: environmentID)
+            await invalidateNetworkCaches(environmentID)
             mutationStore.markChanged(kind: .networks, envID: environmentID)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
     }
 
-    private func invalidateNetworkCaches() async {
+    private func invalidateNetworkCaches(_ environmentID: EnvironmentID) async {
         guard let cached = manager.cached, let client = manager.client else { return }
         await cached.invalidate(
             envID: environmentID,
@@ -466,7 +491,7 @@ struct NetworkRow: View {
                         .foregroundStyle(.teal)
                     }
                 }
-                FleetEnvironmentLabel(name: environmentName)
+                EnvironmentLabel(name: environmentName)
             }
 
             Spacer(minLength: 0)

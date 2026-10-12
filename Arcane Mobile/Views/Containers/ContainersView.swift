@@ -7,47 +7,64 @@ struct ContainersView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let environmentID: EnvironmentID
     let environmentName: String
+    /// All Environments preview: list and act on containers from every enabled environment.
+    var allEnvironments = false
 
-    @State private var containers: [ContainerSummary] = []
-    @State private var routedContainer: ContainerSummary?
+    @State private var list = EnvironmentPagedList<ContainerSummary>(pageSize: Self.pageSize)
+    @State private var routedContainer: EnvironmentItem<ContainerSummary>?
     @State private var routedDetails: ContainerDetails?
     @State private var routeGeneration = 0
     @State private var router = QuickActionRouter.shared
-    @State private var isLoading = false
-    @State private var errorMessage: String?
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var pendingDestructive: ContainerDestructive?
+    @State private var pendingMaintenanceAction: AllEnvironmentsMaintenanceAction?
     @State private var showCreateContainer = false
+    @State private var createEnvironmentID: EnvironmentID?
     @State private var showCompose = false
     @State private var showFilterSheet = false
+    @State private var environmentFilter: EnvironmentID?
     @State private var stateFilter = ContainerStateFilter.all
     @State private var updateFilter = ResourceUpdateFilter.all
     @State private var showHidden = false
     @State private var labelFilter = ""
     @State private var debouncedLabelFilter = ""
     @State private var sortOrder = ListSortOrder.ascending
-    @State private var sections: [StableListSection<String, ContainerSummary>] = []
+    @State private var sections: [StableListSection<String, EnvironmentItem<ContainerSummary>>] = []
 
-    @State private var logsTarget: ContainerSummary?
-    @State private var terminalTarget: ContainerSummary?
+    @State private var logsTarget: EnvironmentItem<ContainerSummary>?
+    @State private var terminalTarget: EnvironmentItem<ContainerSummary>?
     @State private var isSelecting = false
     @State private var selection = Set<String>()
     @State private var isBulkRunning = false
     @State private var bulkRunningActionID: String?
-    @State private var pagination = ProgressivePaginationState()
-    @State private var isLoadingMore = false
-    @State private var loadMoreError: String?
 
     /// Prune and per-container remove share one `.deleteConfirmation` cover
     /// (one full-screen cover per view).
     private enum ContainerDestructive {
         case prune
-        case remove(ContainerSummary)
+        case remove(EnvironmentItem<ContainerSummary>)
         case bulkRemove([String])
+    }
+
+    private var containers: [EnvironmentItem<ContainerSummary>] { list.items }
+
+    private var createEnvironments: [ListEnvironment] {
+        listEnvironments.filter { manager.permissions.has(Permission.Containers.create, in: $0.id) }
+    }
+
+    private func presentCreateContainer(in environmentID: EnvironmentID) {
+        createEnvironmentID = environmentID
+        showCreateContainer = true
+    }
+
+    /// The environments this list covers, known before the first load finishes.
+    private var listEnvironments: [ListEnvironment] {
+        allEnvironments ? list.environments : [ListEnvironment(id: environmentID, name: nil)]
     }
 
     private enum ContainerBulkAction {
@@ -105,6 +122,7 @@ struct ContainersView: View {
 
     private var activeFilterCount: Int {
         var count = stateFilter != .all ? 1 : 0
+        if environmentFilter != nil { count += 1 }
         if updateFilter != .all { count += 1 }
         if showHidden { count += 1 }
         if !labelFilter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
@@ -112,14 +130,15 @@ struct ContainersView: View {
     }
 
     private var pinnedIDs: Set<String> {
-        pinnedStore.pinnedIDs(kind: .container, envID: environmentID)
+        pinnedStore.pinnedIDs(kind: .container, in: containers)
     }
 
     /// Filters + sorts once and partitions in a single pass. Pure — reads the
     /// current inputs and returns the grouped sections without touching state.
-    private func computeSections() -> [StableListSection<String, ContainerSummary>] {
+    private func computeSections() -> [StableListSection<String, EnvironmentItem<ContainerSummary>>] {
         let query = debouncedSearchText
         let filtered = containers.filter { container in
+            guard environmentFilter == nil || container.environmentID == environmentFilter else { return false }
             let matchesSearch =
                 query.isEmpty || container.names.contains(where: { $0.localizedCaseInsensitiveContains(query) })
                 || container.image.localizedCaseInsensitiveContains(query)
@@ -135,9 +154,9 @@ struct ContainersView: View {
             sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
         }
         let pinned: Set<String> = pinnedIDs
-        var pinnedItems: [ContainerSummary] = []
-        var running: [ContainerSummary] = []
-        var stopped: [ContainerSummary] = []
+        var pinnedItems: [EnvironmentItem<ContainerSummary>] = []
+        var running: [EnvironmentItem<ContainerSummary>] = []
+        var stopped: [EnvironmentItem<ContainerSummary>] = []
         for container in filtered {
             if pinned.contains(container.id) {
                 pinnedItems.append(container)
@@ -163,18 +182,27 @@ struct ContainersView: View {
     }
 
     private var mutationVersion: Int {
-        mutationStore.version(kind: .containers, envID: environmentID)
+        allEnvironments
+            ? mutationStore.version(kind: .containers, in: list.environments)
+            : mutationStore.version(kind: .containers, envID: environmentID)
     }
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove (start/stop/remove/prune) animates too.
 
-    private var selectedContainers: [ContainerSummary] {
+    private var selectedContainers: [EnvironmentItem<ContainerSummary>] {
         containers.filter { selection.contains($0.id) }
     }
 
     private var selectedContainerIDs: [String] {
         selectedContainers.map(\.id)
+    }
+
+    /// Compose generation and updates run in one environment, so they need a
+    /// selection from a single environment.
+    private var selectionEnvironmentID: EnvironmentID? {
+        let environments = Set(selectedContainers.map(\.environmentID))
+        return environments.count == 1 ? environments.first : nil
     }
 
     private var bulkPrimaryAction: ContainerBulkAction? {
@@ -189,7 +217,7 @@ struct ContainersView: View {
         let selected = selectedContainers
         guard !selected.isEmpty, let primary = bulkPrimaryAction else { return [] }
         return [ContainerBulkAction.start, .stop, .restart].filter { action in
-            action.id != primary.id && selected.contains(where: action.applies)
+            action.id != primary.id && selected.contains { action.applies(to: $0.value) }
         }
     }
 
@@ -206,7 +234,7 @@ struct ContainersView: View {
         guard !selectedContainerIDs.isEmpty else { return [] }
         var items: [ActionButtonItem] = []
         let updatable = selectedContainers.filter(\.hasAvailableUpdate)
-        if !updatable.isEmpty {
+        if !updatable.isEmpty, selectionEnvironmentID != nil {
             items.append(
                 ActionButtonItem(
                     id: "bulk-update", title: "Update (\(updatable.count))", systemImage: "arrow.up.circle.fill",
@@ -215,8 +243,8 @@ struct ContainersView: View {
                     startBulkUpdate(containers: updatable)
                 })
         }
-        if manager.serverCapabilities?.mode == .rbac,
-            manager.permissions.has(Permission.Containers.read, in: environmentID)
+        if manager.serverCapabilities?.mode == .rbac, let selectionEnvironmentID,
+            manager.permissions.has(Permission.Containers.read, in: selectionEnvironmentID)
         {
             items.append(
                 ActionButtonItem(
@@ -238,18 +266,20 @@ struct ContainersView: View {
 
     var body: some View {
         LoadingCrossfade(
-            showSkeleton: isLoading && containers.isEmpty,
+            showSkeleton: list.isLoading && containers.isEmpty,
             animatesTransition: false
         ) {
             ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
-            if let error = errorMessage, containers.isEmpty {
+            if let error = list.errorMessage, containers.isEmpty {
                 ContentUnavailableView("Error", systemImage: "exclamationmark.triangle", description: Text(error))
             } else if containers.isEmpty {
                 ContentUnavailableView {
                     Label("No Containers", systemImage: "cube.box")
                 } description: {
-                    Text("No containers found in this environment.")
+                    Text(
+                        allEnvironments
+                            ? "No containers found in any environment." : "No containers found in this environment.")
                 } actions: {
                     Button("Refresh") {
                         Task { await loadContainers() }
@@ -257,14 +287,17 @@ struct ContainersView: View {
                 }
             } else {
                 List(selection: BulkListSelection.binding($selection, isSelecting: isSelecting)) {
+                    EnvironmentLoadFailuresSection(failures: list.failedEnvironments) {
+                        Task { await loadContainers() }
+                    }
                     StableSectionedList(
                         sections,
                         preferredHeaderAccessorySectionID: "running",
                         headerAccessory: { _ in
                             ResourceCountLabel(
                                 loadedCount: containers.count,
-                                totalCount: pagination.totalItems,
-                                hasMore: pagination.hasMore
+                                totalCount: list.totalItems,
+                                hasMore: list.hasMore
                             )
                         }
                     ) { container in
@@ -272,8 +305,8 @@ struct ContainersView: View {
                     }
 
                     PaginatedListFooter(
-                        hasMore: pagination.hasMore,
-                        loadMoreError: loadMoreError,
+                        hasMore: list.hasMore,
+                        loadMoreError: list.loadMoreError,
                         onRetry: { Task { await loadMore() } },
                         onLoadMore: { Task { await loadMore() } }
                     )
@@ -293,28 +326,27 @@ struct ContainersView: View {
         .toolbar {
             if !isSelecting {
                 AppToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showFilterSheet = true
+                    } label: {
+                        Image(
+                            systemName: activeFilterCount > 0
+                                ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                        )
+                        .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Filter")
+                }
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        if manager.permissions.has(Permission.Containers.create, in: environmentID) {
-                            Button("Create Container", systemImage: "plus") { showCreateContainer = true }
-                        }
                         Button {
                             enterSelectionMode()
                         } label: {
                             Label("Select", systemImage: "checklist")
                         }
-                        Divider()
-                        Picker("Sort", selection: $sortOrder) {
-                            ForEach(ListSortOrder.allCases) { order in
-                                Label(order.title, systemImage: order.systemImage).tag(order)
-                            }
-                        }
-                        Button {
-                            showFilterSheet = true
-                        } label: {
-                            Label(
-                                activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
-                                systemImage: "line.3.horizontal.decrease.circle"
-                            )
+                        if allEnvironments {
+                            Divider()
+                            AllEnvironmentsMaintenanceButtons(action: $pendingMaintenanceAction)
                         }
                         Divider()
                         Button(role: .destructive) {
@@ -322,15 +354,38 @@ struct ContainersView: View {
                         } label: {
                             DestructiveLabel(text: "Prune Stopped Containers")
                         }
+                        .tint(.red)
+                        .disabled(allEnvironments && AllEnvironmentsOperationStore.shared.isRunning)
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .appAccentToolbarSymbol()
                     }
                     .accessibilityLabel("More options")
                 }
-            }
-            if #available(iOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                if !createEnvironments.isEmpty {
+                    if #available(iOS 26, *) {
+                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                    }
+                    AppToolbarItem(placement: .navigationBarTrailing) {
+                        if allEnvironments {
+                            EnvironmentActionButton(
+                                title: "Create Container", systemImage: "plus", environments: createEnvironments
+                            ) { environmentID in
+                                presentCreateContainer(in: environmentID)
+                            }
+                            .appAccentToolbarSymbol()
+                            .accessibilityLabel("Create container")
+                        } else {
+                            Button {
+                                presentCreateContainer(in: environmentID)
+                            } label: {
+                                Image(systemName: "plus")
+                                    .appAccentToolbarSymbol()
+                            }
+                            .accessibilityLabel("Create container")
+                        }
+                    }
+                }
             }
             if isSelecting {
                 AppToolbarItem(placement: .navigationBarTrailing) {
@@ -345,7 +400,9 @@ struct ContainersView: View {
             case .prune:
                 return DeleteConfirmationConfig(
                     title: "Prune Stopped Containers",
-                    message: "Remove all stopped containers. This cannot be undone.",
+                    message: allEnvironments
+                        ? ResourcePruneAction.containers.allEnvironmentsMessage
+                        : "Remove all stopped containers. This cannot be undone.",
                     icon: "trash",
                     actions: [
                         DeleteConfirmationAction(title: "Prune") {
@@ -378,18 +435,38 @@ struct ContainersView: View {
                 )
             }
         }
+        .allEnvironmentsMaintenanceConfirmation(
+            action: $pendingMaintenanceAction, environments: environmentsStore.enabledEnvironments
+        )
         .sheet(isPresented: $showCreateContainer) {
-            ContainerConfigurationView(environmentID: environmentID) { id in
+            let createEnvironment = createEnvironmentID ?? environmentID
+            ContainerConfigurationView(environmentID: createEnvironment) { id in
                 routedDetails = nil
-                routedContainer = ContainerSummary(id: id, image: "", imageId: "", state: "", status: "")
+                routedContainer = EnvironmentItem(
+                    ContainerSummary(id: id, image: "", imageId: "", state: "", status: ""),
+                    in: listEnvironment(createEnvironment)
+                )
             }
         }
         .sheet(isPresented: $showCompose) {
-            ContainerComposeView(environmentID: environmentID, containerIDs: selectedContainerIDs)
+            ContainerComposeView(
+                environmentID: selectionEnvironmentID ?? environmentID,
+                containerIDs: selectedContainers.map(\.value.id)
+            )
         }
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
                 Form {
+                    Section("Sort") {
+                        Picker("Sort", selection: $sortOrder) {
+                            ForEach(ListSortOrder.allCases) { order in
+                                Label(order.title, systemImage: order.systemImage).tag(order)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
+                    EnvironmentFilterSection(environments: list.environments, selection: $environmentFilter)
                     Section("State") {
                         Picker("State", selection: $stateFilter) {
                             ForEach(ContainerStateFilter.allCases, id: \.self) { filter in
@@ -423,7 +500,8 @@ struct ContainersView: View {
                     }
                 }
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
+            .presentationContentInteraction(.resizes)
             .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $logsTarget) { container in
@@ -431,25 +509,27 @@ struct ContainersView: View {
                 title: container.displayName,
                 logStream: {
                     manager.client?.boundedContainerLogs(
-                        envID: environmentID,
-                        id: container.id,
+                        envID: container.environmentID,
+                        id: container.value.id,
                         timestamps: true
                     )
                 }
             )
         }
         .fullScreenCover(item: $terminalTarget) { container in
-            ContainerTerminalView(container: container, environmentID: environmentID)
+            ContainerTerminalView(container: container.value, environmentID: container.environmentID)
         }
         .task { await loadContainers() }
         .refreshable { await loadContainers() }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .debounce(labelFilter, for: .milliseconds(500), into: $debouncedLabelFilter)
-        .navigationDestination(for: ContainerSummary.self) { container in
-            ContainerDetailView(container: container, environmentID: environmentID)
+        .navigationDestination(for: EnvironmentItem<ContainerSummary>.self) { container in
+            ContainerDetailView(container: container.value, environmentID: container.environmentID)
         }
         .navigationDestination(item: $routedContainer) { container in
-            ContainerDetailView(container: container, environmentID: environmentID, initialDetails: routedDetails)
+            ContainerDetailView(
+                container: container.value, environmentID: container.environmentID, initialDetails: routedDetails
+            )
         }
         .onChange(of: router.pendingRoute, initial: true) { _, _ in
             Task { await consumeContainerRoute() }
@@ -460,6 +540,7 @@ struct ContainersView: View {
         .onChange(of: debouncedSearchText) {
             Task { await loadContainers() }
         }
+        .onChange(of: environmentFilter) { rebuildSections() }
         .onChange(of: stateFilter) { rebuildSections() }
         .onChange(of: updateFilter) { rebuildSections() }
         .onChange(of: showHidden) {
@@ -482,10 +563,11 @@ struct ContainersView: View {
         )
     }
 
-    private func containerLink(_ container: ContainerSummary) -> some View {
+    private func containerLink(_ container: EnvironmentItem<ContainerSummary>) -> some View {
         let isPinned = pinnedIDs.contains(container.id)
         return NavigationLink(value: container) {
-            ContainerRow(container: container, isPinned: isPinned)
+            ContainerRow(container: container.value, isPinned: isPinned, environmentName: container.environmentName)
+                .rowEnvironment(container)
         }
         .contextMenu {
             if !isSelecting {
@@ -554,26 +636,26 @@ struct ContainersView: View {
         selection.formIntersection(validIDs)
     }
 
-    private func togglePinAfterSwipe(_ container: ContainerSummary) {
+    private func togglePinAfterSwipe(_ container: EnvironmentItem<ContainerSummary>) {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(250))
             togglePin(container)
         }
     }
 
-    private func togglePin(_ container: ContainerSummary) {
+    private func togglePin(_ container: EnvironmentItem<ContainerSummary>) {
         HapticsManager.light()
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            pinnedStore.togglePin(container.id, kind: .container, envID: environmentID)
+            pinnedStore.togglePin(container, kind: .container)
         }
     }
 
     @ViewBuilder
-    private func containerMenuActions(for container: ContainerSummary) -> some View {
+    private func containerMenuActions(for container: EnvironmentItem<ContainerSummary>) -> some View {
         if container.hasAvailableUpdate,
-            manager.permissions.has(Permission.Containers.autoUpdate, in: environmentID)
+            manager.permissions.has(Permission.Containers.autoUpdate, in: container.environmentID)
         {
             Button {
                 startBulkUpdate(containers: [container])
@@ -620,7 +702,7 @@ struct ContainersView: View {
         }
     }
 
-    private func containerPreview(_ container: ContainerSummary) -> some View {
+    private func containerPreview(_ container: EnvironmentItem<ContainerSummary>) -> some View {
         var details: [RowPreviewCard.PreviewDetail] = [
             .init(icon: "photo", label: "Image", value: container.image),
             .init(icon: "info.circle", label: "Status", value: container.status),
@@ -631,10 +713,13 @@ struct ContainersView: View {
                 details.append(.init(icon: "tag", label: "Name", value: trimmed))
             }
         }
+        if let environmentName = container.environmentName {
+            details.append(.init(icon: "server.rack", label: "Environment", value: environmentName))
+        }
         return RowPreviewCard(
             icon: "cube.box.fill",
             iconColor: container.isRunning ? .green : .secondary,
-            iconUrl: container.themedIconUrl(for: colorScheme),
+            iconUrl: container.value.themedIconUrl(for: colorScheme),
             title: container.displayName,
             badges: [
                 .init(
@@ -646,7 +731,7 @@ struct ContainersView: View {
     }
 
     @ViewBuilder
-    private func containerSwipeActions(for container: ContainerSummary) -> some View {
+    private func containerSwipeActions(for container: EnvironmentItem<ContainerSummary>) -> some View {
         if container.isRunning {
             Button(role: .destructive) {
                 Task { await stopContainer(container) }
@@ -669,14 +754,14 @@ struct ContainersView: View {
         }
     }
 
-    private func removeContainer(_ container: ContainerSummary) async {
+    private func removeContainer(_ container: EnvironmentItem<ContainerSummary>) async {
         guard let client = manager.client else { return }
         do {
-            try await client.containers.delete(envID: environmentID, id: container.id)
-            containers.removeAll { $0.id == container.id }
+            try await client.containers.delete(envID: container.environmentID, id: container.value.id)
+            list.update { $0.removeAll { $0.id == container.id } }
             rebuildSections()
-            await invalidateContainerCaches()
-            mutationStore.markChanged(kind: .containers, envID: environmentID)
+            await invalidateContainerCaches(container.environmentID)
+            mutationStore.markChanged(kind: .containers, envID: container.environmentID)
             showToast(.success("Container removed"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
@@ -686,106 +771,43 @@ struct ContainersView: View {
 
     private func loadContainers() async {
         guard let client = manager.client else { return }
-        let generation = pagination.reset()
-        let start = 0
-        isLoadingMore = false
-        if containers.isEmpty { isLoading = true }
-        errorMessage = nil
-        loadMoreError = nil
-        defer {
-            if pagination.accepts(generation) {
-                isLoading = false
-            }
-        }
-        do {
-            let trimmedLabel = debouncedLabelFilter.trimmingCharacters(in: .whitespacesAndNewlines)
-            let response = try await client.containers.list(
-                envID: environmentID,
-                query: .init(
-                    search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
-                    start: start,
-                    limit: Self.pageSize
-                ),
-                includeHidden: showHidden ? true : nil,
-                label: trimmedLabel.isEmpty ? nil : trimmedLabel
-            )
-            applyContainersPage(
-                response,
-                reset: true,
-                requestedStart: start,
-                generation: generation
-            )
-        } catch {
-            guard pagination.accepts(generation) else { return }
-            errorMessage = friendlyErrorMessage(error)
-        }
-    }
-
-    private func loadMore() async {
-        guard pagination.hasMore, !isLoadingMore, let client = manager.client else { return }
-        isLoadingMore = true
-        loadMoreError = nil
-        let generation = pagination.generation
-        let start = pagination.nextStart
-        defer {
-            if pagination.accepts(generation) {
-                isLoadingMore = false
-            }
-        }
-        do {
-            let trimmedLabel = debouncedLabelFilter.trimmingCharacters(in: .whitespacesAndNewlines)
-            let response = try await client.containers.list(
-                envID: environmentID,
-                query: .init(
-                    search: debouncedSearchText.isEmpty ? nil : debouncedSearchText,
-                    start: start,
-                    limit: Self.pageSize
-                ),
-                includeHidden: showHidden ? true : nil,
-                label: trimmedLabel.isEmpty ? nil : trimmedLabel
-            )
-            applyContainersPage(
-                response,
-                reset: false,
-                requestedStart: start,
-                generation: generation
-            )
-        } catch {
-            guard pagination.accepts(generation) else { return }
-            loadMoreError = friendlyErrorMessage(error)
-        }
-    }
-
-    private func applyContainersPage(
-        _ response: ContainerListResponse,
-        reset: Bool,
-        requestedStart: Int,
-        generation: Int
-    ) {
-        guard
-            pagination.receive(
-                pagination: response.pagination,
-                itemCount: response.data.count,
-                requestedStart: requestedStart,
-                requestedLimit: Self.pageSize,
-                generation: generation
-            )
-        else { return }
-        containers = PaginationLoader.merge(
-            current: containers,
-            incoming: response.data,
-            reset: reset
-        )
-        loadMoreError = nil
+        let environments = await environmentsStore.listEnvironments(
+            environmentID, allEnvironments: allEnvironments, manager: manager)
+        await list.reload(environments, fetch: containersPage(client: client))
         rebuildSections()
     }
 
-    private func startContainer(_ container: ContainerSummary) async {
+    private func loadMore() async {
+        guard let client = manager.client else { return }
+        await list.loadMore(fetch: containersPage(client: client))
+        rebuildSections()
+    }
+
+    private func containersPage(client: ArcaneClient) -> EnvironmentPagedList<ContainerSummary>.Fetch {
+        let search = debouncedSearchText.isEmpty ? nil : debouncedSearchText
+        let trimmedLabel = debouncedLabelFilter.trimmingCharacters(in: .whitespacesAndNewlines)
+        let includeHidden: Bool? = showHidden ? true : nil
+        return { environmentID, start, limit in
+            let response = try await client.containers.list(
+                envID: environmentID,
+                query: .init(search: search, start: start, limit: limit),
+                includeHidden: includeHidden,
+                label: trimmedLabel.isEmpty ? nil : trimmedLabel
+            )
+            return ResourcePage(items: response.data, pagination: response.pagination)
+        }
+    }
+
+    private func listEnvironment(_ id: EnvironmentID) -> ListEnvironment {
+        ListEnvironment(id: id, name: allEnvironments ? environmentsStore.displayName(for: id) ?? id.rawValue : nil)
+    }
+
+    private func startContainer(_ container: EnvironmentItem<ContainerSummary>) async {
         guard let client = manager.client else { return }
         do {
-            try await client.containers.start(envID: environmentID, id: container.id)
-            await invalidateContainerCaches()
-            mutationStore.markChanged(kind: .containers, envID: environmentID)
+            try await client.containers.start(envID: container.environmentID, id: container.value.id)
+            await invalidateContainerCaches(container.environmentID)
+            mutationStore.markChanged(kind: .containers, envID: container.environmentID)
             showToast(.success("Container started"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
@@ -793,12 +815,12 @@ struct ContainersView: View {
         }
     }
 
-    private func stopContainer(_ container: ContainerSummary) async {
+    private func stopContainer(_ container: EnvironmentItem<ContainerSummary>) async {
         guard let client = manager.client else { return }
         do {
-            try await client.containers.stop(envID: environmentID, id: container.id)
-            await invalidateContainerCaches()
-            mutationStore.markChanged(kind: .containers, envID: environmentID)
+            try await client.containers.stop(envID: container.environmentID, id: container.value.id)
+            await invalidateContainerCaches(container.environmentID)
+            mutationStore.markChanged(kind: .containers, envID: container.environmentID)
             showToast(.success("Container stopped"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
@@ -807,11 +829,15 @@ struct ContainersView: View {
     }
 
     private func pruneContainers() async {
+        if allEnvironments {
+            await AllEnvironmentsOperationStore.shared.performPrune(
+                .containers, environments: environmentsStore.enabledEnvironments, manager: manager)
+            return
+        }
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "containers/prune")
-            let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
-            await invalidateContainerCaches()
+            try await ResourcePruneAction.containers.perform(client: client, environmentID: environmentID)
+            await invalidateContainerCaches(environmentID)
             mutationStore.markChanged(kind: .containers, envID: environmentID)
             showToast(.success("Containers pruned"))
             ReviewPrompter.shared.recordSuccess()
@@ -820,12 +846,12 @@ struct ContainersView: View {
         }
     }
 
-    private func restartContainer(_ container: ContainerSummary) async {
+    private func restartContainer(_ container: EnvironmentItem<ContainerSummary>) async {
         guard let client = manager.client else { return }
         do {
-            try await client.containers.restart(envID: environmentID, id: container.id)
-            await invalidateContainerCaches()
-            mutationStore.markChanged(kind: .containers, envID: environmentID)
+            try await client.containers.restart(envID: container.environmentID, id: container.value.id)
+            await invalidateContainerCaches(container.environmentID)
+            mutationStore.markChanged(kind: .containers, envID: container.environmentID)
             showToast(.success("Container restarted"))
             ReviewPrompter.shared.recordSuccess()
         } catch {
@@ -835,8 +861,8 @@ struct ContainersView: View {
 
     private func runBulkAction(_ action: ContainerBulkAction) async {
         guard let client = manager.client else { return }
-        let ids = selectedContainers.filter(action.applies).map(\.id)
-        guard !ids.isEmpty else {
+        let targets = selectedContainers.filter { action.applies(to: $0.value) }
+        guard !targets.isEmpty else {
             showToast(.info("No matching containers selected"))
             return
         }
@@ -846,32 +872,34 @@ struct ContainersView: View {
             isBulkRunning = false
             bulkRunningActionID = nil
         }
-        let result = await BulkActionRunner.run(ids: ids) { id in
+        let byID = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
+        let result = await BulkActionRunner.run(ids: targets.map(\.id)) { id in
+            guard let container = byID[id] else { return }
             switch action {
             case .start:
-                try await client.containers.start(envID: environmentID, id: id)
+                try await client.containers.start(envID: container.environmentID, id: container.value.id)
             case .stop:
-                try await client.containers.stop(envID: environmentID, id: id)
+                try await client.containers.stop(envID: container.environmentID, id: container.value.id)
             case .restart:
-                try await client.containers.restart(envID: environmentID, id: id)
+                try await client.containers.restart(envID: container.environmentID, id: container.value.id)
             }
         }
         await finishBulkOperation(
-            result, total: ids.count,
+            result, total: targets.count, environments: targets.map(\.environmentID),
             successTitle: { count in
                 "\(action.summaryVerb) \(count) container\(count == 1 ? "" : "s")"
             })
     }
 
-    private func startBulkUpdate(containers: [ContainerSummary]) {
-        let targets = containers.map { DeploymentOperation.UpdateTarget(id: $0.id, name: $0.displayName) }
-        guard !targets.isEmpty else { return }
+    private func startBulkUpdate(containers: [EnvironmentItem<ContainerSummary>]) {
+        guard let first = containers.first else { return }
+        let targets = containers.map { DeploymentOperation.UpdateTarget(id: $0.value.id, name: $0.displayName) }
         let started = DeploymentActivityStore.shared.start(
             kind: .containerUpdate,
-            envID: environmentID,
+            envID: first.environmentID,
             targetID: targets[0].id,
             targetName: targets.count == 1 ? targets[0].name : "\(targets.count) containers",
-            environmentName: environmentName,
+            environmentName: first.environmentName ?? environmentName,
             manager: manager,
             mutationStore: mutationStore,
             updateTargets: targets
@@ -887,14 +915,17 @@ struct ContainersView: View {
             isBulkRunning = false
             bulkRunningActionID = nil
         }
-        let result = await BulkActionRunner.run(ids: ids) { id in
-            try await client.containers.delete(envID: environmentID, id: id)
+        let targets = containers.filter { ids.contains($0.id) }
+        let byID = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
+        let result = await BulkActionRunner.run(ids: targets.map(\.id)) { id in
+            guard let container = byID[id] else { return }
+            try await client.containers.delete(envID: container.environmentID, id: container.value.id)
         }
         let failedIDs = Set(result.failed.map(\.id))
-        let removedIDs = Set(ids.filter { !failedIDs.contains($0) })
-        containers.removeAll { removedIDs.contains($0.id) }
+        let removedIDs = Set(targets.map(\.id).filter { !failedIDs.contains($0) })
+        list.update { $0.removeAll { removedIDs.contains($0.id) } }
         await finishBulkOperation(
-            result, total: ids.count,
+            result, total: targets.count, environments: targets.map(\.environmentID),
             successTitle: { count in
                 "Removed \(count) container\(count == 1 ? "" : "s")"
             })
@@ -903,10 +934,13 @@ struct ContainersView: View {
     private func finishBulkOperation(
         _ result: BulkResult,
         total: Int,
+        environments: [EnvironmentID],
         successTitle: (Int) -> String
     ) async {
-        await invalidateContainerCaches()
-        mutationStore.markChanged(kind: .containers, envID: environmentID)
+        for environment in Set(environments) {
+            await invalidateContainerCaches(environment)
+            mutationStore.markChanged(kind: .containers, envID: environment)
+        }
         rebuildSections()
         exitSelectionMode()
         if result.failed.isEmpty {
@@ -917,7 +951,7 @@ struct ContainersView: View {
         }
     }
 
-    private func invalidateContainerCaches() async {
+    private func invalidateContainerCaches(_ environmentID: EnvironmentID) async {
         guard let cached = manager.cached, let client = manager.client else { return }
         await cached.invalidate(
             envID: environmentID,
@@ -1007,7 +1041,7 @@ struct ContainerRow: View {
                     }
                 }
                 UpdateStateBadge(state: ImageUpdateState(info: container.updateInfo))
-                FleetEnvironmentLabel(name: environmentName)
+                EnvironmentLabel(name: environmentName)
             }
 
             Spacer()
@@ -1036,9 +1070,10 @@ extension ContainersView {
     fileprivate func consumeContainerRoute() async {
         guard case .authenticated = manager.authState,
             case .container(let envID, let id)? = router.pendingRoute,
-            envID == environmentID.rawValue,
+            allEnvironments || envID == environmentID.rawValue,
             let client = manager.client
         else { return }
+        let routeEnvironmentID = EnvironmentID(rawValue: envID)
         routeGeneration += 1
         let generation = routeGeneration
         let routerGeneration = router.routeGeneration
@@ -1047,7 +1082,7 @@ extension ContainersView {
         do {
             let details = try await RemoteDataLimits.boundedContainerInspect(
                 client: client,
-                environmentID: environmentID,
+                environmentID: routeEnvironmentID,
                 containerID: id
             )
             try Task.checkCancellation()
@@ -1055,16 +1090,16 @@ extension ContainersView {
                 routerGeneration == router.routeGeneration,
                 session == manager.cacheSessionIdentity,
                 client.transport === manager.client?.transport,
-                manager.acceptsEnvironmentContext(environmentID)
+                manager.acceptsEnvironmentContext(routeEnvironmentID)
             else { return }
             routedDetails = details
-            routedContainer = details.navigationSummary
+            routedContainer = EnvironmentItem(details.navigationSummary, in: listEnvironment(routeEnvironmentID))
         } catch {
             guard generation == routeGeneration,
                 routerGeneration == router.routeGeneration,
                 session == manager.cacheSessionIdentity,
                 client.transport === manager.client?.transport,
-                manager.acceptsEnvironmentContext(environmentID)
+                manager.acceptsEnvironmentContext(routeEnvironmentID)
             else { return }
             showToast(.error(friendlyErrorMessage(error)))
         }

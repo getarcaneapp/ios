@@ -5,12 +5,16 @@ struct GitOpsSyncsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
 
     let environmentID: EnvironmentID
+    /// All Environments preview: list and act on resources from every enabled environment.
+    var allEnvironments = false
 
     var body: some View {
         DynamicResourceListView(
             title: "GitOps",
             systemImage: "arrow.triangle.branch",
-            path: { _, client in client.rest.environmentPath(environmentID, "gitops-syncs") },
+            path: { environmentID, client in client.rest.environmentPath(environmentID, "gitops-syncs") },
+            environmentID: environmentID,
+            allEnvironments: allEnvironments,
             emptyTitle: "No GitOps Syncs",
             actions: [
                 .init(
@@ -25,11 +29,19 @@ struct GitOpsSyncsView: View {
                 .init("name", label: "Name", required: true),
                 .init("repositoryId", label: "Repository ID", required: true),
                 .init("branch", label: "Branch", placeholder: "main"),
-                .init("path", label: "Path", required: true),
-                .init("enabled", label: "Enabled", type: .toggle),
+                .init("composePath", label: "Compose Path", required: true, placeholder: "compose.yaml"),
+                .init("autoSync", label: "Auto Sync", type: .toggle),
             ],
-            createPath: { _, client in client.rest.environmentPath(environmentID, "gitops-syncs") },
-            managementDestination: manager.canAccess(.gitRepositories) ? .gitRepositories : nil
+            createPath: { environmentID, client in client.rest.environmentPath(environmentID, "gitops-syncs") },
+            managementDestination: manager.canAccess(.gitRepositories) ? .gitRepositories : nil,
+            detailDestination: { item, onChange in
+                AnyView(
+                    GitOpsSyncDetailView(
+                        sync: GitOpsSyncDetails(resource: item.value),
+                        environmentID: item.environmentID,
+                        onChange: onChange
+                    ))
+            }
         )
     }
 }

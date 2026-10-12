@@ -2,10 +2,10 @@ import Arcane
 import Foundation
 import Observation
 
-/// Shared fleet ownership for Dashboard and Environments.
+/// Shared environment list for Dashboard and Environments.
 @MainActor
 @Observable
-final class FleetStore {
+final class EnvironmentsStore {
     private static let maxConcurrentEnvironmentRequests = 4
     private(set) var environments: [Arcane.Environment] = []
     private(set) var environmentCatalogRevision = 0

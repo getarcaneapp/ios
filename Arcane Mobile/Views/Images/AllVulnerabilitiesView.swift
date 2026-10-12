@@ -2,27 +2,33 @@ import Arcane
 import SwiftUI
 
 struct AllVulnerabilitiesView: View {
-    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    let environmentID: EnvironmentID
+    private static let pageSize = 50
 
-    @State private var loadMoreError: String?
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
+    let environmentID: EnvironmentID
+    /// All Environments preview: Findings lists vulnerabilities from every
+    /// enabled environment; Overview shows the environment chosen in the toolbar.
+    var allEnvironments = false
+
+    @State private var list = EnvironmentPagedList<Arcane.VulnerabilityWithImage>(pageSize: Self.pageSize)
     @State private var overview: VulnerabilityRiskOverview?
     @State private var overviewError: String?
     @State private var summary: Arcane.EnvironmentVulnerabilitySummary?
-    @State private var items: [Arcane.VulnerabilityWithImage] = []
     @State private var imageOptions: [String] = []
     @State private var selectedSeverities: Set<VulnerabilitySeverity> = []
     @State private var selectedImage: String?
     @State private var onlyFixAvailable = false
+    @State private var environmentFilter: EnvironmentID?
     @State private var exportURL: URL?
     @State private var isExporting = false
-    @State private var page = 1
-    @State private var hasMore = false
-    @State private var isLoading = false
     @State private var showFilterSheet = false
     @State private var errorMessage: String?
     @State private var focusedVulnerabilityID: String?
     @State private var selectedSection: SecuritySection = .overview
+    @State private var chosenEnvironmentID: EnvironmentID?
+    @State private var patchEnvironmentID: EnvironmentID?
+    @State private var displayedItems: [EnvironmentItem<Arcane.VulnerabilityWithImage>] = []
 
     private enum SecuritySection: String, CaseIterable {
         case overview = "Overview"
@@ -43,8 +49,36 @@ struct AllVulnerabilitiesView: View {
         }
     }
 
+    private var items: [EnvironmentItem<Arcane.VulnerabilityWithImage>] { list.items }
+
+    /// The environments this list covers, known before the first load finishes.
+    private var listEnvironments: [ListEnvironment] {
+        allEnvironments ? list.environments : [ListEnvironment(id: environmentID, name: nil)]
+    }
+
+    /// The risk overview is scored per environment, so All Environments shows
+    /// the environment chosen in the toolbar.
+    private var overviewEnvironmentID: EnvironmentID {
+        allEnvironments ? chosenEnvironmentID ?? environmentID : environmentID
+    }
+
+    private var overviewEnvironmentSelection: Binding<EnvironmentID> {
+        Binding(
+            get: { overviewEnvironmentID },
+            set: { newValue in
+                guard newValue != overviewEnvironmentID else { return }
+                chosenEnvironmentID = newValue
+                overview = nil
+                overviewError = nil
+                summary = nil
+                Task { await loadOverviewSection() }
+            }
+        )
+    }
+
     private var filterCount: Int {
         selectedSeverities.count + (selectedImage == nil ? 0 : 1) + (onlyFixAvailable ? 1 : 0)
+            + (environmentFilter == nil ? 0 : 1)
     }
 
     var body: some View {
@@ -67,7 +101,7 @@ struct AllVulnerabilitiesView: View {
                     if let overview {
                         SecurityOverviewView(
                             overview: overview,
-                            environmentID: environmentID,
+                            environmentID: overviewEnvironmentID,
                             selectVulnerability: showVulnerability
                         )
                     } else {
@@ -81,6 +115,10 @@ struct AllVulnerabilitiesView: View {
                         }
                     }
                 } else {
+                    EnvironmentLoadFailuresSection(failures: list.failedEnvironments) {
+                        Task { await reload() }
+                    }
+
                     if let focusedVulnerabilityID {
                         Section {
                             HStack {
@@ -88,7 +126,7 @@ struct AllVulnerabilitiesView: View {
                                 Spacer()
                                 Button("Clear") {
                                     self.focusedVulnerabilityID = nil
-                                    items = []
+                                    clearItems()
                                     Task { await reload() }
                                 }
                             }
@@ -101,20 +139,23 @@ struct AllVulnerabilitiesView: View {
                         }
                     }
 
-                    if !items.isEmpty {
+                    if !displayedItems.isEmpty {
                         Section("Findings") {
-                            ForEach(items, id: \.self) { item in
-                                NavigationLink(destination: VulnerabilityWithImageDetailView(record: item)) {
-                                    VulnerabilityWithImageRow(item: item)
+                            ForEach(displayedItems) { item in
+                                NavigationLink(
+                                    destination: VulnerabilityWithImageDetailView(record: item.value)
+                                ) {
+                                    VulnerabilityWithImageRow(item: item.value, environmentName: item.environmentName)
+                                        .rowEnvironment(item)
                                 }
                             }
                             PaginatedListFooter(
-                                hasMore: hasMore, loadMoreError: loadMoreError,
+                                hasMore: list.hasMore, loadMoreError: list.loadMoreError,
                                 onRetry: { Task { await loadMore() } },
                                 onLoadMore: { Task { await loadMore() } }
                             )
                         }
-                    } else if !isLoading {
+                    } else if !list.isLoading {
                         ContentUnavailableView(
                             "No vulnerabilities", systemImage: "checkmark.shield",
                             description: Text(
@@ -130,7 +171,21 @@ struct AllVulnerabilitiesView: View {
         .navigationTitle("Security")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if manager.permissions.has("vulnerabilities:read", in: environmentID), manager.supportsActivities {
+            if allEnvironments {
+                if manager.supportsActivities {
+                    AppToolbarItem(placement: .topBarTrailing) {
+                        EnvironmentActionButton(
+                            title: "Patch images",
+                            systemImage: "wrench.and.screwdriver",
+                            environments: listEnvironments.filter {
+                                manager.permissions.has("vulnerabilities:read", in: $0.id)
+                            }
+                        ) { environmentID in
+                            patchEnvironmentID = environmentID
+                        }
+                    }
+                }
+            } else if manager.permissions.has("vulnerabilities:read", in: environmentID), manager.supportsActivities {
                 AppToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         ImagePatchTargetsView(environmentID: environmentID)
@@ -140,8 +195,20 @@ struct AllVulnerabilitiesView: View {
                     }
                     .accessibilityLabel("Patch images")
                 }
-                if #available(iOS 26, *) {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            if allEnvironments, selectedSection == .overview {
+                AppToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Picker("Environment", selection: overviewEnvironmentSelection) {
+                            ForEach(environmentsStore.enabledEnvironments, id: \.id) { environment in
+                                Text(environment.displayName).tag(EnvironmentID(rawValue: environment.id))
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "server.rack")
+                            .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Environment")
                 }
             }
             if selectedSection == .findings {
@@ -158,27 +225,46 @@ struct AllVulnerabilitiesView: View {
                     .accessibilityLabel("Filter vulnerabilities")
                 }
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        Task { await exportCSV() }
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .appAccentToolbarSymbol()
+                    if allEnvironments {
+                        // The export endpoint is per environment, so the user picks one.
+                        EnvironmentActionButton(
+                            title: "Export CSV",
+                            systemImage: "square.and.arrow.up",
+                            environments: listEnvironments.filter { environment in
+                                items.contains { $0.environmentID == environment.id }
+                            }
+                        ) { environmentID in
+                            Task { await exportCSV(environmentID) }
+                        }
+                        .disabled(isExporting || items.isEmpty)
+                    } else {
+                        Button {
+                            Task { await exportCSV(environmentID) }
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .appAccentToolbarSymbol()
+                        }
+                        .accessibilityLabel("Export vulnerabilities as CSV")
+                        .disabled(isExporting || items.isEmpty)
                     }
-                    .accessibilityLabel("Export vulnerabilities as CSV")
-                    .disabled(isExporting || items.isEmpty)
                 }
             }
         }
         .sheet(isPresented: $showFilterSheet) {
             filterSheet
         }
+        .navigationDestination(item: $patchEnvironmentID) { environmentID in
+            ImagePatchTargetsView(environmentID: environmentID)
+        }
         .task(id: environmentID) {
             overview = nil
             summary = nil
-            items = []
+            chosenEnvironmentID = nil
+            clearItems()
             focusedVulnerabilityID = nil
             await loadInitial()
         }
+        .onChange(of: environmentFilter) { rebuildDisplayedItems() }
         .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK") { errorMessage = nil }
         } message: {
@@ -228,6 +314,7 @@ struct AllVulnerabilitiesView: View {
     private var filterSheet: some View {
         NavigationStack {
             Form {
+                EnvironmentFilterSection(environments: list.environments, selection: $environmentFilter)
                 Section("Severity") {
                     ForEach(VulnerabilitySeverity.allCases) { sev in
                         Toggle(isOn: bindingForSeverity(sev)) {
@@ -260,6 +347,7 @@ struct AllVulnerabilitiesView: View {
                         selectedSeverities = []
                         selectedImage = nil
                         onlyFixAvailable = false
+                        environmentFilter = nil
                     }
                 }
                 AppToolbarItem(placement: .confirmationAction) {
@@ -285,14 +373,19 @@ struct AllVulnerabilitiesView: View {
 
     private func loadInitial() async {
         // Overview, summary, filter options, and findings are independent.
-        async let overview: Void = loadOverview()
-        async let summary: Void = loadSummary()
+        async let overview: Void = loadOverviewSection()
         async let options: Void = loadImageOptions()
         async let items: Void = reload()
         await overview
-        await summary
         await options
         await items
+    }
+
+    private func loadOverviewSection() async {
+        async let overview: Void = loadOverview()
+        async let summary: Void = loadSummary()
+        await overview
+        await summary
     }
 
     private func showVulnerability(_ id: String) {
@@ -300,25 +393,70 @@ struct AllVulnerabilitiesView: View {
         selectedImage = nil
         onlyFixAvailable = false
         focusedVulnerabilityID = id
-        items = []
+        clearItems()
         selectedSection = .findings
         Task { await reload() }
     }
 
+    private func clearItems() {
+        list.update { $0.removeAll() }
+        rebuildDisplayedItems()
+    }
+
+    private func rebuildDisplayedItems() {
+        displayedItems = items.filter { environmentFilter == nil || $0.environmentID == environmentFilter }
+    }
+
     private func reload() async {
-        page = 1
-        await loadItems()
+        guard let client = manager.client else { return }
+        let environments = await environmentsStore.listEnvironments(
+            environmentID, allEnvironments: allEnvironments, manager: manager)
+        await list.reload(environments, fetch: findingsPage(client: client))
+        rebuildDisplayedItems()
+        if let error = list.errorMessage { errorMessage = error }
+    }
+
+    private func loadMore() async {
+        guard let client = manager.client else { return }
+        await list.loadMore(fetch: findingsPage(client: client))
+        rebuildDisplayedItems()
+    }
+
+    private var severityQuery: String? {
+        selectedSeverities.isEmpty ? nil : selectedSeverities.map(\.rawValue).joined(separator: ",")
+    }
+
+    private func findingsPage(client: ArcaneClient) -> EnvironmentPagedList<Arcane.VulnerabilityWithImage>.Fetch {
+        let search = focusedVulnerabilityID
+        let severity = severityQuery
+        let imageName = selectedImage
+        let fixAvailable: Bool? = onlyFixAvailable ? true : nil
+        return { environmentID, start, limit in
+            let response = try await client.vulnerabilities.listAll(
+                envID: environmentID,
+                query: SearchPaginationSort(search: search, start: start, limit: limit),
+                severity: severity,
+                imageName: imageName,
+                fixAvailable: fixAvailable
+            )
+            return ResourcePage(items: response.data, pagination: response.pagination)
+        }
     }
 
     private func loadOverview() async {
         guard manager.supportsActivities, let client = manager.client else { return }
+        let target = overviewEnvironmentID
         do {
-            overview = try await client.vulnerabilities.riskOverview(envID: environmentID)
+            let response = try await client.vulnerabilities.riskOverview(envID: target)
+            guard target == overviewEnvironmentID else { return }
+            overview = response
             overviewError = nil
         } catch ArcaneError.notFound {
+            guard target == overviewEnvironmentID else { return }
             overview = nil
             overviewError = nil
         } catch {
+            guard target == overviewEnvironmentID else { return }
             overview = nil
             overviewError = "Risk overview unavailable: \(friendlyErrorMessage(error))"
         }
@@ -326,57 +464,41 @@ struct AllVulnerabilitiesView: View {
 
     private func loadSummary() async {
         guard let client = manager.client else { return }
+        let target = overviewEnvironmentID
         do {
-            summary = try await client.vulnerabilities.environmentSummary(envID: environmentID)
+            let response = try await client.vulnerabilities.environmentSummary(envID: target)
+            guard target == overviewEnvironmentID else { return }
+            summary = response
         } catch {
             // Best effort.
         }
     }
 
+    /// All Environments merges every environment's image names.
     private func loadImageOptions() async {
         guard let client = manager.client else { return }
-        do {
-            imageOptions = try await client.vulnerabilities.imageOptions(
-                envID: environmentID,
-                severity: selectedSeverities.isEmpty ? nil : selectedSeverities.map(\.rawValue).joined(separator: ",")
-            )
-        } catch {
-            imageOptions = []
-        }
-    }
-
-    private func loadItems() async {
-        guard let client = manager.client else { return }
-        loadMoreError = nil
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            let response = try await client.vulnerabilities.listAll(
-                envID: environmentID,
-                query: SearchPaginationSort(search: focusedVulnerabilityID, start: (page - 1) * 50, limit: 50),
-                severity: selectedSeverities.isEmpty ? nil : selectedSeverities.map(\.rawValue).joined(separator: ","),
-                imageName: selectedImage,
-                fixAvailable: onlyFixAvailable ? true : nil
-            )
-            items = page == 1 ? response.data : items + response.data
-            hasMore = Int64(page * 50) < response.pagination.totalItems
-        } catch {
-            if page > 1 {
-                loadMoreError = friendlyErrorMessage(error)
-            } else {
-                errorMessage = friendlyErrorMessage(error)
+        let environments = await environmentsStore.listEnvironments(
+            environmentID, allEnvironments: allEnvironments, manager: manager)
+        let severity = severityQuery
+        let options = await withTaskGroup(of: [String]?.self) { group in
+            for environment in environments {
+                group.addTask {
+                    try? await client.vulnerabilities.imageOptions(envID: environment.id, severity: severity)
+                }
             }
+            var merged: [[String]] = []
+            for await result in group {
+                if let result { merged.append(result) }
+            }
+            return merged
         }
+        imageOptions =
+            environments.count == 1
+            ? options.first ?? []
+            : Array(Set(options.joined())).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
-    private func loadMore() async {
-        guard hasMore, !isLoading else { return }
-        page += 1
-        await loadItems()
-        if loadMoreError != nil { page -= 1 }
-    }
-
-    private func exportCSV() async {
+    private func exportCSV(_ environmentID: EnvironmentID) async {
         guard let client = manager.client else { return }
         isExporting = true
         defer { isExporting = false }
@@ -384,7 +506,7 @@ struct AllVulnerabilitiesView: View {
             let data = try await client.vulnerabilities.exportAll(
                 envID: environmentID,
                 search: focusedVulnerabilityID,
-                severity: selectedSeverities.isEmpty ? nil : selectedSeverities.map(\.rawValue).joined(separator: ","),
+                severity: severityQuery,
                 imageName: selectedImage,
                 fixAvailable: onlyFixAvailable ? true : nil
             )
@@ -403,6 +525,7 @@ struct AllVulnerabilitiesView: View {
 
 struct VulnerabilityWithImageRow: View {
     let item: Arcane.VulnerabilityWithImage
+    var environmentName: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -412,6 +535,7 @@ struct VulnerabilityWithImageRow: View {
                 Text(item.imageName).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
                 Text(item.pkgName + (item.installedVersion.isEmpty ? "" : " · \(item.installedVersion)"))
                     .font(.caption).foregroundStyle(.secondary)
+                EnvironmentLabel(name: environmentName)
             }
             Spacer()
             if let cvss = item.preferredCVSS {
@@ -470,6 +594,11 @@ struct VulnerabilityWithImageDetailView: View {
         .navigationTitle(record.vulnerabilityId)
         .navigationBarTitleDisplayMode(.inline)
     }
+}
+
+extension Arcane.VulnerabilityWithImage: @retroactive Identifiable {
+    /// One package version's finding in one image.
+    nonisolated public var id: String { "\(imageId)|\(vulnerabilityId)|\(pkgName)|\(installedVersion)" }
 }
 
 extension Arcane.VulnerabilityWithImage {

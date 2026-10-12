@@ -22,8 +22,7 @@ struct ScrollableTabOption<Selection: Hashable>: Identifiable {
 }
 
 /// Floating tab bar used by detail pages: pills sit detached below the
-/// navigation bar with the app's standard 16pt margins, centered. When every
-/// option fits, the row is static and centered; when it overflows, it scrolls.
+/// navigation bar, centered when they fit and horizontally scrollable otherwise.
 struct ScrollableTabBar<Selection: Hashable>: View {
     @Binding private var selection: Selection
     private let options: [ScrollableTabOption<Selection>]
@@ -40,17 +39,20 @@ struct ScrollableTabBar<Selection: Hashable>: View {
     }
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            optionsStack
-                .frame(maxWidth: .infinity)
-
+        ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 optionsStack
                     .padding(.horizontal, 16)
             }
             .scrollIndicators(.hidden)
+            .defaultScrollAnchor(.center, for: .alignment)
+            .onAppear {
+                proxy.scrollTo(selection, anchor: .center)
+            }
+            .onChange(of: selection) { _, value in
+                proxy.scrollTo(value, anchor: .center)
+            }
         }
-        .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
         .background(Color(uiColor: .systemGroupedBackground))
@@ -62,6 +64,7 @@ struct ScrollableTabBar<Selection: Hashable>: View {
         HStack(spacing: 8) {
             ForEach(options) { option in
                 optionButton(option)
+                    .id(option.value)
             }
         }
     }

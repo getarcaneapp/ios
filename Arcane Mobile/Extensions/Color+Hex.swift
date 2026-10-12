@@ -22,7 +22,7 @@ extension Color {
 }
 
 extension EnvironmentValues {
-    @Entry var appAccentColor: Color = .blue
+    @Entry var appAccentColor: Color = .accentColor
 }
 
 extension View {
@@ -32,7 +32,7 @@ extension View {
     func appAccentColor(_ color: Color?) -> some View {
         accentColor(color)
             .tint(color)
-            .environment(\.appAccentColor, color ?? .blue)
+            .environment(\.appAccentColor, color ?? .accentColor)
     }
 
     /// Applies Arcane's saved accent directly to a toolbar symbol. iOS 26

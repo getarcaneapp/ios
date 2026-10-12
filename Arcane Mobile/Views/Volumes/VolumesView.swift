@@ -7,28 +7,27 @@ struct VolumesView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     let environmentID: EnvironmentID
     let environmentName: String
+    /// All Environments preview: list and act on resources from every enabled environment.
+    var allEnvironments = false
 
-    @State private var volumes: [Volume] = []
-    @State private var sizes: [String: Int64] = [:]
-    @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var list = EnvironmentPagedList<Volume>(pageSize: Self.pageSize)
+    /// Volume sizes by environment, then by volume name — names repeat across environments.
+    @State private var sizes: [EnvironmentID: [String: Int64]] = [:]
     @State private var actionErrorMessage: String?
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var showCreateSheet = false
+    @State private var createEnvironmentID: EnvironmentID?
     @State private var pendingDestructive: VolumeDestructive?
     @State private var showFilterSheet = false
+    @State private var environmentFilter: EnvironmentID?
     @State private var scopeFilter = VolumeScopeFilter.all
     @State private var sortOrder = ListSortOrder.ascending
-    @State private var pagination = ProgressivePaginationState()
-    @State private var hasMore = false
-    @State private var totalItemCount: Int64?
-    @State private var isLoadingMore = false
-    @State private var loadMoreError: String?
     @State private var loadGeneration = 0
-    @State private var sections: [StableListSection<String, Volume>] = []
+    @State private var sections: [StableListSection<String, EnvironmentItem<Volume>>] = []
 
     @State private var isSelecting = false
     @State private var selection = Set<String>()
@@ -39,21 +38,43 @@ struct VolumesView: View {
     /// (one full-screen cover per view).
     private enum VolumeDestructive {
         case prune
-        case delete(Volume)
+        case delete(EnvironmentItem<Volume>)
         case bulkDelete([String])
     }
 
-    private var activeFilterCount: Int { scopeFilter != .all ? 1 : 0 }
+    private var volumes: [EnvironmentItem<Volume>] { list.items }
+
+    /// The environments this list covers, known before the first load finishes.
+    private var listEnvironments: [ListEnvironment] {
+        allEnvironments ? list.environments : [ListEnvironment(id: environmentID, name: nil)]
+    }
+
+    /// Environments offered by Create Volume.
+    private var createEnvironments: [ListEnvironment] {
+        guard allEnvironments else { return listEnvironments }
+        return listEnvironments.filter { manager.permissions.has(Permission.Volumes.create, in: $0.id) }
+    }
+
+    private var activeFilterCount: Int {
+        var count = scopeFilter != .all ? 1 : 0
+        if environmentFilter != nil { count += 1 }
+        return count
+    }
 
     private var pinnedIDs: Set<String> {
-        pinnedStore.pinnedIDs(kind: .volume, envID: environmentID)
+        pinnedStore.pinnedIDs(kind: .volume, in: volumes)
+    }
+
+    private func size(of volume: EnvironmentItem<Volume>) -> Int64? {
+        sizes[volume.environmentID]?[volume.name]
     }
 
     /// Filters + sorts once and partitions in a single pass. Pure — reads the
     /// current inputs and returns the grouped sections without touching state.
-    private func computeSections() -> [StableListSection<String, Volume>] {
+    private func computeSections() -> [StableListSection<String, EnvironmentItem<Volume>>] {
         let query = debouncedSearchText
         let filtered = volumes.filter { volume in
+            guard environmentFilter == nil || volume.environmentID == environmentFilter else { return false }
             let matchesSearch =
                 query.isEmpty || volume.name.localizedCaseInsensitiveContains(query)
                 || volume.driver.localizedCaseInsensitiveContains(query)
@@ -67,9 +88,9 @@ struct VolumesView: View {
             sortOrder.areInIncreasingOrder($0.name, $1.name)
         }
         let pinned: Set<String> = pinnedIDs
-        var pinnedItems: [Volume] = []
-        var used: [Volume] = []
-        var unused: [Volume] = []
+        var pinnedItems: [EnvironmentItem<Volume>] = []
+        var used: [EnvironmentItem<Volume>] = []
+        var unused: [EnvironmentItem<Volume>] = []
         for volume in filtered {
             if pinned.contains(volume.id) {
                 pinnedItems.append(volume)
@@ -96,18 +117,16 @@ struct VolumesView: View {
     }
 
     private var mutationVersion: Int {
-        mutationStore.version(kind: .volumes, envID: environmentID)
+        allEnvironments
+            ? mutationStore.version(kind: .volumes, in: list.environments)
+            : mutationStore.version(kind: .volumes, envID: environmentID)
     }
 
     /// Per-section item counts — drives the List's implicit reflow animation so a
     /// programmatic insert/remove animates too.
 
-    private var selectedVolumes: [Volume] {
+    private var selectedVolumes: [EnvironmentItem<Volume>] {
         volumes.filter { selection.contains($0.id) }
-    }
-
-    private var selectedVolumeNames: [String] {
-        selectedVolumes.map(\.name)
     }
 
     private var bulkPrimaryItem: ActionButtonItem? {
@@ -118,43 +137,56 @@ struct VolumesView: View {
             systemImage: "trash",
             tint: .red
         ) {
-            pendingDestructive = .bulkDelete(selectedVolumeNames)
+            pendingDestructive = .bulkDelete(selectedVolumes.map(\.id))
         }
     }
 
     var body: some View {
         LoadingCrossfade(
-            showSkeleton: isLoading && volumes.isEmpty,
+            showSkeleton: list.isLoading && volumes.isEmpty,
             animatesTransition: false
         ) {
             ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } content: {
-            if let error = errorMessage, volumes.isEmpty {
+            if let error = list.errorMessage, volumes.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load Volumes", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(error)
                 } actions: {
-                    Button("Retry") { Task { await loadVolumes(reset: true) } }
+                    Button("Retry") { Task { await loadVolumes() } }
                 }
             } else if volumes.isEmpty {
                 ContentUnavailableView {
                     Label("No Volumes", systemImage: "externaldrive")
                 } description: {
-                    Text("No volumes found in this environment.")
+                    Text(
+                        allEnvironments
+                            ? "No volumes found in any environment." : "No volumes found in this environment.")
                 } actions: {
-                    Button("Create Volume") { showCreateSheet = true }
+                    if allEnvironments {
+                        EnvironmentActionButton(
+                            title: "Create Volume", systemImage: "plus", environments: createEnvironments
+                        ) { environmentID in
+                            presentCreate(in: environmentID)
+                        }
+                    } else {
+                        Button("Create Volume") { presentCreate(in: environmentID) }
+                    }
                 }
             } else {
                 List(selection: BulkListSelection.binding($selection, isSelecting: isSelecting)) {
+                    EnvironmentLoadFailuresSection(failures: list.failedEnvironments) {
+                        Task { await loadVolumes() }
+                    }
                     StableSectionedList(
                         sections,
                         preferredHeaderAccessorySectionID: "used",
                         headerAccessory: { _ in
                             ResourceCountLabel(
                                 loadedCount: volumes.count,
-                                totalCount: totalItemCount,
-                                hasMore: hasMore
+                                totalCount: list.totalItems,
+                                hasMore: list.hasMore
                             )
                         }
                     ) { volume in
@@ -162,8 +194,8 @@ struct VolumesView: View {
                     }
 
                     PaginatedListFooter(
-                        hasMore: hasMore,
-                        loadMoreError: loadMoreError,
+                        hasMore: list.hasMore,
+                        loadMoreError: list.loadMoreError,
                         onRetry: { Task { await loadMore() } },
                         onLoadMore: { Task { await loadMore() } }
                     )
@@ -179,6 +211,18 @@ struct VolumesView: View {
         .toolbar {
             if !isSelecting {
                 AppToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showFilterSheet = true
+                    } label: {
+                        Image(
+                            systemName: activeFilterCount > 0
+                                ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                        )
+                        .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Filter")
+                }
+                AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
                             enterSelectionMode()
@@ -186,25 +230,13 @@ struct VolumesView: View {
                             Label("Select", systemImage: "checklist")
                         }
                         Divider()
-                        Picker("Sort", selection: $sortOrder) {
-                            ForEach(ListSortOrder.allCases) { order in
-                                Label(order.title, systemImage: order.systemImage).tag(order)
-                            }
-                        }
-                        Button {
-                            showFilterSheet = true
-                        } label: {
-                            Label(
-                                activeFilterCount > 0 ? "Filter (\(activeFilterCount))" : "Filter…",
-                                systemImage: "line.3.horizontal.decrease.circle"
-                            )
-                        }
-                        Divider()
                         Button(role: .destructive) {
                             pendingDestructive = .prune
                         } label: {
                             DestructiveLabel(text: "Prune Unused Volumes")
                         }
+                        .tint(.red)
+                        .disabled(allEnvironments && AllEnvironmentsOperationStore.shared.isRunning)
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .appAccentToolbarSymbol()
@@ -218,30 +250,41 @@ struct VolumesView: View {
                     }
                 }
             }
-            if #available(iOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
 
             if !isSelecting {
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showCreateSheet = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .appAccentToolbarSymbol()
+                    if allEnvironments {
+                        EnvironmentActionButton(
+                            title: "Create Volume", systemImage: "plus", environments: createEnvironments
+                        ) { environmentID in
+                            presentCreate(in: environmentID)
+                        }
+                        .labelStyle(.iconOnly)
+                        .appAccentToolbarSymbol()
+                        .accessibilityLabel("Create volume")
+                    } else {
+                        Button {
+                            presentCreate(in: environmentID)
+                        } label: {
+                            Image(systemName: "plus")
+                                .appAccentToolbarSymbol()
+                        }
+                        .accessibilityLabel("Create volume")
                     }
-                    .accessibilityLabel("Create volume")
                 }
             }
         }
-        .task { await loadVolumes(reset: true) }
-        .refreshable { await loadVolumes(reset: true, refresh: true) }
+        .task { await loadVolumes() }
+        .refreshable { await loadVolumes(refresh: true) }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
-        .navigationDestination(for: Volume.self) { volume in
-            VolumeDetailView(volume: volume, environmentID: environmentID)
+        .navigationDestination(for: EnvironmentItem<Volume>.self) { volume in
+            VolumeDetailView(volume: volume.value, environmentID: volume.environmentID)
         }
         .sheet(isPresented: $showCreateSheet) {
-            CreateVolumeView(environmentID: environmentID) {}
+            CreateVolumeView(environmentID: createEnvironmentID ?? environmentID) {}
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -250,7 +293,9 @@ struct VolumesView: View {
             case .prune:
                 return DeleteConfirmationConfig(
                     title: "Prune Unused Volumes",
-                    message: "All unused volumes will be permanently deleted.",
+                    message: allEnvironments
+                        ? ResourcePruneAction.volumes.allEnvironmentsMessage
+                        : "All unused volumes will be permanently deleted.",
                     icon: "trash",
                     actions: [
                         DeleteConfirmationAction(title: "Prune") {
@@ -269,15 +314,15 @@ struct VolumesView: View {
                         }
                     ]
                 )
-            case .bulkDelete(let names):
+            case .bulkDelete(let ids):
                 return DeleteConfirmationConfig(
                     title: "Delete Volumes",
-                    message: "Delete \(names.count) selected volume"
-                        + "\(names.count == 1 ? "" : "s")? This cannot be undone.",
+                    message: "Delete \(ids.count) selected volume"
+                        + "\(ids.count == 1 ? "" : "s")? This cannot be undone.",
                     icon: "trash",
                     actions: [
                         DeleteConfirmationAction(title: "Delete") {
-                            Task { await bulkDeleteVolumes(names: names) }
+                            Task { await bulkDeleteVolumes(ids: ids) }
                         }
                     ]
                 )
@@ -297,6 +342,16 @@ struct VolumesView: View {
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
                 Form {
+                    Section("Sort") {
+                        Picker("Sort", selection: $sortOrder) {
+                            ForEach(ListSortOrder.allCases) { order in
+                                Label(order.title, systemImage: order.systemImage).tag(order)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
+                    EnvironmentFilterSection(environments: list.environments, selection: $environmentFilter)
                     Section("Scope") {
                         Picker("Scope", selection: $scopeFilter) {
                             ForEach(VolumeScopeFilter.allCases, id: \.self) { filter in
@@ -315,13 +370,15 @@ struct VolumesView: View {
                     }
                 }
             }
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
+            .presentationContentInteraction(.resizes)
             .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadVolumes(reset: true, refresh: true) }
+            Task { await loadVolumes(refresh: true) }
         }
         .onChange(of: debouncedSearchText) { rebuildSections() }
+        .onChange(of: environmentFilter) { rebuildSections() }
         .onChange(of: scopeFilter) { rebuildSections() }
         .onChange(of: sortOrder) { rebuildSections() }
         .onChange(of: pinnedIDs) { rebuildSections() }
@@ -334,10 +391,14 @@ struct VolumesView: View {
         )
     }
 
-    private func volumeLink(_ volume: Volume) -> some View {
+    private func volumeLink(_ volume: EnvironmentItem<Volume>) -> some View {
         let isPinned = pinnedIDs.contains(volume.id)
         return NavigationLink(value: volume) {
-            VolumeRow(volume: volume, size: sizes[volume.name], isPinned: isPinned)
+            VolumeRow(
+                volume: volume.value, size: size(of: volume), isPinned: isPinned,
+                environmentName: volume.environmentName
+            )
+            .rowEnvironment(volume)
         }
         .contextMenu {
             if !isSelecting {
@@ -385,6 +446,11 @@ struct VolumesView: View {
         }
     }
 
+    private func presentCreate(in environmentID: EnvironmentID) {
+        createEnvironmentID = environmentID
+        showCreateSheet = true
+    }
+
     private func enterSelectionMode() {
         HapticsManager.light()
         isSelecting = true
@@ -399,22 +465,22 @@ struct VolumesView: View {
         selection.formIntersection(validIDs)
     }
 
-    private func togglePinAfterSwipe(_ volume: Volume) {
+    private func togglePinAfterSwipe(_ volume: EnvironmentItem<Volume>) {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(250))
             togglePin(volume)
         }
     }
 
-    private func togglePin(_ volume: Volume) {
+    private func togglePin(_ volume: EnvironmentItem<Volume>) {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            pinnedStore.togglePin(volume.id, kind: .volume, envID: environmentID)
+            pinnedStore.togglePin(volume, kind: .volume)
         }
     }
 
-    private func volumePreview(_ volume: Volume) -> some View {
+    private func volumePreview(_ volume: EnvironmentItem<Volume>) -> some View {
         var badges: [RowPreviewCard.PreviewBadge] = []
         badges.append(
             .init(
@@ -424,11 +490,14 @@ struct VolumesView: View {
             .init(icon: "gearshape", label: "Driver", value: volume.driver),
             .init(icon: "globe", label: "Scope", value: volume.scope.capitalized),
         ]
-        if let size = sizes[volume.name], size > 0 {
+        if let size = size(of: volume), size > 0 {
             details.insert(.init(icon: "internaldrive", label: "Size", value: size.byteString), at: 0)
         }
         if !volume.mountpoint.isEmpty {
             details.append(.init(icon: "folder", label: "Mount Point", value: volume.mountpoint))
+        }
+        if let environmentName = volume.environmentName {
+            details.append(.init(icon: "server.rack", label: "Environment", value: environmentName))
         }
         return RowPreviewCard(
             icon: "externaldrive.fill",
@@ -439,57 +508,50 @@ struct VolumesView: View {
         )
     }
 
-    private func loadVolumes(reset: Bool, refresh: Bool = false) async {
+    private func loadVolumes(refresh: Bool = false) async {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
-        if reset {
-            _ = pagination.reset()
-            hasMore = false
-            totalItemCount = nil
-        }
-        let start = pagination.nextStart
-        if volumes.isEmpty { isLoading = true }
-        errorMessage = nil
-        loadMoreError = nil
-        defer {
-            if loadGeneration == generation {
-                isLoading = false
-            }
-        }
-        do {
-            // `PaginatedResponse<Volume>` is Decodable-only, so we can't route
-            // it through the cache layer (which requires Codable). Fetch
-            // directly through the SDK.
+        let environments = await environmentsStore.listEnvironments(
+            environmentID, allEnvironments: allEnvironments, manager: manager)
+        await list.reload(environments, fetch: volumesPage(client: client))
+        rebuildSections()
+        guard loadGeneration == generation, !Task.isCancelled else { return }
+        await loadSizes(for: environments.map(\.id), refresh: refresh)
+    }
+
+    private func loadMore() async {
+        guard let client = manager.client else { return }
+        await list.loadMore(fetch: volumesPage(client: client))
+        rebuildSections()
+        let missing = list.environments.map(\.id).filter { sizes[$0] == nil }
+        if !missing.isEmpty { await loadSizes(for: missing) }
+    }
+
+    private func volumesPage(client: ArcaneClient) -> EnvironmentPagedList<Volume>.Fetch {
+        // `PaginatedResponse<Volume>` is Decodable-only, so we can't route
+        // it through the cache layer (which requires Codable). Fetch
+        // directly through the SDK.
+        return { environmentID, start, limit in
             let response = try await client.volumes.list(
                 envID: environmentID,
-                query: .init(start: start, limit: Self.pageSize)
+                query: .init(start: start, limit: limit)
             )
-            applyVolumesPage(response, reset: reset, start: start, generation: generation)
-        } catch {
-            guard loadGeneration == generation else { return }
-            if reset { errorMessage = friendlyErrorMessage(error) } else { loadMoreError = friendlyErrorMessage(error) }
-        }
-        guard loadGeneration == generation, !Task.isCancelled else { return }
-        if reset || sizes.isEmpty {
-            await loadSizes(refresh: refresh)
+            return ResourcePage(items: response.data, pagination: response.pagination)
         }
     }
 
-    private func applyVolumesPage(_ response: PaginatedResponse<Volume>, reset: Bool, start: Int, generation: Int) {
-        guard loadGeneration == generation else { return }
-        volumes = PaginationLoader.merge(current: volumes, incoming: response.data, reset: reset)
-        pagination.receive(
-            pagination: response.pagination, itemCount: response.data.count,
-            requestedStart: start, requestedLimit: Self.pageSize,
-            generation: pagination.generation
-        )
-        hasMore = pagination.hasMore
-        totalItemCount = pagination.totalItems
-        rebuildSections()
+    /// Sizes come per environment (`volumes/sizes` isn't paginated), so each
+    /// environment in the list loads its own map.
+    private func loadSizes(for environmentIDs: [EnvironmentID], refresh: Bool = false) async {
+        await withTaskGroup(of: Void.self) { group in
+            for environmentID in environmentIDs {
+                group.addTask { await loadSizes(for: environmentID, refresh: refresh) }
+            }
+        }
     }
 
-    private func loadSizes(refresh: Bool = false) async {
+    private func loadSizes(for environmentID: EnvironmentID, refresh: Bool) async {
         guard let client = manager.client, let cached = manager.cached else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "volumes/sizes")
@@ -497,51 +559,50 @@ struct VolumesView: View {
                 path, as: [VolumeSizeInfo].self, policy: .volumes,
                 envID: environmentID, refresh: refresh,
                 onFresh: { fresh in
-                    sizes = Dictionary(fresh.map { ($0.name, $0.size) }, uniquingKeysWith: { _, new in new })
+                    sizes[environmentID] = Dictionary(
+                        fresh.map { ($0.name, $0.size) }, uniquingKeysWith: { _, new in new })
                 }
             ) {
-                sizes = Dictionary(entries.map { ($0.name, $0.size) }, uniquingKeysWith: { _, new in new })
+                sizes[environmentID] = Dictionary(
+                    entries.map { ($0.name, $0.size) }, uniquingKeysWith: { _, new in new })
             }
         } catch {
             // Slow / unsupported on some hosts — leave sizes blank silently.
         }
     }
 
-    private func loadMore() async {
-        guard hasMore, !isLoadingMore else { return }
-        isLoadingMore = true
-        defer { isLoadingMore = false }
-        await loadVolumes(reset: false)
-    }
-
-    private func deleteVolume(_ volume: Volume) async {
+    private func deleteVolume(_ volume: EnvironmentItem<Volume>) async {
         guard let client = manager.client else { return }
         do {
-            try await client.volumes.remove(envID: environmentID, name: volume.name)
+            try await client.volumes.remove(envID: volume.environmentID, name: volume.name)
             withAnimation {
-                volumes.removeAll { $0.name == volume.name }
+                list.update { $0.removeAll { $0.id == volume.id } }
                 rebuildSections()
             }
-            await invalidateVolumeCaches()
-            mutationStore.markChanged(kind: .volumes, envID: environmentID)
+            await invalidateVolumeCaches(volume.environmentID)
+            mutationStore.markChanged(kind: .volumes, envID: volume.environmentID)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
     }
 
     private func pruneVolumes() async {
+        if allEnvironments {
+            await AllEnvironmentsOperationStore.shared.performPrune(
+                .volumes, environments: environmentsStore.enabledEnvironments, manager: manager)
+            return
+        }
         guard let client = manager.client else { return }
         do {
-            let path = client.rest.environmentPath(environmentID, "volumes/prune")
-            let _: DataResponse<String> = try await client.rest.post(path, body: String?.none)
-            await invalidateVolumeCaches()
+            try await ResourcePruneAction.volumes.perform(client: client, environmentID: environmentID)
+            await invalidateVolumeCaches(environmentID)
             mutationStore.markChanged(kind: .volumes, envID: environmentID)
         } catch {
             actionErrorMessage = friendlyErrorMessage(error)
         }
     }
 
-    private func bulkDeleteVolumes(names: [String]) async {
+    private func bulkDeleteVolumes(ids: [String]) async {
         guard let client = manager.client else { return }
         isBulkRunning = true
         bulkRunningActionID = "bulk-delete"
@@ -549,28 +610,34 @@ struct VolumesView: View {
             isBulkRunning = false
             bulkRunningActionID = nil
         }
-        let result = await BulkActionRunner.run(ids: names) { name in
-            try await client.volumes.remove(envID: environmentID, name: name)
+        let targets = volumes.filter { ids.contains($0.id) }
+        let byID = Dictionary(uniqueKeysWithValues: targets.map { ($0.id, $0) })
+        let result = await BulkActionRunner.run(ids: targets.map(\.id)) { id in
+            guard let volume = byID[id] else { return }
+            try await client.volumes.remove(envID: volume.environmentID, name: volume.name)
         }
-        let failedNames = Set(result.failed.map(\.id))
-        let removedNames = Set(names.filter { !failedNames.contains($0) })
-        volumes.removeAll { removedNames.contains($0.name) }
-        for name in removedNames {
-            sizes.removeValue(forKey: name)
+        let failedIDs = Set(result.failed.map(\.id))
+        let removed = targets.filter { !failedIDs.contains($0.id) }
+        let removedIDs = Set(removed.map(\.id))
+        list.update { $0.removeAll { removedIDs.contains($0.id) } }
+        for volume in removed {
+            sizes[volume.environmentID]?.removeValue(forKey: volume.name)
         }
         rebuildSections()
-        await invalidateVolumeCaches()
-        mutationStore.markChanged(kind: .volumes, envID: environmentID)
+        for environment in Set(targets.map(\.environmentID)) {
+            await invalidateVolumeCaches(environment)
+            mutationStore.markChanged(kind: .volumes, envID: environment)
+        }
         exitSelectionMode()
         if result.failed.isEmpty {
             showToast(.success("Deleted \(result.succeeded) volume\(result.succeeded == 1 ? "" : "s")"))
             ReviewPrompter.shared.recordSuccess()
         } else {
-            showToast(.error("\(result.failed.count) of \(names.count) failed"))
+            showToast(.error("\(result.failed.count) of \(targets.count) failed"))
         }
     }
 
-    private func invalidateVolumeCaches() async {
+    private func invalidateVolumeCaches(_ environmentID: EnvironmentID) async {
         guard let cached = manager.cached, let client = manager.client else { return }
         await cached.invalidate(
             envID: environmentID,
@@ -645,7 +712,7 @@ struct VolumeRow: View {
                             .lineLimit(nil)
                     }
                 }
-                FleetEnvironmentLabel(name: environmentName)
+                EnvironmentLabel(name: environmentName)
             }
         }
 

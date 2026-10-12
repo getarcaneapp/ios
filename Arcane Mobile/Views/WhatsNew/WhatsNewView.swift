@@ -154,20 +154,14 @@ private struct WhatsNewReleaseContent: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(bullets.enumerated()), id: \.offset) { _, bullet in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("•")
-                            .foregroundStyle(.tertiary)
-                            .accessibilityHidden(true)
-                        ViewThatFits(in: .horizontal) {
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text(verbatim: bullet.text)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                if let badge = bullet.badge { releaseBadge(badge) }
-                            }
-                            VStack(alignment: .leading, spacing: 6) {
-                                if let badge = bullet.badge { releaseBadge(badge) }
-                                Text(verbatim: bullet.text)
-                            }
+                    if let badge = bullet.badge {
+                        BadgedReleaseNote(text: bullet.text, badge: badge)
+                    } else {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("•")
+                                .foregroundStyle(.tertiary)
+                                .accessibilityHidden(true)
+                            Text(verbatim: bullet.text)
                         }
                     }
                 }
@@ -178,14 +172,52 @@ private struct WhatsNewReleaseContent: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    private func releaseBadge(_ badge: ReleaseNote.Badge) -> some View {
+}
+
+/// A badged release note drawn as a tinted block quote: the badge label sits
+/// in the card's outline, cutting the line, and the note fills the card.
+private struct BadgedReleaseNote: View {
+    let text: String
+    let badge: ReleaseNote.Badge
+
+    private let shape = RoundedRectangle(cornerRadius: Radius.nested, style: .continuous)
+
+    private var label: some View {
         Text(badge.label)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(badge.color)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(badge.color.opacity(0.12), in: Capsule())
+            .padding(.horizontal, 5)
             .fixedSize()
+    }
+
+    var body: some View {
+        Text(verbatim: text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+            .background(badge.color.opacity(0.12), in: shape)
+            .overlay {
+                // The label hides the outline behind it so the text interrupts the line.
+                shape
+                    .strokeBorder(badge.color.opacity(0.5), lineWidth: 1)
+                    .mask {
+                        Rectangle()
+                            .overlay(alignment: .topLeading) { legend.background(.black).blendMode(.destinationOut) }
+                            .compositingGroup()
+                    }
+            }
+            .overlay(alignment: .topLeading) { legend }
+            .padding(.top, 6)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(badge.label): \(text)")
+    }
+
+    /// Centered vertically on the card's top edge, inset from the corner.
+    private var legend: some View {
+        label
+            .alignmentGuide(.top) { $0[VerticalAlignment.center] }
+            .alignmentGuide(.leading) { $0[.leading] - 10 }
     }
 }
 

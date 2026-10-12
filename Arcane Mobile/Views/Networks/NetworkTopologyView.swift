@@ -3,15 +3,46 @@ import SwiftUI
 
 struct NetworkTopologyView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     let environmentID: EnvironmentID
+    /// All Environments preview: a topology covers one environment, so the
+    /// toolbar picks which one the graph shows.
+    var allEnvironments = false
 
     @State private var topology: NetworkTopology?
-    @State private var isLoading = false
+    /// The environment a load is in flight for.
+    @State private var loadingEnvironmentID: EnvironmentID?
     @State private var errorMessage: String?
     @State private var selectedNode: TopologyNode?
+    @State private var chosenEnvironmentID: EnvironmentID?
 
-    private var clientIdentity: ObjectIdentifier? {
-        manager.client.map { ObjectIdentifier($0.transport) }
+    private var isLoading: Bool { loadingEnvironmentID != nil }
+
+    /// The environment the graph shows: the view's own, or the toolbar choice.
+    private var shownEnvironmentID: EnvironmentID {
+        allEnvironments ? chosenEnvironmentID ?? environmentID : environmentID
+    }
+
+    private struct LoadKey: Hashable {
+        let client: ObjectIdentifier?
+        let environmentID: EnvironmentID
+    }
+
+    private var loadKey: LoadKey {
+        LoadKey(client: manager.client.map { ObjectIdentifier($0.transport) }, environmentID: shownEnvironmentID)
+    }
+
+    private var environmentSelection: Binding<EnvironmentID> {
+        Binding(
+            get: { shownEnvironmentID },
+            set: { newValue in
+                guard newValue != shownEnvironmentID else { return }
+                chosenEnvironmentID = newValue
+                topology = nil
+                errorMessage = nil
+                selectedNode = nil
+            }
+        )
     }
 
     var body: some View {
@@ -52,6 +83,20 @@ struct NetworkTopologyView: View {
         .navigationTitle("Network Topology")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if allEnvironments {
+                AppToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Picker("Environment", selection: environmentSelection) {
+                            ForEach(environmentsStore.enabledEnvironments, id: \.id) { environment in
+                                Text(environment.displayName).tag(EnvironmentID(rawValue: environment.id))
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "server.rack")
+                    }
+                    .accessibilityLabel("Environment")
+                }
+            }
             AppToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     Task { await loadTopology(refresh: true) }
@@ -66,7 +111,10 @@ struct NetworkTopologyView: View {
                 .accessibilityLabel("Refresh network topology")
             }
         }
-        .task(id: clientIdentity) { await loadTopology() }
+        .task(id: loadKey) { await loadTopology() }
+        .task {
+            if allEnvironments { await environmentsStore.load(manager: manager) }
+        }
         .sheet(item: $selectedNode) { node in
             if let topology {
                 TopologyNodeDetailSheet(node: node, topology: topology)
@@ -77,15 +125,16 @@ struct NetworkTopologyView: View {
     }
 
     private func loadTopology(refresh: Bool = false) async {
-        guard !isLoading, let client = manager.client else { return }
-        isLoading = true
+        let target = shownEnvironmentID
+        guard loadingEnvironmentID != target, let client = manager.client else { return }
+        loadingEnvironmentID = target
         if topology == nil {
             errorMessage = nil
         }
-        defer { isLoading = false }
+        defer { if loadingEnvironmentID == target { loadingEnvironmentID = nil } }
 
         do {
-            let path = client.rest.environmentPath(environmentID, "networks/topology")
+            let path = client.rest.environmentPath(target, "networks/topology")
             let response = try await RemoteDataLimits.boundedAPIResponse(
                 client: client,
                 path: path,
@@ -98,10 +147,13 @@ struct NetworkTopologyView: View {
                     maximumItems: RemoteDataLimits.maximumTopologyEdges
                 )
             }
+            // The environment choice changed while this load was in flight.
+            guard target == shownEnvironmentID else { return }
             topology = response
             errorMessage = nil
             selectedNode = nil
         } catch {
+            guard target == shownEnvironmentID else { return }
             let message = friendlyErrorMessage(error)
             if topology == nil {
                 errorMessage = message

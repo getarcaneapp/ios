@@ -15,11 +15,11 @@ private struct EnvironmentContextModifier: ViewModifier {
     let onSelect: () -> Void
 
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @SwiftUI.Environment(FleetStore.self) private var fleet
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     @State private var showsPicker = false
 
     private var selectableEnvironments: [Arcane.Environment] {
-        fleet.environments
+        environmentsStore.environments
             .filter { $0.enabled || $0.id == manager.activeEnvironmentID.rawValue }
             .sorted {
                 $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
@@ -75,7 +75,7 @@ private struct EnvironmentContextModifier: ViewModifier {
                 }
             }
             .task(id: manager.clientGeneration) {
-                if isVisible { await fleet.load(manager: manager) }
+                if isVisible { await environmentsStore.load(manager: manager) }
             }
     }
 }
@@ -153,11 +153,11 @@ private struct EnvironmentContextPicker: View {
 
 struct EnvironmentSwitcherToolbarButton: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
-    @SwiftUI.Environment(FleetStore.self) private var fleet
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     @State private var showsPicker = false
 
     private var selectableEnvironments: [Arcane.Environment] {
-        fleet.environments
+        environmentsStore.environments
             .filter { $0.enabled || $0.id == manager.activeEnvironmentID.rawValue }
             .sorted {
                 $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending

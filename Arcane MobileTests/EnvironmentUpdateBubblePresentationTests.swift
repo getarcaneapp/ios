@@ -5,14 +5,14 @@ import UIKit
 
 @testable import Arcane_Mobile
 
-@Suite("Fleet update bubble presentation")
-struct FleetUpdateBubblePresentationTests {
+@Suite("Environment update bubble presentation")
+struct EnvironmentUpdateBubblePresentationTests {
     @Test
     func activeStatusesKeepTheirEnvironmentSymbol() {
-        #expect(FleetUpdateBubblePresentation(status: .pending) == .pending)
-        #expect(FleetUpdateBubblePresentation(status: .updating) == .updating)
-        #expect(FleetUpdateBubblePresentation.pending.terminalSymbol == nil)
-        #expect(FleetUpdateBubblePresentation.updating.terminalSymbol == nil)
+        #expect(EnvironmentUpdateBubblePresentation(status: .pending) == .pending)
+        #expect(EnvironmentUpdateBubblePresentation(status: .updating) == .updating)
+        #expect(EnvironmentUpdateBubblePresentation.pending.terminalSymbol == nil)
+        #expect(EnvironmentUpdateBubblePresentation.updating.terminalSymbol == nil)
     }
 
     @Test
@@ -22,7 +22,7 @@ struct FleetUpdateBubblePresentationTests {
             .upToDate,
             .triggered,
         ] {
-            let presentation = FleetUpdateBubblePresentation(status: status)
+            let presentation = EnvironmentUpdateBubblePresentation(status: status)
             #expect(presentation == .succeeded)
             #expect(presentation.terminalSymbol == "checkmark")
             #expect(presentation.isTerminal)
@@ -31,12 +31,12 @@ struct FleetUpdateBubblePresentationTests {
 
     @Test
     func unsuccessfulTerminalStatusesRemainDistinct() {
-        #expect(FleetUpdateBubblePresentation(status: .skippedOffline) == .skipped)
-        #expect(FleetUpdateBubblePresentation.skipped.terminalSymbol == "wifi.slash")
-        #expect(FleetUpdateBubblePresentation(status: .failed) == .failed)
-        #expect(FleetUpdateBubblePresentation.failed.terminalSymbol == "xmark")
-        #expect(FleetUpdateBubblePresentation(status: .unknown) == .unknown)
-        #expect(FleetUpdateBubblePresentation.unknown.terminalSymbol == "questionmark")
+        #expect(EnvironmentUpdateBubblePresentation(status: .skippedOffline) == .skipped)
+        #expect(EnvironmentUpdateBubblePresentation.skipped.terminalSymbol == "wifi.slash")
+        #expect(EnvironmentUpdateBubblePresentation(status: .failed) == .failed)
+        #expect(EnvironmentUpdateBubblePresentation.failed.terminalSymbol == "xmark")
+        #expect(EnvironmentUpdateBubblePresentation(status: .unknown) == .unknown)
+        #expect(EnvironmentUpdateBubblePresentation.unknown.terminalSymbol == "questionmark")
     }
 
     @MainActor
@@ -75,13 +75,13 @@ struct FleetUpdateBubblePresentationTests {
             ),
         ]
         let ringEnvironments = results.enumerated().map { index, result in
-            FleetUpdateRingEnvironment(
+            EnvironmentUpdateRingEnvironment(
                 result: result,
                 slotIndex: index,
                 totalCount: results.count
             )
         }
-        let model = FleetUpdateSceneModel(
+        let model = EnvironmentUpdateSceneModel(
             kind: .updating,
             title: "Updating environments",
             subtitle: "4 of 6 complete",
@@ -91,7 +91,7 @@ struct FleetUpdateBubblePresentationTests {
             activeEnvironment: results[2],
             ringEnvironments: ringEnvironments
         )
-        let fixture = FleetUpdateScene(model: model)
+        let fixture = EnvironmentUpdateScene(model: model)
             .frame(width: 350, height: 360)
             .padding(20)
             .background(Color(uiColor: .systemBackground))
@@ -102,6 +102,6 @@ struct FleetUpdateBubblePresentationTests {
         let image = try #require(renderer.uiImage)
 
         #expect(image.size == CGSize(width: 390, height: 400))
-        Attachment.record(image, named: "fleet-update-mixed-status-cycle", as: .png)
+        Attachment.record(image, named: "environment-update-mixed-status-cycle", as: .png)
     }
 }

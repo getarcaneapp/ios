@@ -110,11 +110,10 @@ struct VariablesView: View {
                     }
                 }
 
-                if #available(iOS 26, *), canSync, canCreate {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                }
-
                 if canCreate {
+                    if #available(iOS 26, *) {
+                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                    }
                     AppToolbarItem(placement: .navigationBarTrailing) {
                         Button {
                             editorRoute = .create

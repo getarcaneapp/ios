@@ -5,6 +5,7 @@ import UIKit
 struct ContainerDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore: EnvironmentsStore?
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -312,6 +313,11 @@ struct ContainerDetailView: View {
         return items
     }
 
+    /// This container's environment, which can differ from the active one in All Environments lists.
+    private var environmentName: String {
+        environmentsStore?.displayName(for: environmentID) ?? manager.activeEnvironmentName
+    }
+
     private func startContainerUpdate() {
         errorMessage = nil
         DeploymentActivityStore.shared.start(
@@ -319,7 +325,7 @@ struct ContainerDetailView: View {
             envID: environmentID,
             targetID: container.id,
             targetName: displayedName,
-            environmentName: manager.activeEnvironmentName,
+            environmentName: environmentName,
             manager: manager,
             mutationStore: mutationStore,
             updateTargets: [.init(id: container.id, name: displayedName)]
@@ -338,7 +344,7 @@ struct ContainerDetailView: View {
             envID: environmentID,
             targetID: container.id,
             targetName: displayedName,
-            environmentName: manager.activeEnvironmentName,
+            environmentName: environmentName,
             manager: manager,
             mutationStore: mutationStore
         )

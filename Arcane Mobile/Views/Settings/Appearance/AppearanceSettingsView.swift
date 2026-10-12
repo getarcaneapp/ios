@@ -57,27 +57,28 @@ enum AccentColorOption: String, CaseIterable, Identifiable {
 }
 
 struct AppearanceSettingsView: View {
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @AppStorage("accentColorHex") private var accentColorHex = ""
     @AppStorage("arcane.launchAnimationEnabled") private var launchAnimationEnabled = true
     @AppStorage("arcane.showTabLabels") private var showTabLabels = false
 
     // Derive the picker selection from the stored hex so the two cannot drift
-    // apart. An empty hex represents the blue system default. `nil` preserves
+    // apart. An empty hex represents the purple default. `nil` preserves
     // a custom hex stored by an older build until the user chooses a preset.
     private var selectedOption: AccentColorOption? {
-        if accentColorHex.isEmpty { return .blue }
+        if accentColorHex.isEmpty { return .purple }
         let normalized = accentColorHex.lowercased()
         return AccentColorOption.allCases.first { $0.hex.lowercased() == normalized }
     }
 
     private var selectedAccentColor: Color {
-        selectedOption?.color ?? Color(hex: accentColorHex) ?? .blue
+        selectedOption?.color ?? Color(hex: accentColorHex) ?? .purple
     }
 
-    /// Picker selection never stores empty: empty hex means the blue default.
+    /// Picker selection never stores empty: empty hex means the purple default.
     private var accentPickerSelection: Binding<String> {
         Binding(
-            get: { selectedOption?.hex ?? AccentColorOption.blue.hex },
+            get: { selectedOption?.hex ?? AccentColorOption.purple.hex },
             set: { accentColorHex = $0 }
         )
     }
@@ -114,6 +115,11 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
+                NavigationLink {
+                    EditTabsView(availableTabs: Set(AppTab.allCases.filter(manager.canAccess)))
+                } label: {
+                    SettingsRow(title: "Edit Tabs", systemImage: "rectangle.3.group.fill", color: .indigo)
+                }
                 Toggle(isOn: $showTabLabels) {
                     SettingsRow(
                         title: "Show Tab Labels",

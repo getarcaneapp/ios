@@ -48,10 +48,6 @@ private struct ResourceActionToolbarModifier: ViewModifier {
                         }
                     }
 
-                    if #available(iOS 26, *), primary != nil, !menuItems.isEmpty {
-                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                    }
-
                     if !menuItems.isEmpty {
                         AppToolbarItem(placement: .topBarTrailing) {
                             Menu {
@@ -65,6 +61,7 @@ private struct ResourceActionToolbarModifier: ViewModifier {
                                             Label(item.title, systemImage: item.systemImage)
                                         }
                                     }
+                                    .tint(menuRole(item) == .destructive ? Color.red : nil)
                                     .disabled(disabled(item))
                                 }
                             } label: {

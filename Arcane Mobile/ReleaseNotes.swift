@@ -6,6 +6,7 @@ struct ReleaseNote: Identifiable, Hashable {
     let version: String
     let new: [Bullet]
     let changed: [Bullet]
+    let removed: [Bullet]
     let fixed: [Bullet]
 
     var id: String { version }
@@ -14,11 +15,13 @@ struct ReleaseNote: Identifiable, Hashable {
         version: String,
         new: [Bullet] = [],
         changed: [Bullet] = [],
+        removed: [Bullet] = [],
         fixed: [Bullet] = []
     ) {
         self.version = version
         self.new = new
         self.changed = changed
+        self.removed = removed
         self.fixed = fixed
     }
 
@@ -56,12 +59,14 @@ extension ReleaseNote {
     enum Category: String, Hashable {
         case new = "New"
         case changed = "Changed"
+        case removed = "Removed"
         case fixed = "Fixed"
 
         var systemImage: String {
             switch self {
             case .new: return "sparkles"
             case .changed: return "paintbrush.fill"
+            case .removed: return "minus.circle.fill"
             case .fixed: return "ladybug.fill"
             }
         }
@@ -70,6 +75,7 @@ extension ReleaseNote {
             switch self {
             case .new: return .mint
             case .changed: return .blue
+            case .removed: return .gray
             case .fixed: return .red
             }
         }
@@ -108,6 +114,7 @@ extension ReleaseNote {
         [
             PresentationSection(category: .new, bullets: new),
             PresentationSection(category: .changed, bullets: changed),
+            PresentationSection(category: .removed, bullets: removed),
             PresentationSection(category: .fixed, bullets: fixed),
         ]
         .filter { !$0.bullets.isEmpty }
@@ -146,6 +153,61 @@ extension ReleaseNote {
 enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            version: "0.10.1",
+            new: [
+                .init(
+                    "Native environment details with animated horizontal connections, session metrics, and certificate status."
+                ),
+                .init("Account Preferences for the icon catalog, saved to your Arcane account."),
+            ],
+            changed: [
+                .init("Detail tabs center within the available width and scroll without inset edge bars."),
+                .init("All Environments updates use a searchable resource list with environment labels and filters."),
+                .init("Updates sheet opens at half height and expands with a native drag gesture."),
+                .init(
+                    "All Environments resource pages use the standard resource views, sections, menus, and actions.",
+                    badge: .preview),
+                .init("Resource sorting and filters have their own toolbar button."),
+                .init("Toolbar buttons share one group, with the add button on its own."),
+                .init("Preview release notes appear in an outlined Preview card."),
+                .init("Dashboard greets you by first name in place of its title and date."),
+                .init("Purple is the default accent color."),
+                .init(
+                    "Environment details hold the environment's settings in tabs matching the web; Timeouts, Activity History, and Builds moved under Server Settings."
+                ),
+                .init(
+                    "What's New sits under Preview Features, Edit Tabs moved into Appearance, and Connection Profiles moved to Account."
+                ),
+                .init("Redesigned launch animation that follows the accent color."),
+            ],
+            removed: [
+                .init("Support bundle in Settings."),
+                .init("Server Info in App Settings."),
+                .init("Share Arcane and the About section; its links moved to Support."),
+                .init("Environment Settings from More; settings live on each environment's details page."),
+            ],
+            fixed: [
+                .init("Updates uses the standard resource menu for sorting, filters, and All Environments actions."),
+                .init(
+                    "Resource pages prune only their resource across all enabled environments with a concise confirmation."
+                ),
+                .init("All Environments resource lists retain row swipe actions."),
+                .init("All Environments row, bulk, and detail actions target each resource's own environment."),
+                .init("Prune and other destructive menu actions show red icons."),
+                .init("Resource filter sheets expand to full height."),
+                .init("Native GitOps sync details with status, repository, schedule, and backup details."),
+                .init("Creating a GitOps sync sends the compose path and auto sync setting."),
+                .init("Container registry rows and dashboard environment counts use standard text colors."),
+                .init("Dashboard environment cards no longer overlap while scrolling in."),
+                .init("Unused-resource pruning uses the correct API requests and response types."),
+                .init("Image pruning offers Dangling and All Unused choices across all enabled environments."),
+                .init("Resource details omit the environment label from the navigation header."),
+                .init(
+                    "System pruning omits environment lists and confirms the selected cleanup across all enabled environments."
+                ),
+            ]
+        ),
+        ReleaseNote(
             version: "0.10.0",
             new: [
                 .init("Blueprint alternate app icon."),
@@ -164,7 +226,7 @@ enum ReleaseNotes {
                 .init("Proxy authentication failures show specific error messages."),
                 .init("Image update results appear correctly in All Environments."),
                 .init(
-                    "Fleet actions use concise confirmation prompts and compact toast feedback; Compose drafts use standard confirmations."
+                    "All Environments actions use concise confirmation prompts and compact toast feedback; Compose drafts use standard confirmations."
                 ),
                 .init("Destructive menu icons match their red action labels."),
                 .init("Saved resource tabs stay visible through launch and refresh."),
@@ -401,9 +463,9 @@ enum ReleaseNotes {
                 .init("Native controls across forms, actions, and modal sheets."),
                 .init("Arcane wordmark and Activity Center access in sidebar navigation."),
                 .init(
-                    "Dashboard uses a flat fleet layout with compact environment rows, smooth well-spaced gauges, grouped sections, and separate prune controls."
+                    "Dashboard uses a flat layout with compact environment rows, smooth well-spaced gauges, grouped sections, and separate prune controls."
                 ),
-                .init("Dashboard is the single environment fleet destination."),
+                .init("Dashboard is the destination for all environments."),
                 .init("Sidebar navigation, resource details, and page actions match Arcane’s consolidated layout."),
                 .init("Project services and logs share one workspace."),
             ],

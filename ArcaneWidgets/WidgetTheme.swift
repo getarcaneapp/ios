@@ -5,9 +5,9 @@ import WidgetKit
 /// Extensions/ files are not members of this target, so the hex parser is
 /// duplicated here under a distinct name (no symbol clash if that changes).
 enum WidgetTheme {
-    /// User's accent from the snapshot, falling back to the brand blue.
+    /// User's accent from the snapshot, falling back to the default purple.
     static func accent(from snapshot: WidgetSnapshot?) -> Color {
-        snapshot?.accentHex.flatMap(color(hex:)) ?? .blue
+        snapshot?.accentHex.flatMap(color(hex:)) ?? .purple
     }
 
     static func color(hex: String) -> Color? {

@@ -37,7 +37,7 @@ struct EnvironmentEntityQuery: EntityQuery {
 
 struct StatusWidgetConfigurationIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Arcane Status"
-    static let description = IntentDescription("Choose an environment, or leave empty for your whole fleet.")
+    static let description = IntentDescription("Choose an environment, or leave empty for all environments.")
 
     @Parameter(title: "Environment")
     var environment: EnvironmentEntity?
@@ -112,7 +112,7 @@ struct StatusWidget: Widget {
             StatusWidgetView(entry: entry)
         }
         .configurationDisplayName("Status")
-        .description("Container status for an environment or your whole fleet.")
+        .description("Container status for one environment or all environments.")
         .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
 }

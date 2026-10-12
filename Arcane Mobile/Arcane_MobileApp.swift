@@ -20,11 +20,9 @@ struct Arcane_MobileApp: App {
     private let whatsNewEnvironment = ReleaseNotes.makeWhatsNewEnvironment()
     @AppStorage("accentColorHex") private var accentColorHex = ""
 
+    /// The saved accent, or purple when none is chosen.
     private var accentColor: Color {
-        guard !accentColorHex.isEmpty, let color = Color(hex: accentColorHex) else {
-            return .accentColor
-        }
-        return color
+        Color(hex: accentColorHex) ?? AccentColorOption.purple.color
     }
 
     var body: some Scene {
@@ -38,7 +36,7 @@ struct Arcane_MobileApp: App {
                 .environment(activityHistoryMutationStore)
                 .environment(\.isLaunchSplashPresented, showsLaunchSplash)
                 .environment(\.whatsNew, whatsNewEnvironment)
-                .appAccentColor(accentColorHex.isEmpty ? nil : accentColor)
+                .appAccentColor(accentColor)
                 .overlay {
                     if showsLaunchSplash {
                         ArcaneLaunchSplash(

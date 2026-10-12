@@ -6,7 +6,7 @@ struct MainTabView: View {
     @State private(set) var selectedTab: String
     @State private var store = NavTabsStore.shared
     @State private var router = QuickActionRouter.shared
-    @State private var fleetStore = FleetStore()
+    @State private var environmentsStore = EnvironmentsStore()
     @State private var moreDestination: AppTab?
     @AppStorage("arcane.showTabLabels") private var showTabLabels = false
 
@@ -71,7 +71,7 @@ struct MainTabView: View {
 
     var body: some View {
         tabs
-            .environment(fleetStore)
+            .environment(environmentsStore)
             .onChange(of: selectedTab) { _, newValue in
                 UserDefaults.standard.set(newValue, forKey: "arcane.lastSelectedTabID")
             }
@@ -84,7 +84,7 @@ struct MainTabView: View {
                 ensureSelectedTabVisible()
             }
             .onDisappear {
-                fleetStore.configure(client: nil)
+                environmentsStore.configure(client: nil)
             }
             .onAppear {
                 if let target = router.pendingTabID {

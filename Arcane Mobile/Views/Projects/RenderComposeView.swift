@@ -45,9 +45,6 @@ struct RenderComposeView: View {
                         }
                     }
                 }
-                if #available(iOS 26, *), !variableOrder.isEmpty {
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                }
                 AppToolbarItem(placement: .confirmationAction) {
                     Button("Use Resolved") {
                         let final = substitute(in: initialCompose)

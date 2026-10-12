@@ -100,7 +100,10 @@ nonisolated struct DynamicResource: Codable, Hashable, Sendable, Identifiable {
     }
 
     var subtitle: String {
-        for key in ["description", "status", "state", "image", "path", "url", "message", "type", "eventType"] {
+        for key in [
+            "description", "status", "state", "image", "path", "url", "message", "type", "eventType", "composePath",
+            "backupDirectory",
+        ] {
             if let value = values[key]?.displayString, !value.isEmpty, value != title { return value }
         }
         return id

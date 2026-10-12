@@ -3,6 +3,7 @@ import SwiftUI
 
 struct TemplatePreviewView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore: EnvironmentsStore?
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     let template: Template
@@ -110,21 +111,22 @@ struct TemplatePreviewView: View {
                 }
             }
 
-            if #available(iOS 26, *),
-                displayedTemplate.isRemote,
-                canDownload,
-                canDeploy
-            {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
-
             if canDeploy {
                 AppToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        guard let content else { return }
-                        deployment = TemplateDeployment(template: displayedTemplate, content: content)
-                    } label: {
-                        Label("Deploy", systemImage: "play.circle.fill")
+                    Group {
+                        if manager.allEnvironmentsPreview {
+                            EnvironmentActionButton(
+                                title: "Deploy", systemImage: "play.circle.fill", environments: deployEnvironments
+                            ) { environmentID in
+                                deploy(to: environmentID)
+                            }
+                        } else {
+                            Button {
+                                deploy(to: manager.activeEnvironmentID)
+                            } label: {
+                                Label("Deploy", systemImage: "play.circle.fill")
+                            }
+                        }
                     }
                     .disabled(content == nil || isDownloading)
                 }
@@ -144,7 +146,7 @@ struct TemplatePreviewView: View {
         }
         .sheet(item: $deployment) { deployment in
             CreateProjectView(
-                environmentID: manager.activeEnvironmentID,
+                environmentID: deployment.environmentID,
                 prefilledName: deployment.template.name
                     .lowercased()
                     .replacingOccurrences(of: " ", with: "-"),
@@ -157,6 +159,9 @@ struct TemplatePreviewView: View {
             }
         }
         .task(id: "\(template.id)|\(manager.cacheSessionIdentity)") { await loadContent() }
+        .task {
+            if manager.allEnvironmentsPreview { await environmentsStore?.load(manager: manager) }
+        }
     }
 
     private var canEdit: Bool {
@@ -190,8 +195,24 @@ struct TemplatePreviewView: View {
     }
 
     private var canDeploy: Bool {
-        loadedSessionIdentity == manager.cacheSessionIdentity
-            && manager.permissions.has(Permission.Projects.create, in: manager.activeEnvironmentID)
+        loadedSessionIdentity == manager.cacheSessionIdentity && !deployEnvironments.isEmpty
+    }
+
+    /// Where the template can be deployed: the active environment, or with the
+    /// All Environments preview, every enabled environment allowing project creation.
+    private var deployEnvironments: [ListEnvironment] {
+        let environments =
+            manager.allEnvironmentsPreview
+            ? (environmentsStore?.enabledEnvironments ?? []).map {
+                ListEnvironment(id: EnvironmentID(rawValue: $0.id), name: $0.displayName)
+            }
+            : [ListEnvironment(id: manager.activeEnvironmentID, name: nil)]
+        return environments.filter { manager.permissions.has(Permission.Projects.create, in: $0.id) }
+    }
+
+    private func deploy(to environmentID: EnvironmentID) {
+        guard let content else { return }
+        deployment = TemplateDeployment(template: displayedTemplate, content: content, environmentID: environmentID)
     }
 
     private func loadContent() async {
@@ -256,6 +277,7 @@ struct TemplatePreviewView: View {
 private struct TemplateDeployment: Identifiable {
     let template: Template
     let content: TemplateContent
+    let environmentID: EnvironmentID
 
     var id: String { template.id }
 }

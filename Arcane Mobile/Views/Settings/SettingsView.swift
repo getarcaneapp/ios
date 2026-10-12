@@ -1,5 +1,6 @@
 import Arcane
 import SwiftUI
+import WhatsNewKit
 
 struct SettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
@@ -11,6 +12,7 @@ struct SettingsView: View {
     @State private var navPath: [AppTab] = []
     @State private var navigationEnvironmentID: String?
     @State private var search = ""
+    @State private var presentedWhatsNew: WhatsNewKit.WhatsNew?
 
     init(
         visibleTabs: [AppTab] = [],
@@ -55,7 +57,7 @@ struct SettingsView: View {
                 tabs: [
                     .apiKeys, .federatedCredentials, .systemBackups, .webhooks,
                     .authentication, .oidcRoleMappings, .notifications, .jobs,
-                    .users, .roles, .systemSettings,
+                    .users, .roles, .activityHistory, .timeouts, .builds,
                 ]
             ),
         ]
@@ -97,6 +99,9 @@ struct SettingsView: View {
                 isVisible: navPath.last?.isEnvironmentScoped == true,
                 onSelect: { navPath.removeAll() }
             )
+        }
+        .sheet(item: $presentedWhatsNew) { whatsNew in
+            WhatsNewPresentationView(whatsNew: whatsNew)
         }
         .onChange(of: pendingDestination, initial: true) { _, destination in
             guard let destination else { return }
@@ -148,15 +153,19 @@ struct SettingsView: View {
                 SettingsRow(title: "Preview Features", systemImage: "flask.fill", color: .purple)
             }
 
-            NavigationLink {
-                EditTabsView(availableTabs: availableTabs)
+            Button {
+                presentedWhatsNew = ReleaseNotes.latestWhatsNew
             } label: {
-                SettingsRow(
-                    title: "Edit Tabs",
-                    systemImage: "rectangle.3.group.fill",
-                    color: .indigo
-                )
+                HStack {
+                    SettingsRow(title: "What's New", systemImage: "sparkles", color: .yellow, titleColor: .primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
         }
     }
 
@@ -226,7 +235,7 @@ private struct MoreDestinationGroup: Identifiable {
     var id: String { title }
 }
 
-private struct EditTabsView: View {
+struct EditTabsView: View {
     let availableTabs: Set<AppTab>
 
     @State private var store = NavTabsStore.shared

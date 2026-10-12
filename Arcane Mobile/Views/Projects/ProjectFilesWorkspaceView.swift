@@ -12,6 +12,7 @@ enum ProjectFilesWorkspaceDestination: Hashable {
 struct ProjectFilesWorkspaceView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore: EnvironmentsStore?
     @SwiftUI.Environment(\.dismiss) private var dismiss
 
     let projectID: String
@@ -80,6 +81,10 @@ struct ProjectFilesWorkspaceView: View {
     private var canEdit: Bool {
         readOnlyReason == nil && sessionIsCurrent
             && manager.permissions.has(Permission.Projects.update, in: environmentID)
+    }
+    /// This project's environment, which can differ from the active one in All Environments lists.
+    private var environmentName: String {
+        environmentsStore?.displayName(for: environmentID) ?? manager.activeEnvironmentName
     }
 
     private var hasCoreChanges: Bool {
@@ -309,9 +314,6 @@ struct ProjectFilesWorkspaceView: View {
         AppToolbarItem(placement: .navigationBarTrailing) {
             projectFileMenu(folderPath: folderPath)
         }
-        if #available(iOS 26, *) {
-            ToolbarSpacer(.fixed, placement: .topBarTrailing)
-        }
         AppToolbarItem(placement: .navigationBarTrailing) {
             saveButton
         }
@@ -323,15 +325,9 @@ struct ProjectFilesWorkspaceView: View {
             AppToolbarItem(placement: .topBarTrailing) {
                 saveButton
             }
-            if #available(iOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
         } else {
             AppToolbarItem(placement: .topBarTrailing) {
                 projectFileMenu(folderPath: folderPath)
-            }
-            if #available(iOS 26, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
             }
             AppToolbarItem(placement: .topBarTrailing) {
                 saveButton
@@ -355,7 +351,7 @@ struct ProjectFilesWorkspaceView: View {
                 guard sessionIsCurrent else { return }
                 DeploymentActivityStore.shared.start(
                     kind: .up, envID: environmentID, targetID: projectID,
-                    targetName: projectName, environmentName: manager.activeEnvironmentName,
+                    targetName: projectName, environmentName: environmentName,
                     manager: manager, mutationStore: mutationStore, deployOptions: requestedDeployOptions)
             }
             .disabled(!canEdit || hasChanges || isSaving)
@@ -739,7 +735,7 @@ struct ProjectFilesWorkspaceView: View {
             if deploy && manager.permissions.has(Permission.Projects.deploy, in: environmentID) {
                 let started = DeploymentActivityStore.shared.start(
                     kind: .up, envID: environmentID, targetID: projectID,
-                    targetName: projectName, environmentName: manager.activeEnvironmentName,
+                    targetName: projectName, environmentName: environmentName,
                     manager: manager, mutationStore: mutationStore, deployOptions: requestedDeployOptions)
                 if !started { showToast(.info("Files saved. Use Deploy Saved Project to try deployment again.")) }
             }

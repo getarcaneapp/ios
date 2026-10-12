@@ -50,13 +50,13 @@ enum Motion {
     /// Continuous state changes in the environment-wide update scene.
     static let updateStage: Animation = .spring(response: 0.68, dampingFraction: 0.88)
 
-    /// Deliberate progress through the connector bars between fleet-update bubbles.
+    /// Deliberate progress through the connector bars between environment-update bubbles.
     static let updateConnector: Animation = .smooth(duration: 1.35)
 
     /// Continuous progress around the environment currently being updated.
     static let updateBubbleSpinner: Animation = .linear(duration: 1.45)
 
-    /// Slow simulated parallax drift for the active fleet-update bubble.
+    /// Slow simulated parallax drift for the active environment-update bubble.
     static let updateBubbleDrift: Animation = .easeInOut(duration: 1.8)
 
     /// Heavily damped handoff between completed and newly active update bubbles.
@@ -67,14 +67,24 @@ enum Motion {
     /// for the single hero moment on the sign-in screen.
     static let logoEntrance: Animation = .spring(response: 0.55, dampingFraction: 0.62)
 
-    /// Splash handoff from the centered logo into the app content.
-    static let splashExitDuration: TimeInterval = 0.65
-    static let splashExit: Animation = .easeInOut(duration: splashExitDuration)
+    /// Splash logo settling into place as it starts drawing.
+    static let splashEnter: Animation = .smooth(duration: 0.6)
+
+    /// The single highlight that crosses the splash logo once it fills.
+    static let splashSheen: Animation = .easeInOut(duration: 0.9)
+
+    /// Splash handoff: the logo lifts and softens while the app fades in.
+    static let splashExitDuration: TimeInterval = 0.5
+    static let splashExit: Animation = .smooth(duration: splashExitDuration)
 
     /// Autoscroll tracking that must stay glued to live-appended output
     /// (terminal). Deliberately linear and short — a smooth/spring token would
     /// lag behind streaming text and read as rubber-banding.
     static let follow: Animation = .linear(duration: 0.1)
+
+    /// One packet traversing an edge tunnel, or a direct request and reply.
+    static let edgePacketDuration: TimeInterval = 2.4
+    static let directPacketDuration: TimeInterval = 4.8
 
     /// A quick fade used as the Reduce-Motion fallback where *some* motion is
     /// still wanted (transient overlays — toast, delete card) instead of an
@@ -118,7 +128,6 @@ private struct CardEntranceModifier: ViewModifier {
         let hasPlayed = hasAppeared || Self.seenIdentities.contains(identity)
         content
             .scaleEffect(reduceMotion || hasPlayed ? 1 : 0.97)
-            .offset(y: reduceMotion || hasPlayed ? 0 : 10)
             .opacity(hasPlayed ? 1 : 0)
             .onAppear {
                 guard !hasAppeared, !Self.seenIdentities.contains(identity) else { return }
@@ -135,7 +144,7 @@ private struct CardEntranceModifier: ViewModifier {
 }
 
 extension View {
-    /// One-shot rise + fade entrance for a card / tile. Pass a stable
+    /// One-shot scale + fade entrance for a card / tile. Pass a stable
     /// `identity` — the latch is keyed on it and survives scroll-lazy teardown,
     /// so returning to the page never replays the animation. `index` staggers
     /// siblings so a group cascades in instead of popping at once.

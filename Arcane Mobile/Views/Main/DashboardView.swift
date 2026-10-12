@@ -62,7 +62,7 @@ private struct DashboardLiveCounts: Sendable, Equatable {
     var images: Int
 }
 
-private struct DashboardFleetCountResult: Sendable {
+private struct DashboardEnvironmentCountResult: Sendable {
     let total: Int?
     let unavailableEnvironmentIDs: [String]
     var counts: [String: Int] = [:]
@@ -107,10 +107,11 @@ struct DashboardView: View {
     @SwiftUI.Environment(ImageUpdateCountStore.self) private var imageUpdateCountStore
     @SwiftUI.Environment(ActivityHistoryMutationStore.self) private var historyMutationStore
     @SwiftUI.Environment(PinnedItemsStore.self) private var pinnedStore
-    @SwiftUI.Environment(FleetStore.self) private var fleet
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SwiftUI.Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var selectedTab: String
     var onNavigationRootChange: (Bool) -> Void = { _ in }
 
@@ -125,7 +126,7 @@ struct DashboardView: View {
     @State private var environmentLiveStates: [String: DashboardEnvironmentLiveState] = [:]
     @State private var volumeCountUnavailableEnvironmentIDs: [String] = []
     @State private var updateCountUnavailableEnvironmentIDs: [String] = []
-    @State private var hasLoadedFleetCounts = false
+    @State private var hasLoadedEnvironmentCounts = false
     @State private var countAvailabilityPresentation: DashboardCountAvailability?
     @State private var failedActivities: [Activity] = []
     @State private var rawEnvironmentCount: Int = 0
@@ -173,8 +174,8 @@ struct DashboardView: View {
     private static let maxConcurrentPerEnvFetches = 4
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
-    private var streamStore: DashboardStreamStore { fleet.dashboardStream }
-    private var statsHistory: SystemStatsHistoryStore { fleet.statsHistory }
+    private var streamStore: DashboardStreamStore { environmentsStore.dashboardStream }
+    private var statsHistory: SystemStatsHistoryStore { environmentsStore.statsHistory }
 
     private var liveStatsLimitPresentation: DashboardLiveStatsLimitPresentation? {
         DashboardLiveStatsLimitPresentation(
@@ -217,6 +218,8 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 36) {
+                DashboardGreeting(userName: manager.currentUser?.displayUsername)
+                    .padding(.bottom, -16)
                 if showsSkeleton {
                     skeletonContent
                 } else if showsEmptyState {
@@ -248,9 +251,11 @@ struct DashboardView: View {
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .softTopScrollEdgeEffectCompat()
+        // The greeting replaces the large title; "Dashboard" stays the
+        // title for back buttons and accessibility but isn't drawn.
         .navigationTitle("Dashboard")
-        .navigationBarTitleDisplayMode(.large)
-        .modifier(DashboardDateSubtitle())
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(removing: .title)
         .toolbar {
             // Needs Attention lives in the toolbar: the button expands into
             // a compact summary popover, which opens the full Attention
@@ -333,11 +338,9 @@ struct DashboardView: View {
         }
         .sheet(isPresented: $showVolumes) {
             NavigationStack {
-                if manager.allEnvironmentsPreview {
-                    AllEnvironmentsResourcesView(kind: .volumes)
-                } else {
-                    VolumesView(environmentID: envID, environmentName: manager.activeEnvironmentName)
-                }
+                VolumesView(
+                    environmentID: envID, environmentName: manager.activeEnvironmentName,
+                    allEnvironments: manager.allEnvironmentsPreview)
             }
             .presentationDragIndicator(.visible)
         }
@@ -350,10 +353,12 @@ struct DashboardView: View {
             // Pre-flight error toasts must be visible while the sheet is
             // up — the root toast host is covered by it.
             .toastHost(reservesTabBarSpace: false)
+            .presentationDetents([.medium, .large])
+            .presentationContentInteraction(.resizes)
             .presentationDragIndicator(.visible)
         }
         .navigationDestination(item: $detailRoute) { route in
-            SystemInfoDetailView(
+            EnvironmentDetailView(
                 environmentID: EnvironmentID(rawValue: route.id),
                 environmentName: route.name
             )
@@ -365,11 +370,8 @@ struct DashboardView: View {
             ProjectDetailView(project: project, environmentID: manager.activeEnvironmentID)
         }
         .navigationDestination(item: $vulnerabilityRoute) { route in
-            if manager.allEnvironmentsPreview {
-                AllEnvironmentsResourcesView(kind: .vulnerabilities)
-            } else {
-                AllVulnerabilitiesView(environmentID: EnvironmentID(rawValue: route.id))
-            }
+            AllVulnerabilitiesView(
+                environmentID: EnvironmentID(rawValue: route.id), allEnvironments: manager.allEnvironmentsPreview)
         }
         .navigationDestination(isPresented: $showAPIKeys) {
             APIKeysView()
@@ -380,20 +382,20 @@ struct DashboardView: View {
             environments = dashboardEnvironments(from: allEnvironments.isEmpty ? environments : allEnvironments)
             // The active environment moved to the front, which can change
             // which environments fall inside the history-stream cap.
-            fleet.prioritizeStats(activeEnvironmentID: manager.activeEnvironmentID.rawValue)
+            environmentsStore.prioritizeStats(activeEnvironmentID: manager.activeEnvironmentID.rawValue)
         }
-        .onChange(of: fleet.environmentCatalogRevision, initial: true) {
+        .onChange(of: environmentsStore.environmentCatalogRevision, initial: true) {
             updateEnvironmentCatalogFromStore()
         }
-        .onChange(of: fleet.dockerInformationRevision, initial: true) {
-            updateFleetLiveStateFromStore()
+        .onChange(of: environmentsStore.dockerInformationRevision, initial: true) {
+            updateLiveStateFromStore()
         }
         // The aggregated dashboard stream covers all environments over one
         // connection. v1 servers never get the endpoint, so don't attempt
         // it there; v2 servers that predate it 404 once and the store
         // latches into silent legacy mode.
         .task(id: manager.client.map { ObjectIdentifier($0.transport) }) {
-            fleet.configure(client: manager.client)
+            environmentsStore.configure(client: manager.client)
         }
         .onAppear {
             isDashboardVisible = true
@@ -401,9 +403,10 @@ struct DashboardView: View {
             // inactive. Start now rather than depending on a later active
             // transition that may have already been delivered.
             if scenePhase != .background {
-                fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
+                environmentsStore.setVisible(
+                    true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
             }
-            // Tab switches stop the fleet streams (see onDisappear) and
+            // Tab switches stop the environment streams (see onDisappear) and
             // the auto-refresh guards skip while hidden — without this the
             // toolbar badge and tiles stay frozen after coming back.
             if hasLoadedOnce {
@@ -416,7 +419,8 @@ struct DashboardView: View {
             liveCountsRefreshTask = nil
             mutationRefreshTask?.cancel()
             mutationRefreshTask = nil
-            fleet.setVisible(false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
+            environmentsStore.setVisible(
+                false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
         }
         .onChange(of: streamStore.aggregate) { previous, current in
             publishWidgetSnapshot()
@@ -439,12 +443,13 @@ struct DashboardView: View {
                 liveCountsRefreshTask = nil
                 mutationRefreshTask?.cancel()
                 mutationRefreshTask = nil
-                fleet.setVisible(false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
+                environmentsStore.setVisible(
+                    false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
                 publishWidgetSnapshot()
                 WidgetSnapshotPublisher.shared.flush()
             case .active:
                 if isDashboardVisible {
-                    fleet.setVisible(
+                    environmentsStore.setVisible(
                         true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
                     // Returning from background (or relaunch-adjacent
                     // foreground) must show fresh counts — the stream
@@ -464,7 +469,7 @@ struct DashboardView: View {
         // once the server is known to be v2.
         .onChange(of: manager.supportsActivities) { _, supported in
             if supported, isDashboardVisible {
-                fleet.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: true)
+                environmentsStore.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: true)
             }
         }
         .onChange(of: historyMutationStore.latestClear) { _, event in
@@ -532,8 +537,30 @@ struct DashboardView: View {
         }
     }
 
-    private var environmentColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 340), spacing: 12)]
+    /// Columns of environment cards: one on iPhone, two on iPad.
+    private var environmentColumnCount: Int {
+        horizontalSizeClass == .regular ? 2 : 1
+    }
+
+    private func environmentCard(_ env: Arcane.Environment, index: Int) -> some View {
+        EnvironmentListRow(
+            environment: env,
+            dockerInfo: environmentsStore.dockerInfoByEnvironmentID[env.id],
+            actionItems: environmentsStore.actionItemsByEnvironmentID[env.id],
+            streamState: streamStore.state(for: env.id),
+            series: statsHistory.series(for: env.id),
+            isActive: !manager.allEnvironmentsPreview && env.id == manager.activeEnvironmentID.rawValue,
+            onOpen: {
+                detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
+            },
+            onRefresh: {
+                await refreshEnvironmentDockerInfo(environmentID: env.id)
+            }
+        )
+        // Cascade only the first screenful; later cards fade in at the
+        // scroll edge instead.
+        .cardEntrance(id: "dashboard.environment.\(env.id)", index: min(index, 5) + 4)
+        .scrollEdgeFade()
     }
 
     private var environmentsSection: some View {
@@ -557,26 +584,23 @@ struct DashboardView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            LazyVGrid(columns: environmentColumns, alignment: .leading, spacing: 12) {
-                ForEach(Array(environments.enumerated()), id: \.element.id) { index, env in
-                    EnvironmentFleetListRow(
-                        environment: env,
-                        dockerInfo: fleet.dockerInfoByEnvironmentID[env.id],
-                        actionItems: fleet.actionItemsByEnvironmentID[env.id],
-                        streamState: streamStore.state(for: env.id),
-                        series: statsHistory.series(for: env.id),
-                        isActive: !manager.allEnvironmentsPreview && env.id == manager.activeEnvironmentID.rawValue,
-                        onOpen: {
-                            detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
-                        },
-                        onRefresh: {
-                            await refreshEnvironmentDockerInfo(environmentID: env.id)
+            // Not lazy: a lazy grid builds cards mid-scroll, and a card built
+            // while the overview above resizes lands on top of its neighbor.
+            let columns = environmentColumnCount
+            let indexed = Array(environments.enumerated())
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(stride(from: 0, to: indexed.count, by: columns)), id: \.self) { start in
+                    let row = indexed[start..<min(start + columns, indexed.count)]
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(row, id: \.element.id) { index, env in
+                            environmentCard(env, index: index)
+                                .frame(maxWidth: .infinity)
                         }
-                    )
-                    // Cascade only the first screenful; later cards appear as
-                    // they scroll in, faded by the edge transition instead.
-                    .cardEntrance(id: "dashboard.environment.\(env.id)", index: min(index, 5) + 4)
-                    .scrollEdgeFade()
+                        if row.count < columns {
+                            Spacer()
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
                 }
             }
 
@@ -610,7 +634,7 @@ struct DashboardView: View {
     /// Two-tap Update All. Resting: a compact capsule with the update icon and
     /// the number of environments that have an upgrade. Armed: grows into a
     /// red "Confirm Update" capsule. Confirming opens the sheet, which starts
-    /// the run immediately. Disabled once the fleet is known to be current.
+    /// the run immediately. Disabled once every environment is known to be current.
     /// Everything animates inside the capsule (no overlays), so the shape
     /// morph stays smooth.
     private var updateAllButton: some View {
@@ -731,7 +755,7 @@ struct DashboardView: View {
         }
 
         // Fold server-computed action items across every environment. Prefer
-        // the fleet store's REST snapshots (fresh on every pull-to-refresh)
+        // the environments store's REST snapshots (fresh on every pull-to-refresh)
         // and fall back to the live stream snapshot — the stream can lag the
         // server reconcile tick, fail, or be unsupported on older servers.
         var stopped = 0
@@ -742,8 +766,8 @@ struct DashboardView: View {
         var criticalVulns = false
         for env in allEnvironments {
             let snapshotItems: [ActionItem]?
-            if let fleetItems = fleet.actionItemsByEnvironmentID[env.id]?.items {
-                snapshotItems = fleetItems
+            if let storeItems = environmentsStore.actionItemsByEnvironmentID[env.id]?.items {
+                snapshotItems = storeItems
             } else if let state = streamStore.state(for: env.id), state.hasLoaded {
                 snapshotItems = state.snapshot?.actionItems.items
             } else {
@@ -903,7 +927,7 @@ struct DashboardView: View {
 
     private var overviewSection: some View {
         // Docker info is the only count source that includes every container.
-        // A failed environment request invalidates the fleet total instead of
+        // A failed environment request invalidates the total instead of
         // falling back to the dashboard snapshot's filtered count.
         let running: Int? = liveCounts?.running
         let total = liveCounts?.total
@@ -963,13 +987,13 @@ struct DashboardView: View {
             .glassCardBackground()
             .scrollEdgeFade()
 
-            fleetCountAvailabilityNote
+            environmentCountAvailabilityNote
                 .cardEntrance(id: "dashboard.overview.note", index: 4)
         }
     }
 
     private func environmentCountBreakdown(_ environment: Arcane.Environment) -> some View {
-        let info = fleet.dockerInfoByEnvironmentID[environment.id]
+        let info = environmentsStore.dockerInfoByEnvironmentID[environment.id]
         let updates = imageUpdateCountStore.count(
             environmentID: environment.id, client: manager.client, userID: manager.currentUser?.id)
         let color =
@@ -988,7 +1012,7 @@ struct DashboardView: View {
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.6)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.primary)
         }
     }
 
@@ -1011,7 +1035,7 @@ struct DashboardView: View {
 
     /// Footnote under the overview panel (never inside it).
     @ViewBuilder
-    private var fleetCountAvailabilityNote: some View {
+    private var environmentCountAvailabilityNote: some View {
         let issues = countAvailabilityIssues
         if issues.isEmpty {
             if !manager.allEnvironmentsPreview {
@@ -1039,7 +1063,7 @@ struct DashboardView: View {
     }
 
     private var countAvailabilityIssues: [DashboardCountIssue] {
-        guard hasLoadedFleetCounts else { return [] }
+        guard hasLoadedEnvironmentCounts else { return [] }
         var issues: [DashboardCountIssue] = []
 
         let dockerUnavailableIDs =
@@ -1108,14 +1132,14 @@ struct DashboardView: View {
             statsHistory.reconnect()
         }
         await loadData(refresh: true)
-        // loadData's fleet aggregates arrive via background tasks — await a
+        // loadData's environment aggregates arrive via background tasks — await a
         // fresh pass here so the pull-to-refresh spinner covers the new
         // container/image counts instead of leaving stale tiles behind.
-        await fleet.refreshDockerInformation(client: manager.client)
-        await fleet.refreshActionItems(client: manager.client)
+        await environmentsStore.refreshDockerInformation(client: manager.client)
+        await environmentsStore.refreshActionItems(client: manager.client)
         guard !Task.isCancelled else { return }
-        updateFleetLiveStateFromStore()
-        hasLoadedFleetCounts = true
+        updateLiveStateFromStore()
+        hasLoadedEnvironmentCounts = true
     }
 
     private func loadData(refresh: Bool = false) async {
@@ -1135,7 +1159,7 @@ struct DashboardView: View {
             environmentLiveStates = [:]
             volumeCountUnavailableEnvironmentIDs = []
             updateCountUnavailableEnvironmentIDs = []
-            hasLoadedFleetCounts = false
+            hasLoadedEnvironmentCounts = false
         }
         if !hasLoadedOnce { isLoading = true }
         defer {
@@ -1159,7 +1183,7 @@ struct DashboardView: View {
         let visibleEnvironments = dashboardEnvironments(from: envs)
         environments = visibleEnvironments
         // The environment catalog is primary content. Publish it before
-        // awaiting any fleet aggregate: one unreachable environment can make
+        // awaiting any environment aggregate: one unreachable environment can make
         // those backend requests slow, but must not hold the whole Dashboard.
         // Those tiles show "—" until their totals arrive a moment later. The
         // `defer` still clears these on any early return as a safety net.
@@ -1183,8 +1207,8 @@ struct DashboardView: View {
                 supplementalImageUpdatesTotal = total
             }
             updateCountUnavailableEnvironmentIDs = updates.unavailableEnvironmentIDs
-            updateFleetLiveStateFromStore()
-            hasLoadedFleetCounts = true
+            updateLiveStateFromStore()
+            hasLoadedEnvironmentCounts = true
         }
 
         // Supplemental count requests must publish before the legacy overview
@@ -1337,15 +1361,15 @@ struct DashboardView: View {
             .map { $0 }
     }
 
-    private func loadVolumesTotal(envs: [Arcane.Environment]) async -> DashboardFleetCountResult {
+    private func loadVolumesTotal(envs: [Arcane.Environment]) async -> DashboardEnvironmentCountResult {
         guard let client = manager.client else {
-            return DashboardFleetCountResult(
+            return DashboardEnvironmentCountResult(
                 total: nil,
                 unavailableEnvironmentIDs: envs.map(\.id)
             )
         }
         guard !envs.isEmpty else {
-            return DashboardFleetCountResult(total: 0, unavailableEnvironmentIDs: [])
+            return DashboardEnvironmentCountResult(total: 0, unavailableEnvironmentIDs: [])
         }
 
         return await withTaskGroup(of: (String, Int64?).self) { group in
@@ -1372,7 +1396,7 @@ struct DashboardView: View {
             }
             let unavailableIDs = envs.compactMap { counts[$0.id] == nil ? $0.id : nil }
             let total = unavailableIDs.isEmpty ? Int(counts.values.reduce(0, +)) : nil
-            return DashboardFleetCountResult(
+            return DashboardEnvironmentCountResult(
                 total: total,
                 unavailableEnvironmentIDs: unavailableIDs,
                 counts: counts.mapValues(Int.init)
@@ -1393,15 +1417,15 @@ struct DashboardView: View {
         return try? await client.volumes.list(envID: envID, query: query).pagination.totalItems
     }
 
-    private func loadImageUpdatesTotal(envs: [Arcane.Environment]) async -> DashboardFleetCountResult {
+    private func loadImageUpdatesTotal(envs: [Arcane.Environment]) async -> DashboardEnvironmentCountResult {
         guard let client = manager.client else {
-            return DashboardFleetCountResult(
+            return DashboardEnvironmentCountResult(
                 total: nil,
                 unavailableEnvironmentIDs: envs.map(\.id)
             )
         }
         guard !envs.isEmpty else {
-            return DashboardFleetCountResult(total: 0, unavailableEnvironmentIDs: [])
+            return DashboardEnvironmentCountResult(total: 0, unavailableEnvironmentIDs: [])
         }
 
         let counts = await withTaskGroup(of: (String, Int?).self) { group in
@@ -1436,16 +1460,16 @@ struct DashboardView: View {
             userID: manager.currentUser?.id
         )
         let unavailableIDs = envs.compactMap { counts[$0.id] == nil ? $0.id : nil }
-        return DashboardFleetCountResult(
+        return DashboardEnvironmentCountResult(
             total: unavailableIDs.isEmpty ? counts.values.reduce(0, +) : nil,
             unavailableEnvironmentIDs: unavailableIDs
         )
     }
 
     private func refreshLiveCounts() async {
-        await fleet.refreshDockerInformation(client: manager.client)
+        await environmentsStore.refreshDockerInformation(client: manager.client)
         guard !Task.isCancelled else { return }
-        updateFleetLiveStateFromStore()
+        updateLiveStateFromStore()
     }
 
     private func aggregateLiveCounts(
@@ -1465,14 +1489,14 @@ struct DashboardView: View {
     }
 
     private func refreshEnvironmentDockerInfo(environmentID: String) async {
-        await fleet.refreshDockerInformation(for: environmentID, client: manager.client)
-        updateFleetLiveStateFromStore()
+        await environmentsStore.refreshDockerInformation(for: environmentID, client: manager.client)
+        updateLiveStateFromStore()
     }
 
-    private func updateFleetLiveStateFromStore() {
+    private func updateLiveStateFromStore() {
         let enabledEnvironments = allEnvironments.filter(\.enabled)
         environmentLiveStates = enabledEnvironments.reduce(into: [:]) { states, environment in
-            if let info = fleet.dockerInfoByEnvironmentID[environment.id] {
+            if let info = environmentsStore.dockerInfoByEnvironmentID[environment.id] {
                 states[environment.id] = .online(info)
             } else {
                 states[environment.id] = .offline
@@ -1488,9 +1512,9 @@ struct DashboardView: View {
     /// Nil means the fetch failed (or no client yet) — distinct from a
     /// successful load of zero environments.
     private func loadEnvironmentsCached(refresh: Bool) async -> [Arcane.Environment]? {
-        await fleet.load(manager: manager, refresh: refresh)
-        guard fleet.hasLoaded else { return nil }
-        let fresh = fleet.environments
+        await environmentsStore.load(manager: manager, refresh: refresh)
+        guard environmentsStore.hasLoaded else { return nil }
+        let fresh = environmentsStore.environments
         hasLoadedEnvironments = true
         rawEnvironmentCount = fresh.count
         allEnvironments = fresh
@@ -1499,8 +1523,8 @@ struct DashboardView: View {
     }
 
     private func updateEnvironmentCatalogFromStore() {
-        guard fleet.hasLoaded else { return }
-        let fresh = fleet.environments
+        guard environmentsStore.hasLoaded else { return }
+        let fresh = environmentsStore.environments
         hasLoadedEnvironments = true
         rawEnvironmentCount = fresh.count
         allEnvironments = fresh
@@ -1555,16 +1579,89 @@ private struct DashboardActivityToolbarButton: View {
     }
 }
 
-/// iOS 26 shows today's date under the large title; iOS 18 has no subtitle
-/// slot on iPhone, so the title stands alone there.
-private struct DashboardDateSubtitle: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content.navigationSubtitle(
-                Text(Date.now, format: .dateTime.weekday(.wide).month(.wide).day())
-            )
-        } else {
-            content
+/// A greeting with the signed-in user's first name in place of the large
+/// title. Types itself in the first time it appears each launch; Reduce Motion
+/// fades it in instead.
+private struct DashboardGreeting: View {
+    let userName: String?
+    @State private var visibleCount = 0
+    @State private var opacity = 1.0
+    @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
+
+    /// Greetings already shown this launch, keyed by user, so tab switches
+    /// keep the same greeting and don't replay the typing.
+    private static var shownGreetings: [String: String] = [:]
+    private static var typedGreetings = Set<String>()
+
+    private var name: String {
+        guard let userName, !userName.isEmpty else { return "" }
+        if let greeting = Self.shownGreetings[userName] { return greeting }
+        let firstName = userName.split(separator: " ").first.map(String.init) ?? userName
+        let greeting = Self.greetings(for: firstName).randomElement() ?? "Hey, \(firstName)"
+        Self.shownGreetings[userName] = greeting
+        return greeting
+    }
+
+    private static func greetings(for firstName: String) -> [String] {
+        let hour = Calendar.current.component(.hour, from: .now)
+        let timeOfDay =
+            switch hour {
+            case 5..<12: "Good morning"
+            case 12..<17: "Good afternoon"
+            default: "Good evening"
+            }
+        return [
+            "Hey, \(firstName)",
+            "Hi, \(firstName)",
+            "Hello, \(firstName)",
+            "Welcome back, \(firstName)",
+            "\(timeOfDay), \(firstName)",
+        ]
+    }
+
+    var body: some View {
+        let name = name
+        // The hidden full name reserves the final size so nothing shifts while typing.
+        Text(verbatim: name.isEmpty ? " " : name)
+            .hidden()
+            .overlay(alignment: .leading) {
+                Text(verbatim: String(name.prefix(visibleCount)))
+                    .opacity(opacity)
+            }
+            .font(.largeTitle.bold())
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(name)
+            .accessibilityAddTraits(.isHeader)
+            // Wait for the launch splash to clear so the typing is visible.
+            .task(id: "\(name)|\(isLaunchSplashPresented)") {
+                guard !isLaunchSplashPresented else { return }
+                await reveal(name)
+            }
+    }
+
+    private func reveal(_ name: String) async {
+        guard !name.isEmpty else { return }
+        guard !Self.typedGreetings.contains(name) else {
+            visibleCount = name.count
+            return
+        }
+        Self.typedGreetings.insert(name)
+        if reduceMotion {
+            opacity = 0
+            visibleCount = name.count
+            withAnimation(Motion.reducedFallback) { opacity = 1 }
+            return
+        }
+        for count in 0...name.count {
+            guard !Task.isCancelled else {
+                visibleCount = name.count
+                return
+            }
+            visibleCount = count
+            try? await Task.sleep(for: .milliseconds(55))
         }
     }
 }
@@ -1787,13 +1884,14 @@ struct DashboardMiniMetric: View {
 
 struct DashboardInfoGroup<Content: View>: View {
     let title: String
+    var usesCardBackground = true
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title).font(.headline).padding(.leading, 4)
             VStack(spacing: 0) { content }
                 .background(
-                    Color(uiColor: .secondarySystemGroupedBackground),
+                    usesCardBackground ? Color(uiColor: .secondarySystemGroupedBackground) : .clear,
                     in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous))
         }
     }
@@ -1889,24 +1987,6 @@ struct SystemPruneView: View {
     var body: some View {
         NavigationStack {
             Form {
-                if let environments {
-                    Section("All Enabled Environments") {
-                        ForEach(environments.filter(\.enabled)) { environment in
-                            VStack(alignment: .leading) {
-                                Text(environment.displayName)
-                                if !manager.permissions.has(
-                                    Permission.System.prune, in: EnvironmentID(rawValue: environment.id))
-                                {
-                                    Text("No prune permission").font(.caption).foregroundStyle(.orange)
-                                }
-                            }
-                        }
-                        Text(
-                            "The selected cleanup runs on every environment listed above. Removed data cannot be recovered."
-                        )
-                        .font(.footnote).foregroundStyle(.secondary)
-                    }
-                }
                 Section("Containers") {
                     FormPicker(title: "Containers", selection: $containerMode) {
                         Text("None").tag(PruneContainerMode.none)
@@ -1974,7 +2054,8 @@ struct SystemPruneView: View {
                         }
                         .tint(.red)
                         .disabled(
-                            selectedCount == 0 || FleetOperationStore.shared.isRunning || environments?.isEmpty == true)
+                            selectedCount == 0 || AllEnvironmentsOperationStore.shared.isRunning
+                                || environments?.isEmpty == true)
                     }
                 }
             }
@@ -2078,7 +2159,7 @@ struct SystemPruneView: View {
         if let environments {
             let session = manager.clientGeneration
             dismiss()
-            await FleetOperationStore.shared.runWithToast(
+            await AllEnvironmentsOperationStore.shared.runWithToast(
                 title: "Cleaning up…", completionTitle: "Cleanup complete", symbol: "trash", isDestructive: true,
                 environments: environments, isCurrent: { session == manager.clientGeneration }
             ) { id in

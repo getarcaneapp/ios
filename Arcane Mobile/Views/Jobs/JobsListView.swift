@@ -3,12 +3,12 @@ import SwiftUI
 
 struct JobsListView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     let environmentID: EnvironmentID
+    /// All Environments preview: list and run jobs from every enabled environment.
+    var allEnvironments = false
 
-    @State private var jobs: [JobStatus] = []
-    @State private var isAgent = false
-    @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var list = EnvironmentPagedList<JobStatus>()
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var runningJobs: Set<String> = []
@@ -16,9 +16,11 @@ struct JobsListView: View {
     @State private var groups: [JobGroup] = []
     @State private var filteredJobCount = 0
 
+    private var jobs: [EnvironmentItem<JobStatus>] { list.items }
+
     private struct JobGroup: Identifiable {
         let category: String
-        let jobs: [JobStatus]
+        let jobs: [EnvironmentItem<JobStatus>]
         var id: String { category }
     }
 
@@ -29,14 +31,17 @@ struct JobsListView: View {
             JobGroup(
                 category: key,
                 jobs: groups[key]?.sorted {
-                    $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                    let order = $0.name.localizedStandardCompare($1.name)
+                    guard order == .orderedSame else { return order == .orderedAscending }
+                    return ($0.environmentName ?? "").localizedStandardCompare($1.environmentName ?? "")
+                        == .orderedAscending
                 } ?? []
             )
         }
         filteredJobCount = filtered.count
     }
 
-    private func filteredJobs() -> [JobStatus] {
+    private func filteredJobs() -> [EnvironmentItem<JobStatus>] {
         let trimmed = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return jobs }
         return jobs.filter { job in
@@ -48,33 +53,40 @@ struct JobsListView: View {
 
     var body: some View {
         Group {
-            if isLoading && jobs.isEmpty {
+            if list.isLoading && jobs.isEmpty {
                 ProgressView("Loading jobs…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage, jobs.isEmpty {
+            } else if let errorMessage = list.errorMessage, jobs.isEmpty {
                 ContentUnavailableView {
                     Label("Couldn't Load Jobs", systemImage: "exclamationmark.triangle")
                 } description: {
                     Text(errorMessage)
                 } actions: {
-                    Button("Retry") { Task { await load(refresh: true) } }
+                    Button("Retry") { Task { await load() } }
                 }
             } else if jobs.isEmpty {
                 ContentUnavailableView("No Jobs", systemImage: "play.square.stack")
             } else {
                 List {
+                    EnvironmentLoadFailuresSection(failures: list.failedEnvironments) {
+                        Task { await load() }
+                    }
                     ForEach(groups) { group in
                         Section {
                             ForEach(group.jobs) { job in
                                 NavigationLink {
                                     JobDetailView(
-                                        environmentID: environmentID,
-                                        job: job,
+                                        environmentID: job.environmentID,
+                                        job: job.value,
                                         isRunning: runningJobs.contains(job.id),
                                         onRun: { await run(job) }
                                     )
                                 } label: {
-                                    JobRow(job: job, isRunning: runningJobs.contains(job.id))
+                                    JobRow(
+                                        job: job.value, isRunning: runningJobs.contains(job.id),
+                                        environmentName: job.environmentName
+                                    )
+                                    .rowEnvironment(job)
                                 }
                                 .contextMenu {
                                     Button {
@@ -141,41 +153,41 @@ struct JobsListView: View {
         .toolbar {
             AppToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    Task { await load(refresh: true) }
+                    Task { await load() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .accessibilityLabel("Refresh")
-                .disabled(isLoading)
+                .disabled(list.isLoading)
             }
         }
         .task { await load() }
-        .refreshable { await load(refresh: true) }
+        .refreshable { await load() }
     }
 
-    private func load(refresh: Bool = false) async {
+    private func load() async {
         guard let client = manager.client else { return }
-        if jobs.isEmpty { isLoading = true }
-        if refresh { errorMessage = nil }
-        defer { isLoading = false }
-        do {
-            let response = try await client.jobs.list(envID: environmentID)
-            jobs = response.jobs
-            rebuildGroups()
-            isAgent = response.isAgent
-            errorMessage = nil
-        } catch {
-            errorMessage = friendlyErrorMessage(error)
+        let environments = await environmentsStore.listEnvironments(
+            environmentID, allEnvironments: allEnvironments, manager: manager)
+        // The jobs endpoint isn't paginated: each environment returns one complete page.
+        await list.reload(environments) { environmentID, _, _ in
+            let jobs = try await client.jobs.list(envID: environmentID).jobs
+            return ResourcePage(
+                items: jobs,
+                pagination: PaginationResponse(
+                    totalPages: 1, totalItems: Int64(jobs.count), currentPage: 1, itemsPerPage: max(jobs.count, 1))
+            )
         }
+        rebuildGroups()
     }
 
-    private func run(_ job: JobStatus) async {
+    private func run(_ job: EnvironmentItem<JobStatus>) async {
         guard let client = manager.client, !runningJobs.contains(job.id) else { return }
         HapticsManager.medium()
         runningJobs.insert(job.id)
         defer { runningJobs.remove(job.id) }
         do {
-            let result = try await client.jobs.run(jobID: job.id, envID: environmentID)
+            let result = try await client.jobs.run(jobID: job.value.id, envID: job.environmentID)
             let msg = result.message.isEmpty ? "\(job.name) started" : result.message
             HapticsManager.success()
             showToast(.success(msg))
@@ -188,6 +200,7 @@ struct JobsListView: View {
 private struct JobRow: View {
     let job: JobStatus
     let isRunning: Bool
+    var environmentName: String? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -221,6 +234,7 @@ private struct JobRow: View {
                             .foregroundStyle(.tertiary)
                     }
                 }
+                EnvironmentLabel(name: environmentName)
             }
             Spacer(minLength: 0)
             statusBadge

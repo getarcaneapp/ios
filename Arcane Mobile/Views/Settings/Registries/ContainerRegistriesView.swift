@@ -278,6 +278,7 @@ private struct RegistryActionRow: View {
     var body: some View {
         Button(action: onEdit) {
             RegistryRow(registry: registry)
+                .foregroundStyle(.primary)
                 .contentShape(Rectangle())
         }
         .contextMenu {

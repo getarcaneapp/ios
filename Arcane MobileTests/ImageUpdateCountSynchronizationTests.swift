@@ -19,7 +19,7 @@ struct ImageUpdateCountSynchronizationTests {
     }
 
     @Test
-    func refreshedEnvironmentCountUpdatesTheFleetTotal() throws {
+    func refreshedEnvironmentCountUpdatesTheTotal() throws {
         let store = ImageUpdateCountStore()
         let client = ArcaneClient(
             configuration: .init(

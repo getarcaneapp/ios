@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ProjectDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore: EnvironmentsStore?
     @SwiftUI.Environment(\.dismiss) private var dismiss
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
     @SwiftUI.Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -537,6 +538,11 @@ struct ProjectDetailView: View {
 
     // MARK: - Actions
 
+    /// This project's environment, which can differ from the active one in All Environments lists.
+    private var environmentName: String {
+        environmentsStore?.displayName(for: environmentID) ?? manager.activeEnvironmentName
+    }
+
     /// Hands the operation to the app-level store: it owns the stream, the
     /// root sheet, the floating pill, and the Live Activity. Completion bumps
     /// the projects mutation version, which this view already observes to
@@ -552,7 +558,7 @@ struct ProjectDetailView: View {
             envID: environmentID,
             targetID: project.id,
             targetName: currentProject.displayName,
-            environmentName: manager.activeEnvironmentName,
+            environmentName: environmentName,
             manager: manager,
             mutationStore: mutationStore,
             deployOptions: deployOptions
@@ -1030,6 +1036,7 @@ private enum ProjectDeployOptionsPreferences {
 struct CreateProjectView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore: EnvironmentsStore?
     @SwiftUI.Environment(\.dismiss) private var dismiss
     let environmentID: EnvironmentID
     let prefilledName: String?
@@ -1442,7 +1449,9 @@ struct CreateProjectView: View {
             if deploy && manager.permissions.has(Permission.Projects.deploy, in: environmentID) {
                 let started = DeploymentActivityStore.shared.start(
                     kind: .up, envID: environmentID, targetID: created.id,
-                    targetName: created.displayName, environmentName: manager.activeEnvironmentName,
+                    targetName: created.displayName,
+                    environmentName: environmentsStore?.displayName(for: environmentID)
+                        ?? manager.activeEnvironmentName,
                     manager: manager, mutationStore: mutationStore, deployOptions: requestedDeployOptions)
                 if !started { showToast(.info("Project created. Open the project to retry deployment.")) }
             }

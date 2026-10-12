@@ -109,7 +109,7 @@ struct UpdaterRunView: View {
         GeometryReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 24) {
-                    FleetUpdateScene(model: sceneModel)
+                    EnvironmentUpdateScene(model: sceneModel)
                     phaseDetails
                 }
                 .frame(maxWidth: 680)
@@ -139,28 +139,28 @@ struct UpdaterRunView: View {
 
     // MARK: - Update scene
 
-    private var sceneModel: FleetUpdateSceneModel {
+    private var sceneModel: EnvironmentUpdateSceneModel {
         switch phase {
         case .starting:
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: .starting,
                 title: "Starting the updater",
                 subtitle: "Contacting the selected environment"
             )
         case .running:
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: .updating,
                 title: "Updating containers",
                 subtitle: runningSubtitle
             )
         case .completed(let result):
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: result.failed == 0 ? .completed : .warning,
                 title: result.failed == 0 ? "Updater complete" : "Finished with issues",
                 subtitle: completionSubtitle(result)
             )
         case .failed(let message):
-            return FleetUpdateSceneModel(
+            return EnvironmentUpdateSceneModel(
                 kind: .failed,
                 title: "Updater failed",
                 subtitle: message

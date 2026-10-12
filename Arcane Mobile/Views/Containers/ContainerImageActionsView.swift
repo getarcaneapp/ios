@@ -114,9 +114,6 @@ struct ContainerComposeView: View {
                     AppToolbarItem(placement: .primaryAction) {
                         ShareLink(item: content) { Label("Share", systemImage: "square.and.arrow.up") }
                     }
-                    if #available(iOS 26, *), manager.permissions.has(Permission.Projects.create, in: environmentID) {
-                        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                    }
                     if manager.permissions.has(Permission.Projects.create, in: environmentID) {
                         AppToolbarItem(placement: .primaryAction) {
                             Button("Create Project") { createProject = true }

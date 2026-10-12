@@ -4,11 +4,14 @@ struct ResourceStatusBadge: View {
     let status: String?
     let isLive: Bool?
     var usesCardStyle: Bool
+    /// Overrides the displayed text while `status` still drives tint and icon.
+    var label: String?
 
-    init(status: String?, isLive: Bool? = nil, usesCardStyle: Bool = false) {
+    init(status: String?, isLive: Bool? = nil, usesCardStyle: Bool = false, label: String? = nil) {
         self.status = status
         self.isLive = isLive
         self.usesCardStyle = usesCardStyle
+        self.label = label
     }
 
     private var normalizedStatus: String {
@@ -16,6 +19,7 @@ struct ResourceStatusBadge: View {
     }
 
     private var displayText: String {
+        if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty { return label }
         let trimmed = status?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty else { return "Unknown" }
         return trimmed.capitalized

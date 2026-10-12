@@ -157,11 +157,10 @@ struct APIKeysView: View {
             .accessibilityLabel("API key options")
         }
 
-        if #available(iOS 26, *), canCreate {
-            ToolbarSpacer(.fixed, placement: .topBarTrailing)
-        }
-
         if canCreate {
+            if #available(iOS 26, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
             AppToolbarItem(placement: .navigationBarTrailing) {
                 Button {
                     showCreateSheet = true

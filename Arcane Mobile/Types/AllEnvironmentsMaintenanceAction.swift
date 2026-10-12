@@ -1,6 +1,6 @@
 import Foundation
 
-enum FleetMaintenanceAction: String, Identifiable {
+enum AllEnvironmentsMaintenanceAction: String, Identifiable {
     case update, checkImages
     var id: String { rawValue }
     var title: String {

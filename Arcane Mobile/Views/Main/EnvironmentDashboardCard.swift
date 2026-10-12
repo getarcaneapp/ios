@@ -27,7 +27,7 @@ struct EnvironmentDashboardCard: View {
     var cachedCard: DashboardGlobalEnvironmentCard?
     /// Live per-environment state from the aggregated dashboard stream.
     var streamState: DashboardStreamStore.EnvironmentState?
-    /// Authoritative Docker info loaded once by DashboardView's bounded fleet
+    /// Authoritative Docker info loaded once by DashboardView's bounded all-environments
     /// fetch and shared by cards, totals, and widgets.
     var dockerInfo: DockerInfo?
     /// Passed in by the parent instead of reading manager.activeEnvironmentID

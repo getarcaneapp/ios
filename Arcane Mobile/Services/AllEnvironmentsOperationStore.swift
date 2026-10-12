@@ -4,9 +4,9 @@ import Observation
 import SwiftUI
 
 @MainActor @Observable
-final class FleetOperationStore {
-    static let shared = FleetOperationStore()
-    private(set) var results: [FleetOperationResult] = []
+final class AllEnvironmentsOperationStore {
+    static let shared = AllEnvironmentsOperationStore()
+    private(set) var results: [EnvironmentOperationResult] = []
     private(set) var isRunning = false
 
     func run(
@@ -38,7 +38,7 @@ final class FleetOperationStore {
     }
 
     func performMaintenance(
-        _ action: FleetMaintenanceAction, environments: [Arcane.Environment], manager: ArcaneClientManager
+        _ action: AllEnvironmentsMaintenanceAction, environments: [Arcane.Environment], manager: ArcaneClientManager
     ) async {
         guard let client = manager.client else { return }
         let session = manager.clientGeneration
@@ -69,6 +69,27 @@ final class FleetOperationStore {
         }
     }
 
+    func performPrune(
+        _ action: ResourcePruneAction, environments: [Arcane.Environment], manager: ArcaneClientManager
+    ) async {
+        guard let client = manager.client else { return }
+        let session = manager.clientGeneration
+        await runWithToast(
+            title: "Pruning \(action.resourceName)…", completionTitle: "\(action.resourceName.capitalized) pruned",
+            symbol: "trash", isDestructive: true,
+            environments: environments, isCurrent: { manager.clientGeneration == session }
+        ) { id in
+            guard manager.permissions.has(action.permission, in: id) else {
+                throw ArcaneError.transport("Not run: no prune permission")
+            }
+            try await action.perform(client: client, environmentID: id)
+            guard session == manager.clientGeneration else { return "Completed on previous connection" }
+            await ResponseCache.shared.invalidateEnvironment(id.rawValue)
+            ResourceMutationStore.shared.markChanged(kind: action.mutationKind, envID: id)
+            return "\(action.resourceName.capitalized) pruned"
+        }
+    }
+
     func runWithToast(
         title: String, completionTitle: String? = nil, symbol: String = "arrow.triangle.2.circlepath",
         isDestructive: Bool = false,
@@ -76,7 +97,7 @@ final class FleetOperationStore {
         operation: (EnvironmentID) async throws -> String
     ) async {
         guard !isRunning else {
-            showToast(.info("A fleet action is already running."))
+            showToast(.info("An action is already running."))
             return
         }
         guard environments.contains(where: \.enabled) else {
