@@ -30,6 +30,9 @@ struct ProjectsView: View {
     @State private var environmentFilter: EnvironmentID?
     @State private var statusFilter = ProjectStatusFilter.all
     @State private var updateFilter = ResourceUpdateFilter.all
+    /// Server-side tag filter (matches any selected tag).
+    @State private var tagFilter: Set<String> = []
+    @State private var tagOptions: [ProjectTagOption] = []
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, EnvironmentItem<ProjectDetails>>] = []
 
@@ -46,6 +49,7 @@ struct ProjectsView: View {
         var count = statusFilter != .all ? 1 : 0
         if environmentFilter != nil { count += 1 }
         if updateFilter != .all { count += 1 }
+        if !tagFilter.isEmpty { count += 1 }
         return count
     }
 
@@ -304,7 +308,33 @@ struct ProjectsView: View {
                     .pickerStyle(.inline)
                     .labelsHidden()
                 }
+                if !tagOptions.isEmpty {
+                    Section("Tags") {
+                        ForEach(tagOptions) { option in
+                            Button {
+                                if tagFilter.contains(option.name) {
+                                    tagFilter.remove(option.name)
+                                } else {
+                                    tagFilter.insert(option.name)
+                                }
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "tag.fill")
+                                        .foregroundStyle(ProjectTag.displayColor(for: option.color))
+                                    Text(verbatim: option.name)
+                                        .foregroundStyle(.primary)
+                                    Spacer(minLength: 0)
+                                    if tagFilter.contains(option.name) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
+            .task { await loadTagOptions() }
             .navigationTitle("Filter")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -367,6 +397,7 @@ struct ProjectsView: View {
             .onChange(of: environmentFilter) { rebuildSections() }
             .onChange(of: statusFilter) { rebuildSections() }
             .onChange(of: updateFilter) { rebuildSections() }
+            .onChange(of: tagFilter) { Task { await loadProjects() } }
             .onChange(of: sortOrder) { rebuildSections() }
             .onChange(of: pinnedStore.version) { rebuildSections() }
             .deleteConfirmation(item: $pendingDeleteProject) { project in
@@ -410,14 +441,29 @@ struct ProjectsView: View {
     }
 
     private func projectsPage(client: ArcaneClient) -> EnvironmentPagedList<ProjectDetails>.Fetch {
-        { environmentID, start, limit in
+        let tags = tagFilter.isEmpty ? nil : tagFilter.sorted().joined(separator: ",")
+        return { environmentID, start, limit in
             // `PaginatedResponse<ProjectDetails>` is Decodable-only, so we can't
             // route it through the cache layer (which requires Codable). The
             // service call is fast enough that this is fine.
             let query = SearchPaginationSort(start: start, limit: limit)
-            let response = try await client.projects.list(envID: environmentID, query: query)
+            let response = try await client.projects.list(envID: environmentID, query: query, tags: tags)
             return ResourcePage(items: response.data, pagination: response.pagination)
         }
+    }
+
+    /// Tag catalog across the listed environments; tags are unavailable on older servers.
+    private func loadTagOptions() async {
+        guard let client = manager.client, manager.supportsPost26MobileFeatures else { return }
+        var byName: [String: ProjectTagOption] = [:]
+        for environment in listEnvironments {
+            let path = client.rest.environmentPath(environment.id, "projects/tags")
+            let options: [ProjectTagOption] = (try? await client.rest.get(path)) ?? []
+            for option in options where byName[option.name] == nil {
+                byName[option.name] = option
+            }
+        }
+        tagOptions = byName.values.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private func listEnvironment(_ id: EnvironmentID) -> ListEnvironment {
@@ -605,6 +651,9 @@ struct ProjectRow: View {
                     }
                 }
                 EnvironmentLabel(name: environmentName)
+                if let tags = project.tags, !tags.isEmpty {
+                    ProjectTagChips(tags: tags)
+                }
             }
 
             Spacer()
@@ -624,6 +673,33 @@ struct ProjectRow: View {
         parts.append("\(count) service\(count == 1 ? "" : "s")")
         if let environmentName { parts.append(environmentName) }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// Compact tag list for project rows.
+private struct ProjectTagChips: View {
+    let tags: [ProjectTag]
+    private let visibleCount = 3
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(tags.prefix(visibleCount), id: \.name) { tag in
+                HStack(spacing: 3) {
+                    Image(systemName: "tag.fill")
+                        .foregroundStyle(tag.displayColor)
+                    Text(verbatim: tag.name)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if tags.count > visibleCount {
+                Text(verbatim: "+\(tags.count - visibleCount)")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption2)
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Tags: \(tags.map(\.name).joined(separator: ", "))")
     }
 }
 

@@ -1,6 +1,6 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-sources := '"Arcane Mobile" ArcaneWidgets Shared "Arcane MobileTests"'
+sources := '"Arcane Mobile" ArcaneWidgets ArcaneNotificationService Shared "Arcane MobileTests"'
 
 default:
     @just --list

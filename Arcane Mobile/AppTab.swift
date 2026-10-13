@@ -315,12 +315,7 @@ func appTabDestination(
             environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName,
             allEnvironments: manager.allEnvironmentsPreview)
     case .swarm:
-        ContentUnavailableView {
-            Label("Coming Soon", systemImage: "square.stack.3d.up")
-        } description: {
-            Text("Swarm management is planned for a future Arcane Mobile update.")
-        }
-        .navigationTitle("Swarm")
+        SwarmView(environmentID: manager.activeEnvironmentID, environmentName: manager.activeEnvironmentName)
     case .events: EventsView()
     case .customize: NavigationCatalogLandingView(parent: .customize)
     case .settings: SettingsView()

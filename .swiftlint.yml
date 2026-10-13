@@ -2,6 +2,7 @@
 included:
   - Arcane Mobile
   - ArcaneWidgets
+  - ArcaneNotificationService
   - Shared
   - Arcane MobileTests
 excluded:

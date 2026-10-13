@@ -31,6 +31,8 @@ struct ContainerDetailView: View {
     @State private var selectedTab: DetailTab = .overview
     @State private var logDownload: LogDownloadFile?
     @State private var isDownloadingLogs = false
+    @State private var autoUpdateEnabled: Bool?
+    @State private var isSavingAutoUpdate = false
 
     private struct LogDownloadFile: Identifiable {
         let id = UUID()
@@ -38,13 +40,14 @@ struct ContainerDetailView: View {
     }
 
     private enum DetailTab: String, CaseIterable, Identifiable {
-        case overview, stats, logs
+        case overview, stats, logs, processes
         var id: String { rawValue }
         var title: String {
             switch self {
             case .overview: return "Overview"
             case .stats: return "Stats"
             case .logs: return "Logs"
+            case .processes: return "Processes"
             }
         }
 
@@ -53,6 +56,7 @@ struct ContainerDetailView: View {
             case .overview: "info.circle.fill"
             case .stats: "chart.xyaxis.line"
             case .logs: "text.alignleft"
+            case .processes: "list.number"
             }
         }
 
@@ -61,8 +65,18 @@ struct ContainerDetailView: View {
             case .overview: .purple
             case .stats: .blue
             case .logs: .teal
+            case .processes: .orange
             }
         }
+    }
+
+    /// Processes come from `docker top`, which only works on running containers.
+    private var availableTabs: [DetailTab] {
+        DetailTab.allCases.filter { $0 != .processes || (isRunning && !isPaused) }
+    }
+
+    private var canKill: Bool {
+        manager.permissions.has("containers:kill", in: environmentID)
     }
 
     private var containerMutationVersion: Int {
@@ -98,7 +112,7 @@ struct ContainerDetailView: View {
         VStack(spacing: 0) {
             ScrollableTabBar(
                 selection: $selectedTab,
-                options: DetailTab.allCases.map {
+                options: availableTabs.map {
                     ScrollableTabOption(
                         $0,
                         title: $0.title,
@@ -130,6 +144,9 @@ struct ContainerDetailView: View {
                         embedded: true
                     )
                     .transition(.motionAware(edge: .trailing, reduceMotion: reduceMotion))
+                case .processes:
+                    ContainerProcessesView(containerID: container.id, environmentID: environmentID)
+                        .transition(.motionAware(edge: .trailing, reduceMotion: reduceMotion))
                 }
             }
             .motionAwareAnimation(Motion.state, value: selectedTab)
@@ -148,6 +165,9 @@ struct ContainerDetailView: View {
         .refreshable { await loadDetails() }
         .onChange(of: containerMutationVersion) { _, _ in
             Task { await loadDetails() }
+        }
+        .onChange(of: availableTabs) { _, tabs in
+            if !tabs.contains(selectedTab) { selectedTab = .overview }
         }
         .sheet(isPresented: $showInspect) {
             NavigationStack {
@@ -214,6 +234,7 @@ struct ContainerDetailView: View {
                     }
                 }
                 configSection(details)
+                autoUpdateSection
                 stateSection(details.state)
                 hostConfigSection(details.hostConfig, mounts: details.mounts)
                 if !details.ports.isEmpty { ContainerPortsSection(ports: details.ports) }
@@ -226,6 +247,25 @@ struct ContainerDetailView: View {
         }
         .listStyle(.insetGrouped)
         .softTopScrollEdgeEffectCompat()
+    }
+
+    @ViewBuilder
+    private var autoUpdateSection: some View {
+        if let autoUpdateEnabled, manager.permissions.has(Permission.Containers.autoUpdate, in: environmentID) {
+            Section {
+                Toggle(
+                    isOn: Binding(
+                        get: { autoUpdateEnabled },
+                        set: { newValue in Task { await setAutoUpdate(newValue) } }
+                    )
+                ) {
+                    Label("Auto-Update", systemImage: "arrow.triangle.2.circlepath.circle")
+                }
+                .disabled(isSavingAutoUpdate)
+            } footer: {
+                Text("Excludes this container from automatic updates when off.")
+            }
+        }
     }
 
     private var statusHeader: some View {
@@ -302,6 +342,10 @@ struct ContainerDetailView: View {
             items.append(
                 ActionButtonItem(id: "restart", title: "Restart", systemImage: "arrow.clockwise", tint: .orange) {
                     Task { await performAction(.restart, actionID: "restart") }
+                })
+            items.append(
+                ActionButtonItem(id: "pause", title: "Pause", systemImage: "pause.fill", tint: .orange) {
+                    Task { await performAction(.pause, actionID: "pause") }
                 })
         }
         items.append(
@@ -386,6 +430,20 @@ struct ContainerDetailView: View {
             ActionButtonItem(id: "rename", title: "Rename", systemImage: "pencil", tint: .accentColor) {
                 showRename = true
             })
+        if isRunning && canKill {
+            items.append(
+                ActionButtonItem(
+                    id: "kill",
+                    title: "Kill",
+                    systemImage: "bolt.fill",
+                    tint: .red,
+                    role: .destructive,
+                    confirmationMessage:
+                        "This sends SIGKILL and stops the container immediately without a graceful shutdown."
+                ) {
+                    Task { await performAction(.kill, actionID: "kill") }
+                })
+        }
         items.append(
             ActionButtonItem(
                 id: "delete",
@@ -582,7 +640,7 @@ struct ContainerDetailView: View {
     // MARK: - Actions
 
     private enum ContainerAction {
-        case start, stop, restart, pause, unpause
+        case start, stop, restart, pause, unpause, kill
 
         var successTitle: String {
             switch self {
@@ -591,6 +649,7 @@ struct ContainerDetailView: View {
             case .restart: "Container restarted"
             case .pause: "Container paused"
             case .unpause: "Container resumed"
+            case .kill: "Container killed"
             }
         }
     }
@@ -610,6 +669,7 @@ struct ContainerDetailView: View {
             case .restart: try await client.containers.restart(envID: environmentID, id: container.id)
             case .pause: try await client.containers.pause(envID: environmentID, id: container.id)
             case .unpause: try await client.containers.unpause(envID: environmentID, id: container.id)
+            case .kill: try await client.containers.kill(envID: environmentID, id: container.id)
             }
             await invalidateContainerCaches()
             mutationStore.markChanged(kind: .containers, envID: environmentID)
@@ -673,16 +733,34 @@ struct ContainerDetailView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let loaded = try await RemoteDataLimits.boundedContainerInspect(
+            let loaded = try await RemoteDataLimits.boundedContainerInspectWithAutoUpdate(
                 client: client,
                 environmentID: environmentID,
                 containerID: requestedID
             )
             try Task.checkCancellation()
             guard requestedID == container.id, generation == manager.clientGeneration else { return }
-            details = loaded
+            details = loaded.details
+            autoUpdateEnabled = loaded.autoUpdateEnabled
         } catch {
             // Ignore inspect errors — show what we have
+        }
+    }
+
+    private func setAutoUpdate(_ enabled: Bool) async {
+        guard let client = manager.client else { return }
+        let previous = autoUpdateEnabled
+        autoUpdateEnabled = enabled
+        isSavingAutoUpdate = true
+        defer { isSavingAutoUpdate = false }
+        do {
+            try await client.containers.setAutoUpdate(envID: environmentID, id: container.id, enabled: enabled)
+            await invalidateContainerCaches()
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
+            showToast(.success(enabled ? "Auto-update enabled" : "Auto-update disabled"))
+        } catch {
+            autoUpdateEnabled = previous
+            errorMessage = friendlyErrorMessage(error)
         }
     }
 

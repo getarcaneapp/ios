@@ -94,6 +94,26 @@ nonisolated enum RemoteDataLimits {
         )
     }
 
+    /// Container inspect plus the server-computed `autoUpdateEnabled` flag
+    /// (v2.14+), which the SDK's `ContainerDetails` doesn't model. Nil on
+    /// servers that don't report it.
+    @concurrent static func boundedContainerInspectWithAutoUpdate(
+        client: ArcaneClient,
+        environmentID: EnvironmentID,
+        containerID: String
+    ) async throws -> (details: ContainerDetails, autoUpdateEnabled: Bool?) {
+        let escapedID = ArcaneAPIHelpers.escapedPathComponent(containerID)
+        let data = try await boundedData(
+            client: client,
+            path: client.rest.environmentPath(environmentID, "containers/\(escapedID)"),
+            maximumBytes: maximumInspectBytes
+        )
+        let decoder = ArcaneJSON.makeDecoder()
+        let details = try decoder.decode(APIResponse<ContainerDetails>.self, from: data).data
+        let autoUpdate = try? decoder.decode(APIResponse<ContainerAutoUpdateState>.self, from: data).data
+        return (details, autoUpdate?.autoUpdateEnabled)
+    }
+
     @concurrent static func boundedDockerInfo(
         client: ArcaneClient,
         environmentID: EnvironmentID

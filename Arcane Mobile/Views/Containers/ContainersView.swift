@@ -49,8 +49,21 @@ struct ContainersView: View {
     /// (one full-screen cover per view).
     private enum ContainerDestructive {
         case prune
+        case stopAll
+        case kill(EnvironmentItem<ContainerSummary>)
         case remove(EnvironmentItem<ContainerSummary>)
         case bulkRemove([String])
+    }
+
+    private enum PowerAllAction {
+        case startAll, startStopped, stopAll
+
+        var successVerb: String {
+            switch self {
+            case .startAll, .startStopped: "Started"
+            case .stopAll: "Stopped"
+            }
+        }
     }
 
     private var containers: [EnvironmentItem<ContainerSummary>] { list.items }
@@ -131,10 +144,10 @@ struct ContainersView: View {
         return count
     }
 
-
     /// Filters + sorts once and partitions in a single pass. Pure — reads the
     /// current inputs and returns the grouped sections without touching state.
-    private func computeSections(pinned: Set<String>) -> [StableListSection<String, EnvironmentItem<ContainerSummary>>] {
+    private func computeSections(pinned: Set<String>) -> [StableListSection<String, EnvironmentItem<ContainerSummary>>]
+    {
         let query = debouncedSearchText
         let filtered = containers.filter { container in
             guard environmentFilter == nil || container.environmentID == environmentFilter else { return false }
@@ -348,6 +361,28 @@ struct ContainersView: View {
                         if allEnvironments {
                             Divider()
                             AllEnvironmentsMaintenanceButtons(action: $pendingMaintenanceAction)
+                        } else if canStartAll || canStopAll {
+                            Divider()
+                            if canStartAll {
+                                Button {
+                                    Task { await runPowerAll(.startAll) }
+                                } label: {
+                                    Label("Start All", systemImage: "play.fill")
+                                }
+                                Button {
+                                    Task { await runPowerAll(.startStopped) }
+                                } label: {
+                                    Label("Start Stopped", systemImage: "play")
+                                }
+                            }
+                            if canStopAll {
+                                Button(role: .destructive) {
+                                    pendingDestructive = .stopAll
+                                } label: {
+                                    DestructiveLabel(text: "Stop All", systemImage: "stop.fill")
+                                }
+                                .tint(.red)
+                            }
                         }
                         Divider()
                         Button(role: .destructive) {
@@ -408,6 +443,29 @@ struct ContainersView: View {
                     actions: [
                         DeleteConfirmationAction(title: "Prune") {
                             Task { await pruneContainers() }
+                        }
+                    ]
+                )
+            case .stopAll:
+                return DeleteConfirmationConfig(
+                    title: "Stop All Containers",
+                    message: "Stop every running container in this environment.",
+                    icon: "stop.fill",
+                    actions: [
+                        DeleteConfirmationAction(title: "Stop All") {
+                            Task { await runPowerAll(.stopAll) }
+                        }
+                    ]
+                )
+            case .kill(let container):
+                return DeleteConfirmationConfig(
+                    title: "Kill Container",
+                    message:
+                        "Send SIGKILL to “\(container.displayName)”? It stops immediately without a graceful shutdown.",
+                    icon: "bolt.fill",
+                    actions: [
+                        DeleteConfirmationAction(title: "Kill") {
+                            Task { await killContainer(container) }
                         }
                     ]
                 )
@@ -691,6 +749,14 @@ struct ContainersView: View {
             } label: {
                 Label("Restart", systemImage: "arrow.clockwise")
             }
+            if manager.permissions.has("containers:kill", in: container.environmentID) {
+                Button(role: .destructive) {
+                    pendingDestructive = .kill(container)
+                } label: {
+                    DestructiveLabel(text: "Kill", systemImage: "bolt.fill")
+                }
+                .tint(.red)
+            }
         } else {
             Button {
                 Task { await startContainer(container) }
@@ -848,6 +914,52 @@ struct ContainersView: View {
             ReviewPrompter.shared.recordSuccess()
         } catch {
             showToast(.error("Prune failed"))
+        }
+    }
+
+    private var canStartAll: Bool {
+        manager.permissions.has(Permission.Containers.start, in: environmentID)
+    }
+
+    private var canStopAll: Bool {
+        manager.permissions.has(Permission.Containers.stop, in: environmentID)
+    }
+
+    private func runPowerAll(_ action: PowerAllAction) async {
+        guard let client = manager.client else { return }
+        do {
+            let result: SystemContainerActionResult
+            switch action {
+            case .startAll: result = try await client.system.startAllContainers(envID: environmentID)
+            case .startStopped: result = try await client.system.startAllStoppedContainers(envID: environmentID)
+            case .stopAll: result = try await client.system.stopAllContainers(envID: environmentID)
+            }
+            await invalidateContainerCaches(environmentID)
+            mutationStore.markChanged(kind: .containers, envID: environmentID)
+            let changed = (action == .stopAll ? result.stopped : result.started)?.count ?? 0
+            let failed = result.failed?.count ?? 0
+            if failed > 0 {
+                showToast(.error("\(failed) container\(failed == 1 ? "" : "s") failed"))
+            } else if changed == 0 {
+                showToast(.info("No containers to \(action == .stopAll ? "stop" : "start")"))
+            } else {
+                showToast(.success("\(action.successVerb) \(changed) container\(changed == 1 ? "" : "s")"))
+                ReviewPrompter.shared.recordSuccess()
+            }
+        } catch {
+            showToast(.error(friendlyErrorMessage(error)))
+        }
+    }
+
+    private func killContainer(_ container: EnvironmentItem<ContainerSummary>) async {
+        guard let client = manager.client else { return }
+        do {
+            try await client.containers.kill(envID: container.environmentID, id: container.value.id)
+            await invalidateContainerCaches(container.environmentID)
+            mutationStore.markChanged(kind: .containers, envID: container.environmentID)
+            showToast(.success("Container killed"))
+        } catch {
+            showToast(.error("Couldn't kill container"))
         }
     }
 

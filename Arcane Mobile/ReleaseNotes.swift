@@ -154,6 +154,18 @@ enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
             version: "0.10.2",
+            new: [
+                .init("Docker Swarm services, stacks, nodes, tasks, configs, secrets, and cluster setup."),
+                .init("Kill, pause, processes, and auto-update toggle for containers."),
+                .init("Start All, Start Stopped, and Stop All containers."),
+                .init("Rename volumes."),
+                .init("Connect and disconnect containers from networks."),
+                .init("Project tags with filtering."),
+                .init("Edit Git repositories and GitOps syncs."),
+                .init(
+                    "Push notifications combine into one summary per environment and type, written with Apple Intelligence when available."
+                ),
+            ],
             changed: [
                 .init(
                     "Success and error toasts for every container, image, volume, network, project, and settings action."
@@ -165,8 +177,11 @@ enum ReleaseNotes {
                 .init(
                     "Deployment pill and activity toasts show progress around their edge instead of a spinner; a finished deployment sweeps the border and shows a checkmark without a separate toast."
                 ),
-                .init("Faster loading across all environments, with each environment appearing as soon as it responds."),
-                .init("Smoother Dashboard, logs, lists, activities, network topology, compose editor, and compose options."),
+                .init(
+                    "Faster loading across all environments, with each environment appearing as soon as it responds."),
+                .init(
+                    "Smoother Dashboard, logs, lists, activities, network topology, compose editor, and compose options."
+                ),
                 .init("Faster app launch, with the profile picture shown without re-downloading."),
                 .init("Log lines copy from a long-press menu."),
             ],
@@ -175,6 +190,11 @@ enum ReleaseNotes {
                 .init("Lists keep their loaded pages and scroll position after returning from a detail screen."),
                 .init("Last log lines appear without waiting for new output."),
                 .init("Dashboard no longer reloads on every return from Control Center or a detail screen."),
+                .init("Webhook enable and disable."),
+                .init("Confirmation dialogs are no longer see-through inside sheets."),
+                .init("Repeated push notifications replace the earlier copy instead of stacking."),
+                .init("Adding a Git repository."),
+                .init("Activities update live on Arcane 2.16 and later."),
             ]
         ),
         ReleaseNote(

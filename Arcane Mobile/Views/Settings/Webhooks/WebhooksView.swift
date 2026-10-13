@@ -133,7 +133,8 @@ struct WebhooksView: View {
         do {
             let body = UpdateWebhook(enabled: !webhook.enabled)
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks/\(webhook.id)")
-            let _: Webhook = try await client.rest.put(path, body: body)
+            // PATCH returns `{ success: true }` with no webhook, so only the status matters.
+            _ = try await client.transport.rawRequest(path, method: "PATCH", body: body)
             await invalidateWebhookCaches()
             await loadWebhooks(refresh: true)
             showToast(.success(webhook.enabled ? "Webhook disabled" : "Webhook enabled"))

@@ -8,6 +8,18 @@ struct GitOpsSyncsView: View {
     /// All Environments preview: list and act on resources from every enabled environment.
     var allEnvironments = false
 
+    /// Fields accepted by both the create and update requests; the server
+    /// rejects unknown keys.
+    static let fields: [BackendFormField] = [
+        .init("name", label: "Name", required: true),
+        .init("repositoryId", label: "Repository ID", required: true),
+        .init("branch", label: "Branch", required: true, placeholder: "main"),
+        .init("composePath", label: "Compose Path", required: true, placeholder: "compose.yaml"),
+        .init("autoSync", label: "Auto Sync", type: .toggle),
+    ]
+
+    static let editConfig = DynamicEditConfig(title: "Edit GitOps Sync", fields: fields)
+
     var body: some View {
         DynamicResourceListView(
             title: "GitOps",
@@ -25,14 +37,9 @@ struct GitOpsSyncsView: View {
                     destructive: true),
             ],
             createTitle: "Create GitOps Sync",
-            createFields: [
-                .init("name", label: "Name", required: true),
-                .init("repositoryId", label: "Repository ID", required: true),
-                .init("branch", label: "Branch", placeholder: "main"),
-                .init("composePath", label: "Compose Path", required: true, placeholder: "compose.yaml"),
-                .init("autoSync", label: "Auto Sync", type: .toggle),
-            ],
+            createFields: Self.fields,
             createPath: { environmentID, client in client.rest.environmentPath(environmentID, "gitops-syncs") },
+            edit: Self.editConfig,
             managementDestination: manager.canAccess(.gitRepositories) ? .gitRepositories : nil,
             detailDestination: { item, onChange in
                 AnyView(

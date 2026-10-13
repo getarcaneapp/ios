@@ -21,6 +21,8 @@ struct DynamicResourceListView: View {
     var createTitle: String? = nil
     var createFields: [BackendFormField] = []
     var createPath: ((EnvironmentID, ArcaneClient) -> String)? = nil
+    /// Adds Edit to rows and the generic detail page.
+    var edit: DynamicEditConfig? = nil
     var managementDestination: AppTab? = nil
     /// Replaces the generic detail page for a row. Receives the row and a
     /// callback that reloads the list after the page changes the resource.
@@ -33,6 +35,7 @@ struct DynamicResourceListView: View {
     @State private var selectedAction: PendingAction?
     @State private var showCreateSheet = false
     @State private var createEnvironmentID: EnvironmentID?
+    @State private var editingItem: EnvironmentItem<DynamicResource>?
     @State private var displayedItems: [EnvironmentItem<DynamicResource>] = []
 
     private var items: [EnvironmentItem<DynamicResource>] { list.items }
@@ -97,6 +100,13 @@ struct DynamicResourceListView: View {
                                 .rowEnvironment(item)
                             }
                             .contextMenu {
+                                if edit != nil {
+                                    Button {
+                                        editingItem = item
+                                    } label: {
+                                        Label("Edit", systemImage: "pencil")
+                                    }
+                                }
                                 ForEach(actionsForRow()) { action in
                                     Button(role: action.destructive ? .destructive : nil) {
                                         selectedAction = PendingAction(action: action, item: item)
@@ -237,6 +247,22 @@ struct DynamicResourceListView: View {
                 }
             }
         }
+        .sheet(item: $editingItem) { item in
+            if let edit {
+                DynamicCreateFormView(title: edit.title, fields: edit.fields, initial: item.value) { data in
+                    guard let client = manager.client else { return }
+                    let target = itemPath(item, client: client)
+                    _ = try await ArcaneAPIHelpers.send(client: client, path: target, method: edit.method, body: data)
+                    showToast(.success("Saved"))
+                    await load()
+                }
+            }
+        }
+    }
+
+    private func itemPath(_ item: EnvironmentItem<DynamicResource>, client: ArcaneClient) -> String {
+        resourcePath(in: item.environmentID, client: client) + "/"
+            + ArcaneAPIHelpers.escapedPathComponent(item.value.id)
     }
 
     @ViewBuilder
@@ -246,7 +272,9 @@ struct DynamicResourceListView: View {
         } else {
             DynamicResourceDetailView(
                 title: item.title, resource: item.value, actions: actionsForRow(),
-                basePath: manager.client.map { resourcePath(in: item.environmentID, client: $0) }
+                basePath: manager.client.map { resourcePath(in: item.environmentID, client: $0) },
+                edit: edit,
+                onChange: { Task { await load() } }
             )
         }
     }
@@ -356,13 +384,32 @@ struct DynamicResourceRow: View {
 struct DynamicResourceDetailView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let title: String
-    let resource: DynamicResource
     let actions: [BackendListAction]
     /// The list endpoint (without query) that `/`-prefixed action suffixes extend.
     var basePath: String? = nil
+    var edit: DynamicEditConfig? = nil
+    var onChange: () -> Void = {}
 
+    @State private var resource: DynamicResource
     @State private var actionMessage: String?
     @State private var errorMessage: String?
+    @State private var showEdit = false
+
+    init(
+        title: String,
+        resource: DynamicResource,
+        actions: [BackendListAction],
+        basePath: String? = nil,
+        edit: DynamicEditConfig? = nil,
+        onChange: @escaping () -> Void = {}
+    ) {
+        self.title = title
+        self.actions = actions
+        self.basePath = basePath
+        self.edit = edit
+        self.onChange = onChange
+        _resource = State(initialValue: resource)
+    }
 
     var body: some View {
         List {
@@ -384,10 +431,34 @@ struct DynamicResourceDetailView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle(title)
+        .sheet(isPresented: $showEdit) {
+            if let edit {
+                DynamicCreateFormView(title: edit.title, fields: edit.fields, initial: resource) { data in
+                    guard let client = manager.client, let basePath else { return }
+                    let target = basePath + "/" + ArcaneAPIHelpers.escapedPathComponent(resource.id)
+                    let response = try await ArcaneAPIHelpers.send(
+                        client: client, path: target, method: edit.method, body: data)
+                    if let updated = try? ArcaneJSON.makeDecoder().decode(
+                        APIResponse<DynamicResource>.self, from: response
+                    ).data {
+                        resource = updated
+                    }
+                    actionMessage = "Saved"
+                    onChange()
+                }
+            }
+        }
         .toolbar {
-            if !actions.isEmpty {
+            if !actions.isEmpty || edit != nil {
                 AppToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
+                        if edit != nil, basePath != nil {
+                            Button {
+                                showEdit = true
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                        }
                         ForEach(actions) { action in
                             Button(role: action.destructive ? .destructive : nil) {
                                 Task { await run(action) }
@@ -467,18 +538,60 @@ struct DynamicCreateFormView: View {
 
     let title: String
     let fields: [BackendFormField]
+    /// Edit mode: seeds the form from the resource. Fields the server doesn't
+    /// return (secrets) start blank and are only sent when filled in.
+    let initial: DynamicResource?
     let onSubmit: (Data) async throws -> Void
 
-    @State private var values: [String: String] = [:]
-    @State private var toggles: [String: Bool] = [:]
+    @State private var values: [String: String]
+    @State private var toggles: [String: Bool]
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    private var canSave: Bool {
-        fields.allSatisfy { field in
-            !field.required || field.type == .toggle
-                || !(values[field.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    init(
+        title: String,
+        fields: [BackendFormField],
+        initial: DynamicResource? = nil,
+        onSubmit: @escaping (Data) async throws -> Void
+    ) {
+        self.title = title
+        self.fields = fields
+        self.initial = initial
+        self.onSubmit = onSubmit
+        var values: [String: String] = [:]
+        var toggles: [String: Bool] = [:]
+        for field in fields {
+            let current = initial?.values[field.id]
+            switch field.type {
+            case .toggle:
+                toggles[field.id] = current?.boolValue ?? false
+            case .secure:
+                break
+            case .choice(let options):
+                values[field.id] = current?.stringValue ?? options.first ?? ""
+            case .text, .multiline, .number:
+                if let current, current != .null { values[field.id] = current.displayString }
+            }
         }
+        _values = State(initialValue: values)
+        _toggles = State(initialValue: toggles)
+    }
+
+    private var isEditing: Bool { initial != nil }
+
+    /// Edits leave blank fields untouched on the server, so only creation enforces `required`.
+    private var canSave: Bool {
+        isEditing
+            || fields.allSatisfy { field in
+                !field.required || field.type == .toggle
+                    || !(values[field.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+    }
+
+    /// Placeholder for fields the server doesn't echo back when editing.
+    private func placeholder(_ field: BackendFormField, fallback: String) -> String {
+        if isEditing, initial?.values[field.id] == nil { return "Leave blank to keep current value" }
+        return field.placeholder.isEmpty ? fallback : field.placeholder
     }
 
     var body: some View {
@@ -521,16 +634,22 @@ struct DynamicCreateFormView: View {
                     get: { toggles[field.id, default: false] },
                     set: { toggles[field.id] = $0 }
                 ))
+        case .choice(let options):
+            Picker(field.label, selection: binding(field.id)) {
+                ForEach(options, id: \.self) { option in
+                    Text(verbatim: option).tag(option)
+                }
+            }
         case .secure:
             FormSecureField(
                 title: field.label,
-                placeholder: field.placeholder.isEmpty ? "Required" : field.placeholder,
+                placeholder: placeholder(field, fallback: field.required ? "Required" : "Optional"),
                 text: binding(field.id)
             )
         case .multiline:
             FormTextField(
                 title: field.label,
-                placeholder: field.placeholder.isEmpty ? "Value" : field.placeholder,
+                placeholder: placeholder(field, fallback: "Value"),
                 text: binding(field.id),
                 autocapitalization: .never,
                 autocorrectionDisabled: true,

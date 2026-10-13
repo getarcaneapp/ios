@@ -323,7 +323,13 @@ private struct DeleteConfirmationCard: View {
             buttons
         }
         .padding(20)
-        .background(.background, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        // Opaque system color, not `.background`: inside iOS 26 sheets the
+        // background style resolves to the sheet's translucent glass, which
+        // let the content behind the card show through.
+        .background(
+            Color(uiColor: .systemBackground),
+            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(.primary.opacity(0.06), lineWidth: 0.5)

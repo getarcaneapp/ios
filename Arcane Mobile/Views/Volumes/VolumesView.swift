@@ -22,6 +22,7 @@ struct VolumesView: View {
     @State private var showCreateSheet = false
     @State private var createEnvironmentID: EnvironmentID?
     @State private var pendingDestructive: VolumeDestructive?
+    @State private var renameTarget: EnvironmentItem<Volume>?
     @State private var showFilterSheet = false
     @State private var environmentFilter: EnvironmentID?
     @State private var scopeFilter = VolumeScopeFilter.all
@@ -289,6 +290,17 @@ struct VolumesView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: $renameTarget) { volume in
+            RenameContainerSheet(
+                currentName: volume.value.name,
+                resourceKind: "Volume",
+                footer: VolumeRename.footer
+            ) { newName in
+                await VolumeRename.perform(
+                    from: volume.value.name, to: newName, envID: volume.environmentID,
+                    manager: manager, mutationStore: mutationStore)
+            }
+        }
         .deleteConfirmation(item: $pendingDestructive) { action in
             switch action {
             case .prune:
@@ -410,6 +422,13 @@ struct VolumesView: View {
                     Label(
                         isPinned ? "Unpin" : "Pin",
                         systemImage: isPinned ? "pin.slash.fill" : "pin.fill")
+                }
+                if VolumeRename.isAvailable(for: volume.value, envID: volume.environmentID, manager: manager) {
+                    Button {
+                        renameTarget = volume
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
                 }
                 Button(role: .destructive) {
                     pendingDestructive = .delete(volume)
@@ -744,6 +763,7 @@ struct VolumeDetailView: View {
     @State private var errorMessage: String?
     @State private var route: VolumeRoute?
     @State private var resolvedContainersByID: [String: ContainerSummary] = [:]
+    @State private var showRename = false
 
     private enum VolumeRoute: Hashable { case browse, backups }
 
@@ -780,19 +800,22 @@ struct VolumeDetailView: View {
                     route = .backups
                 }
             ],
-            overflow: [
-                ActionButtonItem(
-                    id: "delete",
-                    title: "Delete",
-                    systemImage: "trash",
-                    tint: .red,
-                    role: .destructive
-                ) {
-                    Task { await deleteVolume() }
-                }
-            ],
+            overflow: overflowActions,
             resourceName: volume.name
         )
+        .sheet(isPresented: $showRename) {
+            RenameContainerSheet(
+                currentName: volume.name,
+                resourceKind: "Volume",
+                footer: VolumeRename.footer
+            ) { newName in
+                let result = await VolumeRename.perform(
+                    from: volume.name, to: newName, envID: environmentID,
+                    manager: manager, mutationStore: mutationStore)
+                if case .success = result { dismiss() }
+                return result
+            }
+        }
         .navigationTitle(volume.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $route) { route in
@@ -819,6 +842,27 @@ struct VolumeDetailView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private var overflowActions: [ActionButtonItem] {
+        var items: [ActionButtonItem] = []
+        if VolumeRename.isAvailable(for: volume, envID: environmentID, manager: manager) {
+            items.append(
+                ActionButtonItem(id: "rename", title: "Rename", systemImage: "pencil", tint: .accentColor) {
+                    showRename = true
+                })
+        }
+        items.append(
+            ActionButtonItem(
+                id: "delete",
+                title: "Delete",
+                systemImage: "trash",
+                tint: .red,
+                role: .destructive
+            ) {
+                Task { await deleteVolume() }
+            })
+        return items
     }
 
     private var headerSection: some View {
@@ -990,6 +1034,47 @@ struct VolumeDetailView: View {
             dismiss()
         } catch {
             errorMessage = friendlyErrorMessage(error)
+        }
+    }
+}
+
+/// Volume rename copies the data to a new volume and removes the source, so the
+/// server only allows it for volumes no container uses (v2.9+).
+enum VolumeRename {
+    static let footer =
+        "The data is copied to a new volume and the old one is removed. "
+        + "The volume can't be in use by any container."
+
+    static func isAvailable(for volume: Volume, envID: EnvironmentID, manager: ArcaneClientManager) -> Bool {
+        volume.containers.isEmpty && manager.permissions.has("volumes:rename", in: envID)
+    }
+
+    static func perform(
+        from name: String,
+        to newName: String,
+        envID: EnvironmentID,
+        manager: ArcaneClientManager,
+        mutationStore: ResourceMutationStore
+    ) async -> Result<Void, Error> {
+        guard let client = manager.client else { return .failure(ArcaneError.transport("No client")) }
+        do {
+            let path = client.rest.environmentPath(
+                envID, "volumes/\(ArcaneAPIHelpers.escapedPathComponent(name))/rename")
+            let _: Volume = try await client.rest.post(path, body: RenameVolumeRequest(name: newName))
+            if let cached = manager.cached {
+                await cached.invalidate(
+                    envID: envID,
+                    paths: [
+                        client.rest.environmentPath(envID, "volumes"),
+                        client.rest.environmentPath(envID, "volumes/sizes"),
+                        client.rest.environmentPath(envID, "volumes/*"),
+                    ])
+            }
+            mutationStore.markChanged(kind: .volumes, envID: envID)
+            showToast(.success("Volume renamed"))
+            return .success(())
+        } catch {
+            return .failure(error)
         }
     }
 }

@@ -14,7 +14,10 @@ struct GitOpsSyncDetailView: View {
     var onChange: () -> Void = {}
 
     @State private var sync: GitOpsSyncDetails
+    /// Raw sync from the last reload; seeds the edit form.
+    @State private var resource: DynamicResource?
     @State private var runningActionID: String?
+    @State private var showEdit = false
 
     init(sync: GitOpsSyncDetails, environmentID: EnvironmentID, onChange: @escaping () -> Void = {}) {
         _sync = State(initialValue: sync)
@@ -53,6 +56,19 @@ struct GitOpsSyncDetailView: View {
         )
         .task { await reload() }
         .refreshable { await reload() }
+        .sheet(isPresented: $showEdit) {
+            if let resource {
+                let config = GitOpsSyncsView.editConfig
+                DynamicCreateFormView(title: config.title, fields: config.fields, initial: resource) { data in
+                    guard let client = manager.client, let syncPath else { return }
+                    _ = try await ArcaneAPIHelpers.send(
+                        client: client, path: syncPath, method: config.method, body: data)
+                    showToast(.success("Sync updated"))
+                    onChange()
+                    await reload()
+                }
+            }
+        }
     }
 
     // MARK: - Header
@@ -365,6 +381,12 @@ struct GitOpsSyncDetailView: View {
                     openURL(url)
                 })
         }
+        if !sync.isBackup, resource != nil {
+            items.append(
+                ActionButtonItem(id: "edit", title: "Edit", systemImage: "pencil", tint: .accentColor) {
+                    showEdit = true
+                })
+        }
         if sync.isBackup {
             items.append(
                 ActionButtonItem(
@@ -405,6 +427,7 @@ struct GitOpsSyncDetailView: View {
         guard let client = manager.client, let syncPath else { return }
         do {
             let resource: DynamicResource = try await client.rest.get(syncPath)
+            self.resource = resource
             sync = GitOpsSyncDetails(resource: resource)
         } catch is CancellationError {
         } catch {

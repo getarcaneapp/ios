@@ -19,6 +19,7 @@
 		FD6FF5F02FAC44530016681B /* ArcanePasskeys in Frameworks */ = {isa = PBXBuildFile; productRef = FD6FF5F12FAC44530016681B /* ArcanePasskeys */; };
 		C01000010000000000000003 /* SwiftTreeSitter in Frameworks */ = {isa = PBXBuildFile; productRef = C01000010000000000000002 /* SwiftTreeSitter */; };
 		C01000020000000000000003 /* TreeSitterYAML in Frameworks */ = {isa = PBXBuildFile; productRef = C01000020000000000000002 /* TreeSitterYAML */; };
+		D0A100010000000000000001 /* ArcaneNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D0A100020000000000000001 /* ArcaneNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +37,13 @@
 			remoteGlobalIDString = BFD5111B2FF73F4100EF7E76;
 			remoteInfo = ArcaneWidgetsExtension;
 		};
+		D0A100030000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FD6FF5D12FAC434D0016681B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D0A100040000000000000001;
+			remoteInfo = ArcaneNotificationService;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -46,6 +54,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				BFD5112C2FF73F4200EF7E76 /* ArcaneWidgetsExtension.appex in Embed Foundation Extensions */,
+				D0A100010000000000000001 /* ArcaneNotificationService.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -58,6 +67,7 @@
 		BFD5111E2FF73F4100EF7E76 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		BFD511202FF73F4100EF7E76 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		FD6FF5D92FAC434D0016681B /* Arcane Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Arcane Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D0A100020000000000000001 /* ArcaneNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ArcaneNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -72,6 +82,20 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				BuildNumber.xcconfig,
+			);
+			target = FD6FF5D82FAC434D0016681B /* Arcane Mobile */;
+		};
+		D0A100050000000000000001 /* Exceptions for "ArcaneNotificationService" folder in "ArcaneNotificationService" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = D0A100040000000000000001 /* ArcaneNotificationService */;
+		};
+		D0A100060000000000000001 /* Exceptions for "ArcaneNotificationService" folder in "Arcane Mobile" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				NotificationRollup.swift,
 			);
 			target = FD6FF5D82FAC434D0016681B /* Arcane Mobile */;
 		};
@@ -102,6 +126,15 @@
 				FD6FF6352FAD1F970016681B /* Exceptions for "Arcane Mobile" folder in "Arcane Mobile" target */,
 			);
 			path = "Arcane Mobile";
+			sourceTree = "<group>";
+		};
+		D0A100070000000000000001 /* ArcaneNotificationService */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D0A100050000000000000001 /* Exceptions for "ArcaneNotificationService" folder in "ArcaneNotificationService" target */,
+				D0A100060000000000000001 /* Exceptions for "ArcaneNotificationService" folder in "Arcane Mobile" target */,
+			);
+			path = ArcaneNotificationService;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -139,6 +172,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D0A100080000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -157,6 +197,7 @@
 				FD6FF5DB2FAC434D0016681B /* Arcane Mobile */,
 				A10000020000000000000000 /* Arcane MobileTests */,
 				BFD511222FF73F4100EF7E76 /* ArcaneWidgets */,
+				D0A100070000000000000001 /* ArcaneNotificationService */,
 				BFAB10012FF7410000EF7E76 /* Shared */,
 				BFD5111D2FF73F4100EF7E76 /* Frameworks */,
 				FD6FF5DA2FAC434D0016681B /* Products */,
@@ -169,6 +210,7 @@
 				FD6FF5D92FAC434D0016681B /* Arcane Mobile.app */,
 				A10000010000000000000000 /* Arcane MobileTests.xctest */,
 				BFD5111C2FF73F4100EF7E76 /* ArcaneWidgetsExtension.appex */,
+				D0A100020000000000000001 /* ArcaneNotificationService.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -238,6 +280,7 @@
 			);
 			dependencies = (
 				BFD5112B2FF73F4200EF7E76 /* PBXTargetDependency */,
+				D0A1000C0000000000000001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				BFAB10012FF7410000EF7E76 /* Shared */,
@@ -256,6 +299,26 @@
 			productReference = FD6FF5D92FAC434D0016681B /* Arcane Mobile.app */;
 			productType = "com.apple.product-type.application";
 		};
+		D0A100040000000000000001 /* ArcaneNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D0A1000B0000000000000001 /* Build configuration list for PBXNativeTarget "ArcaneNotificationService" */;
+			buildPhases = (
+				D0A100090000000000000001 /* Sources */,
+				D0A100080000000000000001 /* Frameworks */,
+				D0A1000A0000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				D0A100070000000000000001 /* ArcaneNotificationService */,
+			);
+			name = ArcaneNotificationService;
+			productName = ArcaneNotificationService;
+			productReference = D0A100020000000000000001 /* ArcaneNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -271,6 +334,9 @@
 						TestTargetID = FD6FF5D82FAC434D0016681B;
 					};
 					BFD5111B2FF73F4100EF7E76 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					D0A100040000000000000001 = {
 						CreatedOnToolsVersion = 27.0;
 					};
 					FD6FF5D82FAC434D0016681B = {
@@ -300,6 +366,7 @@
 			targets = (
 				FD6FF5D82FAC434D0016681B /* Arcane Mobile */,
 				BFD5111B2FF73F4100EF7E76 /* ArcaneWidgetsExtension */,
+				D0A100040000000000000001 /* ArcaneNotificationService */,
 				A10000060000000000000000 /* Arcane MobileTests */,
 			);
 		};
@@ -321,6 +388,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		FD6FF5D72FAC434D0016681B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D0A1000A0000000000000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -351,6 +425,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D0A100090000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -363,6 +444,11 @@
 			isa = PBXTargetDependency;
 			target = BFD5111B2FF73F4100EF7E76 /* ArcaneWidgetsExtension */;
 			targetProxy = BFD5112A2FF73F4200EF7E76 /* PBXContainerItemProxy */;
+		};
+		D0A1000C0000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D0A100040000000000000001 /* ArcaneNotificationService */;
+			targetProxy = D0A100030000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -714,6 +800,66 @@
 			};
 			name = Release;
 		};
+		D0A1000D0000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = FD6FF5DB2FAC434D0016681B /* Arcane Mobile */;
+			baseConfigurationReferenceRelativePath = BuildNumber.xcconfig;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = 4L6GXKX423;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ArcaneNotificationService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ArcaneNotificationService;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.10.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D0A1000E0000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReferenceAnchor = FD6FF5DB2FAC434D0016681B /* Arcane Mobile */;
+			baseConfigurationReferenceRelativePath = BuildNumber.xcconfig;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(CURRENT_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = 4L6GXKX423;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ArcaneNotificationService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ArcaneNotificationService;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.10.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.getarcaneapp.ios.mobile.NotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -749,6 +895,15 @@
 			buildConfigurations = (
 				FD6FF5E72FAC434E0016681B /* Debug */,
 				FD6FF5E82FAC434E0016681B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D0A1000B0000000000000001 /* Build configuration list for PBXNativeTarget "ArcaneNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D0A1000D0000000000000001 /* Debug */,
+				D0A1000E0000000000000001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

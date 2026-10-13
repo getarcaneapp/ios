@@ -91,6 +91,59 @@ nonisolated struct VolumeSizeInfo: Codable, Sendable {
     let refCount: Int64?
 }
 
+/// `autoUpdateEnabled` from container inspect (v2.14+); the SDK's
+/// `ContainerDetails` doesn't model it.
+nonisolated struct ContainerAutoUpdateState: Codable, Sendable {
+    let autoUpdateEnabled: Bool?
+}
+
+/// `docker top` output from `containers/{id}/processes`. Each row lines up
+/// positionally with `titles`.
+nonisolated struct ContainerProcessList: Codable, Sendable {
+    let titles: [String]
+    let processes: [[String]]
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        titles = try container.decodeIfPresent([String].self, forKey: .titles) ?? []
+        processes = try container.decodeIfPresent([[String]].self, forKey: .processes) ?? []
+    }
+}
+
+nonisolated struct RenameVolumeRequest: Codable, Sendable {
+    let name: String
+}
+
+nonisolated struct NetworkConnectRequest: Codable, Sendable {
+    let containerId: String
+    var aliases: [String]?
+    var ipv4Address: String?
+}
+
+nonisolated struct NetworkDisconnectRequest: Codable, Sendable {
+    let containerId: String
+    var force: Bool?
+}
+
+/// Reusable tag from the `projects/tags` catalog.
+nonisolated struct ProjectTagOption: Codable, Sendable, Hashable, Identifiable {
+    let name: String
+    let color: String
+
+    var id: String { name }
+    var asTag: ProjectTag { ProjectTag(name: name, color: color) }
+}
+
+nonisolated struct UpdateProjectTagRequest: Codable, Sendable {
+    let name: String
+    let attached: Bool
+    var color: String?
+}
+
+nonisolated struct UpdateProjectTagResponse: Codable, Sendable {
+    let tags: [ProjectTag]?
+}
+
 /// Connected server's build metadata from `/app-version`. Decoded locally
 /// (rather than via the SDK's `VersionInfo`) so we also surface `nodeVersion`
 /// and `svelteKitVersion`, which the SDK model doesn't expose. Every field is

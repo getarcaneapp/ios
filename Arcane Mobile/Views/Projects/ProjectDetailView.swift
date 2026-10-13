@@ -31,6 +31,7 @@ struct ProjectDetailView: View {
     /// rather than a push (which leaves the tab bar visible). The UUID gives each
     /// tap a fresh identity so re-opening always re-presents.
     @State private var filesSheet: FilesSheetRequest?
+    @State private var showTags = false
 
     private struct FilesSheetRequest: Identifiable {
         let id = UUID()
@@ -78,6 +79,19 @@ struct ProjectDetailView: View {
             .task { await loadProject() }
             .task { await loadServices() }
             .task { await loadProjectFiles() }
+            .sheet(isPresented: $showTags) {
+                ProjectTagsSheet(
+                    projectID: project.id,
+                    environmentID: environmentID,
+                    tags: (currentProject.tags ?? []).filter { !$0.name.isEmpty }
+                ) { tags in
+                    var updated = currentProject
+                    updated.tags = tags
+                    refreshedProject = updated
+                    mutationStore.markChanged(kind: .projects, envID: environmentID)
+                }
+                .presentationDragIndicator(.visible)
+            }
             .refreshable {
                 await loadProject()
                 await loadServices(refresh: true)
@@ -512,6 +526,14 @@ struct ProjectDetailView: View {
             ActionButtonItem(id: "logs", title: "Logs", systemImage: "doc.text.fill", tint: .secondary) {
                 workspaceSection = .logs
             })
+        if manager.supportsPost26MobileFeatures,
+            manager.permissions.has("projects:update", in: environmentID)
+        {
+            items.append(
+                ActionButtonItem(id: "tags", title: "Edit Tags", systemImage: "tag", tint: .accentColor) {
+                    showTags = true
+                })
+        }
         if currentProject.isArchived {
             items.append(
                 ActionButtonItem(

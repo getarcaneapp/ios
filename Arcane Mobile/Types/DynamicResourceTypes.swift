@@ -177,6 +177,8 @@ nonisolated struct BackendFormField: Identifiable, Hashable, Sendable {
         case multiline
         case toggle
         case number
+        /// Fixed set of string values; the first is the default.
+        case choice([String])
     }
 
     let id: String
@@ -192,6 +194,13 @@ nonisolated struct BackendFormField: Identifiable, Hashable, Sendable {
         self.required = required
         self.placeholder = placeholder
     }
+}
+
+/// Edit form for a dynamic resource; saves to `<list path>/{id}`.
+nonisolated struct DynamicEditConfig: Sendable {
+    let title: String
+    let fields: [BackendFormField]
+    var method: BackendListAction.Method = .put
 }
 
 nonisolated struct BackendListAction: Identifiable, Hashable, Sendable {

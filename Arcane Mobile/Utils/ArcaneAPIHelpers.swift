@@ -75,7 +75,7 @@ nonisolated enum ArcaneAPIHelpers {
                 } else if !raw.isEmpty {
                     object[field.id] = raw
                 }
-            case .text, .secure, .multiline:
+            case .text, .secure, .multiline, .choice:
                 let raw = values[field.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
                 if !raw.isEmpty {
                     object[field.id] = raw

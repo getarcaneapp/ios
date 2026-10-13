@@ -12,6 +12,7 @@ final class ResourceMutationStore {
         case volumes
         case networks
         case environments
+        case swarm
     }
 
     // Reading this from `version(...)` establishes the @Observable dependency

@@ -1,7 +1,11 @@
 import SwiftUI
 
+/// Rename sheet shared by containers and volumes, which follow the same
+/// Docker naming rules.
 struct RenameContainerSheet: View {
     let currentName: String
+    var resourceKind = "Container"
+    var footer: String?
     let onRename: (String) async -> Result<Void, Error>
 
     @SwiftUI.Environment(\.dismiss) private var dismiss
@@ -9,8 +13,15 @@ struct RenameContainerSheet: View {
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
-    init(currentName: String, onRename: @escaping (String) async -> Result<Void, Error>) {
+    init(
+        currentName: String,
+        resourceKind: String = "Container",
+        footer: String? = nil,
+        onRename: @escaping (String) async -> Result<Void, Error>
+    ) {
         self.currentName = currentName
+        self.resourceKind = resourceKind
+        self.footer = footer
         self.onRename = onRename
         _newName = State(initialValue: currentName)
     }
@@ -31,7 +42,7 @@ struct RenameContainerSheet: View {
             Form {
                 Section {
                     FormTextField(
-                        title: "Container Name",
+                        title: "\(resourceKind) Name",
                         placeholder: currentName,
                         text: $newName,
                         autocapitalization: .never,
@@ -42,6 +53,8 @@ struct RenameContainerSheet: View {
                     .submitLabel(.done)
                 } header: {
                     Text("New name")
+                } footer: {
+                    if let footer { Text(footer) }
                 }
 
                 if let errorMessage {
@@ -52,7 +65,7 @@ struct RenameContainerSheet: View {
                     }
                 }
             }
-            .navigationTitle("Rename Container")
+            .navigationTitle("Rename \(resourceKind)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 AppToolbarItem(placement: .topBarLeading) {

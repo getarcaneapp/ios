@@ -193,6 +193,21 @@ nonisolated extension ArcaneClient {
         )
     }
 
+    func boundedSwarmServiceLogs(
+        envID: EnvironmentID,
+        serviceID: String,
+        timestamps: Bool
+    ) -> BoundedLogStream {
+        boundedLogs(
+            path: rest.environmentPath(
+                envID,
+                "ws/swarm/services/\(ArcaneAPIHelpers.escapedPathComponent(serviceID))/logs"
+            ),
+            tail: "200",
+            timestamps: timestamps
+        )
+    }
+
     private func boundedLogs(path: String, tail: String, timestamps: Bool) -> BoundedLogStream {
         BoundedLogStream(
             transport: transport,

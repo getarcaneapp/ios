@@ -518,9 +518,27 @@ struct NetworkDetailView: View {
     @State private var inspectError: String?
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
+    @State private var showConnect = false
+    @State private var pendingDisconnect: NetworkDisconnectTarget?
 
     private var isBuiltIn: Bool {
         ["host", "bridge", "none"].contains(network.name.lowercased())
+    }
+
+    /// Docker doesn't allow attaching containers to the host or none networks.
+    private var canConnect: Bool {
+        !["host", "none"].contains(network.name.lowercased())
+            && manager.permissions.has("networks:connect", in: environmentID)
+    }
+
+    private var canDisconnect: Bool {
+        manager.permissions.has("networks:disconnect", in: environmentID)
+    }
+
+    private var connectedContainerIDs: Set<String> {
+        var ids = Set(inspect?.containersList.map(\.id) ?? [])
+        if let keys = inspect?.containers.keys { ids.formUnion(keys) }
+        return ids
     }
 
     var body: some View {
@@ -570,6 +588,17 @@ struct NetworkDetailView: View {
         .navigationTitle(network.name.isEmpty ? network.id : network.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if canConnect {
+                AppToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showConnect = true
+                    } label: {
+                        Image(systemName: "link.badge.plus")
+                            .appAccentToolbarSymbol()
+                    }
+                    .accessibilityLabel("Connect Container")
+                }
+            }
             if !isBuiltIn {
                 AppToolbarItem(placement: .navigationBarTrailing) {
                     Button(role: .destructive) {
@@ -580,6 +609,28 @@ struct NetworkDetailView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showConnect) {
+            ConnectNetworkContainerSheet(
+                networkID: network.id,
+                networkName: network.name,
+                environmentID: environmentID,
+                excludedContainerIDs: connectedContainerIDs
+            ) {
+                await networkMembershipChanged()
+            }
+        }
+        .deleteConfirmation(item: $pendingDisconnect) { target in
+            DeleteConfirmationConfig(
+                title: "Disconnect Container",
+                message: "Disconnect “\(target.name)” from \(network.name)?",
+                icon: "link",
+                actions: [
+                    DeleteConfirmationAction(title: "Disconnect") {
+                        Task { await disconnect(target) }
+                    }
+                ]
+            )
         }
         .task { await loadInspect() }
         .refreshable { await loadInspect() }
@@ -719,7 +770,8 @@ struct NetworkDetailView: View {
         if !endpoints.isEmpty {
             infoSection(title: "Connected Containers", count: endpoints.count) {
                 ForEach(endpoints, id: \.id) { endpoint in
-                    NetworkContainerRow(endpoint: endpoint)
+                    let row = NetworkContainerRow(endpoint: endpoint)
+                    disconnectable(row, target: NetworkDisconnectTarget(id: endpoint.id, name: row.displayName))
                 }
             }
         } else if !rawContainers.isEmpty {
@@ -727,16 +779,71 @@ struct NetworkDetailView: View {
             infoSection(title: "Connected Containers", count: sortedKeys.count) {
                 ForEach(sortedKeys, id: \.self) { key in
                     if case .object(let obj) = rawContainers[key] {
-                        NetworkContainerRow(
+                        let row = NetworkContainerRow(
                             id: key,
                             name: obj["Name"]?.stringValue ?? "",
                             ipv4: obj["IPv4Address"]?.stringValue ?? "",
                             ipv6: obj["IPv6Address"]?.stringValue ?? ""
                         )
+                        disconnectable(row, target: NetworkDisconnectTarget(id: key, name: row.displayName))
                     }
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func disconnectable(_ row: NetworkContainerRow, target: NetworkDisconnectTarget) -> some View {
+        if canDisconnect {
+            row
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button {
+                        pendingDisconnect = target
+                    } label: {
+                        Label("Disconnect", systemImage: "link")
+                    }
+                    .tint(.red)
+                }
+                .contextMenu {
+                    Button(role: .destructive) {
+                        pendingDisconnect = target
+                    } label: {
+                        DestructiveLabel(text: "Disconnect", systemImage: "link")
+                    }
+                    .tint(.red)
+                }
+        } else {
+            row
+        }
+    }
+
+    private func disconnect(_ target: NetworkDisconnectTarget) async {
+        guard let client = manager.client else { return }
+        do {
+            let path = client.rest.environmentPath(environmentID, "networks/\(network.id)/disconnect")
+            try await client.rest.postVoid(path, body: NetworkDisconnectRequest(containerId: target.id))
+            await networkMembershipChanged()
+            showToast(.success("Container disconnected"))
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    /// Connections change both the network and the container's network settings.
+    private func networkMembershipChanged() async {
+        if let cached = manager.cached, let client = manager.client {
+            await cached.invalidate(
+                envID: environmentID,
+                paths: [
+                    client.rest.environmentPath(environmentID, "networks"),
+                    client.rest.environmentPath(environmentID, "networks/*"),
+                    client.rest.environmentPath(environmentID, "containers"),
+                    client.rest.environmentPath(environmentID, "containers/*"),
+                ])
+        }
+        mutationStore.markChanged(kind: .networks, envID: environmentID)
+        mutationStore.markChanged(kind: .containers, envID: environmentID)
+        await loadInspect()
     }
 
     private func keyValueSection(_ title: String, pairs: [String: String]) -> some View {
@@ -963,7 +1070,7 @@ private struct NetworkContainerRow: View {
         self.ipv6 = endpoint.ipv6Address
     }
 
-    private var displayName: String {
+    var displayName: String {
         let trimmed = (name ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
         return trimmed.isEmpty ? String(id.prefix(12)) : trimmed
     }
@@ -993,5 +1100,164 @@ private struct NetworkContainerRow: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
+    }
+}
+
+private struct NetworkDisconnectTarget: Identifiable {
+    let id: String
+    let name: String
+}
+
+/// Attaches an existing container to a network, optionally with aliases and a
+/// static IPv4 address.
+private struct ConnectNetworkContainerSheet: View {
+    @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(\.dismiss) private var dismiss
+    let networkID: String
+    let networkName: String
+    let environmentID: EnvironmentID
+    let excludedContainerIDs: Set<String>
+    let onConnected: () async -> Void
+
+    @State private var containers: [ContainerSummary] = []
+    @State private var isLoading = false
+    @State private var selectedID: String?
+    @State private var aliases = ""
+    @State private var ipv4 = ""
+    @State private var isSubmitting = false
+    @State private var errorMessage: String?
+
+    private var candidates: [ContainerSummary] {
+        containers
+            .filter { !excludedContainerIDs.contains($0.id) }
+            .sorted { $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Container") {
+                    if isLoading && containers.isEmpty {
+                        ArcaneLoadingView().frame(maxWidth: .infinity)
+                    } else if candidates.isEmpty {
+                        Text("No other containers available.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(candidates) { container in
+                            Button {
+                                selectedID = container.id
+                            } label: {
+                                HStack(spacing: 12) {
+                                    StatusIcon(status: container.status, isLive: container.isRunning)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(container.displayName)
+                                            .foregroundStyle(.primary)
+                                        Text(container.image)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer(minLength: 0)
+                                    if selectedID == container.id {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Section {
+                    FormTextField(
+                        title: "Aliases",
+                        placeholder: "web, api",
+                        text: $aliases,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true,
+                        helper: "Comma-separated DNS names on this network."
+                    )
+                    FormTextField(
+                        title: "IPv4 Address",
+                        placeholder: "Automatic",
+                        text: $ipv4,
+                        keyboardType: .numbersAndPunctuation,
+                        autocapitalization: .never,
+                        autocorrectionDisabled: true
+                    )
+                } header: {
+                    Text("Options")
+                }
+                if let errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                            .font(.callout)
+                    }
+                }
+            }
+            .navigationTitle("Connect to \(networkName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                AppToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isSubmitting)
+                }
+                AppToolbarItem(placement: .topBarTrailing) {
+                    Button("Connect") {
+                        Task { await connect() }
+                    }
+                    .disabled(selectedID == nil || isSubmitting)
+                }
+            }
+            .interactiveDismissDisabled(isSubmitting)
+            .task { await loadContainers() }
+        }
+    }
+
+    private func loadContainers() async {
+        guard let client = manager.client, let cached = manager.cached else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            containers = try await cached.getAllPages(
+                path: client.rest.environmentPath(environmentID, "containers"),
+                elementType: ContainerSummary.self,
+                envID: environmentID,
+                fetchPage: { start, limit in
+                    let response = try await client.containers.list(
+                        envID: environmentID,
+                        query: .init(start: start, limit: limit)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
+                }
+            )
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
+    }
+
+    private func connect() async {
+        guard let client = manager.client, let selectedID else { return }
+        isSubmitting = true
+        errorMessage = nil
+        defer { isSubmitting = false }
+        let aliasList = aliases.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        let address = ipv4.trimmingCharacters(in: .whitespaces)
+        let body = NetworkConnectRequest(
+            containerId: selectedID,
+            aliases: aliasList.isEmpty ? nil : aliasList,
+            ipv4Address: address.isEmpty ? nil : address
+        )
+        do {
+            let path = client.rest.environmentPath(environmentID, "networks/\(networkID)/connect")
+            try await client.rest.postVoid(path, body: body)
+            showToast(.success("Container connected"))
+            await onConnected()
+            dismiss()
+        } catch {
+            errorMessage = friendlyErrorMessage(error)
+        }
     }
 }
