@@ -9,6 +9,7 @@ struct EnvironmentDetailView: View {
     let environmentName: String
 
     @State private var dockerInfo: DockerInfo?
+    @State private var loadedKey: String?
     @State private var versionInfo: EnvironmentVersion?
     @State private var details: EnvironmentDetails?
     @State private var staticError: String?
@@ -54,6 +55,10 @@ struct EnvironmentDetailView: View {
         (environmentFeatureSections + environmentStorageSections + environmentDockerSections
             + EnvironmentSecuritySection.allCases.flatMap(\.sections) + environmentAutomationSections)
             .flatMap(\.fields)
+    }
+
+    private var loadKey: String {
+        "\(manager.clientGeneration)|\(environmentID.rawValue)|\(scenePhase != .background)"
     }
 
     var body: some View {
@@ -108,15 +113,25 @@ struct EnvironmentDetailView: View {
             onSave: { Task { await saveSettings() } },
             onRevert: draft.revert
         )
-        .task(id: "\(manager.clientGeneration)|\(environmentID.rawValue)|\(scenePhase)") {
-            guard scenePhase == .active else { return }
-            isLoading = false
-            details = nil
-            dockerInfo = nil
-            versionInfo = nil
-            environmentError = nil
-            staticError = nil
-            versionError = nil
+        // Keyed on background, not `.active`: Control Center, the notification
+        // shade, and Face ID only pass through `.inactive`.
+        .task(id: loadKey) {
+            guard scenePhase != .background else {
+                loadedKey = nil
+                return
+            }
+            // Returning from a pushed screen refreshes in place; a new
+            // environment, client, or return from the background starts clean.
+            if loadedKey != loadKey {
+                loadedKey = loadKey
+                isLoading = false
+                details = nil
+                dockerInfo = nil
+                versionInfo = nil
+                environmentError = nil
+                staticError = nil
+                versionError = nil
+            }
             await loadStatic()
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(30)) } catch { return }

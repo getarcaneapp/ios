@@ -423,13 +423,7 @@ struct ImageDetailView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(environmentID, "images/\(image.id)")
-            if let result: ImageDetailSummary = try await cached.get(
-                path, as: ImageDetailSummary.self, policy: .imageDetail,
-                envID: environmentID, refresh: refresh,
-                onFresh: { fresh in details = fresh }
-            ) {
-                details = result
-            }
+            details = try await cached.get(path, as: ImageDetailSummary.self, envID: environmentID)
         } catch {}
     }
 
@@ -467,8 +461,8 @@ struct ImageDetailView: View {
         guard let client = manager.client, let cached = manager.cached else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "containers")
-            if let all = try await cached.getAllPages(
-                path: path, elementType: ContainerSummary.self, policy: .containersList,
+            let all = try await cached.getAllPages(
+                path: path, elementType: ContainerSummary.self,
                 envID: environmentID,
                 fetchPage: { start, limit in
                     let response = try await client.containers.list(
@@ -477,9 +471,8 @@ struct ImageDetailView: View {
                     )
                     return ResourcePage(items: response.data, pagination: response.pagination)
                 }
-            ) {
-                usingContainers = all.filter(usesThisImage)
-            }
+            )
+            usingContainers = all.filter(usesThisImage)
         } catch {
             // Best-effort decoration.
         }

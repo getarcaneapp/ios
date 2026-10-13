@@ -16,6 +16,18 @@ final class NavTabsStore {
     /// Falls back to `AppTab.mainDefaults` on first launch or if persisted data is malformed.
     var pinnedTabs: [AppTab] {
         _ = version
+        if let cachedPinnedTabs, cachedVersion == version { return cachedPinnedTabs }
+        let resolved = loadPinnedTabs()
+        cachedPinnedTabs = resolved
+        cachedVersion = version
+        return resolved
+    }
+
+    /// Read on every tab-bar render; decoded once per change instead.
+    @ObservationIgnored private var cachedPinnedTabs: [AppTab]?
+    @ObservationIgnored private var cachedVersion = -1
+
+    private func loadPinnedTabs() -> [AppTab] {
         guard let data = UserDefaults.standard.data(forKey: Self.storageKey),
             let ids = try? JSONDecoder().decode([String].self, from: data),
             ids.count == Self.slotCount

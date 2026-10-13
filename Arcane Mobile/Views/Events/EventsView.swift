@@ -8,6 +8,7 @@ struct EventsView: View {
 
     @State private var store = EventsStore()
     @State private var isLive = true
+    @State private var loadedQueryKey: String?
     @State private var pendingDeleteEvent: Event?
 
     var body: some View {
@@ -163,14 +164,18 @@ struct EventsView: View {
         }
         .task(id: queryTaskKey) {
             store.configure(client: manager.client)
-            do {
-                try await Task.sleep(for: .milliseconds(350))
-                await store.reload(clearExisting: true)
-            } catch is CancellationError {
-                return
-            } catch {
+            let key = queryTaskKey
+            // Returning from a pushed event refreshes the first page in place.
+            if loadedQueryKey == key {
+                await store.poll()
                 return
             }
+            // Only a changed query waits out typing; the first load starts now.
+            if loadedQueryKey != nil {
+                do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            }
+            loadedQueryKey = key
+            await store.reload(clearExisting: true)
         }
         .task(id: clientIdentity) {
             store.configure(client: manager.client)

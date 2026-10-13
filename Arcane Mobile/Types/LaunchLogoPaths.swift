@@ -25,14 +25,14 @@ nonisolated struct LaunchLogoPaths: Sendable {
     }()
 
     init?(svg: String) {
-        guard let viewBox = Self.firstMatch(#"viewBox="([^"]+)""#, in: svg) else { return nil }
+        guard let viewBox = Self.firstMatch(Self.viewBoxPattern, in: svg) else { return nil }
         let box = viewBox.split(separator: " ").compactMap { Double($0) }
         guard box.count == 4 else { return nil }
         size = CGSize(width: box[2], height: box[3])
 
         // The paths sit inside one translated group.
         var offset = CGPoint.zero
-        if let translate = Self.firstMatch(#"translate\(([^)]+)\)"#, in: svg) {
+        if let translate = Self.firstMatch(Self.translatePattern, in: svg) {
             let parts = translate.split(whereSeparator: { $0 == "," || $0 == " " }).compactMap { Double($0) }
             if parts.count == 2 { offset = CGPoint(x: parts[0], y: parts[1]) }
         }
@@ -44,24 +44,30 @@ nonisolated struct LaunchLogoPaths: Sendable {
             guard let range = Range(match.range, in: svg) else { continue }
             let element = String(svg[range])
             let parsed: CGPath?
-            if let data = Self.firstMatch(#"\bd="([^"]+)""#, in: element) {
+            if let data = Self.firstMatch(Self.pathDataPattern, in: element) {
                 parsed = Self.parsePath(data)
-            } else if let points = Self.firstMatch(#"\bpoints="([^"]+)""#, in: element) {
+            } else if let points = Self.firstMatch(Self.pointsPattern, in: element) {
                 parsed = Self.parsePolygon(points)
             } else {
                 parsed = nil
             }
             guard let path = parsed?.copy(using: &transform) else { continue }
-            let order = Self.firstMatch(#"--i:\s*(\d+)"#, in: element).flatMap { Int($0) } ?? pieces.count
+            let order = Self.firstMatch(Self.orderPattern, in: element).flatMap { Int($0) } ?? pieces.count
             pieces.append(Piece(path: path, order: order))
         }
         guard !pieces.isEmpty else { return nil }
         self.pieces = pieces.sorted { $0.order < $1.order }
     }
 
-    private static func firstMatch(_ pattern: String, in text: String) -> String? {
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+    // Compiled once rather than once per SVG element.
+    private static let viewBoxPattern = try! NSRegularExpression(pattern: #"viewBox="([^"]+)""#)
+    private static let translatePattern = try! NSRegularExpression(pattern: #"translate\(([^)]+)\)"#)
+    private static let pathDataPattern = try! NSRegularExpression(pattern: #"\bd="([^"]+)""#)
+    private static let pointsPattern = try! NSRegularExpression(pattern: #"\bpoints="([^"]+)""#)
+    private static let orderPattern = try! NSRegularExpression(pattern: #"--i:\s*(\d+)"#)
+
+    private static func firstMatch(_ regex: NSRegularExpression, in text: String) -> String? {
+        guard let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
             let range = Range(match.range(at: 1), in: text)
         else { return nil }
         return String(text[range])

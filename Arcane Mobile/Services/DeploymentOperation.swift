@@ -62,6 +62,10 @@ final class DeploymentOperation: Identifiable {
     var serverActivityID: String?
     var isServerSynced = false
 
+    /// Streamed lines not yet published to `lines`; flushed in batches so a
+    /// `docker pull` doesn't re-render the console once per progress line.
+    @ObservationIgnored internal var pendingLines: [InstallStreamLine] = []
+    @ObservationIgnored internal var lineFlushTask: Task<Void, Never>?
     @ObservationIgnored internal var pullLayers: [String: (current: Int64, total: Int64)] = [:]
     @ObservationIgnored internal var syncedMessageIDs: Set<String> = []
     @ObservationIgnored internal var serverSyncCursor: Date?

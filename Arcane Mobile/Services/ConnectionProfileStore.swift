@@ -534,13 +534,20 @@ final class ConnectionProfileStore {
         do {
             let remote = try keychainStore.load()
             let merged = ConnectionProfileSync.merge(payload, remote)
-            if merged != remote {
+            // `merge` sorts records by id; the keychain returns them in its
+            // own order. Compare in merge order so an unchanged payload isn't
+            // rewritten (and re-synced to iCloud) on every launch.
+            let remoteInMergeOrder = ConnectionProfilePayload(
+                version: remote.version,
+                records: remote.records.sorted { $0.id.uuidString < $1.id.uuidString }
+            )
+            if merged != remoteInMergeOrder {
                 try keychainStore.save(merged)
             }
             payload = merged
             publishProfiles()
             try refreshCredentialProfileIDs()
-            syncState = .iCloudKeychain
+            if syncState != .iCloudKeychain { syncState = .iCloudKeychain }
         } catch {
             syncState = .unavailable
         }
@@ -613,7 +620,8 @@ final class ConnectionProfileStore {
     }
 
     private func publishProfiles() {
-        profiles = ConnectionProfileSync.activeProfiles(in: payload)
+        let next = ConnectionProfileSync.activeProfiles(in: payload)
+        if next != profiles { profiles = next }
     }
 
     private func refreshCredentialProfileIDs() throws {
@@ -630,6 +638,6 @@ final class ConnectionProfileStore {
             validProfileIDs.insert(profile.id)
         }
 
-        syncedCredentialProfileIDs = validProfileIDs
+        if validProfileIDs != syncedCredentialProfileIDs { syncedCredentialProfileIDs = validProfileIDs }
     }
 }

@@ -4,6 +4,20 @@ import Testing
 
 @Suite
 struct ComposeDocumentTests {
+    @Test func repeatedParsesReturnTheSameDocumentAndErrors() throws {
+        let source = "services:\n  web:\n    image: nginx\n"
+        let first = try ComposeDocument(source)
+        let second = try ComposeDocument(source)
+        #expect(first.source == second.source)
+        #expect(second.scalar(at: ["services", "web", "image"]) == "nginx")
+        // An edit parses its own text rather than reusing the original.
+        let edited = try first.setting("alpine", at: ["services", "web", "image"])
+        #expect(try ComposeDocument(edited).scalar(at: ["services", "web", "image"]) == "alpine")
+        // Invalid text keeps failing when it's parsed again.
+        #expect(throws: (any Error).self) { try ComposeDocument("services: [\n") }
+        #expect(throws: (any Error).self) { try ComposeDocument("services: [\n") }
+    }
+
     @Test func noOpPreservesEveryByte() throws {
         let source = "# header\r\nservices:\r\n  web:\r\n    image: 'nginx:latest' # keep\r\nx-extra: ${VALUE}\r\n"
         let document = try ComposeDocument(source)

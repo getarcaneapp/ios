@@ -15,10 +15,16 @@ final class EnvironmentPagedList<Value: Identifiable & Sendable> where Value.ID 
     nonisolated struct PageResult: Sendable {
         let environment: ListEnvironment
         let start: Int
+        let limit: Int
         let outcome: Result<ResourcePage<Value>, any Error>
     }
 
-    private(set) var items: [EnvironmentItem<Value>] = []
+    private(set) var items: [EnvironmentItem<Value>] = [] {
+        didSet { revision &+= 1 }
+    }
+    /// Bumped on every change to `items`, including each environment's rows
+    /// arriving mid-reload; lists regroup their sections on it.
+    private(set) var revision = 0
     private(set) var environments: [ListEnvironment] = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
@@ -50,9 +56,17 @@ final class EnvironmentPagedList<Value: Identifiable & Sendable> where Value.ID 
         return total
     }
 
-    func reload(_ environments: [ListEnvironment], fetch: @escaping Fetch) async {
+    /// Loads the first page of every environment at once, publishing each
+    /// environment's rows as they arrive. `preservingLoadedRange` refetches
+    /// as many rows as each environment already shows (returning from a
+    /// detail screen) instead of collapsing the list back to one page.
+    func reload(
+        _ environments: [ListEnvironment], preservingLoadedRange: Bool = false, fetch: @escaping Fetch
+    ) async {
         generation &+= 1
         let request = generation
+        let previousCursors = cursors
+        let previousItems = Dictionary(grouping: items, by: \.environmentID)
         self.environments = environments
         cursors = [:]
         isLoadingMore = false
@@ -60,9 +74,53 @@ final class EnvironmentPagedList<Value: Identifiable & Sendable> where Value.ID 
         errorMessage = nil
         loadMoreError = nil
         defer { if request == generation { isLoading = false } }
-        let results = await Self.fetchPages(environments.map { ($0, 0) }, limit: pageSize, fetch: fetch)
-        guard request == generation else { return }
-        apply(results, reset: true)
+
+        let requests = environments.map { environment -> (ListEnvironment, Int, Int) in
+            let loaded = preservingLoadedRange ? (previousCursors[environment.id]?.nextStart ?? 0) : 0
+            return (environment, 0, max(pageSize, loaded))
+        }
+        var arrived: [EnvironmentID: [EnvironmentItem<Value>]] = [:]
+        var failures: [EnvironmentLoadFailure] = []
+        var resolvedCount = 0
+        await ProgressiveFanOut.run(requests) { job in
+            await Self.fetchPage(job.0, start: job.1, limit: job.2, fetch: fetch)
+        } deliver: { batch in
+            guard request == generation else { return }
+            for result in batch {
+                resolvedCount += 1
+                switch result.outcome {
+                case .success(let page):
+                    var cursor = ProgressivePaginationState()
+                    cursor.receive(
+                        pagination: page.pagination,
+                        itemCount: page.items.count,
+                        requestedStart: result.start,
+                        requestedLimit: result.limit,
+                        generation: cursor.generation
+                    )
+                    cursors[result.environment.id] = cursor
+                    arrived[result.environment.id] = page.items.map { EnvironmentItem($0, in: result.environment) }
+                case .failure(let error):
+                    guard !(error is CancellationError) else { continue }
+                    // A failed environment keeps the rows it already showed,
+                    // alongside its listed failure.
+                    arrived[result.environment.id] = previousItems[result.environment.id] ?? []
+                    failures.append(.init(environment: result.environment, message: friendlyErrorMessage(error)))
+                }
+            }
+            // Environments still loading keep their rows until they answer.
+            let merged = environments.flatMap { environment in
+                arrived[environment.id] ?? previousItems[environment.id] ?? []
+            }
+            items = PaginationLoader.merge(current: [], incoming: merged, reset: true)
+            failedEnvironments = showsAllEnvironments ? failures : []
+            errorMessage =
+                resolvedCount == requests.count && !failures.isEmpty && failures.count == requests.count
+                ? failures.first?.message : nil
+            if arrived.values.contains(where: { !$0.isEmpty }) || resolvedCount == requests.count {
+                isLoading = false
+            }
+        }
     }
 
     func loadMore(fetch: @escaping Fetch) async {
@@ -75,17 +133,18 @@ final class EnvironmentPagedList<Value: Identifiable & Sendable> where Value.ID 
             guard let cursor = cursors[environment.id], cursor.hasMore else { return nil }
             return (environment, cursor.nextStart)
         }
-        let results = await Self.fetchPages(pending, limit: pageSize, fetch: fetch)
+        let results = await withTaskGroup(of: (Int, PageResult).self) { group in
+            for (index, (environment, start)) in pending.enumerated() {
+                let limit = pageSize
+                group.addTask {
+                    (index, await Self.fetchPage(environment, start: start, limit: limit, fetch: fetch))
+                }
+            }
+            var results: [(Int, PageResult)] = []
+            for await result in group { results.append(result) }
+            return results.sorted { $0.0 < $1.0 }.map(\.1)
+        }
         guard request == generation else { return }
-        apply(results, reset: false)
-    }
-
-    /// Local edits after an action, before the follow-up reload lands.
-    func update(_ body: (inout [EnvironmentItem<Value>]) -> Void) {
-        body(&items)
-    }
-
-    private func apply(_ results: [PageResult], reset: Bool) {
         var incoming: [EnvironmentItem<Value>] = []
         var failures: [EnvironmentLoadFailure] = []
         for result in results {
@@ -96,7 +155,7 @@ final class EnvironmentPagedList<Value: Identifiable & Sendable> where Value.ID 
                     pagination: page.pagination,
                     itemCount: page.items.count,
                     requestedStart: result.start,
-                    requestedLimit: pageSize,
+                    requestedLimit: result.limit,
                     generation: cursor.generation
                 )
                 cursors[result.environment.id] = cursor
@@ -106,46 +165,23 @@ final class EnvironmentPagedList<Value: Identifiable & Sendable> where Value.ID 
                 failures.append(.init(environment: result.environment, message: friendlyErrorMessage(error)))
             }
         }
-
-        if reset {
-            // A failed environment keeps the rows it already showed.
-            let failedIDs = Set(failures.map(\.environment.id))
-            let kept = items.filter { failedIDs.contains($0.environmentID) }
-            items = PaginationLoader.merge(current: [], incoming: incoming + kept, reset: true)
-            errorMessage = !failures.isEmpty && failures.count == results.count ? failures.first?.message : nil
-            failedEnvironments = showsAllEnvironments ? failures : []
-        } else {
-            items = PaginationLoader.merge(current: items, incoming: incoming, reset: false)
-            loadMoreError = failures.first?.message
-        }
+        items = PaginationLoader.merge(current: items, incoming: incoming, reset: false)
+        loadMoreError = failures.first?.message
     }
 
-    nonisolated private static func fetchPages(
-        _ requests: [(ListEnvironment, Int)], limit: Int, fetch: @escaping Fetch
-    ) async -> [PageResult] {
-        await withTaskGroup(of: (Int, PageResult).self) { group in
-            var next = 0
-            func enqueue() {
-                guard next < requests.count else { return }
-                let index = next
-                let (environment, start) = requests[index]
-                next += 1
-                group.addTask {
-                    do {
-                        let page = try await fetch(environment.id, start, limit)
-                        return (index, PageResult(environment: environment, start: start, outcome: .success(page)))
-                    } catch {
-                        return (index, PageResult(environment: environment, start: start, outcome: .failure(error)))
-                    }
-                }
-            }
-            for _ in 0..<min(4, requests.count) { enqueue() }
-            var results: [(Int, PageResult)] = []
-            while let result = await group.next() {
-                results.append(result)
-                enqueue()
-            }
-            return results.sorted { $0.0 < $1.0 }.map(\.1)
+    /// Local edits after an action, before the follow-up reload lands.
+    func update(_ body: (inout [EnvironmentItem<Value>]) -> Void) {
+        body(&items)
+    }
+
+    nonisolated private static func fetchPage(
+        _ environment: ListEnvironment, start: Int, limit: Int, fetch: @escaping Fetch
+    ) async -> PageResult {
+        do {
+            let page = try await fetch(environment.id, start, limit)
+            return PageResult(environment: environment, start: start, limit: limit, outcome: .success(page))
+        } catch {
+            return PageResult(environment: environment, start: start, limit: limit, outcome: .failure(error))
         }
     }
 }
@@ -163,7 +199,9 @@ extension EnvironmentsStore {
         _ environmentID: EnvironmentID, allEnvironments: Bool, manager: ArcaneClientManager
     ) async -> [ListEnvironment] {
         guard allEnvironments else { return [ListEnvironment(id: environmentID, name: nil)] }
-        await load(manager: manager)
+        // Always refetch the catalog (deduplicated with any load in flight)
+        // so a newly added or disabled environment shows up right away.
+        await load(manager: manager, refresh: hasLoaded, loadsEnvironmentDetails: false)
         return enabledEnvironments.map { ListEnvironment(id: EnvironmentID(rawValue: $0.id), name: $0.displayName) }
     }
 

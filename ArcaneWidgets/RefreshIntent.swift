@@ -175,11 +175,14 @@ struct RefreshDashboardIntent: AppIntent {
         else {
             throw IntentClientError.notConfigured
         }
-        var data = Data()
-        for try await byte in bytes {
-            guard data.count < maximumBytes else { throw IntentClientError.notConfigured }
-            data.append(byte)
+        var buffer: [UInt8] = []
+        if response.expectedContentLength > 0 {
+            buffer.reserveCapacity(Int(response.expectedContentLength))
         }
-        return try ArcaneJSON.makeDecoder().decode(DockerInfo.self, from: data)
+        for try await byte in bytes {
+            guard buffer.count < maximumBytes else { throw IntentClientError.notConfigured }
+            buffer.append(byte)
+        }
+        return try ArcaneJSON.makeDecoder().decode(DockerInfo.self, from: Data(buffer))
     }
 }

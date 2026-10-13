@@ -197,8 +197,10 @@ struct PagingReliabilityTests {
         #expect(store.detail(for: initial)?.activity.status == .running)
         store.startStream()
         defer { store.stopStream() }
+        // Stream events rebuild the grouped lists in coalesced batches, so
+        // wait for the list as well as the detail.
         for _ in 0..<200 {
-            if store.detail(for: initial)?.activity.status == .success { break }
+            if store.detail(for: initial)?.activity.status == .success, store.historyItems.count == 1 { break }
             try await Task.sleep(for: .milliseconds(10))
         }
         #expect(store.detail(for: initial)?.activity.status == .success)

@@ -4,6 +4,7 @@ import SwiftUI
 struct ContentView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
+    @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
     @State private var showActivityCenter = false
     @State private var quickActionRouter = QuickActionRouter.shared
 
@@ -13,8 +14,13 @@ struct ContentView: View {
             case .setup:
                 LoginView(mode: .setup)
             case .authenticating:
-                ArcaneLoadingView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Hidden under the opaque launch splash; don't animate it there.
+                if isLaunchSplashPresented {
+                    Color.clear
+                } else {
+                    ArcaneLoadingView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             case .login:
                 LoginView(mode: .login)
             case .authenticated:

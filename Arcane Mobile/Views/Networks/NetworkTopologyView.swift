@@ -10,6 +10,10 @@ struct NetworkTopologyView: View {
     var allEnvironments = false
 
     @State private var topology: NetworkTopology?
+    /// Laid out once per loaded topology, not on every parent render (opening
+    /// a node's sheet used to recompute the whole layout).
+    @State private var layout: TopologyGraphLayout?
+    @State private var layoutRevision = 0
     /// The environment a load is in flight for.
     @State private var loadingEnvironmentID: EnvironmentID?
     @State private var errorMessage: String?
@@ -39,6 +43,7 @@ struct NetworkTopologyView: View {
                 guard newValue != shownEnvironmentID else { return }
                 chosenEnvironmentID = newValue
                 topology = nil
+                layout = nil
                 errorMessage = nil
                 selectedNode = nil
             }
@@ -72,9 +77,10 @@ struct NetworkTopologyView: View {
                 } description: {
                     Text("No network or container topology data is available for this environment.")
                 }
-            } else if let topology {
-                NetworkTopologyDiagram(topology: topology, selectedNode: $selectedNode)
-                    .id(topology)
+            } else if let layout {
+                NetworkTopologyDiagram(graph: layout, revision: layoutRevision, selectedNode: $selectedNode)
+                    // A new topology starts a fresh viewport (fit, zoom, pan).
+                    .id(layoutRevision)
             } else {
                 ArcaneLoadingView("Preparing network topology…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -150,6 +156,8 @@ struct NetworkTopologyView: View {
             // The environment choice changed while this load was in flight.
             guard target == shownEnvironmentID else { return }
             topology = response
+            layout = TopologyGraphLayout(topology: response)
+            layoutRevision &+= 1
             errorMessage = nil
             selectedNode = nil
         } catch {
@@ -179,9 +187,11 @@ private struct NetworkTopologyDiagram: View {
     @State private var hasFitted = false
 
     private let graph: TopologyGraphLayout
+    private let revision: Int
 
-    init(topology: NetworkTopology, selectedNode: Binding<TopologyNode?>) {
-        graph = TopologyGraphLayout(topology: topology)
+    init(graph: TopologyGraphLayout, revision: Int, selectedNode: Binding<TopologyNode?>) {
+        self.graph = graph
+        self.revision = revision
         _selectedNode = selectedNode
     }
 
@@ -201,7 +211,10 @@ private struct NetworkTopologyDiagram: View {
             ZStack {
                 TopologyGridBackground()
 
-                graphContent
+                // Equatable on the layout revision: pan and zoom frames only
+                // change the scale and offset below, not the node views.
+                TopologyGraphContent(graph: graph, revision: revision, selectedNode: $selectedNode)
+                    .equatable()
                     .frame(width: graph.contentSize.width, height: graph.contentSize.height)
                     .scaleEffect(displayedScale)
                     .offset(displayedOffset)
@@ -235,27 +248,6 @@ private struct NetworkTopologyDiagram: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
-    }
-
-    private var graphContent: some View {
-        ZStack(alignment: .topLeading) {
-            TopologyEdgeCanvas(graph: graph)
-                .frame(width: graph.contentSize.width, height: graph.contentSize.height)
-                .accessibilityHidden(true)
-
-            ForEach(graph.nodes) { node in
-                TopologyNodeCard(
-                    node: node,
-                    connections: graph.connectionsByNode[node.id] ?? [],
-                    selectedNode: $selectedNode
-                )
-                .frame(
-                    width: graph.size(for: node).width,
-                    height: graph.size(for: node).height
-                )
-                .position(graph.position(for: node))
-            }
-        }
     }
 
     private var legend: some View {
@@ -344,6 +336,37 @@ private struct TopologyGridBackground: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+private struct TopologyGraphContent: View, Equatable {
+    let graph: TopologyGraphLayout
+    let revision: Int
+    @Binding var selectedNode: TopologyNode?
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.revision == rhs.revision
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            TopologyEdgeCanvas(graph: graph)
+                .frame(width: graph.contentSize.width, height: graph.contentSize.height)
+                .accessibilityHidden(true)
+
+            ForEach(graph.nodes) { node in
+                TopologyNodeCard(
+                    node: node,
+                    connections: graph.connectionsByNode[node.id] ?? [],
+                    selectedNode: $selectedNode
+                )
+                .frame(
+                    width: graph.size(for: node).width,
+                    height: graph.size(for: node).height
+                )
+                .position(graph.position(for: node))
+            }
+        }
     }
 }
 
@@ -493,13 +516,16 @@ private struct TopologyNodeCard: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(.secondarySystemGroupedBackground))
+            // Shaped background instead of compositingGroup + clipShape: no
+            // offscreen pass per card (up to 500 of them).
+            .background(
+                Color(.secondarySystemGroupedBackground),
+                in: RoundedRectangle(cornerRadius: Radius.standard, style: .continuous)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: Radius.standard, style: .continuous)
                     .stroke(accent.opacity(0.55), lineWidth: 1)
             }
-            .compositingGroup()
-            .clipShape(.rect(cornerRadius: Radius.standard))
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)

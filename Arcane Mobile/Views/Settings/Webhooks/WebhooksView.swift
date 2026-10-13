@@ -107,13 +107,9 @@ struct WebhooksView: View {
         defer { isLoading = false }
         do {
             let path = client.rest.environmentPath(manager.activeEnvironmentID, "webhooks")
-            if let result: [Webhook] = try await cached.getList(
-                path, elementType: Webhook.self, policy: .webhooks,
-                envID: manager.activeEnvironmentID, refresh: refresh,
-                onFresh: { fresh in webhooks = fresh }
-            ) {
-                webhooks = result
-            }
+            webhooks = try await cached.getList(
+                path, elementType: Webhook.self, envID: manager.activeEnvironmentID
+            )
         } catch {
             errorMessage = friendlyErrorMessage(error)
         }

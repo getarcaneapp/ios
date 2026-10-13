@@ -1,7 +1,7 @@
 import Arcane
 import Foundation
 
-// `manager.cached` exposes the stale-while-revalidate cached fetch surface.
+// `manager.cached` exposes the deduplicating fetch surface.
 // It returns nil if the manager has no client configured, mirroring the
 // existing `manager.client` guard pattern used by views.
 

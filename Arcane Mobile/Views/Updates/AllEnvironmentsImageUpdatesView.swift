@@ -33,7 +33,6 @@ struct AllEnvironmentsImageUpdatesView: View {
     /// The image whose detail sheet is open.
     @State private var detailTarget: ImageDetailTarget?
 
-    private static let maxConcurrentEnvs = 4
 
     private var updateItemCount: Int {
         buckets.reduce(into: 0) { count, bucket in
@@ -893,8 +892,8 @@ struct AllEnvironmentsImageUpdatesView: View {
         let path = client.rest.environmentPath(envID, "containers")
         return
             (try? await cached.getAllPages(
-                path: path, elementType: ContainerSummary.self, policy: .containersList,
-                envID: envID, refresh: true,
+                path: path, elementType: ContainerSummary.self,
+                envID: envID,
                 fetchPage: { start, limit in
                     let response = try await client.containers.list(
                         envID: envID,
@@ -963,17 +962,14 @@ struct AllEnvironmentsImageUpdatesView: View {
             envs =
                 try await cached.getAllPagesGlobal(
                     path: "environments", elementType: Arcane.Environment.self,
-                    policy: .environments,
                     maximumItems: RemoteDataLimits.maximumEnvironments,
-                    refresh: refresh,
-                    onFresh: { _ in },
                     fetchPage: { start, limit in
                         let response = try await client.environments.list(
                             query: .init(start: start, limit: limit, sortBy: "name", sortOrder: .ascending)
                         )
                         return ResourcePage(items: response.data, pagination: response.pagination)
                     }
-                ) ?? []
+                )
             guard envs.count <= RemoteDataLimits.maximumEnvironments else {
                 throw RemoteDataLimitError.collectionTooLarge(
                     maximumItems: RemoteDataLimits.maximumEnvironments
@@ -995,11 +991,9 @@ struct AllEnvironmentsImageUpdatesView: View {
             return
         }
 
+        // Every environment loads at once; each applies as it answers.
         await withTaskGroup(of: EnvLoadResult.self) { group in
-            var iterator = envs.enumerated().makeIterator()
-            let initial = min(Self.maxConcurrentEnvs, envs.count)
-            for _ in 0..<initial {
-                guard let (index, env) = iterator.next() else { break }
+            for (index, env) in envs.enumerated() {
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
                     await Self.fetchEnv(index: index, envID: envID, client: client)
@@ -1008,12 +1002,6 @@ struct AllEnvironmentsImageUpdatesView: View {
             for await result in group {
                 if Task.isCancelled { return }
                 apply(result: result)
-                if let (index, env) = iterator.next() {
-                    let envID = EnvironmentID(rawValue: env.id)
-                    group.addTask {
-                        await Self.fetchEnv(index: index, envID: envID, client: client)
-                    }
-                }
             }
         }
         if !Task.isCancelled { publishUpdateCount() }
@@ -1034,7 +1022,7 @@ struct AllEnvironmentsImageUpdatesView: View {
     private nonisolated static func fetchEnv(
         index: Int, envID: EnvironmentID, client: ArcaneClient
     ) async -> EnvLoadResult {
-        let summary: ImageUpdateSummary? = try? await client.images.updateSummary(envID: envID)
+        async let pendingSummary: ImageUpdateSummary? = try? await client.images.updateSummary(envID: envID)
 
         let images: [ImageSummary]
         let totalImages: Int
@@ -1073,17 +1061,26 @@ struct AllEnvironmentsImageUpdatesView: View {
         }
 
         // Merge with the by-refs API. Its keys take precedence when present —
-        // it has the freshest cached check results.
-        for offset in stride(from: 0, to: refs.count, by: 100) {
-            let end = min(offset + 100, refs.count)
-            let batch = Array(refs[offset..<end])
-            if let map = try? await client.images.updateInfoByRefs(envID: envID, imageRefs: batch) {
-                for (ref, info) in map {
-                    guard let info else { continue }
-                    byRef[ref] = info.asUpdateResponse
+        // it has the freshest cached check results. Batches load concurrently.
+        let maps = await withTaskGroup(of: [String: ImageUpdateInfo?].self) { group in
+            for offset in stride(from: 0, to: refs.count, by: 100) {
+                let batch = Array(refs[offset..<min(offset + 100, refs.count)])
+                group.addTask {
+                    (try? await client.images.updateInfoByRefs(envID: envID, imageRefs: batch)) ?? [:]
                 }
             }
+            var maps: [[String: ImageUpdateInfo?]] = []
+            for await map in group { maps.append(map) }
+            return maps
         }
+        for map in maps {
+            for (ref, info) in map {
+                guard let info else { continue }
+                byRef[ref] = info.asUpdateResponse
+            }
+        }
+
+        let summary = await pendingSummary
 
         // Only surface an error if we couldn't get either summary or images.
         let error: String? = (summary == nil && listError != nil) ? listError : nil

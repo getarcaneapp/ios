@@ -313,10 +313,14 @@ private struct UpdaterHistoryDetailView: View {
         return .blue
     }
 
-    private func formatDuration(_ seconds: TimeInterval) -> String {
+    private static let durationFormatter: DateComponentsFormatter = {
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = [.hour, .minute, .second]
         formatter.unitsStyle = .abbreviated
-        return formatter.string(from: seconds) ?? "\(Int(seconds))s"
+        return formatter
+    }()
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        Self.durationFormatter.string(from: seconds) ?? "\(Int(seconds))s"
     }
 }

@@ -6,10 +6,42 @@ import Testing
 @Suite("Response cache lifecycle")
 struct ResponseCacheLifecycleTests {
     @Test
-    func invalidationRejectsDelayedWritesAndReplacementFetchDoesNotJoinOldRequest() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let cache = ResponseCache(directory: directory)
+    func concurrentCallersShareOneRequest() async throws {
+        let cache = ResponseCache()
+        let key = key()
+        let counter = FetchCounter()
+        let gate = CacheLifecycleGate()
+        let first = Task {
+            try await cache.coalesce(key) {
+                _ = await counter.increment()
+                await gate.wait()
+                return "shared"
+            }
+        }
+        await gate.waitUntilStarted()
+        let second = Task { try await cache.coalesce(key) { _ = await counter.increment(); return "second" } }
+        // Let the second caller reach the cache while the first is in flight.
+        try await Task.sleep(for: .milliseconds(100))
+        await gate.release()
+        #expect(try await first.value == "shared")
+        #expect(try await second.value == "shared")
+        #expect(await counter.value == 1)
+    }
+
+    @Test
+    func sequentialCallsAlwaysFetchFresh() async throws {
+        let cache = ResponseCache()
+        let key = key()
+        let counter = FetchCounter()
+        let first = try await cache.coalesce(key) { await counter.increment() }
+        let second = try await cache.coalesce(key) { await counter.increment() }
+        #expect(first == 1)
+        #expect(second == 2)
+    }
+
+    @Test
+    func invalidationCancelsAndReplacementFetchDoesNotJoinOldRequest() async throws {
+        let cache = ResponseCache()
         let key = key()
         let oldGate = CacheLifecycleGate()
         let old = Task {
@@ -33,57 +65,83 @@ struct ResponseCacheLifecycleTests {
         await #expect(throws: CancellationError.self) { try await old.value }
         await newGate.release()
         #expect(try await new.value == "new")
-        #expect(await cache.get(key, as: String.self, ttl: 60) == "new")
     }
 
     @Test
-    func invalidationRetiresBackgroundCallbackLease() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let cache = ResponseCache(directory: directory)
+    func invalidationRetiresInFlightLease() async throws {
+        let cache = ResponseCache()
         let key = key()
-        let generation = await cache.generation(for: key)
         let gate = CacheLifecycleGate()
         let fetch = Task {
-            try await cache.coalesce(key, generation: generation) {
+            try await cache.coalesce(key) {
                 await gate.wait()
                 return "late callback"
             }
         }
         await gate.waitUntilStarted()
+        let generation = await cache.generation(for: key)
         await cache.invalidateAll()
         #expect(!generation.isValid)
         await gate.release()
         await #expect(throws: CancellationError.self) { try await fetch.value }
-        #expect(await cache.get(key, as: String.self, ttl: 60) == nil)
-    }
-
-    @Test
-    func invalidationRetiresPendingDiskReads() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let key = key()
-        let writer = ResponseCache(directory: directory)
-        await writer.set(key, value: "disk value")
-        let queue = DispatchQueue(label: "cache-lifecycle-test")
-        let reader = ResponseCache(directory: directory, ioQueue: queue)
-        let generation = await reader.generation(for: key)
-        queue.suspend()
-        let read = Task {
-            await reader.getEntry(key, as: String.self, ttl: 60, generation: generation)
-        }
-        let invalidation = Task { await reader.invalidateAll() }
-        while generation.isValid { await Task.yield() }
-        queue.resume()
-        await invalidation.value
-        #expect(await read.value == nil)
-        #expect(await reader.get(key, as: String.self, ttl: 60) == nil)
     }
 
     private func key() -> CacheKey {
         CacheKey(
             serverIdentity: "https://cache.test:443", userID: "one", sessionIdentity: UUID().uuidString,
             envID: "one", pathWithQuery: "containers")
+    }
+}
+
+@Suite("Progressive fan-out")
+@MainActor
+struct ProgressiveFanOutTests {
+    @Test
+    func deliversEveryResultWithoutWaitingForTheSlowest() async {
+        let slowGate = CacheLifecycleGate()
+        let delivered = DeliveredBatches()
+        let run = Task { @MainActor in
+            await ProgressiveFanOut.run([1, 2, 3], interval: .zero) { value in
+                if value == 3 { await slowGate.wait() }
+                return value
+            } deliver: { batch in
+                delivered.values += batch
+            }
+        }
+        // The fast results publish while the slow one is still pending.
+        while delivered.values.count < 2 { await Task.yield() }
+        #expect(Set(delivered.values) == [1, 2])
+        await slowGate.release()
+        await run.value
+        #expect(delivered.values.sorted() == [1, 2, 3])
+    }
+
+    @Test
+    func coalescesResultsWithinTheInterval() async {
+        var batches: [[Int]] = []
+        await ProgressiveFanOut.run(Array(0..<20), interval: .seconds(10)) { value in
+            value
+        } deliver: { batch in
+            batches.append(batch)
+        }
+        // The first result publishes immediately; the rest arrive within the
+        // interval and land together at the end.
+        #expect(batches.count <= 2)
+        #expect(batches.flatMap { $0 }.sorted() == Array(0..<20))
+    }
+}
+
+@MainActor
+private final class DeliveredBatches {
+    var values: [Int] = []
+}
+
+private actor FetchCounter {
+    private(set) var value = 0
+
+    func increment() -> Int {
+        value += 1
+        return value
     }
 }
 

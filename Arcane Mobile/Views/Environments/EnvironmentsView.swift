@@ -8,7 +8,6 @@ struct EnvironmentListRow: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     let environment: Arcane.Environment
     let dockerInfo: DockerInfo?
-    let actionItems: ActionItems?
     let streamState: DashboardStreamStore.EnvironmentState?
     let series: SystemStatsHistoryStore.Series?
     let isActive: Bool
@@ -292,7 +291,7 @@ struct EnvironmentListRow: View {
     }
 
     private var resolvedActionItems: ActionItems? {
-        actionItems ?? snapshot?.actionItems
+        snapshot?.actionItems
     }
 
     private func actionCount(_ kind: ActionItemKind) -> Int {

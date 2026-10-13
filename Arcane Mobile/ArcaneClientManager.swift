@@ -551,6 +551,7 @@ final class ArcaneClientManager {
             return
         }
         retireAuthentication(allowCredentialClear: true)
+        Task { await AvatarDiskCache.clear() }
         let generation = authenticationGeneration
         isLoading = true
         defer { if generation == authenticationGeneration { isLoading = false } }
@@ -836,16 +837,13 @@ final class ArcaneClientManager {
         cacheSessionIdentity = UUID().uuidString
         currentUser = user
         serverCapabilities = capabilities
-        if capabilities.mode == .rbac {
-            let manifest = try? await client.roles.availablePermissions()
-            guard isCurrentAuthentication(generation) else { return }
-            permissionsManifest = manifest
-        } else {
-            permissionsManifest = nil
-        }
+        // Permissions and version load together rather than one after the other.
+        let loadsPermissions = capabilities.mode == .rbac
+        async let pendingManifest = loadsPermissions ? try? await client.roles.availablePermissions() : nil
+        async let pendingVersion = try? await client.version.appVersion()
+        let (manifest, versionInfo) = await (pendingManifest, pendingVersion)
         guard isCurrentAuthentication(generation) else { return }
-        let versionInfo = try? await client.version.appVersion()
-        guard isCurrentAuthentication(generation) else { return }
+        permissionsManifest = loadsPermissions ? manifest : nil
         supportsPost26MobileFeatures = versionInfo?.supportsPost26MobileFeatures == true
         supportsMobilePush = versionInfo?.supportsMobilePush == true
         pendingMFAChallenge = nil
@@ -881,6 +879,14 @@ final class ArcaneClientManager {
         let key = "\(cacheSessionIdentity)|\(user.id)|\(user.updatedAt ?? "")"
         guard force || key != avatarFetchKey else { return }
         avatarFetchKey = key
+        // Session-independent, so the picture survives relaunches.
+        let server = parsedServerURL.map(ServerCacheIdentity.canonical(for:)) ?? serverURL
+        let diskKey = "\(server)|\(user.id)|\(user.updatedAt ?? "")"
+        if !force, let cached = await AvatarDiskCache.load(key: diskKey) {
+            guard isCurrentAuthentication(generation), avatarFetchKey == key else { return }
+            currentUserAvatarData = cached
+            return
+        }
         let avatarPath = "users/\(ArcaneAPIHelpers.escapedPathComponent(user.id))/avatar"
         do {
             let data = try await RemoteDataLimits.boundedData(
@@ -891,6 +897,7 @@ final class ArcaneClientManager {
             )
             guard isCurrentAuthentication(generation), avatarFetchKey == key else { return }
             currentUserAvatarData = data
+            Task { await AvatarDiskCache.save(data, key: diskKey) }
             return
         } catch RemoteDataLimitError.httpStatus(404) {
             // No uploaded avatar; continue to the optional Gravatar fallback.
@@ -903,6 +910,7 @@ final class ArcaneClientManager {
         let fallback = await fetchGravatar(for: user, using: client, generation: generation)
         guard isCurrentAuthentication(generation), avatarFetchKey == key else { return }
         currentUserAvatarData = fallback
+        if let fallback { Task { await AvatarDiskCache.save(fallback, key: diskKey) } }
     }
 
     private func fetchGravatar(for user: User, using client: ArcaneClient, generation: Int) async -> Data? {
@@ -952,6 +960,14 @@ final class ArcaneClientManager {
             }
             return sanitized
         }
+        return await Self.downloadImage(request, session: session, delegate: delegate)
+    }
+
+    /// Downloads and bounds an image body off the main actor.
+    @concurrent
+    nonisolated private static func downloadImage(
+        _ request: URLRequest, session: URLSession, delegate: ImageRedirectPolicy
+    ) async -> Data? {
         guard let (bytes, response) = try? await session.bytes(for: request, delegate: delegate),
             let http = response as? HTTPURLResponse,
             http.statusCode == 200,
@@ -963,21 +979,21 @@ final class ArcaneClientManager {
             return nil
         }
 
-        var data = Data()
-        data.reserveCapacity(
+        var buffer: [UInt8] = []
+        buffer.reserveCapacity(
             min(
                 RemoteDataLimits.maximumImageBytes,
                 max(0, Int(http.expectedContentLength))
             ))
         do {
             for try await byte in bytes {
-                guard data.count < RemoteDataLimits.maximumImageBytes else { return nil }
-                data.append(byte)
+                guard buffer.count < RemoteDataLimits.maximumImageBytes else { return nil }
+                buffer.append(byte)
             }
         } catch {
             return nil
         }
-        return data
+        return Data(buffer)
     }
 
     // MARK: - Private
@@ -1093,16 +1109,23 @@ final class ArcaneClientManager {
         }
 
         let generation = authenticationGeneration
-        let addresses = await Self.resolveAddressesDetached(for: parsedServerURL)
-        try requireCurrentAuthentication(generation)
-        lastBootstrapDNSAddresses = addresses
+        // The DNS answer only words a failure (the Private Relay hint), so it
+        // resolves alongside the request instead of delaying every launch.
+        let dnsLookup = Task { await Self.resolveAddressesDetached(for: parsedServerURL) }
         do {
             let result = try await runBootstrapOperation(for: parsedServerURL, operation)
             try requireCurrentAuthentication(generation)
             configureClient(for: parsedServerURL)
+            Task {
+                let addresses = await dnsLookup.value
+                guard generation == authenticationGeneration else { return }
+                lastBootstrapDNSAddresses = addresses
+            }
             return result
         } catch {
+            let addresses = await dnsLookup.value
             try requireCurrentAuthentication(generation)
+            lastBootstrapDNSAddresses = addresses
             guard shouldRefreshNetworkSession(after: error) else {
                 throw error
             }
@@ -1287,9 +1310,20 @@ final class ArcaneClientManager {
             return scheme == "http" || scheme == "https"
         }
         guard scheme == "https", url.port == nil || url.port == 443 else { return false }
+        // Icon lists hit the same few hosts (Gravatar, icon CDNs) for every
+        // row; resolve each once per few minutes instead of once per image.
+        let key = host.lowercased()
+        if let checked = publicImageHosts[key], Date().timeIntervalSince(checked.at) < publicImageHostTTL {
+            return checked.isPublic
+        }
         let addresses = await resolveAddressesDetached(for: url)
-        return !addresses.isEmpty && addresses.allSatisfy(isPublicIPAddress)
+        let isPublic = !addresses.isEmpty && addresses.allSatisfy(isPublicIPAddress)
+        publicImageHosts[key] = (isPublic, Date())
+        return isPublic
     }
+
+    private static var publicImageHosts: [String: (isPublic: Bool, at: Date)] = [:]
+    private static let publicImageHostTTL: TimeInterval = 5 * 60
 
     private static func ipv4Octets(_ value: String) -> [Int]? {
         let parts = value.split(separator: ".")
@@ -1393,14 +1427,21 @@ final class ArcaneClientManager {
                 urlSession: session,
                 retryPolicy: bootstrap
                     ? .init(maxAttempts: 1, baseBackoff: .milliseconds(300), maxBackoff: .milliseconds(300))
-                    : .init(maxAttempts: 5, baseBackoff: .milliseconds(300), maxBackoff: .seconds(3))
+                    : .init(maxAttempts: 3, baseBackoff: .milliseconds(300), maxBackoff: .seconds(3))
             ))
         return ClientBundle(client: client, session: session)
     }
 
     private static func makeURLSession(bootstrap: Bool = false) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.waitsForConnectivity = !bootstrap
+        // Fail fast while offline instead of leaving spinners up; the
+        // streams reconnect on their own backoff.
+        configuration.waitsForConnectivity = false
+        // Long-lived NDJSON streams (dashboard, activities, deployments) each
+        // hold a connection on HTTP/1.1 servers. The default of 4 per host
+        // left REST requests — and every environment's fan-out — queued
+        // behind them on one or two connections.
+        configuration.httpMaximumConnectionsPerHost = 16
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         configuration.urlCache = nil
         configuration.httpCookieStorage = .shared

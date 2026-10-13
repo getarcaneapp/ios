@@ -155,15 +155,19 @@ struct PortsView: View {
                 .disabled(list.isLoading)
             }
         }
-        .task { await load() }
+        // Reappearing (back from a detail) refreshes every loaded page in
+        // place; the first appear loads page one.
+        .task { await load(preservingLoadedRange: true) }
         .refreshable { await load() }
+        .onChange(of: list.revision) { rebuildSections() }
     }
 
-    private func load() async {
+    private func load(preservingLoadedRange: Bool = false) async {
         guard let client = manager.client else { return }
         let environments = await environmentsStore.listEnvironments(
             environmentID, allEnvironments: allEnvironments, manager: manager)
-        await list.reload(environments, fetch: portsPage(client: client))
+        await list.reload(
+            environments, preservingLoadedRange: preservingLoadedRange, fetch: portsPage(client: client))
         rebuildSections()
     }
 

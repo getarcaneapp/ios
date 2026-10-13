@@ -40,6 +40,8 @@ struct MainTabView: View {
 
     @ViewBuilder
     private var tabs: some View {
+        // Permission checks for every tab run once per render, not per use.
+        let visibleTabs = self.visibleTabs
         TabView(selection: $selectedTab) {
             ForEach(visibleTabs) { tab in
                 Tab(value: tab.id) {
@@ -56,7 +58,7 @@ struct MainTabView: View {
             }
 
             Tab(value: AppTab.settings.id) {
-                moreRoot
+                moreRoot(visibleTabs: visibleTabs)
             } label: {
                 if showTabLabels {
                     Label("More", systemImage: "ellipsis.circle.fill")
@@ -133,13 +135,22 @@ struct MainTabView: View {
         ) {
             appTabDestination(tab, manager: manager, selectedTab: $selectedTab)
         }
-        .id(
-            usesEnvironment
-                ? "\(tab.id)-\(manager.activeEnvironmentID.rawValue)-\(manager.allEnvironmentsPreview)-\(manager.clientGeneration)"
-                : tab.id)
+        .id(tabIdentity(for: tab))
     }
 
-    private var moreRoot: some View {
+    /// Environment-scoped tabs rebuild when the environment changes. The
+    /// dashboard shows every environment and follows the active one in place
+    /// (card order, pinned items), so rebuilding it would reload everything.
+    private func tabIdentity(for tab: AppTab) -> String {
+        if tab == .dashboard {
+            return "\(tab.id)-\(manager.allEnvironmentsPreview)-\(manager.clientGeneration)"
+        }
+        guard tab.isEnvironmentScoped else { return tab.id }
+        return
+            "\(tab.id)-\(manager.activeEnvironmentID.rawValue)-\(manager.allEnvironmentsPreview)-\(manager.clientGeneration)"
+    }
+
+    private func moreRoot(visibleTabs: [AppTab]) -> some View {
         SettingsView(
             visibleTabs: visibleTabs,
             selectedTab: $selectedTab,

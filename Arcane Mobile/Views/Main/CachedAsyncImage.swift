@@ -4,8 +4,15 @@ import SwiftUI
 
 // MARK: - Shared URL image cache
 
-extension Notification.Name {
-    nonisolated static let imageCacheDidClear = Notification.Name("ImageCacheDidClear")
+/// Bumped when the shared image cache is cleared. Rows read it as part of
+/// their load identity, so one observable value reloads every visible icon
+/// instead of each row subscribing to a notification.
+@Observable
+final class ImageCacheGeneration {
+    static let shared = ImageCacheGeneration()
+    private(set) var value = 0
+
+    func bump() { value &+= 1 }
 }
 
 actor ImageCache {
@@ -55,7 +62,7 @@ actor ImageCache {
         ) {
             for url in entries { try? FileManager.default.removeItem(at: url) }
         }
-        NotificationCenter.default.post(name: .imageCacheDidClear, object: nil)
+        Task { @MainActor in ImageCacheGeneration.shared.bump() }
     }
 
     func load(_ urlString: String, maxPixelSize: Int = 0, using fetcher: @escaping @Sendable (String) async -> Data?)
@@ -218,9 +225,9 @@ struct CachedAsyncImage<Fallback: View>: View {
     let fallback: Fallback
 
     @State private var image: UIImage? = nil
-    /// Bumped when the shared cache is cleared, to force `.task(id:)` to re-run
-    /// even though `url` hasn't changed.
-    @State private var reloadToken = 0
+    /// The load identity `image` belongs to. A row reappearing with the same
+    /// identity keeps its image instead of flashing the fallback.
+    @State private var loadedID: CachedImageLoadID?
 
     init(url: String?, size: CGFloat = 36, @ViewBuilder fallback: () -> Fallback) {
         self.url = url
@@ -240,11 +247,8 @@ struct CachedAsyncImage<Fallback: View>: View {
                     .frame(width: size, height: size)
             }
         }
-        .task(id: CachedImageLoadID(url: url, token: reloadToken)) {
-            await loadImage()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .imageCacheDidClear)) { _ in
-            reloadToken += 1
+        .task(id: CachedImageLoadID(url: url, token: ImageCacheGeneration.shared.value)) {
+            await loadImage(CachedImageLoadID(url: url, token: ImageCacheGeneration.shared.value))
         }
     }
 
@@ -293,8 +297,12 @@ struct CachedAsyncImage<Fallback: View>: View {
     /// cancelled automatically when the row scrolls off-screen or `url` changes.
     /// The post-await cancellation check guards against a stale write if the URL
     /// changed while a fetch was in flight.
-    private func loadImage() async {
-        image = nil
+    private func loadImage(_ id: CachedImageLoadID) async {
+        if loadedID == id, image != nil { return }
+        if loadedID != id {
+            image = nil
+            loadedID = id
+        }
         guard let manager, let resolved = resolvedURL() else { return }
         let maxPixel = maxPixelSize
         if let cached = ImageCache.shared[resolved, maxPixelSize: maxPixel] {

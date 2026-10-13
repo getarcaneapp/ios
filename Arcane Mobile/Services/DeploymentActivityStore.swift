@@ -613,7 +613,7 @@ final class DeploymentActivityStore {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .isEmpty == false
         if let display = displayText(for: event) {
-            append(text: display, isError: isError, to: operation)
+            appendStreamed(text: display, isError: isError, to: operation)
         }
         if !isError {
             if let phase = (event.phase ?? event.status)?
@@ -668,14 +668,44 @@ final class DeploymentActivityStore {
     }
 
     private func append(text: String, isError: Bool, to operation: DeploymentOperation) {
+        // Keep order with any streamed lines still waiting to publish.
+        flushPendingLines(of: operation)
         operation.lines.append(
             InstallStreamLine(
                 text: RemoteDataLimits.boundedText(text, maximumBytes: RemoteDataLimits.maximumStreamLineBytes),
                 isError: isError
             ))
-        if operation.lines.count > Self.maxLines {
-            operation.lines.removeFirst(Self.lineTrim)
+        trimLines(of: operation)
+    }
+
+    /// Stream output arrives a line at a time; publish it every 100 ms.
+    private func appendStreamed(text: String, isError: Bool, to operation: DeploymentOperation) {
+        operation.pendingLines.append(
+            InstallStreamLine(
+                text: RemoteDataLimits.boundedText(text, maximumBytes: RemoteDataLimits.maximumStreamLineBytes),
+                isError: isError
+            ))
+        guard operation.lineFlushTask == nil else { return }
+        operation.lineFlushTask = Task { [weak self, weak operation] in
+            try? await Task.sleep(for: .milliseconds(100))
+            guard let self, let operation else { return }
+            self.flushPendingLines(of: operation)
         }
+    }
+
+    private func flushPendingLines(of operation: DeploymentOperation) {
+        operation.lineFlushTask?.cancel()
+        operation.lineFlushTask = nil
+        guard !operation.pendingLines.isEmpty else { return }
+        operation.lines.append(contentsOf: operation.pendingLines)
+        operation.pendingLines.removeAll()
+        trimLines(of: operation)
+    }
+
+    private func trimLines(of operation: DeploymentOperation) {
+        guard operation.lines.count > Self.maxLines else { return }
+        let overflow = operation.lines.count - Self.maxLines
+        operation.lines.removeFirst(max(Self.lineTrim, overflow))
     }
 
     private func updatePhase(_ phase: String, on operation: DeploymentOperation) {

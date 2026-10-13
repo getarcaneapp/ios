@@ -9,10 +9,12 @@ nonisolated struct ResourcePage<Element: Sendable>: Sendable {
 nonisolated enum PaginationLoader {
     static let defaultPageSize = 50
 
+    /// Collects every page. The first page reports the total, so the
+    /// remaining pages are requested concurrently and merged in order.
     static func collect<Element: Identifiable & Sendable>(
         pageSize: Int = defaultPageSize,
         maximumItems: Int = RemoteDataLimits.maximumCollectionItems,
-        fetchPage: @Sendable (_ start: Int, _ limit: Int) async throws -> ResourcePage<Element>
+        fetchPage: @escaping @Sendable (_ start: Int, _ limit: Int) async throws -> ResourcePage<Element>
     ) async throws -> [Element] where Element.ID: Sendable {
         let limit = max(1, pageSize)
         let itemLimit = max(1, maximumItems)
@@ -20,8 +22,7 @@ nonisolated enum PaginationLoader {
         var collected: [Element] = []
         var seen = Set<Element.ID>()
 
-        while true {
-            let page = try await fetchPage(start, limit)
+        func append(_ page: ResourcePage<Element>) throws {
             if page.pagination.totalItems > Int64(itemLimit) {
                 throw RemoteDataLimitError.collectionTooLarge(maximumItems: itemLimit)
             }
@@ -31,7 +32,10 @@ nonisolated enum PaginationLoader {
                 }
                 collected.append(item)
             }
+        }
 
+        /// The next page's offset, or nil once `page` is the last one.
+        func next(after page: ResourcePage<Element>, at start: Int) throws -> (start: Int, stride: Int)? {
             let pageStride =
                 page.pagination.itemsPerPage > 0
                 ? page.pagination.itemsPerPage
@@ -48,11 +52,44 @@ nonisolated enum PaginationLoader {
             } else {
                 reachedEnd = page.items.count < pageStride
             }
+            guard !page.items.isEmpty, !reachedEnd else { return nil }
+            return (nextStart, pageStride)
+        }
 
-            guard !page.items.isEmpty, !reachedEnd else {
-                return collected
+        var usedKnownTotal = false
+        while true {
+            let page = try await fetchPage(start, limit)
+            try append(page)
+            guard let following = try next(after: page, at: start) else { return collected }
+
+            // A known total lets every remaining page load at once. Pages are
+            // merged in offset order, so the result matches a sequential walk.
+            guard !usedKnownTotal, page.pagination.totalItems >= 0 else {
+                start = following.start
+                continue
             }
-            start = nextStart
+            usedKnownTotal = true
+            let total = Int(min(page.pagination.totalItems, Int64(itemLimit)))
+            let starts = Array(stride(from: following.start, to: total, by: following.stride))
+            guard starts.count > 1 else {
+                start = following.start
+                continue
+            }
+            let pages = try await withThrowingTaskGroup(of: (Int, ResourcePage<Element>).self) { group in
+                for (index, pageStart) in starts.enumerated() {
+                    group.addTask { (index, try await fetchPage(pageStart, limit)) }
+                }
+                var ordered = [ResourcePage<Element>?](repeating: nil, count: starts.count)
+                for try await (index, page) in group { ordered[index] = page }
+                return ordered.compactMap { $0 }
+            }
+            for page in pages { try append(page) }
+            // The collection can grow while the pages load; keep walking
+            // from the last page if it isn't the end anymore.
+            guard let lastStart = starts.last, let lastPage = pages.last,
+                let after = try next(after: lastPage, at: lastStart)
+            else { return collected }
+            start = after.start
         }
     }
 

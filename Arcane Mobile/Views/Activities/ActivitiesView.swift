@@ -9,10 +9,16 @@ struct ActivitiesView: View {
     @State private var store = ActivityCenterStore()
     @State private var showClearConfirm = false
     @State private var expandedBatchIDs: Set<String> = []
+    @State private var searchText = ""
+    /// The task id the current list was loaded for. Returning from a pushed
+    /// activity keeps the list and its stream instead of reloading.
+    @State private var loadedTaskID: String?
 
+    /// Keyed on background, not `.active`: Control Center, the notification
+    /// shade, and Face ID only pass through `.inactive`.
     private var taskID: String {
         let transportID = manager.client.map { ObjectIdentifier($0.transport).hashValue } ?? 0
-        return "\(manager.supportsActivities)-\(transportID)-\(scenePhase == .active)"
+        return "\(manager.supportsActivities)-\(transportID)-\(scenePhase != .background)"
     }
 
     private var clearableEnvironmentIDs: Set<String> {
@@ -111,10 +117,10 @@ struct ActivitiesView: View {
         }
         .navigationTitle("Activities")
         .navigationDestination(for: Activity.self) { activity in
-            ActivityDetailView(activity: activity)
+            ActivityDetailView(activity: activity, sharedStore: store)
         }
         .searchable(
-            text: $store.searchText,
+            text: $searchText,
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Search activities"
         )
@@ -146,17 +152,20 @@ struct ActivitiesView: View {
                 }
             }
         }
+        .debounce(searchText, for: .milliseconds(250), into: $store.searchText)
         .task(id: taskID) {
             store.configure(client: manager.supportsActivities ? manager.client : nil)
-            guard manager.supportsActivities, scenePhase == .active else {
+            guard manager.supportsActivities, scenePhase != .background else {
+                loadedTaskID = nil
                 store.stopStream()
                 return
             }
+            guard loadedTaskID != taskID else { return }
+            loadedTaskID = taskID
             await store.retryLiveUpdates()
         }
-        .onDisappear {
-            store.stopStream()
-        }
+        .onAppear { store.acquireStream() }
+        .onDisappear { store.releaseStream() }
         .deleteConfirmation(
             isPresented: $showClearConfirm,
             title: "Clear Activity History?",
@@ -439,15 +448,21 @@ struct ActivityDetailView: View {
     @SwiftUI.Environment(\.scenePhase) private var scenePhase
 
     let initialActivity: Activity
-    @State private var store = ActivityCenterStore()
+    /// The Activity Center's store when pushed from it: its stream already
+    /// carries this activity, so no second stream is opened.
+    private let sharedStore: ActivityCenterStore?
+    @State private var ownStore = ActivityCenterStore()
     @State private var isLoading = false
     @State private var isCancelling = false
     @State private var errorMessage: String?
     @State private var showCancelConfirm = false
 
-    init(activity: Activity) {
+    init(activity: Activity, sharedStore: ActivityCenterStore? = nil) {
         initialActivity = activity
+        self.sharedStore = sharedStore
     }
+
+    private var store: ActivityCenterStore { sharedStore ?? ownStore }
 
     private var activity: Activity {
         store.detail(for: initialActivity)?.activity ?? initialActivity
@@ -459,7 +474,7 @@ struct ActivityDetailView: View {
 
     private var taskID: String {
         let transportID = manager.client.map { ObjectIdentifier($0.transport).hashValue } ?? 0
-        return "\(manager.supportsActivities)-\(transportID)-\(scenePhase == .active)"
+        return "\(manager.supportsActivities)-\(transportID)-\(scenePhase != .background)"
     }
 
     private var environmentID: EnvironmentID {
@@ -563,17 +578,26 @@ struct ActivityDetailView: View {
             }
         }
         .task(id: taskID) {
-            store.configure(client: manager.supportsActivities ? manager.client : nil)
-            guard manager.supportsActivities, scenePhase == .active else {
-                store.stopStream()
+            if sharedStore == nil {
+                store.configure(client: manager.supportsActivities ? manager.client : nil)
+            }
+            guard manager.supportsActivities, scenePhase != .background else {
+                if sharedStore == nil { store.stopStream() }
                 return
             }
-            store.startStream()
+            if sharedStore == nil { store.startStream() }
             await loadDetail()
         }
-        .onDisappear { store.stopStream() }
+        .onAppear { sharedStore?.acquireStream() }
+        .onDisappear {
+            if let sharedStore {
+                sharedStore.releaseStream()
+            } else {
+                store.stopStream()
+            }
+        }
         .refreshable {
-            store.startStream()
+            if sharedStore == nil { store.startStream() }
             await loadDetail()
         }
         .deleteConfirmation(

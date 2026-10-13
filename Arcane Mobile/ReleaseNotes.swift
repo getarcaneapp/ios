@@ -165,6 +165,16 @@ enum ReleaseNotes {
                 .init(
                     "Deployment pill and activity toasts show progress around their edge instead of a spinner; a finished deployment sweeps the border and shows a checkmark without a separate toast."
                 ),
+                .init("Faster loading across all environments, with each environment appearing as soon as it responds."),
+                .init("Smoother Dashboard, logs, lists, activities, network topology, compose editor, and compose options."),
+                .init("Faster app launch, with the profile picture shown without re-downloading."),
+                .init("Log lines copy from a long-press menu."),
+            ],
+            fixed: [
+                .init("Data is never shown from an outdated cache."),
+                .init("Lists keep their loaded pages and scroll position after returning from a detail screen."),
+                .init("Last log lines appear without waiting for new output."),
+                .init("Dashboard no longer reloads on every return from Control Center or a detail screen."),
             ]
         ),
         ReleaseNote(

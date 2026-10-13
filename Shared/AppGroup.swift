@@ -7,9 +7,9 @@ nonisolated enum AppGroup {
 
     /// Shared defaults, nil when the entitlement is missing (e.g. before the
     /// capability is added in Xcode) — callers must degrade gracefully.
-    static var defaults: UserDefaults? {
-        UserDefaults(suiteName: identifier)
-    }
+    /// Created once; it's read on many hot paths. UserDefaults is documented
+    /// thread-safe but isn't marked Sendable.
+    nonisolated(unsafe) static let defaults: UserDefaults? = UserDefaults(suiteName: identifier)
 
     static var containerURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier)

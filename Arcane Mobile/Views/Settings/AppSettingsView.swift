@@ -50,14 +50,15 @@ struct AppSettingsView: View {
                 return DeleteConfirmationConfig(
                     title: "Clear Cache?",
                     message: cacheSizeBytes > 0
-                        ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images and API data. "
+                        ? "This will remove \(Int64(cacheSizeBytes).byteString) of cached images. "
                             + "Everything will be re-fetched as needed."
-                        : "This will clear all cached images and API data.",
+                        : "This will clear all cached images.",
                     icon: "trash",
                     actions: [
                         DeleteConfirmationAction(title: "Clear Cache") {
                             Task {
                                 await ImageCache.shared.clear()
+                                await AvatarDiskCache.clear()
                                 await ResponseCache.shared.invalidateAll()
                                 await refreshCacheSize()
                                 showToast(.success("Cache cleared"))
@@ -164,7 +165,7 @@ struct AppSettingsView: View {
             Text("Storage")
         } footer: {
             VStack(alignment: .leading, spacing: 20) {
-                Text("Cached images and API responses are re-fetched as needed.")
+                Text("Cached images are re-fetched as needed.")
                 versionFooter
             }
         }
@@ -236,7 +237,7 @@ struct AppSettingsView: View {
 
     private func refreshCacheSize() async {
         async let images = ImageCache.shared.diskBytes()
-        async let responses = ResponseCache.shared.diskBytes()
-        cacheSizeBytes = await images + responses
+        async let avatars = AvatarDiskCache.diskBytes()
+        cacheSizeBytes = await images + avatars
     }
 }

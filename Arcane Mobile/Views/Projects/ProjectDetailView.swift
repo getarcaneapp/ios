@@ -700,10 +700,9 @@ struct ProjectDetailView: View {
             let ids = Set(services.compactMap { $0.containerId }.filter { !$0.isEmpty })
 
             let path = client.rest.environmentPath(environmentID, "containers")
-            if let all: [ContainerSummary] = try await cached.getAllPages(
-                path: path, elementType: ContainerSummary.self, policy: .containersList,
-                envID: environmentID, refresh: refresh,
-                onFresh: { fresh in projectContainers = filterProjectContainers(fresh, ids: ids) },
+            let all: [ContainerSummary] = try await cached.getAllPages(
+                path: path, elementType: ContainerSummary.self,
+                envID: environmentID,
                 fetchPage: { start, limit in
                     let response = try await client.containers.list(
                         envID: environmentID,
@@ -711,9 +710,8 @@ struct ProjectDetailView: View {
                     )
                     return ResourcePage(items: response.data, pagination: response.pagination)
                 }
-            ) {
-                projectContainers = filterProjectContainers(all, ids: ids)
-            }
+            )
+            projectContainers = filterProjectContainers(all, ids: ids)
         } catch {
             // Non-fatal: the project info still renders; the Services section just
             // shows its empty state.

@@ -162,7 +162,7 @@ final class EventsStore {
         do {
             let counts = try await client.events.stats()
             guard identity == clientTransportIdentity else { return }
-            severityCounts = counts
+            if counts != severityCounts { severityCounts = counts }
         } catch ArcaneError.notFound {
             guard identity == clientTransportIdentity else { return }
             supportsSeverityCounts = false
@@ -187,16 +187,22 @@ final class EventsStore {
             )
             try Task.checkCancellation()
             guard pagination.accepts(generation), requestedQuery == queryKey, !isLoading, !isLoadingMore else { return }
-            events = EventHistory.merged(
+            // Polls every few seconds; only publish what changed so an idle
+            // event list doesn't re-render on every tick.
+            let merged = EventHistory.merged(
                 current: events,
                 incoming: response.data,
                 limit: max(Self.pageSize, events.count)
             )
+            if merged != events { events = merged }
             if response.pagination.totalItems >= 0 {
-                hasMore = Int64(pagination.nextStart) < response.pagination.totalItems
-                totalItemCount = response.pagination.totalItems
+                let nextHasMore = Int64(pagination.nextStart) < response.pagination.totalItems
+                if nextHasMore != hasMore { hasMore = nextHasMore }
+                if totalItemCount != response.pagination.totalItems {
+                    totalItemCount = response.pagination.totalItems
+                }
             }
-            errorMessage = nil
+            if errorMessage != nil { errorMessage = nil }
         } catch is CancellationError {
             return
         } catch {

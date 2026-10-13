@@ -1,9 +1,9 @@
 import Arcane
 import Foundation
 
-// Stale-while-revalidate wrapper around `client.rest.get`. Views call this
-// to get a cached value immediately when one exists, while a fresh fetch
-// runs in the background and notifies the view via `onFresh` when ready.
+// Deduplicating wrapper around `client.rest.get`. Concurrent callers for the
+// same resource share one in-flight request; every call returns a response
+// fetched after it was made (or joined while in flight), never a stored copy.
 //
 // Live streams (`*/stats`, `*/logs`) MUST NOT use this layer — they go
 // directly through `client.system.stats(...)` etc. A DEBUG assertion guards
@@ -15,29 +15,14 @@ struct CachedClient: Sendable {
     let userID: String
     let sessionIdentity: String
 
-    /// Returns a cached value (if fresh) and triggers a background revalidate;
-    /// otherwise fetches synchronously through the dedup layer and returns fresh.
-    /// Pull-to-refresh callers should pass `refresh: true` to skip the cache read.
     @discardableResult
     func get<T: Codable & Sendable>(
         _ path: String,
         as type: T.Type,
-        policy: CachePolicy,
-        envID: EnvironmentID,
-        refresh: Bool = false,
-        onFresh: (@MainActor @Sendable (T) -> Void)? = nil
-    ) async throws -> T? {
-        #if DEBUG
-            assert(
-                !path.hasSuffix("/stats") && !path.hasSuffix("/logs"),
-                "ResponseCache must not be used for stream paths: \(path)")
-        #endif
-
+        envID: EnvironmentID
+    ) async throws -> T {
         let captured = client
-        return try await getCustom(
-            path: path, as: type, policy: policy, envID: envID,
-            refresh: refresh, onFresh: onFresh
-        ) {
+        return try await getCustom(path: path, as: type, envID: envID) {
             try await captured.rest.get(path) as T
         }
     }
@@ -45,18 +30,8 @@ struct CachedClient: Sendable {
     /// Same as `get(...)`, but for global (non-env-scoped) resources like
     /// `environments`, `users`, `api-keys`, `webhooks`, `settings/*`.
     @discardableResult
-    func getGlobal<T: Codable & Sendable>(
-        _ path: String,
-        as type: T.Type,
-        policy: CachePolicy,
-        refresh: Bool = false,
-        onFresh: (@MainActor @Sendable (T) -> Void)? = nil
-    ) async throws -> T? {
-        try await get(
-            path, as: type, policy: policy,
-            envID: EnvironmentID(rawValue: "_global_"),
-            refresh: refresh, onFresh: onFresh
-        )
+    func getGlobal<T: Codable & Sendable>(_ path: String, as type: T.Type) async throws -> T {
+        try await get(path, as: type, envID: Self.globalEnvironment)
     }
 
     /// List variant of `get(...)`: decodes the response through `LenientArray`
@@ -66,92 +41,44 @@ struct CachedClient: Sendable {
     func getList<E: Codable & Sendable>(
         _ path: String,
         elementType _: E.Type,
-        policy: CachePolicy,
-        envID: EnvironmentID,
-        refresh: Bool = false,
-        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil
-    ) async throws -> [E]? {
-        let onFreshWrapped: (@MainActor @Sendable (LenientArray<E>) -> Void)?
-        if let onFresh {
-            onFreshWrapped = { wrapped in onFresh(wrapped.elements) }
-        } else {
-            onFreshWrapped = nil
-        }
-        let result: LenientArray<E>? = try await get(
-            path, as: LenientArray<E>.self, policy: policy,
-            envID: envID, refresh: refresh, onFresh: onFreshWrapped
-        )
-        return result?.elements
+        envID: EnvironmentID
+    ) async throws -> [E] {
+        try await get(path, as: LenientArray<E>.self, envID: envID).elements
     }
 
     /// Global variant of `getList(...)` for non-env-scoped list endpoints
     /// (`users`, `environments`, `api-keys`, etc.).
     @discardableResult
-    func getListGlobal<E: Codable & Sendable>(
-        _ path: String,
-        elementType: E.Type,
-        policy: CachePolicy,
-        refresh: Bool = false,
-        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil
-    ) async throws -> [E]? {
-        try await getList(
-            path, elementType: elementType, policy: policy,
-            envID: EnvironmentID(rawValue: "_global_"),
-            refresh: refresh, onFresh: onFresh
-        )
+    func getListGlobal<E: Codable & Sendable>(_ path: String, elementType: E.Type) async throws -> [E] {
+        try await getList(path, elementType: elementType, envID: Self.globalEnvironment)
     }
 
-    /// Custom-fetcher variant that wraps the fetcher result in a `LenientArray`
-    /// before caching, so paginated/raw fetchers also benefit from per-item
-    /// decode tolerance.
+    /// Custom-fetcher variant for list endpoints.
     @discardableResult
-    func getListCustom<E: Codable & Sendable>(
+    func getListCustom<E: Sendable>(
         path: String,
         elementType _: E.Type,
-        policy: CachePolicy,
         envID: EnvironmentID,
-        refresh: Bool = false,
-        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil,
         fetcher: @Sendable @escaping () async throws -> [E]
-    ) async throws -> [E]? {
-        let wrappedFetcher: @Sendable () async throws -> LenientArray<E> = {
-            LenientArray(elements: try await fetcher())
-        }
-        let onFreshWrapped: (@MainActor @Sendable (LenientArray<E>) -> Void)?
-        if let onFresh {
-            onFreshWrapped = { wrapped in onFresh(wrapped.elements) }
-        } else {
-            onFreshWrapped = nil
-        }
-        let result: LenientArray<E>? = try await getCustom(
-            path: path, as: LenientArray<E>.self, policy: policy,
-            envID: envID, refresh: refresh,
-            onFresh: onFreshWrapped, fetcher: wrappedFetcher
-        )
-        return result?.elements
+    ) async throws -> [E] {
+        try await getCustom(path: path, as: [E].self, envID: envID, fetcher: fetcher)
     }
 
-    /// Fetches and caches a complete paginated collection. The cache key is
-    /// intentionally separate from an endpoint's legacy first-page entry.
+    /// Fetches a complete paginated collection. The dedup key is
+    /// intentionally separate from an endpoint's first-page request.
     @discardableResult
-    func getAllPages<E: Codable & Identifiable & Sendable>(
+    func getAllPages<E: Identifiable & Sendable>(
         path: String,
         elementType: E.Type,
-        policy: CachePolicy,
         envID: EnvironmentID,
         pageSize: Int = PaginationLoader.defaultPageSize,
         maximumItems: Int = RemoteDataLimits.maximumCollectionItems,
-        refresh: Bool = false,
-        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil,
         fetchPage: @Sendable @escaping (_ start: Int, _ limit: Int) async throws -> ResourcePage<E>
-    ) async throws -> [E]? where E.ID: Sendable {
+    ) async throws -> [E] where E.ID: Sendable {
         try await getListCustom(
             path: PaginationLoader.cachePath(for: path),
             elementType: elementType,
-            policy: policy,
-            envID: envID,
-            refresh: refresh,
-            onFresh: onFresh
+            envID: envID
         ) {
             try await PaginationLoader.collect(
                 pageSize: pageSize,
@@ -163,42 +90,33 @@ struct CachedClient: Sendable {
 
     /// Global variant of `getAllPages(...)`.
     @discardableResult
-    func getAllPagesGlobal<E: Codable & Identifiable & Sendable>(
+    func getAllPagesGlobal<E: Identifiable & Sendable>(
         path: String,
         elementType: E.Type,
-        policy: CachePolicy,
         pageSize: Int = PaginationLoader.defaultPageSize,
         maximumItems: Int = RemoteDataLimits.maximumCollectionItems,
-        refresh: Bool = false,
-        onFresh: (@MainActor @Sendable ([E]) -> Void)? = nil,
         fetchPage: @Sendable @escaping (_ start: Int, _ limit: Int) async throws -> ResourcePage<E>
-    ) async throws -> [E]? where E.ID: Sendable {
+    ) async throws -> [E] where E.ID: Sendable {
         try await getAllPages(
             path: path,
             elementType: elementType,
-            policy: policy,
-            envID: EnvironmentID(rawValue: "_global_"),
+            envID: Self.globalEnvironment,
             pageSize: pageSize,
             maximumItems: maximumItems,
-            refresh: refresh,
-            onFresh: onFresh,
             fetchPage: fetchPage
         )
     }
 
-    /// Same SWR semantics as `get(...)`, but the caller supplies the fetcher.
+    /// Same as `get(...)`, but the caller supplies the fetcher.
     /// Use when the underlying call isn't a plain `client.rest.get(...)`
     /// (e.g. custom raw-decode paths like the Volumes list).
     @discardableResult
-    func getCustom<T: Codable & Sendable>(
+    func getCustom<T: Sendable>(
         path: String,
         as _: T.Type,
-        policy: CachePolicy,
         envID: EnvironmentID,
-        refresh: Bool = false,
-        onFresh: (@MainActor @Sendable (T) -> Void)? = nil,
         fetcher: @Sendable @escaping () async throws -> T
-    ) async throws -> T? {
+    ) async throws -> T {
         #if DEBUG
             assert(
                 !path.hasSuffix("/stats") && !path.hasSuffix("/logs"),
@@ -209,35 +127,10 @@ struct CachedClient: Sendable {
             sessionIdentity: sessionIdentity,
             envID: envID.rawValue, pathWithQuery: path
         )
-        let generation = await ResponseCache.shared.generation(for: key)
-        if !refresh,
-            let hit = await ResponseCache.shared.getEntry(
-                key, as: T.self, ttl: policy.ttl, generation: generation
-            )
-        {
-            if hit.age >= policy.revalidateAfter {
-                let onFreshCopy = onFresh
-                Task.detached(priority: .utility) {
-                    let fresh: T?
-                    do {
-                        fresh = try await ResponseCache.shared.coalesce(key, generation: generation, work: fetcher)
-                    } catch {
-                        fresh = nil
-                    }
-                    if let fresh {
-                        if let onFreshCopy {
-                            await MainActor.run {
-                                guard generation.isValid else { return }
-                                onFreshCopy(fresh)
-                            }
-                        }
-                    }
-                }
-            }
-            return hit.value
-        }
-        return try await ResponseCache.shared.coalesce(key, generation: generation, work: fetcher)
+        return try await ResponseCache.shared.coalesce(key, work: fetcher)
     }
+
+    nonisolated static let globalEnvironment = EnvironmentID(rawValue: "_global_")
 
     /// Invalidate cache entries by matching env + glob-style path patterns.
     /// Pattern matching: literal equality, or a trailing `*` matches a prefix.

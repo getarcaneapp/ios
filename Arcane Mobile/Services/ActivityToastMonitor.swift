@@ -280,6 +280,7 @@ private struct ActivityToastMonitorHost: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
     @AppStorage("arcane.activityToastScope")
     private var scopeRawValue = ActivityToastScope.userInitiated.rawValue
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
     @State private var monitor = ActivityToastMonitor()
 
     private var canMonitor: Bool {
@@ -287,8 +288,10 @@ private struct ActivityToastMonitorHost: View {
         return manager.supportsActivities && manager.client != nil
     }
 
+    /// The stream closes in the background and reopens on return, instead
+    /// of waiting out the request timeout on a socket the suspension killed.
     private var taskID: String {
-        "\(canMonitor)#\(manager.clientGeneration)#\(scopeRawValue)"
+        "\(canMonitor)#\(manager.clientGeneration)#\(scopeRawValue)#\(scenePhase != .background)"
     }
 
     var body: some View {
@@ -301,6 +304,9 @@ private struct ActivityToastMonitorHost: View {
                     monitor.reset()
                     return
                 }
+                // Backgrounding only pauses the stream; tracked toasts and
+                // Live Activities carry over.
+                guard scenePhase != .background else { return }
                 let scope = ActivityToastScope(rawValue: scopeRawValue) ?? .userInitiated
                 await monitor.consume(client: client, scope: scope)
             }

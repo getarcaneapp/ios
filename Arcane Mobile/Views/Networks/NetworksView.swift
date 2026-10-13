@@ -261,7 +261,9 @@ struct NetworksView: View {
                 .accessibilityLabel("Prune unused networks")
             }
         }
-        .task { await loadNetworks() }
+        // Reappearing (back from a detail) refreshes every loaded page in
+        // place; the first appear loads page one.
+        .task { await loadNetworks(preservingLoadedRange: true) }
         .refreshable { await loadNetworks() }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: EnvironmentItem<NetworkSummary>.self) { network in
@@ -346,8 +348,9 @@ struct NetworksView: View {
             .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadNetworks() }
+            Task { await loadNetworks(preservingLoadedRange: true) }
         }
+        .onChange(of: list.revision) { rebuildSections() }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: environmentFilter) { rebuildSections() }
         .onChange(of: typeFilter) { rebuildSections() }
@@ -390,11 +393,12 @@ struct NetworksView: View {
         showCreateSheet = true
     }
 
-    private func loadNetworks() async {
+    private func loadNetworks(preservingLoadedRange: Bool = false) async {
         guard let client = manager.client else { return }
         let environments = await environmentsStore.listEnvironments(
             environmentID, allEnvironments: allEnvironments, manager: manager)
-        await list.reload(environments, fetch: networksPage(client: client))
+        await list.reload(
+            environments, preservingLoadedRange: preservingLoadedRange, fetch: networksPage(client: client))
         rebuildSections()
     }
 

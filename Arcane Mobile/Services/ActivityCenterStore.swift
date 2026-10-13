@@ -111,7 +111,9 @@ nonisolated enum ActivityHistoryClearFilter {
 @Observable
 final class ActivityCenterStore {
     private static let pageSize = 50
-    private static let maxConcurrentEnvironmentRequests = 4
+    /// Stream events (progress messages arrive many times a second during a
+    /// deploy) rebuild the grouped lists at most this often.
+    private static let streamRebuildInterval: Duration = .milliseconds(200)
     private static let maxReconnectAttempts = 20
     private static let maxReconnectDelaySeconds: Double = 15
     /// Reset the retry budget after a stream survives long enough to be useful.
@@ -162,6 +164,9 @@ final class ActivityCenterStore {
     /// Bumped on every stream start/stop so a finishing task from a previous
     /// stream generation can't mutate the current state.
     private var streamGeneration = 0
+    private var streamConsumers = 0
+    private var pendingStreamStop: Task<Void, Never>?
+    private var pendingRebuild: Task<Void, Never>?
 
     var filteredActivities: [Activity] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -175,16 +180,22 @@ final class ActivityCenterStore {
 
     private func recomputeGroupedItems() {
         let filtered = filteredActivities
-        filteredActivityCount = filtered.count
+        if filtered.count != filteredActivityCount { filteredActivityCount = filtered.count }
+        let items = calculateGroupedItems(from: filtered)
+        let running = items.filter(\.isActive)
+        let history = items.filter { !$0.isActive }
+        if running != runningItems { runningItems = running }
+        if history != historyItems { historyItems = history }
+    }
+
+    /// Filter menus list the types present; only the activity set changes them.
+    private func recomputeAvailableFilters() {
         let nextTypes = sortedUnique(activities.map(\.type.rawValue))
         if nextTypes != availableTypes { availableTypes = nextTypes }
         let nextResourceTypes = sortedUnique(activities.compactMap(\.resourceType))
         if nextResourceTypes != availableResourceTypes {
             availableResourceTypes = nextResourceTypes
         }
-        let items = calculateGroupedItems(from: filtered)
-        runningItems = items.filter(\.isActive)
-        historyItems = items.filter { !$0.isActive }
     }
 
     private func calculateGroupedItems(from filteredActivities: [Activity]) -> [ActivityCenterItem] {
@@ -219,6 +230,8 @@ final class ActivityCenterStore {
         guard changed else { return }
         clientTransportIdentity = nextIdentity
         stopStream()
+        pendingRebuild?.cancel()
+        pendingRebuild = nil
         activities = []
         activityBuckets = [:]
         activityDetails = [:]
@@ -233,6 +246,7 @@ final class ActivityCenterStore {
         errorMessage = nil
         loadMoreError = nil
         clearStreamWarning()
+        recomputeAvailableFilters()
         recomputeGroupedItems()
     }
 
@@ -282,33 +296,22 @@ final class ActivityCenterStore {
         }
         var failures = 0
         let pageSize = Self.pageSize
-        await withTaskGroup(of: (ActivityEnvironment, Int, ResourcePage<Activity>?).self) { group in
-            var iterator = requests.makeIterator()
-            func addRequest(_ request: (ActivityEnvironment, Int)) {
-                let (environment, start) = request
-                group.addTask {
-                    do {
-                        let response = try await client.activities.listPaginated(
-                            envID: environment.id, order: .descending,
-                            start: start, limit: pageSize
-                        )
-                        return (environment, start, ResourcePage(items: response.data, pagination: response.pagination))
-                    } catch {
-                        return (environment, start, nil)
-                    }
-                }
+        // Every environment loads at once; each batch of answers publishes
+        // so one slow environment doesn't hold the list back.
+        await ProgressiveFanOut.run(requests) { request -> (ActivityEnvironment, Int, ResourcePage<Activity>?) in
+            let (environment, start) = request
+            do {
+                let response = try await client.activities.listPaginated(
+                    envID: environment.id, order: .descending,
+                    start: start, limit: pageSize
+                )
+                return (environment, start, ResourcePage(items: response.data, pagination: response.pagination))
+            } catch {
+                return (environment, start, nil)
             }
-            for _ in 0..<min(Self.maxConcurrentEnvironmentRequests, requests.count) {
-                guard let request = iterator.next() else { break }
-                addRequest(request)
-            }
-            for await (environment, start, page) in group {
-                // Every completion frees a slot, including failed requests.
-                if let request = iterator.next() { addRequest(request) }
-                guard loadGeneration == generation, !Task.isCancelled else {
-                    group.cancelAll()
-                    continue
-                }
+        } deliver: { batch in
+            guard loadGeneration == generation, !Task.isCancelled else { return }
+            for (environment, start, page) in batch {
                 let id = environment.id.rawValue
                 guard let page else {
                     failures += 1
@@ -329,6 +332,8 @@ final class ActivityCenterStore {
                         current: normalized, incoming: reset ? [] : activityBuckets[id] ?? [], reset: false
                     ))
             }
+            rebuildActivities()
+            if !activities.isEmpty { isLoading = false }
         }
         guard loadGeneration == generation, !Task.isCancelled else { return }
         let validIDs = Set(environmentIDs)
@@ -409,6 +414,27 @@ final class ActivityCenterStore {
         startStream()
     }
 
+    /// Views sharing this store (the Activity Center and an activity pushed
+    /// from it) hold the stream while visible. The last release stops it
+    /// after a short grace period, so a push or pop doesn't reconnect.
+    func acquireStream() {
+        streamConsumers += 1
+        pendingStreamStop?.cancel()
+        pendingStreamStop = nil
+        if streamTask == nil { startStream() }
+    }
+
+    func releaseStream() {
+        streamConsumers = max(0, streamConsumers - 1)
+        guard streamConsumers == 0 else { return }
+        pendingStreamStop?.cancel()
+        pendingStreamStop = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled, let self, self.streamConsumers == 0 else { return }
+            self.stopStream()
+        }
+    }
+
     func stopStream() {
         streamGeneration += 1
         streamTask?.cancel()
@@ -448,10 +474,7 @@ final class ActivityCenterStore {
         var failed = 0
         var clearedEnvironmentIDs: Set<String> = []
         await withTaskGroup(of: (String, Int64?).self) { group in
-            var iterator = targets.makeIterator()
-            let initialBatch = min(Self.maxConcurrentEnvironmentRequests, targets.count)
-            for _ in 0..<initialBatch {
-                guard let id = iterator.next() else { break }
+            for id in targets {
                 group.addTask {
                     do {
                         let result = try await client.activities.clearHistory(envID: EnvironmentID(rawValue: id))
@@ -467,18 +490,6 @@ final class ActivityCenterStore {
                     clearedEnvironmentIDs.insert(environmentID)
                 } else {
                     failed += 1
-                }
-                if let id = iterator.next() {
-                    group.addTask {
-                        do {
-                            let result = try await client.activities.clearHistory(
-                                envID: EnvironmentID(rawValue: id)
-                            )
-                            return (id, result.deleted)
-                        } catch {
-                            return (id, nil)
-                        }
-                    }
                 }
             }
         }
@@ -586,7 +597,7 @@ final class ActivityCenterStore {
         guard let activity = event.activity else { return }
         let environmentID = event.environmentID ?? activity.sourceEnvironmentKey
         let environment = environment(for: EnvironmentID(rawValue: environmentID))
-        upsert(normalize(activity, environment: environment))
+        upsert(normalize(activity, environment: environment), coalesced: true)
     }
 
     private func applyEnvironmentError(_ event: ActivityStreamEvent) {
@@ -645,10 +656,10 @@ final class ActivityCenterStore {
         activityBuckets[environment.id.rawValue] = Array(
             sortActivities(normalized + retained).prefix(max(Self.pageSize, current.count))
         )
-        rebuildActivities()
+        scheduleRebuild()
     }
 
-    private func upsert(_ activity: Activity) {
+    private func upsert(_ activity: Activity, coalesced: Bool = false) {
         let key = ActivityCenterItem.activity(activity).id
         activityDetails[key]?.activity = activity
         let environmentID = activity.sourceEnvironmentKey
@@ -660,7 +671,7 @@ final class ActivityCenterStore {
             bucket.insert(activity, at: 0)
         }
         activityBuckets[environmentID] = sortActivities(bucket).prefix(windowSize).map { $0 }
-        rebuildActivities()
+        if coalesced { scheduleRebuild() } else { rebuildActivities() }
     }
 
     private func apply(_ message: ActivityMessage, environmentID: String?) {
@@ -677,17 +688,43 @@ final class ActivityCenterStore {
             else { continue }
             detail.activity.latestMessage = message.message
             detail.activity.updatedAt = message.createdAt
-            detail.messages = PaginationLoader.merge(
-                current: [message], incoming: detail.messages, reset: false
-            ).sorted { $0.createdAt < $1.createdAt }
+            Self.insert(message, into: &detail.messages)
             activityDetails[key] = detail
         }
-        rebuildActivities()
+        scheduleRebuild()
+    }
+
+    /// Messages stay sorted by time; streamed ones almost always belong at the
+    /// end, so insert in place instead of re-sorting the whole log.
+    private static func insert(_ message: ActivityMessage, into messages: inout [ActivityMessage]) {
+        guard !messages.contains(where: { $0.id == message.id }) else { return }
+        var low = messages.startIndex
+        var high = messages.endIndex
+        while low < high {
+            let mid = (low + high) / 2
+            if messages[mid].createdAt <= message.createdAt { low = mid + 1 } else { high = mid }
+        }
+        messages.insert(message, at: low)
     }
 
     private func rebuildActivities() {
-        activities = sortActivities(activityBuckets.values.flatMap { $0 })
+        pendingRebuild?.cancel()
+        pendingRebuild = nil
+        let next = sortActivities(activityBuckets.values.flatMap { $0 })
+        guard next != activities else { return }
+        activities = next
+        recomputeAvailableFilters()
         recomputeGroupedItems()
+    }
+
+    private func scheduleRebuild() {
+        guard pendingRebuild == nil else { return }
+        pendingRebuild = Task { [weak self] in
+            try? await Task.sleep(for: Self.streamRebuildInterval)
+            guard !Task.isCancelled, let self else { return }
+            self.pendingRebuild = nil
+            self.rebuildActivities()
+        }
     }
 
     private func matchesSearch(_ activity: Activity, search: String) -> Bool {

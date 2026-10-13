@@ -7,11 +7,6 @@ nonisolated struct DashboardGlobalOverview: Decodable, Sendable {
     let environments: [DashboardGlobalEnvironmentCard]?
 }
 
-nonisolated private struct DashboardOverviewEnvelope: Decodable, Sendable {
-    let success: Bool?
-    let data: DashboardGlobalOverview?
-}
-
 struct DashboardGlobalEnvironmentCard: Decodable, Sendable, Identifiable {
     var id: String { environment.id }
     let environment: DashboardGlobalEnvironmentBase
@@ -117,7 +112,6 @@ struct DashboardView: View {
 
     @State private var allEnvironments: [Arcane.Environment] = []
     @State private var environments: [Arcane.Environment] = []
-    @State private var overview: DashboardGlobalOverview?
     @State private var volumesTotal: Int?
     @State private var volumeCounts: [String: Int] = [:]
     @State private var overviewExpanded = false
@@ -145,6 +139,20 @@ struct DashboardView: View {
     /// Guards the scenePhase handler — hidden tab pages also receive scene
     /// phase changes and must not start their own stream.
     @State private var isDashboardVisible = false
+    /// Whether this dashboard holds the live streams. Pushing a screen on top
+    /// keeps them (returning shows live data without a reconnect); leaving
+    /// the tab or backgrounding releases them.
+    @State private var holdsStreams = false
+    /// Releases the streams when this dashboard is destroyed while a pushed
+    /// screen kept them (its onDisappear doesn't release on a push).
+    @State private var streamLease = DashboardStreamLease()
+    /// The tab hosting this dashboard, captured on appear.
+    @State private var hostTab: String?
+    /// The scene went to the background since the last refresh.
+    @State private var wasBackgrounded = false
+    /// Something the dashboard counts changed while it was covered.
+    @State private var needsRefreshOnAppear = false
+    @State private var lastRefreshAt: Date?
     /// A prior dashboard instance can disappear after its replacement appears
     /// during launch. Its teardown must not remove the replacement's streams.
     @State private var streamConsumerID = UUID().uuidString
@@ -171,7 +179,9 @@ struct DashboardView: View {
     @State private var visibleEnvironmentCount = 50
 
     private static let environmentBatchSize = 50
-    private static let maxConcurrentPerEnvFetches = 4
+    /// Counts that aren't streamed (volumes, update summaries, failed work)
+    /// refresh when the dashboard reappears after being covered this long.
+    private static let reappearRefreshInterval: TimeInterval = 60
 
     private var envID: EnvironmentID { manager.activeEnvironmentID }
     private var streamStore: DashboardStreamStore { environmentsStore.dashboardStream }
@@ -239,7 +249,6 @@ struct DashboardView: View {
                             onOpenProject: { projectRoute = $0 }
                         )
                         .cardEntrance(id: "dashboard.pinned", index: 4)
-                        .scrollEdgeFade()
                     }
 
                     environmentsSection
@@ -376,7 +385,15 @@ struct DashboardView: View {
         .navigationDestination(isPresented: $showAPIKeys) {
             APIKeysView()
         }
-        .task { await loadData() }
+        .task {
+            if !hasLoadedOnce {
+                await loadData()
+            } else if needsRefreshOnAppear
+                || lastRefreshAt.map({ Date().timeIntervalSince($0) > Self.reappearRefreshInterval }) ?? true
+            {
+                await refreshDashboard(reconnectStream: false)
+            }
+        }
         .refreshable { await refreshDashboard() }
         .onChange(of: manager.activeEnvironmentID.rawValue) {
             environments = dashboardEnvironments(from: allEnvironments.isEmpty ? environments : allEnvironments)
@@ -399,18 +416,12 @@ struct DashboardView: View {
         }
         .onAppear {
             isDashboardVisible = true
+            hostTab = selectedTab
             // Cold launch can mount this view while the scene is still
             // inactive. Start now rather than depending on a later active
             // transition that may have already been delivered.
             if scenePhase != .background {
-                environmentsStore.setVisible(
-                    true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
-            }
-            // Tab switches stop the environment streams (see onDisappear) and
-            // the auto-refresh guards skip while hidden — without this the
-            // toolbar badge and tiles stay frozen after coming back.
-            if hasLoadedOnce {
-                Task { await refreshDashboard(reconnectStream: false) }
+                acquireStreams()
             }
         }
         .onDisappear {
@@ -419,12 +430,21 @@ struct DashboardView: View {
             liveCountsRefreshTask = nil
             mutationRefreshTask?.cancel()
             mutationRefreshTask = nil
-            environmentsStore.setVisible(
-                false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
+            // A pushed screen keeps the streams; leaving the tab releases them.
+            if isNavigationRoot || selectedTab != hostTab {
+                releaseStreams()
+            }
+        }
+        .onChange(of: selectedTab) { _, tab in
+            if let hostTab, tab != hostTab, !isDashboardVisible {
+                releaseStreams()
+            }
         }
         .onChange(of: streamStore.aggregate) { previous, current in
             publishWidgetSnapshot()
-            guard current != nil, current != previous else { return }
+            // nil → value is the stream (re)connecting, not a count change;
+            // the load or refresh that accompanies it fetches docker info.
+            guard previous != nil, current != nil, current != previous else { return }
             // liveCounts comes from docker info, not the stream — skip the
             // full docker refetch when only the update count changed.
             let containersChanged =
@@ -443,22 +463,25 @@ struct DashboardView: View {
                 liveCountsRefreshTask = nil
                 mutationRefreshTask?.cancel()
                 mutationRefreshTask = nil
-                environmentsStore.setVisible(
-                    false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
+                let resumes = holdsStreams
+                releaseStreams()
+                wasBackgrounded = resumes || isDashboardVisible
                 publishWidgetSnapshot()
                 WidgetSnapshotPublisher.shared.flush()
             case .active:
-                if isDashboardVisible {
-                    environmentsStore.setVisible(
-                        true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
-                    // Returning from background (or relaunch-adjacent
-                    // foreground) must show fresh counts — the stream
-                    // replays snapshots but volumes/updates/history don't.
-                    // No reconnect: setVisible already restarts the
-                    // streams, and a second teardown would flap the cards.
-                    if hasLoadedOnce {
-                        Task { await refreshDashboard(reconnectStream: false) }
-                    }
+                // Only a real return from the background refreshes —
+                // Control Center, notification shade, and Face ID only
+                // pass through .inactive and leave the streams running.
+                guard wasBackgrounded else { return }
+                wasBackgrounded = false
+                acquireStreams()
+                // The stream replays snapshots, but volumes, updates, and
+                // history don't. No reconnect: acquiring restarts the
+                // streams, and a second teardown would flap the cards.
+                if isDashboardVisible, hasLoadedOnce {
+                    Task { await refreshDashboard(reconnectStream: false) }
+                } else {
+                    needsRefreshOnAppear = true
                 }
             default:
                 break
@@ -468,7 +491,7 @@ struct DashboardView: View {
         // request raced a transient network failure — start the stream
         // once the server is known to be v2.
         .onChange(of: manager.supportsActivities) { _, supported in
-            if supported, isDashboardVisible {
+            if supported, holdsStreams {
                 environmentsStore.setVisible(true, consumer: streamConsumerID, supportsDashboardStream: true)
             }
         }
@@ -483,7 +506,11 @@ struct DashboardView: View {
         // finished deployment operations) change the counts this page
         // shows. Debounce rapid bursts into one refresh.
         .onChange(of: mutationStore.versions) {
-            guard hasLoadedOnce, isDashboardVisible else { return }
+            guard hasLoadedOnce else { return }
+            guard isDashboardVisible else {
+                needsRefreshOnAppear = true
+                return
+            }
             mutationRefreshTask?.cancel()
             mutationRefreshTask = Task {
                 try? await Task.sleep(for: .milliseconds(800))
@@ -492,12 +519,31 @@ struct DashboardView: View {
             }
         }
         .onChange(of: DeploymentActivityStore.shared.isRunning) { _, running in
-            guard !running, hasLoadedOnce, isDashboardVisible else { return }
+            guard !running, hasLoadedOnce else { return }
+            guard isDashboardVisible else {
+                needsRefreshOnAppear = true
+                return
+            }
             Task { await refreshDashboard(reconnectStream: false) }
         }
         .onChange(of: isNavigationRoot, initial: true) { _, isRoot in
             onNavigationRootChange(isRoot)
         }
+    }
+
+    private func acquireStreams() {
+        holdsStreams = true
+        streamLease.hold(environmentsStore, consumer: streamConsumerID)
+        environmentsStore.setVisible(
+            true, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
+    }
+
+    private func releaseStreams() {
+        guard holdsStreams else { return }
+        holdsStreams = false
+        streamLease.clear()
+        environmentsStore.setVisible(
+            false, consumer: streamConsumerID, supportsDashboardStream: manager.supportsActivities)
     }
 
     // MARK: - Subviews
@@ -546,7 +592,6 @@ struct DashboardView: View {
         EnvironmentListRow(
             environment: env,
             dockerInfo: environmentsStore.dockerInfoByEnvironmentID[env.id],
-            actionItems: environmentsStore.actionItemsByEnvironmentID[env.id],
             streamState: streamStore.state(for: env.id),
             series: statsHistory.series(for: env.id),
             isActive: !manager.allEnvironmentsPreview && env.id == manager.activeEnvironmentID.rawValue,
@@ -557,10 +602,11 @@ struct DashboardView: View {
                 await refreshEnvironmentDockerInfo(environmentID: env.id)
             }
         )
-        // Cascade only the first screenful; later cards fade in at the
-        // scroll edge instead.
+        // Cascade only the first screenful.
         .cardEntrance(id: "dashboard.environment.\(env.id)", index: min(index, 5) + 4)
-        .scrollEdgeFade()
+        // Lazily built cards animate as one unit, so a card created while
+        // the overview above resizes can't land on top of its neighbor.
+        .geometryGroup()
     }
 
     private var environmentsSection: some View {
@@ -584,23 +630,20 @@ struct DashboardView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Not lazy: a lazy grid builds cards mid-scroll, and a card built
-            // while the overview above resizes lands on top of its neighbor.
-            let columns = environmentColumnCount
+            // Keyed by environment id so catalog changes move cards instead
+            // of rebuilding them (and refiring their per-card requests).
             let indexed = Array(environments.enumerated())
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(stride(from: 0, to: indexed.count, by: columns)), id: \.self) { start in
-                    let row = indexed[start..<min(start + columns, indexed.count)]
-                    HStack(alignment: .top, spacing: 12) {
-                        ForEach(row, id: \.element.id) { index, env in
-                            environmentCard(env, index: index)
-                                .frame(maxWidth: .infinity)
-                        }
-                        if row.count < columns {
-                            Spacer()
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
+            LazyVGrid(
+                columns: Array(
+                    repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
+                    count: environmentColumnCount
+                ),
+                alignment: .leading,
+                spacing: 12
+            ) {
+                ForEach(indexed, id: \.element.id) { index, env in
+                    environmentCard(env, index: index)
+                        .frame(maxWidth: .infinity)
                 }
             }
 
@@ -621,14 +664,7 @@ struct DashboardView: View {
     /// Nil until at least one snapshot has loaded (v1 servers never do), so
     /// the button stays enabled when the answer is unknown.
     private var arcaneUpgradeCount: Int? {
-        let loaded = environments.compactMap { env -> Bool? in
-            guard let state = streamStore.state(for: env.id), state.hasLoaded,
-                let info = state.snapshot?.versionInfo
-            else { return nil }
-            return info.updateAvailable
-        }
-        guard !loaded.isEmpty else { return nil }
-        return loaded.filter { $0 }.count
+        streamStore.attention.arcaneUpgradeCount
     }
 
     /// Two-tap Update All. Resting: a compact capsule with the update icon and
@@ -733,10 +769,11 @@ struct DashboardView: View {
     private var needsAttentionItems: [NeedsAttentionItem] {
         var items: [NeedsAttentionItem] = []
 
-        // Fold over the full catalog, not the visible prefix — attention
-        // must not undercount past the first fifty environments.
-        // Offline / erroring environments from the live stream states.
-        let erroring = allEnvironments.filter { streamStore.state(for: $0.id)?.streamError == true }
+        // The stream store folds every tracked environment (the full
+        // catalog, not the visible prefix) into one Equatable summary, so
+        // this body doesn't observe each environment's state.
+        let attention = streamStore.attention
+        let erroring = allEnvironments.filter { attention.erroringEnvironmentIDs.contains($0.id) }
         if let first = erroring.first {
             items.append(
                 NeedsAttentionItem(
@@ -754,39 +791,13 @@ struct DashboardView: View {
                 ))
         }
 
-        // Fold server-computed action items across every environment. Prefer
-        // the environments store's REST snapshots (fresh on every pull-to-refresh)
-        // and fall back to the live stream snapshot — the stream can lag the
-        // server reconcile tick, fail, or be unsupported on older servers.
-        var stopped = 0
-        var updates = 0
-        var expiringKeys = 0
-        var vulnerabilities = 0
-        var vulnerabilityEnv: (id: String, name: String, count: Int)?
-        var criticalVulns = false
-        for env in allEnvironments {
-            let snapshotItems: [ActionItem]?
-            if let storeItems = environmentsStore.actionItemsByEnvironmentID[env.id]?.items {
-                snapshotItems = storeItems
-            } else if let state = streamStore.state(for: env.id), state.hasLoaded {
-                snapshotItems = state.snapshot?.actionItems.items
-            } else {
-                continue
-            }
-            for item in snapshotItems ?? [] {
-                switch item.kind {
-                case .stoppedContainers: stopped += item.count
-                case .imageUpdates: updates += item.count
-                case .expiringKeys: expiringKeys += item.count
-                case .actionableVulnerabilities:
-                    vulnerabilities += item.count
-                    if item.severity == .critical { criticalVulns = true }
-                    if item.count > (vulnerabilityEnv?.count ?? 0) {
-                        vulnerabilityEnv = (env.id, env.name ?? env.id, item.count)
-                    }
-                case .unknown: break
-                }
-            }
+        let stopped = attention.stoppedContainers
+        let updates = attention.imageUpdates
+        let expiringKeys = attention.expiringKeys
+        let vulnerabilities = attention.vulnerabilities
+        let criticalVulns = attention.hasCriticalVulnerabilities
+        let vulnerabilityEnv = attention.mostVulnerableEnvironmentID.map { id in
+            (id: id, name: allEnvironments.first { $0.id == id }?.name ?? id)
         }
 
         if vulnerabilities > 0, let target = vulnerabilityEnv {
@@ -985,7 +996,6 @@ struct DashboardView: View {
             .padding(.vertical, 14)
             .motionAwareAnimation(Motion.reflow, value: overviewExpanded)
             .glassCardBackground()
-            .scrollEdgeFade()
 
             environmentCountAvailabilityNote
                 .cardEntrance(id: "dashboard.overview.note", index: 4)
@@ -1143,7 +1153,9 @@ struct DashboardView: View {
     }
 
     private func loadData(refresh: Bool = false) async {
-        guard let client = manager.client else { return }
+        guard manager.client != nil else { return }
+        needsRefreshOnAppear = false
+        lastRefreshAt = Date()
         if refresh { cardRefreshToken += 1 }
         if refresh || allEnvironments.isEmpty {
             visibleEnvironmentCount = Self.environmentBatchSize
@@ -1170,11 +1182,7 @@ struct DashboardView: View {
             if !Task.isCancelled { hasLoadedOnce = true }
         }
 
-        async let envTask: [Arcane.Environment]? = loadEnvironmentsCached(refresh: refresh)
-        let path = "dashboard/environments"
-        async let rawReq = client.transport.rawRequest(path, body: Optional<String>.none)
-
-        let envResult = await envTask
+        let envResult = await loadEnvironmentsCached(refresh: refresh)
         if Task.isCancelled { return }
         let envs = envResult ?? []
         if envResult != nil { hasLoadedEnvironments = true }
@@ -1211,21 +1219,8 @@ struct DashboardView: View {
             hasLoadedEnvironmentCounts = true
         }
 
-        // Supplemental count requests must publish before the legacy overview
-        // and dashboard snapshot refreshes, which can be slower or unsupported.
-        let reqData = try? await rawReq
-        if Task.isCancelled { return }
-        if let reqData {
-            overview =
-                (try? JSONDecoder().decode(DashboardOverviewEnvelope.self, from: reqData))?.data
-                ?? (try? JSONDecoder().decode(DashboardGlobalOverview.self, from: reqData))
-        }
-        if refresh {
-            // REST snapshots are fresh even when the live stream is down,
-            // unsupported (older servers), or still reconnecting — without
-            // this the Attention Center keeps stale counts after actions.
-            await streamStore.refresh()
-        }
+        // Dashboard snapshots (action items) refresh inside the
+        // environments store's load; see `EnvironmentsStore.load`.
 
         let clearSequence = historyMutationStore.latestClear?.sequence
         var activities = await loadFailedWork()
@@ -1254,7 +1249,7 @@ struct DashboardView: View {
         guard allEnabledEnvironments.allSatisfy({ environmentLiveStates[$0.id] != nil }) else { return }
 
         let previousByID = Dictionary(
-            (WidgetSnapshotStore.load()?.environments ?? []).map { ($0.id, $0) },
+            (WidgetSnapshotPublisher.shared.lastKnownSnapshot()?.environments ?? []).map { ($0.id, $0) },
             uniquingKeysWith: { current, _ in current }
         )
         let summaries: [WidgetSnapshot.EnvSummary] = enabledEnvironments.map { env in
@@ -1373,10 +1368,7 @@ struct DashboardView: View {
         }
 
         return await withTaskGroup(of: (String, Int64?).self) { group in
-            var iterator = envs.makeIterator()
-            let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
-            for _ in 0..<initialBatch {
-                guard let env = iterator.next() else { break }
+            for env in envs {
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
                     (env.id, await Self.volumeCount(client: client, envID: envID))
@@ -1386,12 +1378,6 @@ struct DashboardView: View {
             for await (id, count) in group {
                 if let count {
                     counts[id] = count
-                }
-                if let env = iterator.next() {
-                    let envID = EnvironmentID(rawValue: env.id)
-                    group.addTask {
-                        (env.id, await Self.volumeCount(client: client, envID: envID))
-                    }
                 }
             }
             let unavailableIDs = envs.compactMap { counts[$0.id] == nil ? $0.id : nil }
@@ -1429,10 +1415,7 @@ struct DashboardView: View {
         }
 
         let counts = await withTaskGroup(of: (String, Int?).self) { group in
-            var iterator = envs.makeIterator()
-            let initialBatch = min(Self.maxConcurrentPerEnvFetches, envs.count)
-            for _ in 0..<initialBatch {
-                guard let env = iterator.next() else { break }
+            for env in envs {
                 let envID = EnvironmentID(rawValue: env.id)
                 group.addTask {
                     let summary = try? await client.images.updateSummary(envID: envID)
@@ -1443,13 +1426,6 @@ struct DashboardView: View {
             for await result in group {
                 if let count = result.1 {
                     counts[result.0] = count
-                }
-                if let env = iterator.next() {
-                    let envID = EnvironmentID(rawValue: env.id)
-                    group.addTask {
-                        let summary = try? await client.images.updateSummary(envID: envID)
-                        return (envID.rawValue, summary?.imagesWithUpdates)
-                    }
                 }
             }
             return counts
@@ -1467,7 +1443,8 @@ struct DashboardView: View {
     }
 
     private func refreshLiveCounts() async {
-        await environmentsStore.refreshDockerInformation(client: manager.client)
+        // Counts changed after any pass in flight began; start a new one.
+        await environmentsStore.refreshDockerInformation(client: manager.client, restart: true)
         guard !Task.isCancelled else { return }
         updateLiveStateFromStore()
     }
@@ -1550,6 +1527,29 @@ struct DashboardView: View {
             allEnvironments.count
         )
         environments = dashboardEnvironments(from: allEnvironments)
+    }
+}
+
+/// Tied to a dashboard's state lifetime; drops its stream consumer if the
+/// view goes away still holding it.
+@MainActor
+final class DashboardStreamLease {
+    private weak var store: EnvironmentsStore?
+    private var consumer: String?
+
+    func hold(_ store: EnvironmentsStore, consumer: String) {
+        self.store = store
+        self.consumer = consumer
+    }
+
+    func clear() {
+        store = nil
+        consumer = nil
+    }
+
+    isolated deinit {
+        guard let store, let consumer else { return }
+        store.setVisible(false, consumer: consumer, supportsDashboardStream: false)
     }
 }
 

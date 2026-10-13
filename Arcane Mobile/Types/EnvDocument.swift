@@ -9,6 +9,10 @@ nonisolated struct EnvEntry: Identifiable {
 }
 
 nonisolated struct EnvDocument {
+    /// `NAME=value` (optionally `export`ed); compiled once, not once per line.
+    private static let assignmentPattern = try! NSRegularExpression(
+        pattern: #"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$"#)
+
     let source: String
     let entries: [EnvEntry]
     let unsupportedLines: Int
@@ -38,9 +42,8 @@ nonisolated struct EnvDocument {
             }
             if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
             guard
-                let regex = try? NSRegularExpression(
-                    pattern: #"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$"#),
-                let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length))
+                let match = Self.assignmentPattern.firstMatch(
+                    in: line, range: NSRange(location: 0, length: (line as NSString).length))
             else {
                 unsupported += 1
                 continue

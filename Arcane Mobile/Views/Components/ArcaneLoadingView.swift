@@ -149,7 +149,9 @@ struct ArcaneLoadingView: View {
     }
 
     private func drawing(_ logo: LaunchLogoPaths) -> some View {
-        TimelineView(.animation) { context in
+        // 60 fps is plenty for a loading trace; ProMotion would otherwise
+        // redraw every loader at 120 Hz.
+        TimelineView(.animation(minimumInterval: 1.0 / 60)) { context in
             ArcaneLogoTrace(
                 logo: logo, accent: accent, time: context.date.timeIntervalSinceReferenceDate, loops: true
             )

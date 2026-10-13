@@ -102,12 +102,47 @@ enum LogViewerFormatting {
     }
 }
 
+/// Per-line values the console row shows, derived once when the line
+/// arrives instead of on every render of every visible row.
+struct LogLinePresentation: Equatable {
+    let severity: LogViewerSeverity
+    let levelLabel: String?
+    let displayTimestamp: String?
+
+    init(_ line: LogLine) {
+        severity = LogViewerFormatting.severity(for: line.level)
+        levelLabel = LogViewerFormatting.levelLabel(line.level)
+        displayTimestamp = line.timestamp
+            .flatMap { $0.isEmpty ? nil : $0 }
+            .map(LogViewerFormatting.displayTimestamp)
+    }
+
+    func accessibilityText(for line: LogLine, showTimestamps: Bool) -> String {
+        var components: [String] = []
+        if showTimestamps, let displayTimestamp, !displayTimestamp.isEmpty {
+            components.append(displayTimestamp)
+        }
+        if let service = line.service?.trimmingCharacters(in: .whitespacesAndNewlines), !service.isEmpty {
+            components.append("Service \(service)")
+        }
+        if let levelLabel { components.append(levelLabel) }
+        components.append(line.text)
+        return components.joined(separator: ", ")
+    }
+}
+
+struct LogViewerLine: Identifiable {
+    let id: UInt64
+    let line: LogLine
+    let presentation: LogLinePresentation
+}
+
 @MainActor
 @Observable
 final class LogViewerStore {
     static let maximumRetainedLines = 5_000
 
-    private(set) var lines: [IdentifiedLogLine] = []
+    private(set) var lines: [LogViewerLine] = []
     private(set) var connectionState: LogViewerConnectionState = .idle
     private(set) var isFollowing = true
     private(set) var newLinesWhilePaused = 0
@@ -116,6 +151,12 @@ final class LogViewerStore {
     @ObservationIgnored private var streamTask: Task<Void, Never>?
     @ObservationIgnored private var streamGeneration = 0
     @ObservationIgnored private var nextLineID: UInt64 = 0
+    /// Streamed lines waiting for the next publish.
+    @ObservationIgnored private var pendingLines: [LogLine] = []
+    @ObservationIgnored private var flushTask: Task<Void, Never>?
+    /// Lines publish at most this often. A timer, not the next arriving line,
+    /// drives it, so the tail of a burst shows even when the stream goes quiet.
+    private static let flushInterval: Duration = .milliseconds(100)
 
     init(logStream: @escaping () -> BoundedLogStream?) {
         self.makeLogStream = logStream
@@ -136,6 +177,7 @@ final class LogViewerStore {
         streamGeneration &+= 1
         streamTask?.cancel()
         streamTask = nil
+        flushPending()
         if connectionState == .connecting || connectionState == .live {
             connectionState = .idle
         }
@@ -163,6 +205,7 @@ final class LogViewerStore {
     }
 
     func clear() {
+        pendingLines.removeAll()
         lines.removeAll(keepingCapacity: true)
         newLinesWhilePaused = 0
     }
@@ -176,7 +219,7 @@ final class LogViewerStore {
     func receive(_ newLines: [LogLine]) {
         guard !newLines.isEmpty else { return }
 
-        var newEntries: [IdentifiedLogLine] = []
+        var newEntries: [LogViewerLine] = []
         newEntries.reserveCapacity(newLines.count)
 
         for var line in newLines {
@@ -194,7 +237,7 @@ final class LogViewerStore {
                 RemoteDataLimits.boundedText($0, maximumBytes: 256)
             }
 
-            let entry = IdentifiedLogLine(id: nextLineID, line: line)
+            let entry = LogViewerLine(id: nextLineID, line: line, presentation: LogLinePresentation(line))
             nextLineID &+= 1
             newEntries.append(entry)
         }
@@ -209,6 +252,25 @@ final class LogViewerStore {
                 maximum: Self.maximumRetainedLines
             )
         }
+    }
+
+    private func enqueue(_ line: LogLine) {
+        pendingLines.append(line)
+        guard flushTask == nil else { return }
+        flushTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.flushInterval)
+            guard !Task.isCancelled else { return }
+            self?.flushPending()
+        }
+    }
+
+    private func flushPending() {
+        flushTask?.cancel()
+        flushTask = nil
+        guard !pendingLines.isEmpty else { return }
+        let batch = pendingLines
+        pendingLines.removeAll(keepingCapacity: true)
+        receive(batch)
     }
 
     private func trimRetainedWindowIfNeeded() {
@@ -237,30 +299,18 @@ final class LogViewerStore {
         connectionState = .live
 
         do {
-            let clock = ContinuousClock()
-            var lastFlush = clock.now
-            var batch: [LogLine] = []
-            batch.reserveCapacity(50)
-
             for try await line in stream {
                 guard generation == streamGeneration, !Task.isCancelled else { return }
-                batch.append(line)
-                let now = clock.now
-                if lastFlush.duration(to: now) >= .milliseconds(50) || batch.count >= 50 {
-                    receive(batch)
-                    batch.removeAll(keepingCapacity: true)
-                    lastFlush = now
-                }
+                enqueue(line)
             }
 
-            if !batch.isEmpty, generation == streamGeneration, !Task.isCancelled {
-                receive(batch)
-            }
             if generation == streamGeneration, !Task.isCancelled {
+                flushPending()
                 connectionState = .ended
             }
         } catch {
             guard generation == streamGeneration else { return }
+            flushPending()
             if Task.isCancelled {
                 connectionState = .idle
             } else {

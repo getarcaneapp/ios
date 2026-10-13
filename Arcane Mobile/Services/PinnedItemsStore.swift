@@ -15,11 +15,19 @@ final class PinnedItemsStore {
     // their pinned/unpinned partitions after a toggle.
     private(set) var version: Int = 0
 
+    /// Decoded pins per storage key. List rows ask for pins on every render,
+    /// so UserDefaults is read and decoded once per key, not once per call.
+    @ObservationIgnored private var cache: [String: Set<String>] = [:]
+
     private init() {}
 
     func pinnedIDs(kind: ItemKind, envID: EnvironmentID) -> Set<String> {
         _ = version
-        return loadFromDefaults(key: storageKey(kind: kind, envID: envID))
+        let key = storageKey(kind: kind, envID: envID)
+        if let cached = cache[key] { return cached }
+        let loaded = loadFromDefaults(key: key)
+        cache[key] = loaded
+        return loaded
     }
 
     func isPinned(_ id: String, kind: ItemKind, envID: EnvironmentID) -> Bool {
@@ -28,13 +36,14 @@ final class PinnedItemsStore {
 
     func togglePin(_ id: String, kind: ItemKind, envID: EnvironmentID) {
         let key = storageKey(kind: kind, envID: envID)
-        var current = loadFromDefaults(key: key)
+        var current = cache[key] ?? loadFromDefaults(key: key)
         if current.contains(id) {
             current.remove(id)
         } else {
             current.insert(id)
         }
         saveToDefaults(key: key, ids: current)
+        cache[key] = current
         version &+= 1
     }
 

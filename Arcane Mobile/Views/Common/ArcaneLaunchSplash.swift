@@ -20,6 +20,7 @@ struct ArcaneLaunchSplash: View {
     /// Set once the drawing is done so the hand-off animates a plain image
     /// instead of the live drawing.
     @State private var showsFinishedLogo = false
+    @State private var isBreathing = false
 
     private static let logoSize = CGSize(width: 150, height: 144)
     private static let logo = LaunchLogoPaths.bundled
@@ -38,42 +39,34 @@ struct ArcaneLaunchSplash: View {
     }
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion || showsFinishedLogo)) { context in
-            let elapsed = clock.elapsed(at: context.date)
-            ZStack {
-                Color(uiColor: .systemBackground)
+        ZStack {
+            Color(uiColor: .systemBackground)
 
-                glow(at: elapsed)
-                    .opacity(hasAppeared ? 1 : 0)
-                    .scaleEffect(reduceMotion || hasAppeared ? 1 : 0.6)
-
-                ZStack {
-                    if tracesNatively && !showsFinishedLogo, let logo = Self.logo {
-                        // A faint silhouette the trace draws over, so the logo
-                        // has a presence before the drawing starts.
-                        staticLogo
-                            .opacity(0.12)
-                            .modifier(settleIn)
-                        ArcaneLogoTrace(logo: logo, accent: accent, time: elapsed - Self.traceStart)
-                    } else {
-                        staticLogo
-                            .modifier(settleIn)
-                    }
-                }
-                .frame(width: Self.logoSize.width, height: Self.logoSize.height)
-                .overlay { sheen }
+            glow
                 .opacity(hasAppeared ? 1 : 0)
-            }
-            .onChange(of: Self.stage(at: elapsed)) { _, stage in
-                // The sheen crosses the logo as the last pieces fill, then
-                // the logo lifts away over the app.
-                guard tracesNatively else { return }
-                switch stage {
-                case .tracing: break
-                case .sheen: sweepSheen(after: .zero)
-                case .finished: Task { await finish(after: .zero) }
+                .scaleEffect(reduceMotion || hasAppeared ? 1 : 0.6)
+
+            ZStack {
+                if tracesNatively && !showsFinishedLogo, let logo = Self.logo {
+                    // A faint silhouette the trace draws over, so the logo
+                    // has a presence before the drawing starts.
+                    staticLogo
+                        .opacity(0.12)
+                        .modifier(settleIn)
+                    // Only the trace redraws per frame; the rest of the
+                    // splash animates through ordinary SwiftUI animations.
+                    TimelineView(.animation) { context in
+                        ArcaneLogoTrace(
+                            logo: logo, accent: accent, time: clock.elapsed(at: context.date) - Self.traceStart)
+                    }
+                } else {
+                    staticLogo
+                        .modifier(settleIn)
                 }
             }
+            .frame(width: Self.logoSize.width, height: Self.logoSize.height)
+            .overlay { sheen }
+            .opacity(hasAppeared ? 1 : 0)
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
@@ -81,23 +74,31 @@ struct ArcaneLaunchSplash: View {
             withAnimation(reduceMotion ? Motion.reducedFallback : Motion.splashEnter) {
                 hasAppeared = true
             }
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: Self.breathHalfPeriod).repeatForever(autoreverses: true)) {
+                isBreathing = true
+            }
         }
         .task {
-            guard !tracesNatively else { return }
-            sweepSheen(after: .milliseconds(reduceMotion ? 0 : 450))
-            await finish(after: .milliseconds(reduceMotion ? 600 : 1500))
+            guard tracesNatively else {
+                sweepSheen(after: .milliseconds(reduceMotion ? 0 : 450))
+                await finish(after: .milliseconds(reduceMotion ? 600 : 1500))
+                return
+            }
+            // Same timeline as the drawing: the sheen crosses the logo as the
+            // last pieces fill, then the logo lifts away over the app.
+            do {
+                try await Task.sleep(for: .seconds(Self.traceEnd - 0.35))
+            } catch {
+                return
+            }
+            sweepSheen(after: .zero)
+            await finish(after: .milliseconds(900))
         }
     }
 
-    private enum Stage: Hashable {
-        case tracing, sheen, finished
-    }
-
-    private static func stage(at elapsed: TimeInterval) -> Stage {
-        if elapsed < traceEnd - 0.35 { return .tracing }
-        if elapsed < traceEnd + 0.55 { return .sheen }
-        return .finished
-    }
+    /// Half of the glow's breathing cycle (it used to follow `sin(t * 1.1)`).
+    private static let breathHalfPeriod: TimeInterval = .pi / 1.1
 
     private var staticLogo: some View {
         Image(decorative: "ArcaneLogo")
@@ -113,9 +114,9 @@ struct ArcaneLaunchSplash: View {
 
     /// A soft pool of the accent behind the logo that slowly breathes. Kept
     /// faint so it tints the screen rather than glowing.
-    private func glow(at time: TimeInterval) -> some View {
+    private var glow: some View {
         let strength = colorScheme == .dark ? 0.3 : 0.18
-        let breath = reduceMotion ? 1 : 1 + 0.035 * sin(time * 1.1)
+        let breath = reduceMotion ? 1 : (isBreathing ? 1.035 : 0.965)
         return RadialGradient(
             colors: [accent.opacity(strength), accent.opacity(strength * 0.4), .clear],
             center: .center,

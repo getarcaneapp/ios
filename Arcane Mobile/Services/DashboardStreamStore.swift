@@ -39,6 +39,22 @@ final class DashboardStreamStore {
         var imageUpdates = 0
     }
 
+    /// Needs Attention inputs folded over every tracked environment. Kept on
+    /// the store so the dashboard observes one Equatable value instead of
+    /// every environment's state.
+    struct AttentionSummary: Equatable {
+        var erroringEnvironmentIDs: Set<String> = []
+        var stoppedContainers = 0
+        var imageUpdates = 0
+        var expiringKeys = 0
+        var vulnerabilities = 0
+        var mostVulnerableEnvironmentID: String?
+        var hasCriticalVulnerabilities = false
+        /// Environments whose snapshot reports a newer Arcane release; nil
+        /// until at least one snapshot has loaded (v1 servers never do).
+        var arcaneUpgradeCount: Int?
+    }
+
     private(set) var statesByEnvironmentID: [String: EnvironmentState] = [:]
     private(set) var connected = false
     /// Set after the fast reconnect budget is exhausted; cleared by retry()
@@ -50,6 +66,7 @@ final class DashboardStreamStore {
     /// Cached separately from the environment dictionary so consumers of the
     /// environment totals update only when a displayed count changes.
     private(set) var aggregate: AggregateCounts?
+    private(set) var attention = AttentionSummary()
 
     private var client: ArcaneClient?
     private var clientIdentity: ObjectIdentifier?
@@ -113,6 +130,7 @@ final class DashboardStreamStore {
         self.client = client
         statesByEnvironmentID = [:]
         aggregate = nil
+        attention = AttentionSummary()
         streamUnsupported = false
         streamFailed = false
     }
@@ -177,7 +195,9 @@ final class DashboardStreamStore {
                 continue
             }
             statesByEnvironmentID[environment.id] = EnvironmentState(id: environment.id, name: displayName)
-            if streamTask != nil {
+            // Only environments added mid-connection need this; a connection
+            // still opening delivers every environment it serves.
+            if streamTask != nil, connected {
                 let generation = generation
                 Task { [weak self] in
                     await self?.refreshEnvironment(environment.id, generation: generation)
@@ -187,10 +207,12 @@ final class DashboardStreamStore {
         rebuildAggregate()
     }
 
-    /// Re-fetch every tracked environment's snapshot over REST (pull-to-refresh).
-    func refresh() async {
+    /// Re-fetch tracked environments' snapshots over REST (pull-to-refresh,
+    /// or every environment when the stream is unavailable). Each snapshot
+    /// applies as it arrives.
+    func refresh(environmentIDs: [String]? = nil) async {
         let generation = generation
-        let ids = Array(statesByEnvironmentID.keys)
+        let ids = environmentIDs?.filter { statesByEnvironmentID[$0] != nil } ?? Array(statesByEnvironmentID.keys)
         await withTaskGroup(of: Void.self) { group in
             for id in ids {
                 group.addTask { [weak self] in
@@ -232,8 +254,10 @@ final class DashboardStreamStore {
             } catch let error as ArcaneError {
                 if case .notFound = error {
                     // Server predates the stream endpoint — silent legacy mode.
+                    // Snapshots then come from one REST pass instead.
                     streamUnsupported = true
                     connected = false
+                    await refresh()
                     return
                 }
             } catch is CancellationError {
@@ -324,8 +348,41 @@ final class DashboardStreamStore {
 
     private func rebuildAggregate() {
         let next = Self.resolvedAggregate(from: statesByEnvironmentID)
-        guard next != aggregate else { return }
-        aggregate = next
+        if next != aggregate { aggregate = next }
+        let nextAttention = Self.resolvedAttention(from: statesByEnvironmentID)
+        if nextAttention != attention { attention = nextAttention }
+    }
+
+    static func resolvedAttention(from statesByEnvironmentID: [String: EnvironmentState]) -> AttentionSummary {
+        var summary = AttentionSummary()
+        var upgradesLoaded = 0
+        var upgradesAvailable = 0
+        var mostVulnerableCount = 0
+        for (id, state) in statesByEnvironmentID.sorted(by: { $0.key < $1.key }) {
+            if state.streamError { summary.erroringEnvironmentIDs.insert(id) }
+            guard state.hasLoaded, let snapshot = state.snapshot else { continue }
+            if let info = snapshot.versionInfo {
+                upgradesLoaded += 1
+                if info.updateAvailable { upgradesAvailable += 1 }
+            }
+            for item in snapshot.actionItems.items {
+                switch item.kind {
+                case .stoppedContainers: summary.stoppedContainers += item.count
+                case .imageUpdates: summary.imageUpdates += item.count
+                case .expiringKeys: summary.expiringKeys += item.count
+                case .actionableVulnerabilities:
+                    summary.vulnerabilities += item.count
+                    if item.severity == .critical { summary.hasCriticalVulnerabilities = true }
+                    if item.count > mostVulnerableCount {
+                        mostVulnerableCount = item.count
+                        summary.mostVulnerableEnvironmentID = id
+                    }
+                case .unknown: break
+                }
+            }
+        }
+        summary.arcaneUpgradeCount = upgradesLoaded > 0 ? upgradesAvailable : nil
+        return summary
     }
 
     private func refreshEnvironment(_ environmentID: String, generation: Int) async {

@@ -35,6 +35,8 @@ struct ContainersView: View {
     @State private var debouncedLabelFilter = ""
     @State private var sortOrder = ListSortOrder.ascending
     @State private var sections: [StableListSection<String, EnvironmentItem<ContainerSummary>>] = []
+    /// Pinned row IDs, refreshed in `rebuildSections` (not per row render).
+    @State private var pinnedIDs: Set<String> = []
 
     @State private var logsTarget: EnvironmentItem<ContainerSummary>?
     @State private var terminalTarget: EnvironmentItem<ContainerSummary>?
@@ -129,13 +131,10 @@ struct ContainersView: View {
         return count
     }
 
-    private var pinnedIDs: Set<String> {
-        pinnedStore.pinnedIDs(kind: .container, in: containers)
-    }
 
     /// Filters + sorts once and partitions in a single pass. Pure — reads the
     /// current inputs and returns the grouped sections without touching state.
-    private func computeSections() -> [StableListSection<String, EnvironmentItem<ContainerSummary>>] {
+    private func computeSections(pinned: Set<String>) -> [StableListSection<String, EnvironmentItem<ContainerSummary>>] {
         let query = debouncedSearchText
         let filtered = containers.filter { container in
             guard environmentFilter == nil || container.environmentID == environmentFilter else { return false }
@@ -150,10 +149,10 @@ struct ContainersView: View {
             let matchesHidden = showHidden || container.hidden != true
             return matchesSearch && matchesState && matchesUpdate && matchesHidden
         }
-        .sorted {
-            sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
-        }
-        let pinned: Set<String> = pinnedIDs
+        // displayName trims on every access; compute it once per item, not per comparison.
+        .map { ($0.displayName, $0) }
+        .sorted { sortOrder.areInIncreasingOrder($0.0, $1.0) }
+        .map(\.1)
         var pinnedItems: [EnvironmentItem<ContainerSummary>] = []
         var running: [EnvironmentItem<ContainerSummary>] = []
         var stopped: [EnvironmentItem<ContainerSummary>] = []
@@ -177,7 +176,9 @@ struct ContainersView: View {
     /// grouping actually changes (search settle, sort, filter, pins, or the
     /// source list) — never on every body evaluation.
     private func rebuildSections() {
-        sections = computeSections()
+        let pinned = pinnedStore.pinnedIDs(kind: .container, in: containers)
+        if pinned != pinnedIDs { pinnedIDs = pinned }
+        sections = computeSections(pinned: pinned)
         pruneSelection(validIDs: Set(containers.map(\.id)))
     }
 
@@ -519,7 +520,9 @@ struct ContainersView: View {
         .fullScreenCover(item: $terminalTarget) { container in
             ContainerTerminalView(container: container.value, environmentID: container.environmentID)
         }
-        .task { await loadContainers() }
+        // Reappearing (back from a detail) refreshes every loaded page in
+        // place; the first appear loads page one.
+        .task { await loadContainers(preservingLoadedRange: true) }
         .refreshable { await loadContainers() }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .debounce(labelFilter, for: .milliseconds(500), into: $debouncedLabelFilter)
@@ -535,8 +538,9 @@ struct ContainersView: View {
             Task { await consumeContainerRoute() }
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadContainers() }
+            Task { await loadContainers(preservingLoadedRange: true) }
         }
+        .onChange(of: list.revision) { rebuildSections() }
         .onChange(of: debouncedSearchText) {
             Task { await loadContainers() }
         }
@@ -551,7 +555,7 @@ struct ContainersView: View {
             Task { await loadContainers() }
         }
         .onChange(of: sortOrder) { rebuildSections() }
-        .onChange(of: pinnedIDs) { rebuildSections() }
+        .onChange(of: pinnedStore.version) { rebuildSections() }
         .resourceActionsToolbar(
             primary: bulkPrimaryItem,
             secondary: bulkInlineItems,
@@ -769,11 +773,12 @@ struct ContainersView: View {
         }
     }
 
-    private func loadContainers() async {
+    private func loadContainers(preservingLoadedRange: Bool = false) async {
         guard let client = manager.client else { return }
         let environments = await environmentsStore.listEnvironments(
             environmentID, allEnvironments: allEnvironments, manager: manager)
-        await list.reload(environments, fetch: containersPage(client: client))
+        await list.reload(
+            environments, preservingLoadedRange: preservingLoadedRange, fetch: containersPage(client: client))
         rebuildSections()
     }
 
@@ -990,6 +995,10 @@ struct ContainerRow: View {
     var environmentName: String? = nil
 
     var body: some View {
+        // Each derived value parses the status string; evaluate them once per render.
+        let health = self.health
+        let statusText = self.statusText
+        let updateState = ImageUpdateState(info: container.updateInfo)
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
                 CachedAsyncImage(url: container.themedIconUrl(for: colorScheme), size: 36) {
@@ -1040,7 +1049,7 @@ struct ContainerRow: View {
                         }
                     }
                 }
-                UpdateStateBadge(state: ImageUpdateState(info: container.updateInfo))
+                UpdateStateBadge(state: updateState)
                 EnvironmentLabel(name: environmentName)
             }
 
@@ -1050,16 +1059,16 @@ struct ContainerRow: View {
         }
 
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityDescription)
+        .accessibilityLabel(accessibilityDescription(updateState: updateState))
     }
 
-    private var accessibilityDescription: String {
+    private func accessibilityDescription(updateState: ImageUpdateState) -> String {
         var parts: [String] = [container.displayName]
         if isPinned { parts.append("pinned") }
         parts.append(container.isRunning ? "running" : "stopped")
         parts.append(container.image)
         parts.append(container.status)
-        parts.append(ImageUpdateState(info: container.updateInfo).accessibilityDescription)
+        parts.append(updateState.accessibilityDescription)
         if let environmentName { parts.append(environmentName) }
         return parts.joined(separator: ", ")
     }

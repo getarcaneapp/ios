@@ -49,13 +49,12 @@ struct ProjectsView: View {
         return count
     }
 
-    private var pinnedIDs: Set<String> {
-        pinnedStore.pinnedIDs(kind: .project, in: projects)
-    }
+    /// Pinned row IDs, refreshed in `rebuildSections` (not per row render).
+    @State private var pinnedIDs: Set<String> = []
 
     /// Filters + sorts once and partitions in a single pass. Pure — reads the
     /// current inputs and returns the grouped sections without touching state.
-    private func computeSections() -> [StableListSection<String, EnvironmentItem<ProjectDetails>>] {
+    private func computeSections(pinned: Set<String>) -> [StableListSection<String, EnvironmentItem<ProjectDetails>>] {
         let query = debouncedSearchText
         let filtered = projects.filter { project in
             guard environmentFilter == nil || project.environmentID == environmentFilter else { return false }
@@ -69,10 +68,10 @@ struct ProjectsView: View {
             let matchesUpdate = updateFilter.matches(hasUpdate: project.hasAvailableUpdate)
             return matchesSearch && matchesStatus && matchesUpdate
         }
-        .sorted {
-            sortOrder.areInIncreasingOrder($0.displayName, $1.displayName)
-        }
-        let pinned: Set<String> = pinnedIDs
+        // displayName trims on every access; compute it once per item, not per comparison.
+        .map { ($0.displayName, $0) }
+        .sorted { sortOrder.areInIncreasingOrder($0.0, $1.0) }
+        .map(\.1)
         var pinnedItems: [EnvironmentItem<ProjectDetails>] = []
         var active: [EnvironmentItem<ProjectDetails>] = []
         var stopped: [EnvironmentItem<ProjectDetails>] = []
@@ -96,7 +95,9 @@ struct ProjectsView: View {
     /// grouping actually changes (search settle, sort, filter, pins, or the
     /// source list) — never on every body evaluation.
     private func rebuildSections() {
-        sections = computeSections()
+        let pinned = pinnedStore.pinnedIDs(kind: .project, in: projects)
+        if pinned != pinnedIDs { pinnedIDs = pinned }
+        sections = computeSections(pinned: pinned)
     }
 
     private var canBrowseTemplates: Bool {
@@ -327,7 +328,9 @@ struct ProjectsView: View {
             .toolbar {
                 toolbarContent
             }
-            .task { await loadProjects() }
+            // Reappearing (back from a detail) refreshes every loaded page in
+            // place; the first appear loads page one.
+            .task { await loadProjects(preservingLoadedRange: true) }
             .refreshable { await loadProjects() }
             .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
             .navigationDestination(for: EnvironmentItem<ProjectDetails>.self) { project in
@@ -357,14 +360,15 @@ struct ProjectsView: View {
                 Task { await consumeProjectRoute() }
             }
             .onChange(of: mutationVersion) { _, _ in
-                Task { await loadProjects() }
+                Task { await loadProjects(preservingLoadedRange: true) }
             }
+            .onChange(of: list.revision) { rebuildSections() }
             .onChange(of: debouncedSearchText) { rebuildSections() }
             .onChange(of: environmentFilter) { rebuildSections() }
             .onChange(of: statusFilter) { rebuildSections() }
             .onChange(of: updateFilter) { rebuildSections() }
             .onChange(of: sortOrder) { rebuildSections() }
-            .onChange(of: pinnedIDs) { rebuildSections() }
+            .onChange(of: pinnedStore.version) { rebuildSections() }
             .deleteConfirmation(item: $pendingDeleteProject) { project in
                 DeleteConfirmationConfig(
                     title: "Delete Project",
@@ -390,11 +394,12 @@ struct ProjectsView: View {
             }
     }
 
-    private func loadProjects() async {
+    private func loadProjects(preservingLoadedRange: Bool = false) async {
         guard let client = manager.client else { return }
         let environments = await environmentsStore.listEnvironments(
             environmentID, allEnvironments: allEnvironments, manager: manager)
-        await list.reload(environments, fetch: projectsPage(client: client))
+        await list.reload(
+            environments, preservingLoadedRange: preservingLoadedRange, fetch: projectsPage(client: client))
         rebuildSections()
     }
 

@@ -19,6 +19,9 @@ struct Arcane_MobileApp: App {
     private var activityHistoryMutationStore = ActivityHistoryMutationStore.shared
     private let whatsNewEnvironment = ReleaseNotes.makeWhatsNewEnvironment()
     @AppStorage("accentColorHex") private var accentColorHex = ""
+    /// Set on backgrounding; `.inactive → .active` blips (Control Center,
+    /// notification shade, Face ID) don't count as returning to the app.
+    @State private var wasBackgrounded = false
 
     /// The saved accent, or purple when none is chosen.
     private var accentColor: Color {
@@ -47,15 +50,17 @@ struct Arcane_MobileApp: App {
                     }
                 }
                 .task {
-                    Task.detached(priority: .background) { ImageCache.shared.trimDiskCache() }
-                    try? Tips.configure([.displayFrequency(.immediate), .datastoreLocation(.applicationDefault)])
-                    // Live Activities left behind by an app kill can never
-                    // update again — clear them on launch.
-                    await DeployLiveActivityController.endOrphans()
+                    // A launch from a notification tap routes first.
                     if let userInfo = appDelegate.pendingNotificationUserInfo {
                         appDelegate.pendingNotificationUserInfo = nil
                         PushNotificationCoordinator.shared.handleTap(userInfo: userInfo, manager: clientManager)
                     }
+                    // Live Activities left behind by an app kill can never
+                    // update again — clear them on launch, without holding
+                    // up anything else. (The image disk cache trims itself
+                    // on its first load.)
+                    Task { await DeployLiveActivityController.endOrphans() }
+                    try? Tips.configure([.displayFrequency(.immediate), .datastoreLocation(.applicationDefault)])
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .arcanePushTapped)) { _ in
                     guard let userInfo = appDelegate.pendingNotificationUserInfo else { return }
@@ -74,12 +79,18 @@ struct Arcane_MobileApp: App {
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .active {
-                        connectionProfileStore.refreshFromICloud()
+                        // The store loaded at launch; only a real return from
+                        // the background can bring another device's changes.
+                        if wasBackgrounded {
+                            wasBackgrounded = false
+                            connectionProfileStore.refreshFromICloud()
+                        }
                         Task { @MainActor in
                             ReviewPrompter.shared.maybePromptIfDue()
                         }
                     }
                     if newPhase == .background {
+                        wasBackgrounded = true
                         // Land any queued widget snapshot before suspension.
                         WidgetSnapshotPublisher.shared.flush()
                     }

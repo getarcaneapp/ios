@@ -16,7 +16,7 @@ nonisolated enum RemoteDataLimits {
     static let maximumStreamLineBytes = 16 * 1_024
     static let maximumTerminalFrameBytes = 256 * 1_024
 
-    static func boundedData(
+    @concurrent static func boundedData(
         client: ArcaneClient,
         path: String,
         maximumBytes: Int = maximumResponseBytes,
@@ -41,20 +41,22 @@ nonisolated enum RemoteDataLimits {
             throw RemoteDataLimitError.responseTooLarge(maximumBytes: maximumBytes)
         }
 
-        var data = Data()
+        // Runs off the main actor (@concurrent); accumulating into a byte
+        // array and converting once is much cheaper than growing Data per byte.
+        var buffer: [UInt8] = []
         if response.expectedContentLength > 0 {
-            data.reserveCapacity(min(maximumBytes, Int(response.expectedContentLength)))
+            buffer.reserveCapacity(min(maximumBytes, Int(response.expectedContentLength)))
         }
         for try await byte in bytes {
-            guard data.count < maximumBytes else {
+            guard buffer.count < maximumBytes else {
                 throw RemoteDataLimitError.responseTooLarge(maximumBytes: maximumBytes)
             }
-            data.append(byte)
+            buffer.append(byte)
         }
-        return data
+        return Data(buffer)
     }
 
-    static func boundedAPIResponse<Value: Decodable & Sendable>(
+    @concurrent static func boundedAPIResponse<Value: Decodable & Sendable>(
         client: ArcaneClient,
         path: String,
         as _: Value.Type,
@@ -68,7 +70,7 @@ nonisolated enum RemoteDataLimits {
         return try ArcaneJSON.makeDecoder().decode(APIResponse<Value>.self, from: data).data
     }
 
-    static func boundedDirectResponse<Value: Decodable & Sendable>(
+    @concurrent static func boundedDirectResponse<Value: Decodable & Sendable>(
         client: ArcaneClient,
         path: String,
         as _: Value.Type,
@@ -78,7 +80,7 @@ nonisolated enum RemoteDataLimits {
         return try ArcaneJSON.makeDecoder().decode(Value.self, from: data)
     }
 
-    static func boundedContainerInspect(
+    @concurrent static func boundedContainerInspect(
         client: ArcaneClient,
         environmentID: EnvironmentID,
         containerID: String
@@ -92,7 +94,7 @@ nonisolated enum RemoteDataLimits {
         )
     }
 
-    static func boundedDockerInfo(
+    @concurrent static func boundedDockerInfo(
         client: ArcaneClient,
         environmentID: EnvironmentID
     ) async throws -> DockerInfo {
@@ -119,7 +121,7 @@ nonisolated enum RemoteDataLimits {
         )
     }
 
-    static func runBoundedUpdater(
+    @concurrent static func runBoundedUpdater(
         client: ArcaneClient,
         environmentID: EnvironmentID
     ) async throws -> UpdaterResult {
@@ -129,7 +131,7 @@ nonisolated enum RemoteDataLimits {
         return boundedUpdaterResult(result)
     }
 
-    static func loadBoundedUpdaterStatus(
+    @concurrent static func loadBoundedUpdaterStatus(
         client: ArcaneClient,
         environmentID: EnvironmentID
     ) async throws -> UpdaterStatus {

@@ -419,7 +419,12 @@ final class PushNotificationCoordinator {
         persistCredentials(credentials)
     }
 
-    nonisolated static func detectAPNSEnvironment() -> String {
+    /// Reads the provisioning profile once per process; registration asks on every launch.
+    nonisolated static func detectAPNSEnvironment() -> String { apnsEnvironment }
+
+    nonisolated private static let apnsEnvironment = readAPNSEnvironment()
+
+    nonisolated private static func readAPNSEnvironment() -> String {
         #if targetEnvironment(simulator)
             return "sandbox"
         #else

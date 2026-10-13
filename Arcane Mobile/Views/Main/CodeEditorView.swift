@@ -37,6 +37,8 @@ struct CodeEditorView: UIViewRepresentable {
         // pills that collide with the keyboard's own controls.
         tv.inputAccessoryView = makeQuickKeysBar(coordinator: context.coordinator)
         context.coordinator.textView = tv
+        // Typing re-highlights only the edited paragraphs (see Coordinator).
+        tv.textStorage.delegate = context.coordinator
         context.coordinator.startObservingKeyboard()
         applyHighlighting(to: tv, text: text)
         return tv
@@ -44,28 +46,35 @@ struct CodeEditorView: UIViewRepresentable {
 
     func updateUIView(_ tv: UITextView, context: Context) {
         let coord = context.coordinator
+        coord.parent = self
         tv.isEditable = !readOnly
         guard tv.text != text || coord.appliedLanguage != language else { return }
         let sel = tv.selectedRange
-        applyHighlighting(to: tv, text: text)
         coord.appliedLanguage = language
+        coord.isReplacingText = true
+        applyHighlighting(to: tv, text: text)
+        coord.isReplacingText = false
         let safeLoc = min(sel.location, (tv.text ?? "").utf16.count)
         tv.selectedRange = NSRange(location: safeLoc, length: 0)
     }
 
+    fileprivate static let editorFont = UIFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
+
     private func applyHighlighting(to tv: UITextView, text: String) {
-        let font = UIFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
-        tv.attributedText = highlight(text, language: language, font: font)
+        let highlighted = NSMutableAttributedString(string: text)
+        Self.highlight(highlighted, in: NSRange(location: 0, length: highlighted.length), language: language)
+        tv.attributedText = highlighted
+        tv.typingAttributes = [.font: Self.editorFont, .foregroundColor: UIColor.label]
     }
 
-    private func highlight(_ text: String, language: EditorLanguage, font: UIFont) -> NSAttributedString {
+    /// Colors `range` of `text` in place. Every rule matches within a single
+    /// line, so highlighting whole paragraphs is equivalent to the document.
+    fileprivate static func highlight(_ text: NSMutableAttributedString, in range: NSRange, language: EditorLanguage) {
+        text.addAttributes([.foregroundColor: UIColor.label, .font: editorFont], range: range)
         switch language {
-        case .yaml:
-            return YAMLHighlighter.highlight(text, font: font)
-        case .env:
-            return EnvHighlighter.highlight(text, font: font)
-        case .plaintext:
-            return PlainTextHighlighter.highlight(text, font: font)
+        case .yaml: SyntaxHighlighter.apply(YAMLHighlighter.rules, to: text, in: range)
+        case .env: SyntaxHighlighter.apply(EnvHighlighter.rules, to: text, in: range)
+        case .plaintext: break
         }
     }
 
@@ -97,10 +106,13 @@ struct CodeEditorView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    class Coordinator: NSObject, UITextViewDelegate {
+    class Coordinator: NSObject, UITextViewDelegate, NSTextStorageDelegate {
         var parent: CodeEditorView
         weak var textView: UITextView?
         var appliedLanguage: EditorLanguage
+        /// Set while a whole-document highlight replaces the text, which
+        /// already colors everything.
+        var isReplacingText = false
         /// Retains the quick-keys bar's hosting controller (see makeQuickKeysBar).
         var quickKeysHost: UIHostingController<EditorQuickKeysBar>?
         private var keyboardFrame: CGRect?
@@ -134,14 +146,21 @@ struct CodeEditorView: UIViewRepresentable {
         }
 
         func textViewDidChange(_ tv: UITextView) {
-            let text = tv.text ?? ""
-            parent.text = text
-            let font = UIFont.monospacedSystemFont(ofSize: 13.5, weight: .regular)
-            let attr = parent.highlight(text, language: parent.language, font: font)
-            let sel = tv.selectedRange
-            tv.attributedText = attr
-            let safeLoc = min(sel.location, text.utf16.count)
-            tv.selectedRange = NSRange(location: safeLoc, length: 0)
+            parent.text = tv.text ?? ""
+        }
+
+        /// Re-highlights only the paragraphs an edit touched, instead of
+        /// rebuilding and reassigning the whole attributed document per
+        /// keystroke (which also reset layout and undo grouping).
+        func textStorage(
+            _ textStorage: NSTextStorage,
+            didProcessEditing editedMask: NSTextStorage.EditActions,
+            range editedRange: NSRange,
+            changeInLength _: Int
+        ) {
+            guard editedMask.contains(.editedCharacters), !isReplacingText else { return }
+            let paragraphs = (textStorage.string as NSString).paragraphRange(for: editedRange)
+            CodeEditorView.highlight(textStorage, in: paragraphs, language: parent.language)
         }
 
         func textViewDidBeginEditing(_ tv: UITextView) {
@@ -356,8 +375,8 @@ private enum YAMLHighlighter {
     static let boolColor = adaptive(dark: (1.00, 0.60, 0.60), light: (0.78, 0.10, 0.10))
     static let anchorColor = adaptive(dark: (1.00, 0.87, 0.45), light: (0.70, 0.50, 0.00))
 
-    // (pattern, captureGroup) — group 0 means use full match
-    private static let rules: [(String, Int, UIColor)] = [
+    // Compiled once. Capture group 0 means the full match.
+    static let rules: [SyntaxHighlighter.Rule] = SyntaxHighlighter.compile([
         (#"(?m)^(\s*)([\w\-\.\/]+)(?=\s*:)"#, 2, keyColor),
         (#"'[^'\n]*'"#, 0, stringColor),
         (#"\"[^\"\n]*\""#, 0, stringColor),
@@ -365,21 +384,7 @@ private enum YAMLHighlighter {
         (#"(?<=:\s)\b(true|false|yes|no|null|~|True|False|Yes|No|Null)\b"#, 0, boolColor),
         (#"[&*][\w\-]+"#, 0, anchorColor),
         (#"(?m)#.*$"#, 0, commentColor),
-    ]
-
-    static func highlight(_ text: String, font: UIFont) -> NSAttributedString {
-        let out = NSMutableAttributedString(string: text)
-        let full = NSRange(text.startIndex..., in: text)
-        out.addAttributes([.foregroundColor: UIColor.label, .font: font], range: full)
-        for (pattern, group, color) in rules {
-            guard let rx = try? NSRegularExpression(pattern: pattern) else { continue }
-            for m in rx.matches(in: text, range: full) {
-                let r = group > 0 && group < m.numberOfRanges ? m.range(at: group) : m.range
-                if r.location != NSNotFound { out.addAttribute(.foregroundColor, value: color, range: r) }
-            }
-        }
-        return out
-    }
+    ])
 }
 
 // MARK: - .env Syntax Highlighting
@@ -389,34 +394,40 @@ private enum EnvHighlighter {
     static let valueColor = adaptive(dark: (0.98, 0.75, 0.50), light: (0.75, 0.35, 0.05))
     static let commentColor = adaptive(dark: (0.47, 0.72, 0.47), light: (0.20, 0.55, 0.20))
 
-    private static let rules: [(String, UIColor)] = [
-        (#"(?m)^[A-Z_][A-Z0-9_]*(?==)"#, keyColor),
-        (#"(?m)(?<==).*$"#, valueColor),
-        (#"(?m)#.*$"#, commentColor),
-    ]
-
-    static func highlight(_ text: String, font: UIFont) -> NSAttributedString {
-        let out = NSMutableAttributedString(string: text)
-        let full = NSRange(text.startIndex..., in: text)
-        out.addAttributes([.foregroundColor: UIColor.label, .font: font], range: full)
-        for (pattern, color) in rules {
-            guard let rx = try? NSRegularExpression(pattern: pattern) else { continue }
-            for m in rx.matches(in: text, range: full) {
-                out.addAttribute(.foregroundColor, value: color, range: m.range)
-            }
-        }
-        return out
-    }
+    static let rules: [SyntaxHighlighter.Rule] = SyntaxHighlighter.compile([
+        (#"(?m)^[A-Z_][A-Z0-9_]*(?==)"#, 0, keyColor),
+        (#"(?m)(?<==).*$"#, 0, valueColor),
+        (#"(?m)#.*$"#, 0, commentColor),
+    ])
 }
 
-// MARK: - Plain Text Highlighting
+// MARK: - Rule matching
 
-private enum PlainTextHighlighter {
-    static func highlight(_ text: String, font: UIFont) -> NSAttributedString {
-        let out = NSMutableAttributedString(string: text)
-        let full = NSRange(text.startIndex..., in: text)
-        out.addAttributes([.foregroundColor: UIColor.label, .font: font], range: full)
-        return out
+private enum SyntaxHighlighter {
+    struct Rule {
+        let expression: NSRegularExpression
+        let captureGroup: Int
+        let color: UIColor
+    }
+
+    static func compile(_ rules: [(String, Int, UIColor)]) -> [Rule] {
+        rules.compactMap { pattern, group, color in
+            (try? NSRegularExpression(pattern: pattern)).map { Rule(expression: $0, captureGroup: group, color: color) }
+        }
+    }
+
+    static func apply(_ rules: [Rule], to text: NSMutableAttributedString, in range: NSRange) {
+        let string = text.string
+        for rule in rules {
+            for match in rule.expression.matches(in: string, range: range) {
+                let matched =
+                    rule.captureGroup > 0 && rule.captureGroup < match.numberOfRanges
+                    ? match.range(at: rule.captureGroup) : match.range
+                if matched.location != NSNotFound {
+                    text.addAttribute(.foregroundColor, value: rule.color, range: matched)
+                }
+            }
+        }
     }
 }
 

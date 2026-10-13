@@ -113,10 +113,15 @@ struct RenderComposeView: View {
 
     // MARK: - Scanning + substitution
 
+    // Compiled once instead of on every scan.
+    private static let variableDefinitionPattern = try! NSRegularExpression(
+        pattern: #"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?[-?]([^}]*))?\}"#)
+    private static let variableReferencePattern = try! NSRegularExpression(
+        pattern: #"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?[-?][^}]*)?\}"#)
+
     private func scanForVariables() {
         let envDefaults = parseEnv(initialEnv)
-        let pattern = #"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?[-?]([^}]*))?\}"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+        let regex = Self.variableDefinitionPattern
         let ns = initialCompose as NSString
         let matches = regex.matches(in: initialCompose, range: NSRange(location: 0, length: ns.length))
 
@@ -171,8 +176,7 @@ struct RenderComposeView: View {
     }
 
     private func substitute(in source: String) -> String {
-        let pattern = #"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?[-?][^}]*)?\}"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return source }
+        let regex = Self.variableReferencePattern
         let ns = source as NSString
         let matches = regex.matches(in: source, range: NSRange(location: 0, length: ns.length))
 

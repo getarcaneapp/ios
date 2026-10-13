@@ -6,11 +6,9 @@ import Observation
 @MainActor
 @Observable
 final class EnvironmentsStore {
-    private static let maxConcurrentEnvironmentRequests = 4
     private(set) var environments: [Arcane.Environment] = []
     private(set) var environmentCatalogRevision = 0
     private(set) var dockerInfoByEnvironmentID: [String: DockerInfo] = [:]
-    private(set) var actionItemsByEnvironmentID: [String: ActionItems] = [:]
     private(set) var unavailableEnvironmentIDs: Set<String> = []
     private(set) var dockerInformationRevision = 0
     private(set) var isLoading = false
@@ -23,7 +21,13 @@ final class EnvironmentsStore {
     private var loadGeneration = 0
     private var clientIdentity: ObjectIdentifier?
     private var dockerInformationTask: Task<Void, Never>?
+    private var dockerInformationTaskID: UUID?
     private var actionItemsTask: Task<Void, Never>?
+    private var actionItemsTaskID: UUID?
+    /// Whether the per-environment docker info and snapshot passes have run
+    /// for the current catalog. A list-only load (All Environments lists)
+    /// fetches the catalog without them; the Dashboard's later load starts them.
+    private var hasStartedEnvironmentDetails = false
     private var loadWaiters: [CheckedContinuation<Void, Never>] = []
     private var visibleConsumers: Set<String> = []
     private var dashboardStreamConsumers: Set<String> = []
@@ -33,8 +37,11 @@ final class EnvironmentsStore {
         guard identity != clientIdentity else { return }
         dockerInformationTask?.cancel()
         dockerInformationTask = nil
+        dockerInformationTaskID = nil
         actionItemsTask?.cancel()
         actionItemsTask = nil
+        actionItemsTaskID = nil
+        hasStartedEnvironmentDetails = false
         loadGeneration &+= 1
         isLoading = false
         let waiters = loadWaiters
@@ -46,7 +53,6 @@ final class EnvironmentsStore {
         environments = []
         environmentCatalogRevision &+= 1
         dockerInfoByEnvironmentID = [:]
-        actionItemsByEnvironmentID = [:]
         unavailableEnvironmentIDs = []
         dockerInformationRevision &+= 1
         hasLoaded = false
@@ -84,13 +90,24 @@ final class EnvironmentsStore {
         }
     }
 
-    func load(manager: ArcaneClientManager, refresh: Bool = false) async {
+    /// Loads the environment catalog. `refresh` refetches it even when loaded.
+    /// `loadsEnvironmentDetails` also starts the per-environment docker info
+    /// and dashboard snapshot passes the Dashboard and its cards show.
+    func load(
+        manager: ArcaneClientManager, refresh: Bool = false, loadsEnvironmentDetails: Bool = true
+    ) async {
         configure(client: manager.client)
         guard let client = manager.client, let cached = manager.cached else { return }
-        if hasLoaded && !refresh { return }
+        if hasLoaded && !refresh {
+            if loadsEnvironmentDetails, !hasStartedEnvironmentDetails { startEnvironmentDetails(client: client) }
+            return
+        }
         if isLoading {
             await withCheckedContinuation { continuation in
                 loadWaiters.append(continuation)
+            }
+            if loadsEnvironmentDetails, hasLoaded, !hasStartedEnvironmentDetails {
+                startEnvironmentDetails(client: client)
             }
             return
         }
@@ -113,17 +130,6 @@ final class EnvironmentsStore {
             let loaded = try await cached.getAllPagesGlobal(
                 path: "environments",
                 elementType: Arcane.Environment.self,
-                policy: .environments,
-                refresh: refresh,
-                onFresh: { [weak self] fresh in
-                    guard let self, generation == self.loadGeneration, session == manager.cacheSessionIdentity else {
-                        return
-                    }
-                    self.apply(
-                        environments: fresh,
-                        activeEnvironmentID: activeEnvironmentID, server: manager.serverURL
-                    )
-                },
                 fetchPage: { start, limit in
                     let response = try await client.environments.list(
                         query: .init(start: start, limit: limit, sortOrder: .ascending)
@@ -134,17 +140,17 @@ final class EnvironmentsStore {
             guard !Task.isCancelled, generation == loadGeneration, session == manager.cacheSessionIdentity else {
                 return
             }
-            if let loaded {
-                apply(
-                    environments: loaded,
-                    activeEnvironmentID: activeEnvironmentID, server: manager.serverURL
-                )
-            }
+            let isFirstLoad = !hasLoaded
             hasLoaded = true
-            environmentCatalogRevision &+= 1
+            apply(
+                environments: loaded,
+                activeEnvironmentID: activeEnvironmentID, server: manager.serverURL,
+                forcesRevision: isFirstLoad
+            )
             errorMessage = nil
-            startDockerInformationLoad(client: client)
-            startActionItemsLoad(client: client)
+            if loadsEnvironmentDetails {
+                startEnvironmentDetails(client: client, refreshesSnapshots: refresh)
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -163,8 +169,8 @@ final class EnvironmentsStore {
             client: client,
             environmentID: id
         )
-        async let actionItems: ActionItems? = try? await client.dashboard.snapshot(envID: id).actionItems
-        let (loadedDockerInfo, loadedActionItems) = await (dockerInfo, actionItems)
+        async let snapshotRefresh: Void = dashboardStream.refresh(environmentIDs: [environmentID])
+        let (loadedDockerInfo, _) = await (dockerInfo, snapshotRefresh)
 
         guard !Task.isCancelled, generation == loadGeneration, identity == clientIdentity else { return }
         if let loadedDockerInfo {
@@ -174,31 +180,40 @@ final class EnvironmentsStore {
             dockerInfoByEnvironmentID.removeValue(forKey: environmentID)
             unavailableEnvironmentIDs.insert(environmentID)
         }
-        if let loadedActionItems {
-            actionItemsByEnvironmentID[environmentID] = loadedActionItems
-        } else {
-            actionItemsByEnvironmentID.removeValue(forKey: environmentID)
-        }
         dockerInformationRevision &+= 1
     }
 
-    func refreshDockerInformation(client: ArcaneClient?) async {
+    /// Awaits the docker info pass. Joins one already in flight (a refresh
+    /// that just started it) unless `restart` asks for a pass that begins now.
+    func refreshDockerInformation(client: ArcaneClient?, restart: Bool = false) async {
         guard let client else { return }
-        let task = startDockerInformationLoad(client: client)
+        let task =
+            (!restart ? dockerInformationTask : nil) ?? startDockerInformationLoad(client: client)
         await task.value
     }
 
+    /// Awaits the dashboard snapshot (action items) pass, joining one in flight.
     func refreshActionItems(client: ArcaneClient?) async {
         guard let client else { return }
-        let task = startActionItemsLoad(client: client)
+        let task = actionItemsTask ?? startActionItemsLoad(client: client, refreshesSnapshots: true)
         await task.value
+    }
+
+    /// Server-computed action items for one environment, from its current
+    /// dashboard snapshot (live stream or REST refresh).
+    func actionItems(for environmentID: String) -> ActionItems? {
+        guard let state = dashboardStream.state(for: environmentID), state.hasLoaded else { return nil }
+        return state.snapshot?.actionItems
     }
 
     func prioritizeStats(activeEnvironmentID: String) {
         statsHistory.reconcile(environments: statsOrdered(activeEnvironmentID: activeEnvironmentID))
     }
 
-    private func apply(environments: [Arcane.Environment], activeEnvironmentID: String, server: String) {
+    private func apply(
+        environments: [Arcane.Environment], activeEnvironmentID: String, server: String, forcesRevision: Bool
+    ) {
+        guard forcesRevision || environments != self.environments else { return }
         EnvironmentColorStore.shared.assignDefaults(server: server, environmentIDs: environments.map(\.id))
         self.environments = environments
         environmentCatalogRevision &+= 1
@@ -216,130 +231,82 @@ final class EnvironmentsStore {
         return ordered
     }
 
+    private func startEnvironmentDetails(client: ArcaneClient, refreshesSnapshots: Bool = false) {
+        hasStartedEnvironmentDetails = true
+        startDockerInformationLoad(client: client)
+        startActionItemsLoad(client: client, refreshesSnapshots: refreshesSnapshots)
+    }
+
     @discardableResult
     private func startDockerInformationLoad(client: ArcaneClient) -> Task<Void, Never> {
         dockerInformationTask?.cancel()
         let identity = ObjectIdentifier(client.transport)
+        let taskID = UUID()
         let task = Task { [weak self] in
             guard let self else { return }
             await self.loadDockerInformation(client: client, identity: identity)
+            if self.dockerInformationTaskID == taskID {
+                self.dockerInformationTask = nil
+                self.dockerInformationTaskID = nil
+            }
         }
         dockerInformationTask = task
+        dockerInformationTaskID = taskID
         return task
     }
 
+    /// Dashboard snapshots carry each environment's action items. While the
+    /// aggregated stream runs it delivers them for every environment on
+    /// connect, so a REST pass is only needed without a stream or when a
+    /// refresh must not wait for the server's reconcile tick.
     @discardableResult
-    private func startActionItemsLoad(client: ArcaneClient) -> Task<Void, Never> {
+    private func startActionItemsLoad(client: ArcaneClient, refreshesSnapshots: Bool) -> Task<Void, Never> {
         actionItemsTask?.cancel()
-        let identity = ObjectIdentifier(client.transport)
+        let taskID = UUID()
+        let stream = dashboardStream
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.loadActionItems(client: client, identity: identity)
+            if refreshesSnapshots || !stream.isStreaming || stream.streamUnsupported {
+                await stream.refresh()
+            }
+            if self.actionItemsTaskID == taskID {
+                self.actionItemsTask = nil
+                self.actionItemsTaskID = nil
+            }
         }
         actionItemsTask = task
+        actionItemsTaskID = taskID
         return task
-    }
-
-    private func loadActionItems(client: ArcaneClient, identity: ObjectIdentifier) async {
-        let enabled = environments.filter(\.enabled)
-        let enabledIDs = Set(enabled.map(\.id))
-        actionItemsByEnvironmentID = actionItemsByEnvironmentID.filter { enabledIDs.contains($0.key) }
-
-        // Batch: every per-env write re-renders all dashboard rows, so
-        // accumulate off-store and publish once instead of flapping N times.
-        var fetched: [String: ActionItems] = [:]
-        await withTaskGroup(of: (String, ActionItems?).self) { group in
-            var iterator = enabled.makeIterator()
-            for _ in 0..<min(Self.maxConcurrentEnvironmentRequests, enabled.count) {
-                guard let environment = iterator.next() else { break }
-                group.addTask {
-                    let items = try? await client.dashboard.snapshot(
-                        envID: EnvironmentID(rawValue: environment.id)
-                    ).actionItems
-                    return (environment.id, items)
-                }
-            }
-
-            for await (environmentID, items) in group {
-                guard !Task.isCancelled, identity == clientIdentity else {
-                    group.cancelAll()
-                    return
-                }
-                if let items {
-                    fetched[environmentID] = items
-                }
-
-                if let environment = iterator.next() {
-                    group.addTask {
-                        let items = try? await client.dashboard.snapshot(
-                            envID: EnvironmentID(rawValue: environment.id)
-                        ).actionItems
-                        return (environment.id, items)
-                    }
-                }
-            }
-        }
-        guard !Task.isCancelled, identity == clientIdentity else { return }
-        for (environmentID, items) in fetched {
-            actionItemsByEnvironmentID[environmentID] = items
-        }
     }
 
     private func loadDockerInformation(client: ArcaneClient, identity: ObjectIdentifier) async {
-        let enabled = environments.filter(\.enabled)
-        let enabledIDs = Set(enabled.map(\.id))
-        dockerInfoByEnvironmentID = dockerInfoByEnvironmentID.filter { enabledIDs.contains($0.key) }
-        unavailableEnvironmentIDs.formIntersection(enabledIDs)
+        let enabledIDs = environments.filter(\.enabled).map(\.id)
+        let enabledSet = Set(enabledIDs)
+        let pruned = dockerInfoByEnvironmentID.filter { enabledSet.contains($0.key) }
+        if pruned.count != dockerInfoByEnvironmentID.count { dockerInfoByEnvironmentID = pruned }
+        let available = unavailableEnvironmentIDs.intersection(enabledSet)
+        if available != unavailableEnvironmentIDs { unavailableEnvironmentIDs = available }
 
-        // Batch: every revision bump re-renders the whole dashboard (tiles +
-        // all cards), so accumulate off-store and publish once instead of
-        // re-animating every tile once per environment.
-        var fetched: [String: DockerInfo] = [:]
-        var failedIDs = Set<String>()
-        await withTaskGroup(of: (String, DockerInfo?).self) { group in
-            var iterator = enabled.makeIterator()
-            for _ in 0..<min(Self.maxConcurrentEnvironmentRequests, enabled.count) {
-                guard let environment = iterator.next() else { break }
-                group.addTask {
-                    let info = try? await RemoteDataLimits.boundedDockerInfo(
-                        client: client,
-                        environmentID: EnvironmentID(rawValue: environment.id)
-                    )
-                    return (environment.id, info)
-                }
-            }
-
-            for await (environmentID, info) in group {
-                guard !Task.isCancelled, identity == clientIdentity else {
-                    group.cancelAll()
-                    return
-                }
+        // Every environment loads at once; results publish as they arrive,
+        // coalesced so the dashboard re-renders a few times, not once per env.
+        await ProgressiveFanOut.run(enabledIDs) { environmentID in
+            let info = try? await RemoteDataLimits.boundedDockerInfo(
+                client: client,
+                environmentID: EnvironmentID(rawValue: environmentID)
+            )
+            return (environmentID, info)
+        } deliver: { batch in
+            guard !Task.isCancelled, identity == clientIdentity else { return }
+            for (environmentID, info) in batch {
                 if let info {
-                    fetched[environmentID] = info
+                    dockerInfoByEnvironmentID[environmentID] = info
+                    unavailableEnvironmentIDs.remove(environmentID)
                 } else {
-                    failedIDs.insert(environmentID)
-                }
-
-                if let environment = iterator.next() {
-                    group.addTask {
-                        let info = try? await RemoteDataLimits.boundedDockerInfo(
-                            client: client,
-                            environmentID: EnvironmentID(rawValue: environment.id)
-                        )
-                        return (environment.id, info)
-                    }
+                    dockerInfoByEnvironmentID.removeValue(forKey: environmentID)
+                    unavailableEnvironmentIDs.insert(environmentID)
                 }
             }
+            dockerInformationRevision &+= 1
         }
-        guard !Task.isCancelled, identity == clientIdentity else { return }
-        for (environmentID, info) in fetched {
-            dockerInfoByEnvironmentID[environmentID] = info
-            unavailableEnvironmentIDs.remove(environmentID)
-        }
-        for environmentID in failedIDs {
-            dockerInfoByEnvironmentID.removeValue(forKey: environmentID)
-            unavailableEnvironmentIDs.insert(environmentID)
-        }
-        dockerInformationRevision &+= 1
     }
 }

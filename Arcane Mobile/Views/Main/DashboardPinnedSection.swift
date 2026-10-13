@@ -16,6 +16,7 @@ struct DashboardPinnedSection: View {
     @State private var isLoading = false
     @State private var runningID: String?
     @State private var loadGeneration = 0
+    @State private var hasLoaded = false
 
     private var environmentID: EnvironmentID {
         manager.activeEnvironmentID
@@ -78,7 +79,12 @@ struct DashboardPinnedSection: View {
             .id("pinned.rows.\(items.count)")
             .motionAwareAnimation(Motion.reflow, value: items.map(\.id))
         }
-        .task { await reload() }
+        // Later refreshes arrive through refreshToken and the mutation and
+        // pin versions; reappearing after a push doesn't refetch.
+        .task {
+            guard !hasLoaded else { return }
+            await reload()
+        }
         .onChange(of: manager.activeEnvironmentID.rawValue) { _, _ in
             scheduleReload()
         }
@@ -146,10 +152,10 @@ extension DashboardPinnedSection {
     }
 
     fileprivate func scheduleReload() {
-        Task { await reload(refresh: true) }
+        Task { await reload() }
     }
 
-    fileprivate func reload(refresh: Bool = false) async {
+    fileprivate func reload() async {
         guard manager.client != nil else { return }
         let requestedEnvironmentID = environmentID
         loadGeneration += 1
@@ -161,42 +167,26 @@ extension DashboardPinnedSection {
             }
         }
 
-        let nextContainers = await loadPinnedContainers(
-            envID: requestedEnvironmentID,
-            generation: generation,
-            refresh: refresh
-        )
-        let nextProjects = await loadPinnedProjects(
-            envID: requestedEnvironmentID,
-            generation: generation,
-            refresh: refresh
-        )
+        async let pendingContainers = loadPinnedContainers(envID: requestedEnvironmentID)
+        async let pendingProjects = loadPinnedProjects(envID: requestedEnvironmentID)
+        let (nextContainers, nextProjects) = await (pendingContainers, pendingProjects)
         guard loadGeneration == generation, requestedEnvironmentID == environmentID else { return }
+        hasLoaded = true
         withAnimation(Motion.reduced(Motion.reflow, reduceMotion: reduceMotion)) {
             containers = nextContainers
             projects = nextProjects
         }
     }
 
-    fileprivate func loadPinnedContainers(
-        envID: EnvironmentID,
-        generation: Int,
-        refresh: Bool
-    ) async -> [ContainerSummary] {
+    fileprivate func loadPinnedContainers(envID: EnvironmentID) async -> [ContainerSummary] {
         let pinned = pinnedStore.pinnedIDs(kind: .container, envID: envID)
         guard let client = manager.client, let cached = manager.cached, !pinned.isEmpty else { return [] }
         let path = client.rest.environmentPath(envID, "containers")
         do {
-            let result: [ContainerSummary]? = try await cached.getAllPages(
+            let result: [ContainerSummary] = try await cached.getAllPages(
                 path: path,
                 elementType: ContainerSummary.self,
-                policy: .containersList,
                 envID: envID,
-                refresh: refresh,
-                onFresh: { fresh in
-                    guard loadGeneration == generation, envID == environmentID else { return }
-                    containers = fresh.filter { pinned.contains($0.id) }
-                },
                 fetchPage: { start, limit in
                     let response = try await client.containers.list(
                         envID: envID,
@@ -205,32 +195,21 @@ extension DashboardPinnedSection {
                     return ResourcePage(items: response.data, pagination: response.pagination)
                 }
             )
-            guard loadGeneration == generation, envID == environmentID else { return [] }
-            return (result ?? []).filter { pinned.contains($0.id) }
+            return result.filter { pinned.contains($0.id) }
         } catch {
             return []
         }
     }
 
-    fileprivate func loadPinnedProjects(
-        envID: EnvironmentID,
-        generation: Int,
-        refresh: Bool
-    ) async -> [ProjectDetails] {
+    fileprivate func loadPinnedProjects(envID: EnvironmentID) async -> [ProjectDetails] {
         let pinned = pinnedStore.pinnedIDs(kind: .project, envID: envID)
         guard let client = manager.client, let cached = manager.cached, !pinned.isEmpty else { return [] }
         let base = client.rest.environmentPath(envID, "projects")
         do {
-            let result: [ProjectDetails]? = try await cached.getAllPages(
+            let result: [ProjectDetails] = try await cached.getAllPages(
                 path: base,
                 elementType: ProjectDetails.self,
-                policy: .projects,
                 envID: envID,
-                refresh: refresh,
-                onFresh: { fresh in
-                    guard loadGeneration == generation, envID == environmentID else { return }
-                    projects = fresh.filter { pinned.contains($0.id) }
-                },
                 fetchPage: { start, limit in
                     let response = try await client.projects.list(
                         envID: envID,
@@ -239,8 +218,7 @@ extension DashboardPinnedSection {
                     return ResourcePage(items: response.data, pagination: response.pagination)
                 }
             )
-            guard loadGeneration == generation, envID == environmentID else { return [] }
-            return (result ?? []).filter { pinned.contains($0.id) }
+            return result.filter { pinned.contains($0.id) }
         } catch {
             return []
         }

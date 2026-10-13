@@ -420,7 +420,9 @@ struct ImagesView: View {
             .presentationContentInteraction(.resizes)
             .presentationDragIndicator(.visible)
         }
-        .task { await loadImages() }
+        // Reappearing (back from a detail) refreshes every loaded page in
+        // place; the first appear loads page one.
+        .task { await loadImages(preservingLoadedRange: true) }
         .refreshable { await loadImages() }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: EnvironmentItem<ImageSummary>.self) { image in
@@ -443,8 +445,9 @@ struct ImagesView: View {
                 .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadImages() }
+            Task { await loadImages(preservingLoadedRange: true) }
         }
+        .onChange(of: list.revision) { rebuildSections() }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: environmentFilter) { rebuildSections() }
         .onChange(of: tagsFilter) { rebuildSections() }
@@ -542,19 +545,21 @@ struct ImagesView: View {
         )
     }
 
-    private func loadImages() async {
+    private func loadImages(preservingLoadedRange: Bool = false) async {
         guard let client = manager.client else { return }
         loadGeneration += 1
         let generation = loadGeneration
         let environments = await environmentsStore.listEnvironments(
             environmentID, allEnvironments: allEnvironments, manager: manager)
-        await list.reload(environments, fetch: imagesPage(client: client))
+        await list.reload(
+            environments, preservingLoadedRange: preservingLoadedRange, fetch: imagesPage(client: client))
         guard loadGeneration == generation, !Task.isCancelled else { return }
-        // A failed environment keeps its rows, so keep their update results too.
-        let failedIDs = Set(list.failedEnvironments.map(\.environment.id))
-        updateInfo = updateInfo.filter { failedIDs.contains($0.key) }
+        // Rows still shown keep their update badges until the refetch below
+        // replaces them, instead of flashing "Not checked".
+        let shownEnvironmentIDs = Set(images.map(\.environmentID))
+        updateInfo = updateInfo.filter { shownEnvironmentIDs.contains($0.key) }
         rebuildSections()
-        await loadUpdateInfo(for: images.filter { !failedIDs.contains($0.environmentID) })
+        await loadUpdateInfo(for: images)
     }
 
     private func loadMore() async {

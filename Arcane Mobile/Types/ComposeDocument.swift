@@ -2,12 +2,56 @@ import Foundation
 import SwiftTreeSitter
 import TreeSitterYAML
 
+/// Recently parsed compose sources, most recent last. A small fixed window:
+/// views reparse the document they're editing plus short value snippets.
+nonisolated private final class ComposeDocumentParseCache: @unchecked Sendable {
+    static let shared = ComposeDocumentParseCache()
+    private static let capacity = 16
+
+    private let lock = NSLock()
+    private var entries: [(source: String, result: Result<ComposeDocument, any Error>)] = []
+
+    func result(for source: String) -> Result<ComposeDocument, any Error>? {
+        lock.withLock {
+            guard let index = entries.lastIndex(where: { $0.source == source }) else { return nil }
+            let entry = entries.remove(at: index)
+            entries.append(entry)
+            return entry.result
+        }
+    }
+
+    func store(_ result: Result<ComposeDocument, any Error>, for source: String) {
+        lock.withLock {
+            entries.removeAll { $0.source == source }
+            entries.append((source, result))
+            if entries.count > Self.capacity { entries.removeFirst(entries.count - Self.capacity) }
+        }
+    }
+}
+
 /// A source-backed YAML document. Edits replace syntax ranges, never serialize the document.
 nonisolated struct ComposeDocument {
     let source: String
     let root: Node
 
+    /// Parses `source`, reusing the result for text parsed recently. Compose
+    /// views re-read the same text many times per render; the document is
+    /// immutable, so an identical source always yields an identical document.
     init(_ source: String) throws {
+        if let cached = ComposeDocumentParseCache.shared.result(for: source) {
+            self = try cached.get()
+            return
+        }
+        do {
+            try self.init(parsing: source)
+            ComposeDocumentParseCache.shared.store(.success(self), for: source)
+        } catch {
+            ComposeDocumentParseCache.shared.store(.failure(error), for: source)
+            throw error
+        }
+    }
+
+    private init(parsing source: String) throws {
         let parser = Parser()
         try parser.setLanguage(tree_sitter_yaml())
         guard let root = parser.parse(source)?.rootNode else {

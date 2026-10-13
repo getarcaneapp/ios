@@ -202,7 +202,8 @@ private struct ArchivedProjectRow: View {
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .frame(width: 36, height: 36)
-                    .glassEffectCompat(in: .circle)
+                    // Static tint, not glass: one offscreen glass pass per row.
+                    .background(Color.secondary.opacity(0.15), in: .circle)
             }
 
             VStack(alignment: .leading, spacing: 3) {

@@ -120,7 +120,15 @@ private struct LogViewerSurface: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            statusBar
+            // Separate views so a new log line re-renders only the status
+            // bar and menu that show the line count, not this whole surface.
+            LogStatusBar(
+                store: store,
+                embedded: embedded,
+                isExpanded: $isExpanded,
+                jumpToLatestRequest: $jumpToLatestRequest,
+                optionsMenu: optionsMenu
+            )
             Divider()
             LogConsole(
                 store: store,
@@ -150,7 +158,57 @@ private struct LogViewerSurface: View {
         }
     }
 
-    private var statusBar: some View {
+    private var optionsMenu: LogOptionsMenu {
+        LogOptionsMenu(
+            store: store,
+            showTimestamps: $showTimestamps,
+            wrapLines: $wrapLines,
+            onCopy: copyLogs,
+            onShare: shareLogs
+        )
+    }
+
+    private func copyLogs() {
+        let text = store.exportText(showTimestamps: showTimestamps)
+        guard !text.isEmpty else { return }
+        UIPasteboard.general.string = text
+        showToast(.copied())
+    }
+
+    private func shareLogs() {
+        let text = store.exportText(showTimestamps: showTimestamps)
+        guard !text.isEmpty else { return }
+        let filename =
+            "\(LogViewerFormatting.sanitizedFilename(title))-\(Self.exportDateFormatter.string(from: Date())).log"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        // Up to 5,000 lines; write the file off the main thread.
+        Task {
+            let written = await Task.detached(priority: .userInitiated) {
+                (try? text.write(to: url, atomically: true, encoding: .utf8)) != nil
+            }.value
+            if written {
+                shareFile = LogShareFile(url: url)
+            } else {
+                showToast(.error("Couldn't export logs"))
+            }
+        }
+    }
+
+    private static let exportDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+}
+
+private struct LogStatusBar: View {
+    let store: LogViewerStore
+    let embedded: Bool
+    @Binding var isExpanded: Bool
+    @Binding var jumpToLatestRequest: Int
+    let optionsMenu: LogOptionsMenu
+
+    var body: some View {
         HStack(spacing: 8) {
             LogConnectionIndicator(state: store.connectionState)
 
@@ -228,7 +286,35 @@ private struct LogViewerSurface: View {
         .motionAwareAnimation(Motion.state, value: store.newLinesWhilePaused > 0)
     }
 
-    private var optionsMenu: some View {
+    private var statusLabel: String {
+        switch store.connectionState {
+        case .idle: "Disconnected"
+        case .connecting: "Connecting"
+        case .live:
+            if !store.isFollowing {
+                "Paused"
+            } else {
+                store.lines.isEmpty ? "Waiting for output" : "Live"
+            }
+        case .ended: "Stream ended"
+        case .failed: "Connection failed"
+        }
+    }
+
+    private var countLabel: String {
+        "\(store.lines.count) lines"
+    }
+
+}
+
+private struct LogOptionsMenu: View {
+    let store: LogViewerStore
+    @Binding var showTimestamps: Bool
+    @Binding var wrapLines: Bool
+    let onCopy: () -> Void
+    let onShare: () -> Void
+
+    var body: some View {
         Menu {
             Toggle(isOn: $showTimestamps) {
                 Label("Timestamps", systemImage: "clock")
@@ -240,14 +326,14 @@ private struct LogViewerSurface: View {
             Divider()
 
             Button {
-                copyLogs()
+                onCopy()
             } label: {
                 Label("Copy All", systemImage: "doc.on.doc")
             }
             .disabled(store.lines.isEmpty)
 
             Button {
-                shareLogs()
+                onShare()
             } label: {
                 Label("Share All…", systemImage: "square.and.arrow.up")
             }
@@ -268,53 +354,6 @@ private struct LogViewerSurface: View {
         }
         .accessibilityLabel("Log options")
     }
-
-    private var statusLabel: String {
-        switch store.connectionState {
-        case .idle: "Disconnected"
-        case .connecting: "Connecting"
-        case .live:
-            if !store.isFollowing {
-                "Paused"
-            } else {
-                store.lines.isEmpty ? "Waiting for output" : "Live"
-            }
-        case .ended: "Stream ended"
-        case .failed: "Connection failed"
-        }
-    }
-
-    private var countLabel: String {
-        "\(store.lines.count) lines"
-    }
-
-    private func copyLogs() {
-        let text = store.exportText(showTimestamps: showTimestamps)
-        guard !text.isEmpty else { return }
-        UIPasteboard.general.string = text
-        showToast(.copied())
-    }
-
-    private func shareLogs() {
-        let text = store.exportText(showTimestamps: showTimestamps)
-        guard !text.isEmpty else { return }
-
-        do {
-            let filename =
-                "\(LogViewerFormatting.sanitizedFilename(title))-\(Self.exportDateFormatter.string(from: Date())).log"
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-            try text.write(to: url, atomically: true, encoding: .utf8)
-            shareFile = LogShareFile(url: url)
-        } catch {
-            showToast(.error("Couldn't export logs"))
-        }
-    }
-
-    private static let exportDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter
-    }()
 }
 
 private struct LogConnectionIndicator: View {
@@ -379,6 +418,7 @@ struct LogConsole: View {
                     ForEach(store.lines) { entry in
                         LogLineView(
                             line: entry.line,
+                            presentation: entry.presentation,
                             showTimestamps: showTimestamps,
                             wrapLines: wrapLines,
                             metadataLayout: metadataLayout
@@ -527,15 +567,28 @@ private struct LogViewerEmptyState: View {
 
 struct LogLineView: View {
     let line: LogLine
+    let presentation: LogLinePresentation
     let showTimestamps: Bool
     let wrapLines: Bool
     let metadataLayout: LogMetadataLayout
 
     @SwiftUI.Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private var severity: LogViewerSeverity {
-        LogViewerFormatting.severity(for: line.level)
+    init(
+        line: LogLine,
+        presentation: LogLinePresentation? = nil,
+        showTimestamps: Bool,
+        wrapLines: Bool,
+        metadataLayout: LogMetadataLayout
+    ) {
+        self.line = line
+        self.presentation = presentation ?? LogLinePresentation(line)
+        self.showTimestamps = showTimestamps
+        self.wrapLines = wrapLines
+        self.metadataLayout = metadataLayout
     }
+
+    private var severity: LogViewerSeverity { presentation.severity }
 
     private var messageColor: Color {
         switch severity {
@@ -547,9 +600,9 @@ struct LogLineView: View {
     }
 
     private var hasVisibleMetadata: Bool {
-        (showTimestamps && line.timestamp?.isEmpty == false)
+        (showTimestamps && presentation.displayTimestamp != nil)
             || line.service?.isEmpty == false
-            || LogViewerFormatting.levelLabel(line.level) != nil
+            || presentation.levelLabel != nil
     }
 
     var body: some View {
@@ -562,12 +615,17 @@ struct LogLineView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            LogViewerFormatting.accessibilityText(
-                for: line,
-                showTimestamps: showTimestamps
-            )
-        )
+        .accessibilityLabel(presentation.accessibilityText(for: line, showTimestamps: showTimestamps))
+        // Per-row text selection is costly to set up for every materialized
+        // row; copy one line from its menu, or all lines from the options.
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = line.text
+                showToast(.copied())
+            } label: {
+                Label("Copy Line", systemImage: "doc.on.doc")
+            }
+        }
     }
 
     private var compactLayout: some View {
@@ -594,10 +652,7 @@ struct LogLineView: View {
     private var wideLayout: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             if showTimestamps {
-                metadataText(
-                    line.timestamp.map(LogViewerFormatting.displayTimestamp) ?? "",
-                    color: .secondary
-                )
+                metadataText(presentation.displayTimestamp ?? "", color: .secondary)
                 .frame(width: 82, alignment: .leading)
             }
 
@@ -605,10 +660,7 @@ struct LogLineView: View {
                 .lineLimit(1)
                 .frame(width: 110, alignment: .leading)
 
-            metadataText(
-                LogViewerFormatting.levelLabel(line.level) ?? "",
-                color: metadataColor
-            )
+            metadataText(presentation.levelLabel ?? "", color: metadataColor)
             .frame(width: 58, alignment: .leading)
 
             messageView
@@ -618,14 +670,8 @@ struct LogLineView: View {
 
     @ViewBuilder
     private var metadataViews: some View {
-        if showTimestamps,
-            let timestamp = line.timestamp,
-            !timestamp.isEmpty
-        {
-            metadataText(
-                LogViewerFormatting.displayTimestamp(timestamp),
-                color: .secondary
-            )
+        if showTimestamps, let timestamp = presentation.displayTimestamp {
+            metadataText(timestamp, color: .secondary)
         }
         if let service = line.service, !service.isEmpty {
             Label {
@@ -637,7 +683,7 @@ struct LogLineView: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
         }
-        if let level = LogViewerFormatting.levelLabel(line.level) {
+        if let level = presentation.levelLabel {
             metadataText(level, color: metadataColor)
                 .fontWeight(.semibold)
         }
@@ -649,13 +695,11 @@ struct LogLineView: View {
             Text(line.text)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(messageColor)
-                .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
             Text(line.text)
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(messageColor)
-                .textSelection(.enabled)
                 .fixedSize(horizontal: true, vertical: true)
         }
     }

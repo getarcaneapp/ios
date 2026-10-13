@@ -26,7 +26,6 @@ struct VolumesView: View {
     @State private var environmentFilter: EnvironmentID?
     @State private var scopeFilter = VolumeScopeFilter.all
     @State private var sortOrder = ListSortOrder.ascending
-    @State private var loadGeneration = 0
     @State private var sections: [StableListSection<String, EnvironmentItem<Volume>>] = []
 
     @State private var isSelecting = false
@@ -61,9 +60,8 @@ struct VolumesView: View {
         return count
     }
 
-    private var pinnedIDs: Set<String> {
-        pinnedStore.pinnedIDs(kind: .volume, in: volumes)
-    }
+    /// Pinned row IDs, refreshed in `rebuildSections` (not per row render).
+    @State private var pinnedIDs: Set<String> = []
 
     private func size(of volume: EnvironmentItem<Volume>) -> Int64? {
         sizes[volume.environmentID]?[volume.name]
@@ -71,7 +69,7 @@ struct VolumesView: View {
 
     /// Filters + sorts once and partitions in a single pass. Pure — reads the
     /// current inputs and returns the grouped sections without touching state.
-    private func computeSections() -> [StableListSection<String, EnvironmentItem<Volume>>] {
+    private func computeSections(pinned: Set<String>) -> [StableListSection<String, EnvironmentItem<Volume>>] {
         let query = debouncedSearchText
         let filtered = volumes.filter { volume in
             guard environmentFilter == nil || volume.environmentID == environmentFilter else { return false }
@@ -87,7 +85,6 @@ struct VolumesView: View {
         .sorted {
             sortOrder.areInIncreasingOrder($0.name, $1.name)
         }
-        let pinned: Set<String> = pinnedIDs
         var pinnedItems: [EnvironmentItem<Volume>] = []
         var used: [EnvironmentItem<Volume>] = []
         var unused: [EnvironmentItem<Volume>] = []
@@ -112,7 +109,9 @@ struct VolumesView: View {
     /// source list) — never on every body evaluation. Volume sizes are read
     /// per-row and don't affect grouping, so they don't trigger a rebuild.
     private func rebuildSections() {
-        sections = computeSections()
+        let pinned = pinnedStore.pinnedIDs(kind: .volume, in: volumes)
+        if pinned != pinnedIDs { pinnedIDs = pinned }
+        sections = computeSections(pinned: pinned)
         pruneSelection(validIDs: Set(volumes.map(\.id)))
     }
 
@@ -277,8 +276,10 @@ struct VolumesView: View {
                 }
             }
         }
-        .task { await loadVolumes() }
-        .refreshable { await loadVolumes(refresh: true) }
+        // Reappearing (back from a detail) refreshes every loaded page in
+        // place; the first appear loads page one.
+        .task { await loadVolumes(preservingLoadedRange: true) }
+        .refreshable { await loadVolumes() }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .navigationDestination(for: EnvironmentItem<Volume>.self) { volume in
             VolumeDetailView(volume: volume.value, environmentID: volume.environmentID)
@@ -375,13 +376,14 @@ struct VolumesView: View {
             .presentationDragIndicator(.visible)
         }
         .onChange(of: mutationVersion) { _, _ in
-            Task { await loadVolumes(refresh: true) }
+            Task { await loadVolumes(preservingLoadedRange: true) }
         }
+        .onChange(of: list.revision) { rebuildSections() }
         .onChange(of: debouncedSearchText) { rebuildSections() }
         .onChange(of: environmentFilter) { rebuildSections() }
         .onChange(of: scopeFilter) { rebuildSections() }
         .onChange(of: sortOrder) { rebuildSections() }
-        .onChange(of: pinnedIDs) { rebuildSections() }
+        .onChange(of: pinnedStore.version) { rebuildSections() }
         .resourceActionsToolbar(
             primary: bulkPrimaryItem,
             runningItemID: bulkRunningActionID,
@@ -508,16 +510,17 @@ struct VolumesView: View {
         )
     }
 
-    private func loadVolumes(refresh: Bool = false) async {
+    private func loadVolumes(preservingLoadedRange: Bool = false) async {
         guard let client = manager.client else { return }
-        loadGeneration += 1
-        let generation = loadGeneration
         let environments = await environmentsStore.listEnvironments(
             environmentID, allEnvironments: allEnvironments, manager: manager)
-        await list.reload(environments, fetch: volumesPage(client: client))
+        // Sizes load alongside the rows rather than after the slowest
+        // environment's page.
+        async let sizesLoad: Void = loadSizes(for: environments.map(\.id))
+        await list.reload(
+            environments, preservingLoadedRange: preservingLoadedRange, fetch: volumesPage(client: client))
         rebuildSections()
-        guard loadGeneration == generation, !Task.isCancelled else { return }
-        await loadSizes(for: environments.map(\.id), refresh: refresh)
+        await sizesLoad
     }
 
     private func loadMore() async {
@@ -543,29 +546,22 @@ struct VolumesView: View {
 
     /// Sizes come per environment (`volumes/sizes` isn't paginated), so each
     /// environment in the list loads its own map.
-    private func loadSizes(for environmentIDs: [EnvironmentID], refresh: Bool = false) async {
+    private func loadSizes(for environmentIDs: [EnvironmentID]) async {
         await withTaskGroup(of: Void.self) { group in
             for environmentID in environmentIDs {
-                group.addTask { await loadSizes(for: environmentID, refresh: refresh) }
+                group.addTask { await loadSizes(for: environmentID) }
             }
         }
     }
 
-    private func loadSizes(for environmentID: EnvironmentID, refresh: Bool) async {
+    private func loadSizes(for environmentID: EnvironmentID) async {
         guard let client = manager.client, let cached = manager.cached else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "volumes/sizes")
-            if let entries: [VolumeSizeInfo] = try await cached.get(
-                path, as: [VolumeSizeInfo].self, policy: .volumes,
-                envID: environmentID, refresh: refresh,
-                onFresh: { fresh in
-                    sizes[environmentID] = Dictionary(
-                        fresh.map { ($0.name, $0.size) }, uniquingKeysWith: { _, new in new })
-                }
-            ) {
-                sizes[environmentID] = Dictionary(
-                    entries.map { ($0.name, $0.size) }, uniquingKeysWith: { _, new in new })
-            }
+            let entries: [VolumeSizeInfo] = try await cached.get(
+                path, as: [VolumeSizeInfo].self, envID: environmentID)
+            sizes[environmentID] = Dictionary(
+                entries.map { ($0.name, $0.size) }, uniquingKeysWith: { _, new in new })
         } catch {
             // Slow / unsupported on some hosts — leave sizes blank silently.
         }
@@ -941,21 +937,18 @@ struct VolumeDetailView: View {
         guard let client = manager.client, let cached = manager.cached, !volume.containers.isEmpty else { return }
         do {
             let path = client.rest.environmentPath(environmentID, "containers")
-            guard
-                let containers = try await cached.getAllPages(
-                    path: path,
-                    elementType: ContainerSummary.self,
-                    policy: .containersList,
-                    envID: environmentID,
-                    fetchPage: { start, limit in
-                        let response = try await client.containers.list(
-                            envID: environmentID,
-                            query: .init(start: start, limit: limit)
-                        )
-                        return ResourcePage(items: response.data, pagination: response.pagination)
-                    }
-                )
-            else { return }
+            let containers = try await cached.getAllPages(
+                path: path,
+                elementType: ContainerSummary.self,
+                envID: environmentID,
+                fetchPage: { start, limit in
+                    let response = try await client.containers.list(
+                        envID: environmentID,
+                        query: .init(start: start, limit: limit)
+                    )
+                    return ResourcePage(items: response.data, pagination: response.pagination)
+                }
+            )
             resolvedContainersByID = Dictionary(uniqueKeysWithValues: containers.map { ($0.id, $0) })
         } catch {
             // Preserve stable container IDs as fallbacks when resolution fails.

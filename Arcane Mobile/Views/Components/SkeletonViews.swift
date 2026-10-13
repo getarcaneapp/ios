@@ -3,32 +3,21 @@ import SwiftUI
 // MARK: - Shimmer
 
 extension EnvironmentValues {
-    /// Horizontal sweep position (0→1) published by `skeletonShimmer()` and read
-    /// by `SkeletonFill`. `nil` means no active shimmer, so placeholders render
-    /// static (no ancestor driver, or Reduce Motion is on).
-    @Entry var skeletonShimmerPhase: Double? = nil
+    /// Set by `skeletonShimmer()` for descendant `SkeletonFill`s. False means
+    /// no active shimmer, so placeholders render static (no ancestor driver,
+    /// or Reduce Motion is on).
+    @Entry var skeletonShimmerActive = false
 }
 
-/// Drives a single animation timeline for an entire skeleton subtree and
-/// publishes the sweep phase to descendant `SkeletonFill`s, so one clock
-/// animates every placeholder in sync. Honors Reduce Motion by leaving the
-/// placeholders static.
+/// Turns on the sweep for every `SkeletonFill` in a skeleton subtree. Each fill
+/// runs one repeating animation that SwiftUI interpolates on its own, instead
+/// of a per-frame timeline re-evaluating the whole skeleton. Fills appear
+/// together, so their sweeps stay in step. Honors Reduce Motion.
 private struct SkeletonShimmerModifier: ViewModifier {
     @SwiftUI.Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Seconds for one full left-to-right sweep.
-    private let period: TimeInterval = 1.6
-
     func body(content: Content) -> some View {
-        if reduceMotion {
-            content
-        } else {
-            TimelineView(.animation) { timeline in
-                let elapsed = timeline.date.timeIntervalSinceReferenceDate
-                let phase = elapsed.truncatingRemainder(dividingBy: period) / period
-                content.environment(\.skeletonShimmerPhase, phase)
-            }
-        }
+        content.environment(\.skeletonShimmerActive, !reduceMotion)
     }
 }
 
@@ -51,8 +40,12 @@ struct SkeletonFill<S: Shape>: View {
     var shape: S
     var fillOpacity: Double = 0.18
 
-    @SwiftUI.Environment(\.skeletonShimmerPhase) private var phase
+    @SwiftUI.Environment(\.skeletonShimmerActive) private var shimmerActive
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
+    @State private var swept = false
+
+    /// Seconds for one full left-to-right sweep.
+    private static var period: TimeInterval { 1.6 }
 
     var body: some View {
         shape
@@ -63,7 +56,7 @@ struct SkeletonFill<S: Shape>: View {
 
     @ViewBuilder
     private var highlight: some View {
-        if let phase {
+        if shimmerActive {
             GeometryReader { geo in
                 let width = geo.size.width
                 let band = max(width * 0.45, 28)
@@ -73,9 +66,14 @@ struct SkeletonFill<S: Shape>: View {
                     endPoint: .trailing
                 )
                 .frame(width: band)
-                .offset(x: -band + (width + band) * phase)
+                .offset(x: swept ? width : -band)
             }
             .allowsHitTesting(false)
+            .onAppear {
+                withAnimation(.linear(duration: Self.period).repeatForever(autoreverses: false)) {
+                    swept = true
+                }
+            }
         }
     }
 

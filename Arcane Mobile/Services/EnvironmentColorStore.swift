@@ -6,6 +6,8 @@ final class EnvironmentColorStore {
     static let shared = EnvironmentColorStore()
     private let defaults: UserDefaults
     private var colors: [String: String]
+    /// Rows look colors up per render; normalize each server URL once.
+    @ObservationIgnored private var normalizedServers: [String: String] = [:]
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -13,7 +15,13 @@ final class EnvironmentColorStore {
     }
 
     private func key(server: String, environmentID: String) -> String {
-        let normalized = (try? ConnectionProfileSync.normalizedServerURL(server)) ?? server
+        let normalized: String
+        if let cached = normalizedServers[server] {
+            normalized = cached
+        } else {
+            normalized = (try? ConnectionProfileSync.normalizedServerURL(server)) ?? server
+            normalizedServers[server] = normalized
+        }
         return normalized + "\n" + environmentID
     }
 
@@ -27,15 +35,20 @@ final class EnvironmentColorStore {
         // Include saved environments that are temporarily absent, so their colors stay reserved.
         let keys = Set(
             colors.keys.filter { $0.hasPrefix(prefix) } + environmentIDs.map { key(server: server, environmentID: $0) })
+        var next = colors
         for key in keys.sorted() {
-            if let existing = colors[key]?.uppercased(), used.insert(existing).inserted {
-                colors[key] = existing
+            if let existing = next[key]?.uppercased(), used.insert(existing).inserted {
+                next[key] = existing
             } else {
                 let color = availableColor(excluding: used)
-                colors[key] = color
+                next[key] = color
                 used.insert(color)
             }
         }
+        // Runs on every environment load; only publish (and re-render every
+        // colored row) when an assignment actually changed.
+        guard next != colors else { return }
+        colors = next
         defaults.set(colors, forKey: "arcane.environmentColors")
     }
 

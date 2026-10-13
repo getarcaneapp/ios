@@ -10,11 +10,26 @@ final class WidgetSnapshotPublisher {
     static let shared = WidgetSnapshotPublisher()
 
     private var latest: WidgetSnapshot?
+    /// Last snapshot written by this process, or the persisted one (read
+    /// from disk at most once), so callers don't decode the file per update.
+    private var persisted: WidgetSnapshot?
+    private var hasReadPersisted = false
     private var sessionIdentity: String?
     private var pendingTask: Task<Void, Never>?
     private static let debounce: Duration = .seconds(6)
 
     private init() {}
+
+    /// The most recent snapshot queued or written, without touching disk
+    /// after the first call.
+    func lastKnownSnapshot() -> WidgetSnapshot? {
+        if let latest { return latest }
+        if !hasReadPersisted {
+            persisted = WidgetSnapshotStore.load()
+            hasReadPersisted = true
+        }
+        return persisted
+    }
 
     /// Queue a snapshot for writing; coalesces bursts from the live stream.
     func schedule(_ snapshot: WidgetSnapshot) {
@@ -39,6 +54,8 @@ final class WidgetSnapshotPublisher {
             latest.isDemo || SharedKeychain.credentialOrigin == latest.serverOrigin
         else { return }
         WidgetSnapshotStore.saveAndReloadIfChanged(latest)
+        persisted = latest
+        hasReadPersisted = true
     }
 
     /// Immediate signed-out snapshot (logout, demo ended, server cleared).
@@ -46,6 +63,9 @@ final class WidgetSnapshotPublisher {
         pendingTask?.cancel()
         pendingTask = nil
         latest = nil
-        WidgetSnapshotStore.saveAndReloadIfChanged(.signedOut(generatedAt: Date()))
+        let signedOut = WidgetSnapshot.signedOut(generatedAt: Date())
+        WidgetSnapshotStore.saveAndReloadIfChanged(signedOut)
+        persisted = signedOut
+        hasReadPersisted = true
     }
 }
