@@ -80,9 +80,15 @@ nonisolated enum NotificationRollup {
         return (Array(merged.prefix(maxItems)), isDuplicate)
     }
 
+    /// Same dedupe key, or the same list of names in any order. Older servers send
+    /// batches in random order, which gives each repeat a fresh key.
     private static func matches(_ lhs: Item, _ rhs: Item) -> Bool {
-        if let left = lhs.dedupeKey, let right = rhs.dedupeKey { return left == right }
-        return lhs.label == rhs.label
+        if let left = lhs.dedupeKey, let right = rhs.dedupeKey, left == right { return true }
+        return normalizedLabel(lhs.label) == normalizedLabel(rhs.label)
+    }
+
+    private static func normalizedLabel(_ label: String) -> [String] {
+        label.components(separatedBy: ", ").sorted()
     }
 
     /// Drops the "in <environment>" / "(<environment>)" the server appends;

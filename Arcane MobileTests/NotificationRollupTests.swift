@@ -42,6 +42,18 @@ struct NotificationRollupTests {
     }
 
     @Test
+    func reorderedBatchIsADuplicateAndDoesNotAddToTheTotal() {
+        let first = NotificationRollup.Item(label: "nginx:latest, redis:7, caddy:2", count: 3, dedupeKey: "d-a")
+        let reordered = NotificationRollup.Item(label: "redis:7, caddy:2, nginx:latest", count: 3, dedupeKey: "d-b")
+        let merged = NotificationRollup.merge(existing: [first], incoming: reordered)
+        #expect(merged.isDuplicate)
+        #expect(merged.items.reduce(0) { $0 + $1.count } == 3)
+
+        let different = NotificationRollup.Item(label: "nginx:latest, redis:7", count: 2, dedupeKey: "d-c")
+        #expect(!NotificationRollup.merge(existing: [first], incoming: different).isDuplicate)
+    }
+
+    @Test
     func mergeCapsTheItemList() {
         let existing = (0..<30).map { NotificationRollup.Item(label: "c\($0)", count: 1, dedupeKey: "d-\($0)") }
         let merged = NotificationRollup.merge(

@@ -192,7 +192,7 @@ enum ReleaseNotes {
                 .init("Dashboard no longer reloads on every return from Control Center or a detail screen."),
                 .init("Webhook enable and disable."),
                 .init("Confirmation dialogs are no longer see-through inside sheets."),
-                .init("Repeated push notifications replace the earlier copy instead of stacking."),
+                .init("Repeated push notifications replace the earlier copy instead of stacking or inflating the count."),
                 .init("Adding a Git repository."),
                 .init("Activities update live on Arcane 2.16 and later."),
             ]

@@ -52,7 +52,7 @@ ios/
 
 ### SDK and networking
 - The Arcane API client is **libarcane-swift**, a remote SPM dependency pinned to a branch. Editing a local copy of the SDK does nothing — the app resolves it from GitHub.
-- Most domains use the SDK's typed services, including **image updates** (`client.images.updateSummary/checkUpdateByRef/checkAllUpdates/updateInfoByRefs` + the SDK's `ImageUpdateInfo.asUpdateResponse` bridge). Exception: **vulnerabilities** still use app-local types in `Models.swift` + raw REST (SDK shapes mismatch the server). Settings saves send a raw `[String: String]` dict, not the SDK's `UpdateSettings`.
+- Most domains use the SDK's typed services, including **image updates** (`client.images.updateSummary/checkUpdateByRef/checkAllUpdates/updateInfoByRefs` + the SDK's `ImageUpdateInfo.asUpdateResponse` bridge). **Vulnerabilities** use `client.vulnerabilities.*`; `Models.swift` holds app-side view models initialized from the SDK types. Settings saves send a raw `[String: String]` dict, not the SDK's `UpdateSettings`.
 - When a change needs new SDK surface, make the change in `../libarcane-swift` (never commit/tag/push it — the user handles that) and remember the app resolves the SDK from GitHub: local SDK edits don't build into the app until pushed and the package is re-resolved.
 - The app must support **both Arcane v1 and v2 backends** (v2 has breaking API changes, e.g. no `/dashboard/environments`). Gate v2-only features on capability checks (e.g. `supportsActivities`).
 - Auth uses single-use refresh-token rotation and the session is shared with widgets via the shared keychain — be careful around `AuthManager` refresh/401 logic; see the reload-before-refresh invariant there.
