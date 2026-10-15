@@ -129,6 +129,12 @@ final class ArcaneClientManager {
         didSet { UserDefaults.standard.set(allEnvironmentsPreview, forKey: "arcane.allEnvironmentsPreview") }
     }
 
+    /// Preview: the dashboard shows live usage graphs, the busiest containers,
+    /// and per-host metrics in place of environment cards.
+    var refreshedDashboardPreview = UserDefaults.standard.bool(forKey: "arcane.refreshedDashboardPreview") {
+        didSet { UserDefaults.standard.set(refreshedDashboardPreview, forKey: "arcane.refreshedDashboardPreview") }
+    }
+
     func acceptsEnvironmentContext(_ id: EnvironmentID) -> Bool {
         allEnvironmentsPreview || activeEnvironmentID == id
     }

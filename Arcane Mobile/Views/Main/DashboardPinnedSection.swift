@@ -313,7 +313,7 @@ private enum DashboardPinnedItem: Identifiable {
     var icon: String {
         switch self {
         case .container: return "cube.box.fill"
-        case .project: return "square.stack.3d.up.fill"
+        case .project: return "folder.fill"
         }
     }
 
@@ -345,7 +345,7 @@ private struct DashboardPinnedRowContent: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            DashboardRowIcon(systemImage: item.icon, tint: item.tint)
+            RowIcon(systemImage: item.icon, tint: item.tint, size: 30)
                 .overlay(alignment: .bottomTrailing) {
                     Circle()
                         .fill(item.isRunning ? Color.green : Color.secondary.opacity(0.5))

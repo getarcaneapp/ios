@@ -157,6 +157,10 @@ enum ReleaseNotes {
             new: [
                 .init("Docker Swarm services, stacks, nodes, tasks, configs, secrets, and cluster setup."),
                 .init("Kill, pause, processes, and auto-update toggle for containers."),
+                .init("Live CPU and memory on running container rows, with CPU and memory sorting."),
+                .init(
+                    "Refreshed Dashboard in Preview Features, with live usage graphs, busiest containers, customizable tiles, an inventory row for every host, and a guided introduction.",
+                    badge: .preview),
                 .init("Start All, Start Stopped, and Stop All containers."),
                 .init("Rename volumes."),
                 .init("Connect and disconnect containers from networks."),
@@ -174,6 +178,9 @@ enum ReleaseNotes {
                     "With Activity Toasts set to All, every server activity gets a toast and a Live Activity, including work that finishes before it is seen running."
                 ),
                 .init("Loading screens and sections show the Arcane logo drawing itself in place of a spinner."),
+                .init("Refreshed list rows across the app with icon tiles; image references lead with the image name and show the tag as a chip."),
+                .init("New icons for Projects and Images."),
+                .init("Choose how many environments stream live dashboard stats in App Settings."),
                 .init(
                     "Deployment pill and activity toasts show progress around their edge instead of a spinner; a finished deployment sweeps the border and shows a checkmark without a separate toast."
                 ),

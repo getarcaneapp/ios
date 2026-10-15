@@ -416,7 +416,7 @@ struct ContainerDetailView: View {
             if manager.permissions.has("images:commit", in: environmentID) {
                 items.append(
                     ActionButtonItem(
-                        id: "commit", title: "Commit to Image", systemImage: "square.stack.3d.up", tint: .accentColor
+                        id: "commit", title: "Commit to Image", systemImage: "square.3.layers.3d.top.filled", tint: .accentColor
                     ) { showCommit = true })
             }
         }
@@ -623,7 +623,7 @@ struct ContainerDetailView: View {
         return [
             ResourceMetadataItem(
                 label: "Image", value: nonEmptyResourceValue(details.image) ?? container.image,
-                systemImage: "photo.stack"),
+                systemImage: "square.3.layers.3d.top.filled"),
             ResourceMetadataItem(
                 label: "Uptime / Status", value: nonEmptyResourceValue(uptimeStatus) ?? statusString,
                 systemImage: "clock"),

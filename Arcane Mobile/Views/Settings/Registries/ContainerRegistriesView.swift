@@ -254,9 +254,7 @@ struct RegistryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "shippingbox.fill")
-                .font(.title3).foregroundStyle(Color.accentColor)
-                .frame(width: 36, height: 36)
+            RowIcon(systemImage: "shippingbox.fill")
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.body)
                 Text(subtitle).font(.subheadline).foregroundStyle(.secondary)

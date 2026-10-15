@@ -261,11 +261,7 @@ private struct VolumeBrowserRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: entry.isDirectory ? "folder.fill" : "doc.fill")
-                .font(.title3)
-                .foregroundStyle(entry.isDirectory ? Color.accentColor : Color.secondary)
-                .frame(width: 28)
-                .accessibilityHidden(true)
+            RowIcon(systemImage: entry.isDirectory ? "folder.fill" : "doc.fill", tint: entry.isDirectory ? nil : .secondary, size: 30)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(entry.name)

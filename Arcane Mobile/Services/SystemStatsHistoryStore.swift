@@ -20,16 +20,18 @@ final class SystemStatsHistoryStore {
         var error: String?
     }
 
-    /// Rolling window per series — mirrors `ContainerStatsView.windowSize`.
-    static let windowSize = 60
+    /// Rolling window per series: five minutes at the stream's 2s cadence,
+    /// long enough for the all-environments usage chart to show a trend.
+    static let windowSize = 150
     /// Streams are opened for at most this many environments (dashboard order,
-    /// active first) — strictly cheaper than the old per-visible-card streams.
-    /// Further cards keep rings-only from whatever data they have.
-    /// Capped at 4 because the server rejects stats upgrades past 5 concurrent
-    /// sockets per client IP (`checkRateLimitInternal`), and reconnect briefly
-    /// overlaps a closing socket with its replacement — headroom is needed so
-    /// a refresh doesn't trip the cap into 429/-1011 handshake failures.
-    static let maxStreams = 4
+    /// active first), as chosen in App Settings. Further cards keep rings-only
+    /// from whatever data they have. The server's 5-socket limit is per client
+    /// per environment (remote environments are proxied to their own agent),
+    /// so the cap trades device data and battery rather than server headroom.
+    static var maxStreams: Int {
+        let limit = LiveStatsLimit.current
+        return limit == LiveStatsLimit.all ? Int.max : limit
+    }
 
     /// Reconnect budget/backoff — mirrors `DashboardStreamStore`. A transient
     /// WebSocket handshake failure (e.g. `-1011` bad response during a server
@@ -100,6 +102,11 @@ final class SystemStatsHistoryStore {
         isRunning = true
         generation += 1
         reconcileTasks()
+    }
+
+    /// Re-applies `maxStreams` after the App Settings limit changes.
+    func applyStreamLimit() {
+        if isRunning { reconcileTasks() }
     }
 
     func stop() {
@@ -263,5 +270,22 @@ final class SystemStatsHistoryStore {
 
     private func clamped(_ value: Double) -> Double {
         min(max(value, 0), 100)
+    }
+}
+
+/// How many environments stream live host stats; chosen in App Settings.
+nonisolated enum LiveStatsLimit {
+    static let preferenceKey = "arcane.liveStatsEnvironmentLimit"
+    /// Streams every enabled environment.
+    static let all = 0
+    static let defaultValue = 8
+    static let choices = [4, 8, 16, all]
+
+    static var current: Int {
+        UserDefaults.standard.object(forKey: preferenceKey) as? Int ?? defaultValue
+    }
+
+    static func title(_ value: Int) -> String {
+        value == all ? "All" : "\(value)"
     }
 }

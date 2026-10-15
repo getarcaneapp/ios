@@ -225,10 +225,7 @@ struct UserRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "person.circle.fill")
-                .font(.title2)
-                .foregroundStyle(user.isAdmin ? .indigo : .blue)
-                .frame(width: 28)
+            RowIcon(systemImage: "person.fill", tint: user.isAdmin ? .indigo : .blue)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(user.displayUsername).font(.body)

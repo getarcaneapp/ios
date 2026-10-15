@@ -153,7 +153,7 @@ struct ImagesView: View {
                 }
             } else if images.isEmpty {
                 ContentUnavailableView {
-                    Label("No Images", systemImage: "photo.stack")
+                    Label("No Images", systemImage: "square.3.layers.3d.top.filled")
                 } description: {
                     Text(
                         allEnvironments
@@ -537,7 +537,7 @@ struct ImagesView: View {
             details.append(.init(icon: "server.rack", label: "Environment", value: environmentName))
         }
         return RowPreviewCard(
-            icon: "photo.stack.fill",
+            icon: "square.3.layers.3d.top.filled",
             iconColor: .purple,
             title: image.displayName,
             badges: badges,
@@ -703,40 +703,39 @@ struct ImagesView: View {
 struct ImageRow: View {
     let row: ImageRowModel
 
-    // Dense scrolling lists are a poor fit for per-row live Liquid Glass: the
-    // compositor can thrash as rows enter/leave the viewport, producing the
-    // "glassEffect() tried to update multiple times per frame" warning and
-    // visible hitching. Use a static tinted chip here instead.
-    private let iconTint = Color.purple
-
     var environmentName: String? = nil
 
     var body: some View {
+        let reference = row.reference
         HStack(spacing: 12) {
-            Image(systemName: "photo.stack.fill")
-                .font(.title3)
-                .foregroundStyle(.tint)
-                .frame(width: 36, height: 36)
+            RowIcon(systemImage: "square.3.layers.3d.top.filled", tint: .purple)
 
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(row.displayName)
-                    .font(.body)
+            VStack(alignment: .leading, spacing: 5) {
+                ImageReferenceName(reference: reference)
                     .lineLimit(nil)
-                HStack(spacing: 6) {
-                    Text(row.sizeText)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    UpdateStateBadge(state: row.updateState)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { details(reference) }
+                    VStack(alignment: .leading, spacing: 5) { details(reference) }
                 }
                 EnvironmentLabel(name: environmentName)
             }
 
             Spacer(minLength: 0)
         }
-
+        .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func details(_ reference: ImageReferenceParts) -> some View {
+        HStack(spacing: 8) {
+            if let tag = reference.tag { TagChip(text: tag) }
+            Text(row.sizeText)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
+        UpdateStateBadge(state: row.updateState)
     }
 }
 
@@ -747,6 +746,7 @@ struct ImageRowModel: Identifiable {
     let updateState: ImageUpdateState
 
     var id: String { image.id }
+    var reference: ImageReferenceParts { ImageReferenceParts(displayName) }
 }
 
 /// Input-only sheet: collects the image reference, then hands the pull to

@@ -198,11 +198,7 @@ struct ComposePreviewEditor: View {
     private func serviceRow(_ service: String, document: ComposeDocument) -> some View {
         let field = document.nativeField(at: [.key("services"), .key(service), .key("image")])
         return HStack(spacing: 12) {
-            Image(systemName: "cube.box.fill")
-                .font(.title3)
-                .foregroundStyle(.tint)
-                .frame(width: 36, height: 36)
-                .accessibilityHidden(true)
+            RowIcon(systemImage: "cube.box.fill", tint: .orange)
             VStack(alignment: .leading, spacing: 4) {
                 Text(service).font(.headline).foregroundStyle(.primary)
                 if field.kind == .string, !field.value.isEmpty {

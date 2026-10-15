@@ -81,9 +81,9 @@ nonisolated enum AppTab: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .dashboard: return "chart.bar.fill"
         case .updates: return "arrow.triangle.2.circlepath"
-        case .projects: return "square.stack.3d.up.fill"
+        case .projects: return "folder.fill"
         case .containers: return "cube.box.fill"
-        case .images: return "photo.stack.fill"
+        case .images: return "square.3.layers.3d.top.filled"
         case .imageVulnerabilities: return "shield.lefthalf.filled"
         case .networks: return "network"
         case .ports: return "point.3.connected.trianglepath.dotted"

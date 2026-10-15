@@ -19,7 +19,7 @@ struct DashboardLiveStatsLimitPresentationTests {
     }
 
     @Test
-    func noticeExplainsWhichMetricsAreLimitedAndWhy() throws {
+    func noticeExplainsWhichMetricsAreLimitedAndWhereToChangeIt() throws {
         let presentation = try #require(
             DashboardLiveStatsLimitPresentation(
                 enabledEnvironmentCount: 5,
@@ -28,7 +28,7 @@ struct DashboardLiveStatsLimitPresentationTests {
 
         #expect(
             presentation.message
-                == "Live CPU, memory, and disk metrics are streamed for the first 4 enabled environments to stay within the server connection limit. Container and image counts still load for every environment."
+                == "Live CPU, memory, and disk metrics stream for the first 4 enabled environments. Change this in App Settings. Container and image counts still load for every environment."
         )
     }
 }

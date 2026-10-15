@@ -209,7 +209,7 @@ struct AttentionItemRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            DashboardRowIcon(systemImage: item.icon, tint: item.severity.tint, changeToken: String(item.count))
+            RowIcon(systemImage: item.icon, tint: item.severity.tint, size: 30, changeToken: String(item.count))
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                     .font(.subheadline.weight(.medium))

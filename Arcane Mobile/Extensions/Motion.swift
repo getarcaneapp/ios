@@ -84,6 +84,11 @@ enum Motion {
     /// lag behind streaming text and read as rubber-banding.
     static let follow: Animation = .linear(duration: 0.1)
 
+    /// Live charts sliding one sample to the left. Linear and as long as the
+    /// stats stream's 2s cadence, so each slide ends as the next sample lands
+    /// and the line scrolls continuously instead of stepping.
+    static let chartScroll: Animation = .linear(duration: 2)
+
     /// One packet traversing an edge tunnel, or a direct request and reply.
     static let edgePacketDuration: TimeInterval = 2.4
     static let directPacketDuration: TimeInterval = 4.8

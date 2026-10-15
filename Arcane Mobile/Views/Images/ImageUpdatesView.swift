@@ -169,9 +169,13 @@ struct UpdateRow: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(ref)
-                    .font(.system(.subheadline, design: .monospaced))
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    let parts = ImageReferenceParts(ref)
+                    ImageReferenceName(reference: parts, font: .subheadline)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                    if let tag = parts.tag { TagChip(text: tag) }
+                }
                 if let info {
                     if let err = info.error, !err.isEmpty {
                         Text(err)

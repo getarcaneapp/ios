@@ -190,9 +190,7 @@ private struct AssignmentRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: role?.systemImage ?? "person.crop.rectangle.fill")
-                .foregroundStyle(role?.iconColor ?? .secondary)
-                .frame(width: 28)
+            RowIcon(systemImage: role?.systemImage ?? "person.crop.rectangle.fill", tint: role?.iconColor ?? .secondary, size: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text(role?.displayName ?? assignment.roleId)
                     .font(.body)

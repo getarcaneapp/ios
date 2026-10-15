@@ -272,7 +272,7 @@ struct ProjectDetailView: View {
                         }
                     } icon: {
                         CachedAsyncImage(url: currentProject.themedIconUrl(for: colorScheme), size: 28) {
-                            Image(systemName: "square.stack.3d.up.fill").foregroundStyle(.indigo)
+                            Image(systemName: "folder.fill").foregroundStyle(.indigo)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -827,19 +827,21 @@ struct ProjectDetailView: View {
 
         private var rowContent: some View {
             HStack(spacing: 10) {
-                CachedAsyncImage(url: iconURL, size: 36) {
-                    Image(systemName: "cube.box.fill")
-                        .foregroundStyle(isRunning ? .green : .secondary)
+                CachedAsyncImage(url: iconURL, size: 36, tiled: true) {
+                    RowIcon(systemImage: "cube.box.fill", tint: isRunning ? .green : .secondary)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(service.name).font(.subheadline.weight(.semibold))
                         StatusBadge(status: nonEmptyResourceValue(service.health) ?? service.status)
                     }
-                    Text(nonEmptyResourceValue(service.image) ?? "Image unavailable")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if let image = nonEmptyResourceValue(service.image) {
+                        ImageReferenceLine(reference: image)
+                    } else {
+                        Text("Image unavailable")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     if let ports = service.ports, !ports.isEmpty {
                         Text(ports.joined(separator: ", "))
                             .font(.caption2.monospaced())

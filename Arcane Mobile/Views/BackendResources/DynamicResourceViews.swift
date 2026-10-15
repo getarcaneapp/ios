@@ -360,9 +360,7 @@ struct DynamicResourceRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 32, height: 32)
+            RowIcon(systemImage: systemImage)
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
                     .font(.body)

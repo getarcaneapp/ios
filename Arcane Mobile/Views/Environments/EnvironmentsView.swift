@@ -133,7 +133,7 @@ struct EnvironmentListRow: View {
             count(
                 "\(runningContainers)/\(totalContainers)", systemImage: "cube.box.fill", tint: .orange,
                 label: "Containers")
-            count("\(imageCount)", systemImage: "photo.stack.fill", tint: .purple, label: "Images")
+            count("\(imageCount)", systemImage: "square.3.layers.3d.top.filled", tint: .purple, label: "Images")
             count(
                 actionCountText(.actionableVulnerabilities),
                 systemImage: "exclamationmark.shield.fill",

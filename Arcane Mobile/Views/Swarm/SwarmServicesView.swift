@@ -209,20 +209,12 @@ struct SwarmServiceRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "shippingbox.fill")
-                .font(.title3)
-                .foregroundStyle(isHealthy ? Color.accentColor : .orange)
-                .frame(width: 32, height: 32)
-                .accessibilityHidden(true)
+            RowIcon(systemImage: "shippingbox.fill", tint: isHealthy ? nil : .orange)
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: service.name)
                     .font(.body)
                     .lineLimit(1)
-                Text(verbatim: service.image)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                ImageReferenceLine(reference: service.image)
                 if showsStack, let stack = service.stackName, !stack.isEmpty {
                     Label(stack, systemImage: "square.stack.3d.up")
                         .font(.caption2)

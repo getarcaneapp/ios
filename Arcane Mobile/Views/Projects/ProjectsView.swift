@@ -148,7 +148,7 @@ struct ProjectsView: View {
                 }
             } else if projects.isEmpty {
                 ContentUnavailableView {
-                    Label("No Projects", systemImage: "square.stack.3d.up")
+                    Label("No Projects", systemImage: "folder")
                 } description: {
                     Text(
                         allEnvironments
@@ -557,7 +557,7 @@ struct ProjectsView: View {
             details.append(.init(icon: "server.rack", label: "Environment", value: environmentName))
         }
         return RowPreviewCard(
-            icon: "square.stack.3d.up.fill",
+            icon: "folder.fill",
             iconColor: color,
             iconUrl: project.value.themedIconUrl(for: colorScheme),
             title: project.displayName,
@@ -630,11 +630,8 @@ struct ProjectRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CachedAsyncImage(url: project.themedIconUrl(for: colorScheme), size: 36) {
-                Image(systemName: "square.stack.3d.up.fill")
-                    .font(.title3)
-                    .foregroundStyle(.tint)
-                    .frame(width: 36, height: 36)
+            CachedAsyncImage(url: project.themedIconUrl(for: colorScheme), size: 36, tiled: true) {
+                RowIcon(systemImage: "folder.fill", tint: .indigo)
             }
             .accessibilityHidden(true)
 

@@ -698,11 +698,7 @@ struct VolumeRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "externaldrive.fill")
-                .font(.title3)
-                .foregroundStyle(.tint)
-                .frame(width: 36, height: 36)
-                .accessibilityHidden(true)
+            RowIcon(systemImage: "externaldrive.fill", tint: .blue)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {

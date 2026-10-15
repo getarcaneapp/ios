@@ -196,11 +196,7 @@ struct PortMappingRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: port.isPublished ? "arrow.left.arrow.right.circle.fill" : "lock.circle.fill")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(port.isPublished ? .green : .gray)
-                .frame(width: 28, height: 28)
-                .background((port.isPublished ? Color.green : .gray).opacity(0.15), in: .circle)
+            RowIcon(systemImage: port.isPublished ? "arrow.left.arrow.right" : "lock.fill", tint: port.isPublished ? .green : .gray)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {

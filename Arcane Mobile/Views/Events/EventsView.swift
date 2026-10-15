@@ -325,10 +325,7 @@ private struct EventRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: severityIcon)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(severityTint)
-                .frame(width: 28)
+            RowIcon(systemImage: severityIcon, tint: severityTint)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.title)

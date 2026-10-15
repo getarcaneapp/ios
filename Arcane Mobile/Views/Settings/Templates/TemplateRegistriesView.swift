@@ -246,10 +246,7 @@ struct TemplateRegistryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "doc.text.fill")
-                .font(.title3).foregroundStyle(.indigo)
-                .frame(width: 36, height: 36)
-                .glassEffectCompat(in: .circle)
+            RowIcon(systemImage: "doc.text.fill", tint: .indigo)
             VStack(alignment: .leading, spacing: 3) {
                 Text(registry.name).font(.headline)
                 Text(registry.url).font(.caption).foregroundStyle(.secondary)

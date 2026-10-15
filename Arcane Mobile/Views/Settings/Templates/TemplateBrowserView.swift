@@ -236,12 +236,11 @@ struct TemplateRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CachedAsyncImage(url: template.metadata?.iconUrl, size: 36) {
-                Image(systemName: template.isRemote ? "cloud.fill" : "doc.text.fill")
-                    .font(.title3)
-                    .foregroundStyle(template.isRemote ? .blue : .indigo)
-                    .frame(width: 36, height: 36)
-                    .glassEffectCompat(in: .circle)
+            CachedAsyncImage(url: template.metadata?.iconUrl, size: 36, tiled: true) {
+                RowIcon(
+                    systemImage: template.isRemote ? "cloud.fill" : "doc.text.fill",
+                    tint: template.isRemote ? .blue : .indigo
+                )
             }
 
             VStack(alignment: .leading, spacing: 4) {

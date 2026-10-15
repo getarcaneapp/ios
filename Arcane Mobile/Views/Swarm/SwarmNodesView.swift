@@ -203,11 +203,7 @@ struct SwarmNodeRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: node.isManager ? "crown.fill" : "server.rack")
-                .font(.title3)
-                .foregroundStyle(node.isLeader ? .yellow : .accentColor)
-                .frame(width: 32, height: 32)
-                .accessibilityHidden(true)
+            RowIcon(systemImage: node.isManager ? "crown.fill" : "server.rack", tint: node.isLeader ? .yellow : nil)
             VStack(alignment: .leading, spacing: 3) {
                 Text(verbatim: node.hostname)
                     .lineLimit(1)

@@ -12,8 +12,22 @@ private struct AutomaticWhatsNewPresentationModifier: ViewModifier {
     @SwiftUI.Environment(\.isLaunchSplashPresented) private var isLaunchSplashPresented
     @State private var presentedWhatsNew: WhatsNewKit.WhatsNew?
     @State private var didEvaluate = false
-    @State private var showsIntroduction = false
-    @AppStorage(AllEnvironmentsIntroduction.seenKey) private var hasSeenIntroduction = false
+    @State private var introduction: PreviewIntroduction?
+    @AppStorage(AllEnvironmentsIntroduction.seenKey) private var hasSeenAllEnvironments = false
+    @AppStorage(RefreshedDashboardIntroduction.seenKey) private var hasSeenRefreshedDashboard = false
+
+    /// Preview walkthroughs, shown once each after What's New, one at a time.
+    private enum PreviewIntroduction: Identifiable {
+        case allEnvironments
+        case refreshedDashboard
+        var id: Self { self }
+    }
+
+    private var nextIntroduction: PreviewIntroduction? {
+        if !hasSeenAllEnvironments { return .allEnvironments }
+        if !hasSeenRefreshedDashboard { return .refreshedDashboard }
+        return nil
+    }
 
     func body(content: Content) -> some View {
         content
@@ -21,12 +35,12 @@ private struct AutomaticWhatsNewPresentationModifier: ViewModifier {
                 guard !isPresented, !didEvaluate else { return }
                 didEvaluate = true
                 presentedWhatsNew = whatsNewEnvironment.whatsNew()
-                if presentedWhatsNew == nil { showsIntroduction = !hasSeenIntroduction }
+                if presentedWhatsNew == nil { introduction = nextIntroduction }
             }
             .sheet(
                 item: $presentedWhatsNew,
                 onDismiss: {
-                    showsIntroduction = !hasSeenIntroduction
+                    introduction = nextIntroduction
                 }
             ) { whatsNew in
                 WhatsNewPresentationView(
@@ -34,8 +48,17 @@ private struct AutomaticWhatsNewPresentationModifier: ViewModifier {
                     versionStore: whatsNewEnvironment.whatsNewVersionStore
                 )
             }
-            .sheet(isPresented: $showsIntroduction) {
-                AllEnvironmentsIntroductionView()
+            .sheet(
+                item: $introduction,
+                onDismiss: {
+                    // Each walkthrough marks itself seen on dismissal; chain the next.
+                    introduction = nextIntroduction
+                }
+            ) { introduction in
+                switch introduction {
+                case .allEnvironments: AllEnvironmentsIntroductionView()
+                case .refreshedDashboard: RefreshedDashboardIntroductionView()
+                }
             }
     }
 }

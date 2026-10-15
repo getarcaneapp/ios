@@ -3,7 +3,9 @@ import SwiftUI
 
 struct AppSettingsView: View {
     @SwiftUI.Environment(ArcaneClientManager.self) private var manager
+    @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore: EnvironmentsStore?
     @AppStorage("arcane.rememberLastTab") private var rememberLastTab = true
+    @AppStorage(LiveStatsLimit.preferenceKey) private var liveStatsLimit = LiveStatsLimit.defaultValue
     @AppStorage("arcane.activityToastScope")
     private var activityToastScopeRawValue = ActivityToastScope.userInitiated.rawValue
     @State private var pendingDestructive: PendingDestructive?
@@ -32,6 +34,7 @@ struct AppSettingsView: View {
     var body: some View {
         List {
             generalSection
+            dashboardSection
             notificationsSection
             supportSection
             storageSection
@@ -60,6 +63,7 @@ struct AppSettingsView: View {
                                 await ImageCache.shared.clear()
                                 await AvatarDiskCache.clear()
                                 await ResponseCache.shared.invalidateAll()
+                                BusiestContainersStore.shared.clearCache()
                                 await refreshCacheSize()
                                 showToast(.success("Cache cleared"))
                             }
@@ -78,6 +82,26 @@ struct AppSettingsView: View {
             Toggle(isOn: $rememberLastTab) {
                 SettingsRow(title: "Remember Last Tab", systemImage: "arrow.uturn.backward.square", color: .indigo)
             }
+        }
+    }
+
+    private var dashboardSection: some View {
+        Section {
+            Picker(selection: $liveStatsLimit) {
+                ForEach(LiveStatsLimit.choices, id: \.self) { choice in
+                    Text(LiveStatsLimit.title(choice)).tag(choice)
+                }
+            } label: {
+                SettingsRow(title: "Live Stats Environments", systemImage: "waveform.path.ecg", color: .green)
+            }
+            .pickerStyle(.menu)
+            .onChange(of: liveStatsLimit) { _, _ in
+                environmentsStore?.statsHistory.applyStreamLimit()
+            }
+        } header: {
+            Text("Dashboard")
+        } footer: {
+            Text("How many environments stream live CPU, memory, and disk on the dashboard. Each keeps a connection open, using more data and battery.")
         }
     }
 

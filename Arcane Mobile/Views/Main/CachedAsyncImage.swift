@@ -229,15 +229,29 @@ struct CachedAsyncImage<Fallback: View>: View {
     /// identity keeps its image instead of flashing the fallback.
     @State private var loadedID: CachedImageLoadID?
 
-    init(url: String?, size: CGFloat = 36, @ViewBuilder fallback: () -> Fallback) {
+    /// Draws a loaded icon inset on a neutral tile, matching `RowIcon` wells.
+    let tiled: Bool
+
+    init(url: String?, size: CGFloat = 36, tiled: Bool = false, @ViewBuilder fallback: () -> Fallback) {
         self.url = url
         self.size = size
+        self.tiled = tiled
         self.fallback = fallback()
     }
 
     var body: some View {
         Group {
-            if let img = image {
+            if let img = image, tiled {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size * 0.64, height: size * 0.64)
+                    .frame(width: size, height: size)
+                    .background(
+                        Color.secondary.opacity(0.12),
+                        in: .rect(cornerRadius: Radius.small, style: .continuous)
+                    )
+            } else if let img = image {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()

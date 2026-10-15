@@ -183,9 +183,7 @@ private struct MappingRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: role?.systemImage ?? "person.badge.key")
-                .foregroundStyle(role?.iconColor ?? .indigo)
-                .frame(width: 32)
+            RowIcon(systemImage: role?.systemImage ?? "person.badge.key", tint: role?.iconColor ?? .indigo, size: 30)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(mapping.claimValue)

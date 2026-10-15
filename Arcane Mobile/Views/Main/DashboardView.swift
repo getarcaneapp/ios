@@ -83,7 +83,7 @@ nonisolated struct DashboardLiveStatsLimitPresentation: Equatable, Sendable {
     }
 
     var message: String {
-        "Live CPU, memory, and disk metrics are streamed for the first \(maximumStreams) enabled environments to stay within the server connection limit. Container and image counts still load for every environment."
+        "Live CPU, memory, and disk metrics stream for the first \(maximumStreams) enabled environments. Change this in App Settings. Container and image counts still load for every environment."
     }
 }
 
@@ -126,6 +126,8 @@ struct DashboardView: View {
     @State private var rawEnvironmentCount: Int = 0
     @State private var detailRoute: EnvironmentDetailRoute?
     @State private var containerRoute: ContainerSummary?
+    /// A container opened from the All Environments dashboard, with its own environment.
+    @State private var environmentContainerRoute: EnvironmentItem<ContainerSummary>?
     @State private var projectRoute: ProjectDetails?
     /// Pushes AllVulnerabilitiesView for the environment named in the route.
     @State private var vulnerabilityRoute: EnvironmentDetailRoute?
@@ -220,6 +222,7 @@ struct DashboardView: View {
     private var isNavigationRoot: Bool {
         detailRoute == nil
             && containerRoute == nil
+            && environmentContainerRoute == nil
             && projectRoute == nil
             && vulnerabilityRoute == nil
             && !showAPIKeys
@@ -239,6 +242,20 @@ struct DashboardView: View {
                         Text("Connect an environment to see live container, image, and system stats here.")
                     }
                     .padding(.top, 48)
+                } else if manager.refreshedDashboardPreview {
+                    if streamStore.streamFailed, !streamStore.streamUnsupported {
+                        streamFailedBanner
+                    }
+                    allEnvironmentsDashboard
+
+                    if hasPinnedDashboardResources {
+                        DashboardPinnedSection(
+                            refreshToken: cardRefreshToken,
+                            onOpenContainer: { containerRoute = $0 },
+                            onOpenProject: { projectRoute = $0 }
+                        )
+                        .cardEntrance(id: "dashboard.pinned", index: 4)
+                    }
                 } else {
                     overviewSection
 
@@ -374,6 +391,9 @@ struct DashboardView: View {
         }
         .navigationDestination(item: $containerRoute) { container in
             ContainerDetailView(container: container, environmentID: manager.activeEnvironmentID)
+        }
+        .navigationDestination(item: $environmentContainerRoute) { item in
+            ContainerDetailView(container: item.value, environmentID: item.environmentID)
         }
         .navigationDestination(item: $projectRoute) { project in
             ProjectDetailView(project: project, environmentID: manager.activeEnvironmentID)
@@ -607,6 +627,48 @@ struct DashboardView: View {
         // Lazily built cards animate as one unit, so a card created while
         // the overview above resizes can't land on top of its neighbor.
         .geometryGroup()
+    }
+
+    private var allEnvironmentsDashboard: some View {
+        AllEnvironmentsDashboard(
+            environments: allEnvironments.filter(\.enabled),
+            dockerInfo: environmentsStore.dockerInfoByEnvironmentID,
+            statsHistory: statsHistory,
+            counts: .init(
+                running: liveCounts?.running,
+                total: liveCounts?.total,
+                images: liveCounts?.images,
+                volumes: volumesTotal,
+                updates: imageUpdatesTotal,
+                vulnerabilities: streamStore.attention.vulnerabilities
+            ),
+            volumeCounts: volumeCounts,
+            onOpenEnvironment: { env in
+                detailRoute = EnvironmentDetailRoute(id: env.id, name: env.name ?? env.id)
+            },
+            onOpenContainer: { environmentContainerRoute = $0 },
+            onOpenTile: openDashboardTile,
+            totalsFootnote: { environmentCountAvailabilityNote },
+            hostsAccessory: {
+                if manager.currentUser?.isAdmin == true {
+                    updateAllButton
+                }
+            }
+        )
+    }
+
+    private func openDashboardTile(_ tile: DashboardTotalsTile) {
+        switch tile {
+        case .running, .stopped: selectedTab = AppTab.containers.id
+        case .images: selectedTab = AppTab.images.id
+        case .volumes: showVolumes = true
+        case .updates: showImageUpdates = true
+        case .vulnerabilities:
+            let id = streamStore.attention.mostVulnerableEnvironmentID ?? manager.activeEnvironmentID.rawValue
+            let name = allEnvironments.first { $0.id == id }?.displayName ?? id
+            vulnerabilityRoute = EnvironmentDetailRoute(id: id, name: name)
+        case .hostsOnline, .cpuCores, .memory: break
+        }
     }
 
     private var environmentsSection: some View {
@@ -966,7 +1028,7 @@ struct DashboardView: View {
                     DashboardStatTile(
                         title: "Images",
                         value: images.map { "\($0)" } ?? "—",
-                        icon: "photo.stack.fill",
+                        icon: "square.3.layers.3d.top.filled",
                         tint: .purple
                     ) { selectedTab = AppTab.images.id }
                     .cardEntrance(id: "dashboard.tile.images", index: 2)
@@ -1715,46 +1777,54 @@ struct StatRing: View {
 }
 
 /// One overview stat: rounded number over a caption with a tiny tinted glyph.
-/// Four of these share the single-row overview panel; each is a button.
+/// Up to four share the single-row overview panel; each with an action is a button.
 struct DashboardStatTile: View {
     let title: String
     let value: String
     let icon: String
     let tint: Color
-    let action: () -> Void
+    var action: (() -> Void)?
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(value)
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .contentTransition(.numericText())
-                    .motionAwareAnimation(Motion.state, value: value)
-                HStack(spacing: 4) {
-                    Image(systemName: icon)
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(tint)
-                        .symbolEffect(.bounce, value: value)
-                        .accessibilityHidden(true)
-                    Text(title)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(.rect)
+        if let action {
+            Button(action: action) { content }
+                .cardRowLinkStyle()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(title): \(value)")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Opens \(title)")
+        } else {
+            content
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(title): \(value)")
         }
-        .cardRowLinkStyle()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title): \(value)")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint("Opens \(title)")
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.system(.title3, design: .rounded).weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(Color.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .contentTransition(.numericText())
+                .motionAwareAnimation(Motion.state, value: value)
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .symbolEffect(.bounce, value: value)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
     }
 }
 
@@ -1770,26 +1840,6 @@ struct DashboardSectionTitle: View {
         Text(title)
             .font(.title3.weight(.semibold))
             .foregroundStyle(Color.primary)
-    }
-}
-
-/// Symbol on a soft tint disc. Restrained — the tint sits at low opacity
-/// behind a tinted glyph rather than a saturated fill.
-struct DashboardRowIcon: View {
-    let systemImage: String
-    let tint: Color
-    var size: CGFloat = 30
-    /// The glyph bounces whenever this changes (e.g. the tile's value).
-    var changeToken: String = ""
-
-    var body: some View {
-        Image(systemName: systemImage)
-            .font(.system(size: size * 0.46, weight: .semibold))
-            .foregroundStyle(tint)
-            .symbolEffect(.bounce, value: changeToken)
-            .frame(width: size, height: size)
-            .background(tint.opacity(0.14), in: Circle())
-            .accessibilityHidden(true)
     }
 }
 

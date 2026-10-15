@@ -483,7 +483,7 @@ private struct GitOpsProjectDestination: View {
                 ProjectDetailView(project: project, environmentID: environmentID)
             } else if let errorMessage {
                 ContentUnavailableView(
-                    "Project Unavailable", systemImage: "square.stack.3d.up", description: Text(errorMessage))
+                    "Project Unavailable", systemImage: "folder", description: Text(errorMessage))
             } else {
                 ArcaneLoadingView("Loading project…")
             }

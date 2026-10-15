@@ -364,11 +364,7 @@ struct AllEnvironmentsImageUpdatesView: View {
 
     private func allClearRow(for bucket: EnvUpdateBucket) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.green)
-                .frame(width: 28, height: 28)
-                .background(Color.green.opacity(0.12), in: .circle)
+            RowIcon(systemImage: "checkmark", tint: .green, size: 30)
             Text(bucket.summary.map { "All \($0.totalImages) images up to date" } ?? "All images up to date")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -392,12 +388,7 @@ struct AllEnvironmentsImageUpdatesView: View {
                 detailTarget = ImageDetailTarget(envID: bucket.id, imageID: item.image.id)
             } label: {
                 HStack(spacing: 12) {
-                    Image(systemName: "shippingbox.and.arrow.backward.fill")
-                        .font(manager.allEnvironmentsPreview ? .title3 : .footnote.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            manager.allEnvironmentsPreview ? .clear : Color.orange.opacity(0.12), in: .circle)
+                    RowIcon(systemImage: "square.3.layers.3d.top.filled", tint: .orange)
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
@@ -710,11 +701,7 @@ struct AllEnvironmentsImageUpdatesView: View {
         let isUpdating = consumerKey.map(updatingKeys.contains) ?? false
 
         HStack(spacing: 10) {
-            Image(systemName: isProject ? "folder.fill" : "shippingbox.fill")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 28, height: 28)
-                .background(tint.opacity(0.12), in: .circle)
+            RowIcon(systemImage: isProject ? "folder.fill" : "cube.box.fill", tint: tint, size: 30)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(consumer.name)

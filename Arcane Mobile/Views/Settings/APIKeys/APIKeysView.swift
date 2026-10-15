@@ -332,10 +332,7 @@ struct APIKeyRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Image(systemName: "key.fill")
-                    .font(.title3)
-                    .foregroundStyle(.yellow)
-                    .frame(width: 38, height: 38)
+                RowIcon(systemImage: "key.fill", tint: .yellow)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(apiKey.name)

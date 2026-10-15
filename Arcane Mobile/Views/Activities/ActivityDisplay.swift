@@ -111,9 +111,9 @@ extension Activity {
     var typeIcon: String {
         switch type {
         case let raw where raw.rawValue.hasPrefix("project_"):
-            return "square.stack.3d.up.fill"
+            return "folder.fill"
         case let raw where raw.rawValue.hasPrefix("image_"):
-            return "photo.stack.fill"
+            return "square.3.layers.3d.top.filled"
         case let raw where raw.rawValue.hasPrefix("container_"):
             return "cube.box.fill"
         case .vulnerabilityScan:

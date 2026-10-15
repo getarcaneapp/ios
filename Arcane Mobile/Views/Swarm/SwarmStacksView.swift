@@ -89,11 +89,7 @@ struct SwarmStacksView: View {
             SwarmStackDetailView(name: stack.name, environmentID: environmentID)
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "square.stack.3d.up.fill")
-                    .font(.title3)
-                    .foregroundStyle(.tint)
-                    .frame(width: 32, height: 32)
-                    .accessibilityHidden(true)
+                RowIcon(systemImage: "square.stack.3d.up.fill")
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: stack.name)
                     Text(verbatim: "\(stack.services) service\(stack.services == 1 ? "" : "s")")

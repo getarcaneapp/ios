@@ -122,11 +122,7 @@ private struct UpdaterHistoryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: typeIcon)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(typeTint)
-                .frame(width: 32, height: 32)
-                .background(typeTint.opacity(0.15), in: .circle)
+            RowIcon(systemImage: typeIcon, tint: typeTint)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(record.resourceName)
@@ -164,7 +160,7 @@ private struct UpdaterHistoryRow: View {
         switch record.resourceType.lowercased() {
         case "container": return "shippingbox.fill"
         case "project", "stack": return "folder.fill"
-        case "image": return "photo.stack.fill"
+        case "image": return "square.3.layers.3d.top.filled"
         default: return "arrow.triangle.2.circlepath"
         }
     }

@@ -140,8 +140,8 @@ struct PermissionPickerView: View {
     private func iconForResource(_ key: String) -> String {
         switch key {
         case "containers": return "cube.box.fill"
-        case "images": return "photo.stack.fill"
-        case "projects": return "square.stack.3d.up.fill"
+        case "images": return "square.3.layers.3d.top.filled"
+        case "projects": return "folder.fill"
         case "volumes": return "externaldrive.fill"
         case "networks": return "network"
         case "swarm": return "square.stack.3d.up"

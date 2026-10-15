@@ -204,11 +204,7 @@ private struct JobRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 28)
-
+            RowIcon(systemImage: icon, tint: tint)
                 .symbolEffect(.rotate, options: .repeating, isActive: isRunning)
 
             VStack(alignment: .leading, spacing: 4) {

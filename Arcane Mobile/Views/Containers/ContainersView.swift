@@ -9,6 +9,7 @@ struct ContainersView: View {
     @SwiftUI.Environment(ResourceMutationStore.self) private var mutationStore
     @SwiftUI.Environment(EnvironmentsStore.self) private var environmentsStore
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
     let environmentID: EnvironmentID
     let environmentName: String
     /// All Environments preview: list and act on containers from every enabled environment.
@@ -33,7 +34,8 @@ struct ContainersView: View {
     @State private var showHidden = false
     @State private var labelFilter = ""
     @State private var debouncedLabelFilter = ""
-    @State private var sortOrder = ListSortOrder.ascending
+    @State private var sort = ContainerListSort.nameAscending
+    @State private var resourceSamples = ContainerResourceSampleStore()
     @State private var sections: [StableListSection<String, EnvironmentItem<ContainerSummary>>] = []
     /// Pinned row IDs, refreshed in `rebuildSections` (not per row render).
     @State private var pinnedIDs: Set<String> = []
@@ -163,9 +165,9 @@ struct ContainersView: View {
             return matchesSearch && matchesState && matchesUpdate && matchesHidden
         }
         // displayName trims on every access; compute it once per item, not per comparison.
-        .map { ($0.displayName, $0) }
-        .sorted { sortOrder.areInIncreasingOrder($0.0, $1.0) }
-        .map(\.1)
+        .map { (key: (name: $0.displayName, sample: resourceSample(for: $0)), item: $0) }
+        .sorted { sort.areInIncreasingOrder($0.key, $1.key) }
+        .map(\.item)
         var pinnedItems: [EnvironmentItem<ContainerSummary>] = []
         var running: [EnvironmentItem<ContainerSummary>] = []
         var stopped: [EnvironmentItem<ContainerSummary>] = []
@@ -516,14 +518,18 @@ struct ContainersView: View {
         .sheet(isPresented: $showFilterSheet) {
             NavigationStack {
                 Form {
-                    Section("Sort") {
-                        Picker("Sort", selection: $sortOrder) {
-                            ForEach(ListSortOrder.allCases) { order in
-                                Label(order.title, systemImage: order.systemImage).tag(order)
+                    Section {
+                        Picker("Sort", selection: $sort) {
+                            ForEach(ContainerListSort.allCases) { option in
+                                Label(option.title, systemImage: option.systemImage).tag(option)
                             }
                         }
                         .pickerStyle(.inline)
                         .labelsHidden()
+                    } header: {
+                        Text("Sort")
+                    } footer: {
+                        Text("Live CPU and memory require Arcane 2.16 or later.")
                     }
                     EnvironmentFilterSection(environments: list.environments, selection: $environmentFilter)
                     Section("State") {
@@ -581,7 +587,11 @@ struct ContainersView: View {
         // Reappearing (back from a detail) refreshes every loaded page in
         // place; the first appear loads page one.
         .task { await loadContainers(preservingLoadedRange: true) }
-        .refreshable { await loadContainers() }
+        .refreshable {
+            async let samples: Void = refreshResourceSamples()
+            await loadContainers()
+            await samples
+        }
         .debounce(searchText, for: .milliseconds(200), into: $debouncedSearchText)
         .debounce(labelFilter, for: .milliseconds(500), into: $debouncedLabelFilter)
         .navigationDestination(for: EnvironmentItem<ContainerSummary>.self) { container in
@@ -612,7 +622,24 @@ struct ContainersView: View {
         .onChange(of: debouncedLabelFilter) {
             Task { await loadContainers() }
         }
-        .onChange(of: sortOrder) { rebuildSections() }
+        .onChange(of: sort) { oldValue, newValue in
+            if oldValue.resourceSort == newValue.resourceSort {
+                rebuildSections()
+            } else {
+                Task { await loadContainers(preservingLoadedRange: true) }
+            }
+        }
+        .task(id: ResourcePollKey(environments: list.environments.map(\.id), isActive: scenePhase == .active)) {
+            // Live usage while the list is on screen and the app is in front.
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                await refreshResourceSamples()
+                try? await Task.sleep(for: ContainerResourceSampleStore.refreshInterval)
+            }
+        }
+        .onChange(of: resourceSamples.revision) {
+            if sort.resourceSort != nil { rebuildSections() }
+        }
         .onChange(of: pinnedStore.version) { rebuildSections() }
         .resourceActionsToolbar(
             primary: bulkPrimaryItem,
@@ -628,7 +655,12 @@ struct ContainersView: View {
     private func containerLink(_ container: EnvironmentItem<ContainerSummary>) -> some View {
         let isPinned = pinnedIDs.contains(container.id)
         return NavigationLink(value: container) {
-            ContainerRow(container: container.value, isPinned: isPinned, environmentName: container.environmentName)
+            ContainerRow(
+                container: container.value,
+                isPinned: isPinned,
+                environmentName: container.environmentName,
+                metrics: metrics(for: container)
+            )
                 .rowEnvironment(container)
         }
         .contextMenu {
@@ -848,6 +880,27 @@ struct ContainersView: View {
         rebuildSections()
     }
 
+    private struct ResourcePollKey: Equatable {
+        let environments: [EnvironmentID]
+        let isActive: Bool
+    }
+
+    private func refreshResourceSamples() async {
+        guard let client = manager.client else { return }
+        await resourceSamples.refresh(client: client, environments: list.environments.map(\.id))
+    }
+
+    private func resourceSample(for container: EnvironmentItem<ContainerSummary>) -> ContainerResourceSample? {
+        resourceSamples.sample(containerID: container.value.id, in: container.environmentID)
+            ?? container.value.resourceSample
+    }
+
+    private func metrics(for container: EnvironmentItem<ContainerSummary>) -> ContainerRow.Metrics {
+        guard container.isRunning, resourceSamples.supports(container.environmentID) else { return .hidden }
+        if let sample = resourceSample(for: container) { return .sample(sample) }
+        return resourceSamples.isPending(container.environmentID) ? .loading : .hidden
+    }
+
     private func loadMore() async {
         guard let client = manager.client else { return }
         await list.loadMore(fetch: containersPage(client: client))
@@ -858,10 +911,13 @@ struct ContainersView: View {
         let search = debouncedSearchText.isEmpty ? nil : debouncedSearchText
         let trimmedLabel = debouncedLabelFilter.trimmingCharacters(in: .whitespacesAndNewlines)
         let includeHidden: Bool? = showHidden ? true : nil
+        let resourceSort = sort.resourceSort
         return { environmentID, start, limit in
             let response = try await client.containers.list(
                 envID: environmentID,
-                query: .init(search: search, start: start, limit: limit),
+                query: .init(
+                    search: search, start: start, limit: limit,
+                    sortBy: resourceSort?.rawValue, sortOrder: resourceSort == nil ? nil : .descending),
                 includeHidden: includeHidden,
                 label: trimmedLabel.isEmpty ? nil : trimmedLabel
             )
@@ -1105,6 +1161,20 @@ struct ContainerRow: View {
     }
 
     var environmentName: String? = nil
+    var metrics: Metrics = .hidden
+
+    enum Metrics: Equatable {
+        /// Stopped container, or a server without the shared stats collector.
+        case hidden
+        /// Waiting on the first sample; reserves the column invisibly so the row doesn't jump.
+        case loading
+        case sample(ContainerResourceSample)
+    }
+
+    private var resourceSample: ContainerResourceSample? {
+        if case .sample(let sample) = metrics { return sample }
+        return nil
+    }
 
     var body: some View {
         // Each derived value parses the status string; evaluate them once per render.
@@ -1113,11 +1183,8 @@ struct ContainerRow: View {
         let updateState = ImageUpdateState(info: container.updateInfo)
         HStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
-                CachedAsyncImage(url: container.themedIconUrl(for: colorScheme), size: 36) {
-                    Image(systemName: "cube.box.fill")
-                        .font(.title3)
-                        .foregroundStyle(.tint)
-                        .frame(width: 36, height: 36)
+                CachedAsyncImage(url: container.themedIconUrl(for: colorScheme), size: 36, tiled: true) {
+                    RowIcon(systemImage: "cube.box.fill", tint: .orange)
                 }
                 Circle()
                     .fill(container.isRunning ? Color.green : Color.secondary.opacity(0.5))
@@ -1127,37 +1194,39 @@ struct ContainerRow: View {
             }
             .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Text(container.displayName)
-                        .font(.body)
-                        .lineLimit(nil)
-                    if isPinned {
-                        Image(systemName: "pin.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.yellow)
-                            .accessibilityHidden(true)
-                    }
-                    if container.hidden == true {
-                        Image(systemName: "eye.slash.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel("Hidden")
-                    }
-                }
-                if !statusText.isEmpty || health != nil {
-                    HStack(spacing: 5) {
-                        if !statusText.isEmpty {
-                            Text(statusText)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(nil)
+            VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(container.displayName)
+                            .font(.body)
+                            .lineLimit(nil)
+                        if isPinned {
+                            Image(systemName: "pin.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.yellow)
+                                .accessibilityHidden(true)
                         }
-                        if let health {
-                            Image(systemName: health.icon)
-                                .font(.subheadline)
-                                .foregroundStyle(health.color)
-                                .accessibilityLabel(health.label)
+                        if container.hidden == true {
+                            Image(systemName: "eye.slash.fill")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Hidden")
+                        }
+                    }
+                    if !statusText.isEmpty || health != nil {
+                        HStack(spacing: 5) {
+                            if !statusText.isEmpty {
+                                Text(statusText)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(nil)
+                            }
+                            if let health {
+                                Image(systemName: health.icon)
+                                    .font(.subheadline)
+                                    .foregroundStyle(health.color)
+                                    .accessibilityLabel(health.label)
+                            }
                         }
                     }
                 }
@@ -1165,11 +1234,17 @@ struct ContainerRow: View {
                 EnvironmentLabel(name: environmentName)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            StatusIcon(status: container.status, isLive: container.isRunning)
+            // Running rows trade the play icon for live usage; the dot on the
+            // icon already says it's running.
+            if metrics == .hidden {
+                StatusIcon(status: container.status, isLive: container.isRunning)
+            } else {
+                ContainerResourceMetrics(sample: resourceSample)
+            }
         }
-
+        .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription(updateState: updateState))
     }
@@ -1180,9 +1255,77 @@ struct ContainerRow: View {
         parts.append(container.isRunning ? "running" : "stopped")
         parts.append(container.image)
         parts.append(container.status)
+        if let sample = resourceSample {
+            parts.append(ContainerResourceMetrics.accessibilityDescription(sample))
+        }
         parts.append(updateState.accessibilityDescription)
         if let environmentName { parts.append(environmentName) }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// Live CPU and memory from the server's shared stats sample, shown in the
+/// trailing column of running container rows. Each ring fills against 100% CPU
+/// or the memory limit. A nil sample keeps the column's space but stays invisible;
+/// the first sample fades each line in and sweeps its ring up from empty.
+struct ContainerResourceMetrics: View {
+    let sample: ContainerResourceSample?
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            metric(
+                progress: (sample?.cpuPercent ?? 0) / 100,
+                tint: .blue,
+                value: sample.map(Self.cpuText),
+                revealDelay: 0
+            )
+            metric(
+                progress: (sample?.memoryPercent ?? 0) / 100,
+                tint: .purple,
+                value: sample.map(Self.memoryUsedText),
+                revealDelay: Motion.stagger
+            )
+        }
+        // Fixed width keeps the column aligned down the list as values change.
+        .frame(minWidth: 76, alignment: .trailing)
+    }
+
+    private func metric(progress: Double, tint: Color, value: String?, revealDelay: TimeInterval) -> some View {
+        let isRevealed = value != nil
+        return HStack(spacing: 6) {
+            Text(verbatim: value ?? "—")
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .motionAwareAnimation(Motion.state, value: value)
+            MetricRing(progress: progress, tint: tint, size: 14, lineWidth: 2.5)
+                .motionAwareAnimation(Motion.gauge, value: progress)
+        }
+        .lineLimit(1)
+        .fixedSize()
+        .opacity(isRevealed ? 1 : 0)
+        .offset(x: isRevealed ? 0 : 6)
+        .motionAwareAnimation(Motion.entrance.delay(revealDelay), value: isRevealed)
+    }
+
+    static func cpuText(_ sample: ContainerResourceSample) -> String {
+        String(format: "%.1f%%", sample.cpuPercent)
+    }
+
+    static func memoryUsedText(_ sample: ContainerResourceSample) -> String {
+        Int64(clamping: sample.memoryUsageBytes).byteString
+    }
+
+    /// "of 1 GB"; nil when the server doesn't know the limit.
+    static func memoryLimitText(_ sample: ContainerResourceSample) -> String? {
+        guard sample.memoryLimitBytes > 0 else { return nil }
+        return "of \(Int64(clamping: sample.memoryLimitBytes).byteString)"
+    }
+
+    static func accessibilityDescription(_ sample: ContainerResourceSample) -> String {
+        var memory = memoryUsedText(sample)
+        if let limit = memoryLimitText(sample) { memory += " \(limit)" }
+        return "CPU \(cpuText(sample)), memory \(memory)"
     }
 }
 

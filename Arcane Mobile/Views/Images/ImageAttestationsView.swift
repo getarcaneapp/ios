@@ -105,12 +105,7 @@ struct ImageAttestationsView: View {
 
     private func row(_ attestation: ImageAttestation) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: iconName(for: attestation.predicateType))
-                .font(.title3)
-                .foregroundStyle(.indigo)
-                .frame(width: 36, height: 36)
-                // Static tint, not glass: one offscreen glass pass per row.
-                .background(Color.indigo.opacity(0.15), in: .circle)
+            RowIcon(systemImage: iconName(for: attestation.predicateType), tint: .indigo)
             VStack(alignment: .leading, spacing: 3) {
                 Text(shortPredicateName(attestation.predicateType))
                     .font(.subheadline.weight(.semibold))

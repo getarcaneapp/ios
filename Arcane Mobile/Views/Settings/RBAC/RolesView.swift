@@ -269,10 +269,7 @@ struct RoleRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: role.systemImage)
-                .font(.title3)
-                .foregroundStyle(role.iconColor)
-                .frame(width: 40, height: 40)
+            RowIcon(systemImage: role.systemImage, tint: role.iconColor)
             VStack(alignment: .leading, spacing: 3) {
                 Text(role.displayName).font(.body)
                 if let desc = role.description, !desc.isEmpty {

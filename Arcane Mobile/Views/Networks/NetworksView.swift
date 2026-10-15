@@ -472,10 +472,7 @@ struct NetworkRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "network")
-                .font(.title3)
-                .foregroundStyle(.teal)
-                .frame(width: 36, height: 36)
+            RowIcon(systemImage: "network", tint: .teal)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(network.name)
@@ -1083,10 +1080,7 @@ private struct NetworkContainerRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "shippingbox")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
+            RowIcon(systemImage: "shippingbox.fill", tint: .secondary, size: 30)
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayName)
                     .font(.subheadline.weight(.semibold))

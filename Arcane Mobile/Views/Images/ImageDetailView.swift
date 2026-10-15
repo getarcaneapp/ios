@@ -358,7 +358,7 @@ struct ImageDetailView: View {
 
     private var imageHeader: some View {
         HStack(spacing: 14) {
-            Image(systemName: "photo.stack.fill")
+            Image(systemName: "square.3.layers.3d.top.filled")
                 .font(.title2)
                 .foregroundStyle(.purple)
                 .frame(width: 48, height: 48)
