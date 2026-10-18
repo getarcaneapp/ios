@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> Arcane Mobile have moved to a new repo please see https://github.com/getarcaneapp/mobile
+
 <div align="center">
 
   <img src=".github/assets/img/PNG-3.png" alt="Arcane Logo" width="500" />
