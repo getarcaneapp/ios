@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> Arcane Mobile have moved to a new repo please see https://github.com/getarcaneapp/mobile
+> Arcane Mobile has moved to a new repo please see https://github.com/getarcaneapp/mobile
 
 <div align="center">
 
